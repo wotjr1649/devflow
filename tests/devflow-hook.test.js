@@ -278,3 +278,32 @@ test('Stop continues open unattended work at most twice per task', () => {
   setLedger('{ broken')
   assert.equal(stop(), '', 'an unreadable ledger lets the session stop')
 })
+
+test('a script operand ends the shell options (2026-10-01 review)', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, 'evil.sh'), 'gh issue close 1\n')
+  assert.ok(check('bash evil.sh -c true', d))
+  assert.ok(check('pwsh -NoProfile -ExecutionPolicy Bypass -Command "gh issue close 1"', d))
+  fs.writeFileSync(path.join(d, 'evil.ps1'), 'gh issue close 1\n')
+  assert.ok(check('pwsh -File evil.ps1 -c true', d))
+})
+
+test('shell writes to protected paths are blocked, reads are not', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const run = (command, tool = 'Bash') => hook.handle(pre(d, command, tool))
+  for (const c of ['echo x > _ref/a.md', 'rm -rf _ref/x', 'sed -i s/a/b/ _ref/x.md', 'bash -c "rm _ref/x"', 'cp src.md _ref/x.md',
+    'git checkout -- _ref/x.md', 'timeout 5 tee _ref/log.txt']) {
+    const out = run(c)
+    assert.equal(decision(out), 'deny', c)
+    assert.match(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /protected path/, c)
+  }
+  assert.equal(decision(run('Remove-Item _ref/x.md', 'PowerShell')), 'deny')
+  for (const c of ['cp _ref/x.md notes/', 'cat _ref/x.md', 'grep -r foo _ref', 'echo hi > /dev/null', 'git checkout main']) {
+    assert.equal(run(c), '', c)
+  }
+  if (/^(win32|darwin)$/.test(process.platform)) {
+    assert.equal(decision(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, '_REF', 'x.md') } }))), 'deny')
+    assert.equal(decision(run('rm _Ref/x')), 'deny')
+  }
+})

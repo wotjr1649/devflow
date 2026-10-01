@@ -1,5 +1,5 @@
 #!/bin/sh
-# devflow gate: push only commits whose tree passes devflow-doctor and the tests.
+# devflow gate: push only commits whose tree passes the .devflow.json verify command.
 # The checks read the working tree, so it must be clean and every pushed commit must be HEAD.
 cd "$(git rev-parse --show-toplevel)" || exit 1
 if [ -n "$(git status --porcelain)" ]; then
@@ -14,5 +14,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     exit 1
   fi
 done
-node bin/devflow-doctor || { echo "pre-push: devflow-doctor failed; push blocked" >&2; exit 1; }
-node --test "tests/*.test.js" > /dev/null || { echo "pre-push: tests failed (node --test tests/*.test.js); push blocked" >&2; exit 1; }
+# The checks are .devflow.json's "verify" (docs/specs/repository.md), so the gate and the profile cannot drift apart.
+verify=$(node -e 'process.stdout.write(String(require("./.devflow.json").verify || ""))') || exit 1
+if [ -z "$verify" ]; then
+  echo "pre-push: .devflow.json has no verify command; push blocked" >&2
+  exit 1
+fi
+if ! out=$(sh -c "$verify" 2>&1); then
+  printf '%s\n' "$out" | tail -n 40 >&2
+  echo "pre-push: verify failed ($verify); push blocked" >&2
+  exit 1
+fi

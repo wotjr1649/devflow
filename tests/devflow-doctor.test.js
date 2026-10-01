@@ -127,3 +127,27 @@ test('document rules skip private paths and binary files, and cap repeats per fi
   assert.equal(lines.filter(l => /^FAIL docs: docs\/many\.md:\d+: local absolute path$/.test(l)).length, 3)
   assert.ok(lines.includes('FAIL docs: docs/many.md: local absolute path on 2 more lines'))
 })
+
+test('the 2026-10-01 review: names, text detection, anchors, gitlinks, profile, prompts, only', () => {
+  const drive = ['C:', 'Users', 'me', 'x'].join(String.fromCharCode(92))
+  const d = repo({ ...GOOD, '.devflow.json': '{ "integration": "pr" }\n', 'docs/한글.md': `see ${drive}\n`,
+    'docs/lone.md': `a\rb\nsee ${drive}\n`, 'docs/bad.md': '[x](../AGENTS.md#100%)\n' })
+  const nested = path.join(d, 'vendor', 'lib')
+  fs.mkdirSync(nested, { recursive: true })
+  spawnSync('git', ['-C', nested, 'init', '-q'])
+  fs.writeFileSync(path.join(nested, 'f.txt'), 'x\n')
+  spawnSync('git', ['-C', nested, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'add', '.'])
+  spawnSync('git', ['-C', nested, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'x'])
+  git(d, 'add', 'vendor/lib')
+  fs.mkdirSync(path.join(d, 'docs/prompts'), { recursive: true })
+  fs.writeFileSync(path.join(d, 'docs/prompts/2026-10-01-i1-long-prompt.md'), 'word '.repeat(600))
+  const lines = findings(d)
+  assert.ok(lines.includes('FAIL docs: docs/한글.md:1: local absolute path'), 'non-ASCII names are checked')
+  assert.ok(lines.includes('FAIL docs: docs/lone.md:2: local absolute path'), 'a lone CR does not make text binary')
+  assert.ok(lines.includes('FAIL docs: docs/bad.md: malformed anchor ../AGENTS.md#100%'))
+  assert.ok(lines.some(l => /^FAIL profile: integration is "pr"/.test(l)))
+  assert.ok(lines.some(l => /^WARN local-docs: docs\/prompts\/2026-10-01-i1-long-prompt\.md: ~\d+ tokens, prompt budget 500$/.test(l)))
+  const only = doctor(d, { only: ['docs/한글.md'] }).lines
+  assert.ok(only.includes('FAIL docs: docs/한글.md:1: local absolute path'))
+  assert.ok(!only.some(l => /docs\/lone\.md|gitignore|folders/.test(l)), 'only checks what it is given')
+})

@@ -22,7 +22,14 @@ const API_VALUE_FLAGS = new Set(['-X', '--method', '-f', '-F', '--field', '--raw
 const API_FIELD_FLAGS = new Set(['-f', '-F', '--field', '--raw-field', '--input'])
 const HTTP_ISSUES = /api\.github\.com\/[^\s'"]*issues/i
 const HTTP_WRITE = /(?:-X|--request|-Method)\s*['"]?(?:POST|PATCH|PUT|DELETE)\b|\s(?:-d|--data[\w-]*|--json|-Body)\b|\bmethod\s*:\s*['"](?:POST|PATCH|PUT|DELETE)/i
-const SCRIPT_FLAG = /^(-[A-Za-z]*c[A-Za-z]*|-com\w*|-e|-ec|-en\w*|\/[ck])$/i
+const PWSH_VALUE_OPTIONS = /^-(ex\w*|wo\w*|conf\w*|o|outputformat|inp\w*|w|windowstyle|settings\w*|custompipename)$/i
+// Commands that change every path they name, and those that change only the last one (the destination).
+const WRITE_ALL = new Set(['rm', 'rmdir', 'mv', 'touch', 'tee', 'truncate', 'chmod', 'chown', 'shred', 'unlink', 'mkdir',
+  'remove-item', 'ri', 'del', 'erase', 'rd', 'move-item', 'mi', 'move', 'set-content', 'sc', 'add-content', 'ac',
+  'out-file', 'new-item', 'ni', 'rename-item', 'rni', 'clear-content', 'clc'])
+const WRITE_LAST = new Set(['cp', 'copy-item', 'copy', 'cpi', 'install', 'ln'])
+const GIT_WRITES = new Set(['rm', 'mv', 'checkout', 'restore', 'clean'])
+const SCRIPT_FLAG =/^(-[A-Za-z]*c[A-Za-z]*|-com\w*|-e|-ec|-en\w*|\/[ck])$/i
 const HTTP_GRAPHQL = /api\.github\.com\/graphql/i
 const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
@@ -61,21 +68,22 @@ function parse(src) {
   const cmds = []
   const nested = []
   const docs = []
-  const newCmd = pipedFrom => ({ words: [], stdin: [], pipedFrom })
+  const newCmd = pipedFrom => ({ words: [], stdin: [], redirects: [], pipedFrom })
   let cur = newCmd(null)
   let w = null
-  let into = 'words' // where the next word goes: words, stdin (here-string) or nowhere (redirect target)
+  let into = 'words' // where the next word goes: words, stdin (here-string) or redirects (a redirect target)
   const start = () => (w ??= { text: '', raw: '', dynamic: false })
   const push = () => {
     if (w && into === 'words') cur.words.push(w)
     else if (w && into === 'stdin') cur.stdin.push(w.text)
+    else if (w && into === 'redirects' && !w.text.startsWith('&')) cur.redirects.push(w.text)
     if (w) into = 'words'
     w = null
   }
   const end = pipe => {
     push()
     const done = cur
-    if (done.words.length || done.stdin.length) cmds.push(done)
+    if (done.words.length || done.stdin.length || done.redirects.length) cmds.push(done)
     cur = newCmd(pipe && done.words.length ? done : null)
   }
   const close = (i, open, shut) => {
@@ -137,7 +145,7 @@ function parse(src) {
       while (src[i + 1] === '>' || src[i + 1] === '&') i++
       if (src[i] === '&' && /\d/.test(src[i + 1] || '')) {
         while (/\d/.test(src[i + 1] || '')) i++
-      } else into = 'nowhere'
+      } else into = 'redirects'
     } else if (c === '|') {
       end(n !== '|')
       if (n === '|' || n === '&') i++
@@ -332,24 +340,33 @@ function shellWrite(cmd, k, ctx, depth) {
     if (j >= 0) script = texts(j + 1)
   } else if (SOURCERS.has(name)) file = args[0] && args[0].text
   else if (PWSH.has(name)) {
-    const c = at(/^-(c|com\w*)$/i)
-    const e = at(/^-(e|ec|en\w*)$/i)
-    const f = at(/^-f(ile)?$/i)
-    const p = args.findIndex(a => !a.text.startsWith('-'))
-    if (c >= 0) script = texts(c + 1)
-    else if (e >= 0 && args[e + 1]) script = Buffer.from(args[e + 1].text, 'base64').toString('utf16le')
-    else if (f >= 0 && args[f + 1]) file = args[f + 1].text
-    // Windows PowerShell 5.1 reads a bare argument as -Command; PowerShell 7 reads it as -File.
-    else if (p >= 0) name === 'powershell' ? (script = texts(p)) : (file = args[p].text)
+    // Options end at the first operand; what follows belongs to the script, so a later "-c" is not pwsh's.
+    for (let i = 0; i < args.length; i++) {
+      const t = args[i].text
+      if (/^-(c|com\w*)$/i.test(t)) script = texts(i + 1)
+      else if (/^-(e|ec|en\w*)$/i.test(t)) script = args[i + 1] ? Buffer.from(args[i + 1].text, 'base64').toString('utf16le') : ''
+      else if (/^-f(ile)?$/i.test(t)) file = args[i + 1] ? args[i + 1].text : null
+      else if (PWSH_VALUE_OPTIONS.test(t)) {
+        i++
+        continue
+      } else if (t.startsWith('-')) continue
+      // Windows PowerShell 5.1 reads a bare argument as -Command; PowerShell 7 reads it as -File.
+      else if (name === 'powershell') script = texts(i)
+      else file = t
+      break
+    }
   } else {
-    const c = at(/^-[A-Za-z]*c[A-Za-z]*$/)
-    if (c >= 0) script = args[c + 1] ? args[c + 1].text : ''
-    else {
-      // The first operand, past options and the values of -o/+o.
-      for (let i = 0; i < args.length && file === null; i++) {
-        if (/^[-+]o$/.test(args[i].text)) i++
-        else if (!/^[-+]/.test(args[i].text)) file = args[i].text
+    // The first operand, past options and the values of -o/+o; a -c before it makes the next word the script.
+    for (let i = 0; i < args.length; i++) {
+      const t = args[i].text
+      if (/^[-+]o$/.test(t)) {
+        i++
+        continue
       }
+      if (/^-[A-Za-z]*c[A-Za-z]*$/.test(t)) script = args[i + 1] ? args[i + 1].text : ''
+      else if (/^[-+]/.test(t)) continue
+      else file = t
+      break
     }
   }
   if (script === '-') script = null // "-Command -": the script comes from stdin
@@ -385,6 +402,10 @@ function leadOf(words, names) {
 function checkCommand(cmd, ctx, depth) {
   const { words } = cmd
   const names = words.map(w => baseName(w.raw))
+  if (ctx.protect) {
+    const hit = ctx.protect(writeTargets(cmd, names))
+    if (hit) return `write to protected path ${hit}`
+  }
   // env -S splits its argument into a command line of its own.
   const split = words.findIndex((w, k) => names[k - 1] === 'env' && /^(-S|--split-string)/.test(w.text))
   if (split >= 0) {
@@ -438,10 +459,25 @@ function analyze(src, ctx, depth = 0) {
 // substitutions, shells given a script, eval, piped or heredoc input to a shell, script files and gh aliases.
 // A guardrail, not a sandbox: words built from variables, encodings it does not decode, or HTTP from other
 // languages get past it; a narrow gh token is what stops those.
-function issueWrite(command, { cwd = process.cwd(), env = state.realEnv } = {}) {
-  const ctx = { cwd, env, aliasMap: undefined }
-  if (Array.isArray(command)) return checkCommand({ words: command.map(word), stdin: [], pipedFrom: null }, ctx, 0)
+// With protect (files => the first protected one, or null), a write to a protected path counts as well.
+function issueWrite(command, { cwd = process.cwd(), env = state.realEnv, protect = null } = {}) {
+  const ctx = { cwd, env, protect, aliasMap: undefined }
+  if (Array.isArray(command)) return checkCommand({ words: command.map(word), stdin: [], redirects: [], pipedFrom: null }, ctx, 0)
   return analyze(String(command || ''), ctx)
+}
+
+// The paths a simple command writes: redirect targets, and the operands of commands that change files.
+// A guardrail like the rest: a write made by a program it does not know about gets past it.
+function writeTargets(cmd, names) {
+  const targets = [...cmd.redirects]
+  const lead = leadOf(cmd.words, names)
+  if (lead < 0) return targets
+  const n = names[lead]
+  const operands = cmd.words.slice(lead + 1).filter(w => !w.dynamic && !w.text.startsWith('-')).map(w => w.text)
+  if (WRITE_ALL.has(n) || (n === 'sed' && cmd.words.some(w => /^(-i|--in-place)/.test(w.text)))) targets.push(...operands)
+  else if (WRITE_LAST.has(n) && operands.length) targets.push(operands.at(-1))
+  else if (n === 'git' && GIT_WRITES.has(String(operands[0]).toLowerCase())) targets.push(...operands.slice(1))
+  return targets
 }
 
 // GitHub MCP tools that write Issues: issue_write, sub_issue_write, add_issue_comment, assign_copilot_to_issue, ...
@@ -480,17 +516,23 @@ function relativeTo(root, cwd, files) {
   return files.map(f => path.relative(root, path.resolve(cwd, f)).split(path.sep).join('/')).filter(r => r && !r.startsWith('..'))
 }
 
-function protectedEdit(root, cwd, toolInput) {
+// files => the first one under a .devflow.json protected glob, or null. Windows and macOS file systems ignore case,
+// so _REF/x must match _ref/** there.
+function protectionFor(root, cwd) {
   const globs = JSON.parse(fs.readFileSync(path.join(root, '.devflow.json'), 'utf8')).protected || []
-  return relativeTo(root, cwd, editedFiles(toolInput)).find(r => globs.some(g => matchesGlob(r, g))) || null
+  const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
+  return files => relativeTo(root, cwd, files).find(r => globs.some(g => matchesGlob(fold(r), fold(g)))) || null
 }
+
+const protectedEdit = (root, cwd, toolInput) => protectionFor(root, cwd)(editedFiles(toolInput))
 
 // After an instruction file changes, report what doctor finds about it; nothing when it finds nothing.
 function auditEdit(root, cwd, toolInput) {
   const edited = relativeTo(root, cwd, editedFiles(toolInput)).filter(r => INSTRUCTION_FILE.test(r))
   if (!edited.length) return ''
   const { doctor } = require('../bin/devflow-doctor')
-  const lines = doctor(root).lines.filter(l => /^(FAIL|WARN) /.test(l) &&
+  // Only the edited files and the instruction-file rules: a full repository scan on every edit costs too much.
+  const lines = doctor(root, { only: edited }).lines.filter(l => /^(FAIL|WARN) /.test(l) &&
     (edited.some(r => l.includes(r)) || /^(FAIL|WARN) (agents-md|instructions):/.test(l)))
   if (!lines.length) return ''
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse',
@@ -567,9 +609,12 @@ function handle(raw, env = state.realEnv) {
         const hit = protectedEdit(root, cwd, input.tool_input)
         return hit ? deny(`devflow: ${hit} is a protected path in .devflow.json; leave it as it is.`) : ''
       }
-      const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool) : issueWrite(input.tool_input && input.tool_input.command, { cwd, env })
-      return kind ? deny(`devflow: Issue writes go through devflow-state (state, comment, check, close, reopen, create), which filters ` +
-        `paths, secrets and length before posting. Blocked: ${kind}.`) : ''
+      const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool)
+        : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect: protectionFor(root, cwd) })
+      if (!kind) return ''
+      if (kind.startsWith('write to protected path')) return deny(`devflow: ${kind.slice(24)} is a protected path in .devflow.json; leave it as it is.`)
+      return deny(`devflow: Issue writes go through devflow-state (state, comment, check, close, reopen, create), which filters ` +
+        `paths, secrets and length before posting. Blocked: ${kind}.`)
     } catch (e) {
       return deny(`devflow: the check failed (${e.message}), so the tool call was blocked.`)
     }

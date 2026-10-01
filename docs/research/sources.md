@@ -66,6 +66,8 @@
   - [Memory and AGENTS.md](https://code.claude.com/docs/en/memory),
     [Context window](https://code.claude.com/docs/en/context-window),
     [Model config](https://code.claude.com/docs/en/model-config).
+  - 내장 [agents-md 플러그인](https://github.com/anthropics/claude-code/tree/main/mods/agents-md) (2282079, 2026-09-30):
+    AGENTS.md를 컨텍스트마다 다시 찾는 방식, compact 뒤 재계산.
 - Codex
   - [Skills](https://developers.openai.com/codex/skills): 위치, 묵시적 호출, `agents/openai.yaml`, 목록 예산.
   - [Plugins](https://developers.openai.com/codex/plugins),

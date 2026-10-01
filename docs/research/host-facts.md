@@ -35,6 +35,10 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   루트를 플러그인으로 가리킬 수 있다.
 - 로컬 디렉터리 마켓플레이스의 상대 경로 플러그인은 제자리에서 로드된다. 수정은 `/reload-plugins`로 반영되고 버전을
   올릴 필요가 없다. `--plugin-dir`은 그 세션에서만 같은 이름의 설치본을 대체한다.
+- 관찰(2026-10-01, 임시 `CLAUDE_CONFIG_DIR`): `source: "./"`로 설치하면 `plugins/cache/<marketplace>/<plugin>/<version>/`에
+  복사본(`.git` 제외, ignore된 비공개 폴더 포함)이 생기고 `installPath`도 그곳을 가리킨다. 그래도 세션 훅이 받는
+  `CLAUDE_PLUGIN_ROOT`는 원본 폴더라서 로드는 제자리다. 임시 설정 폴더에서는 인증 없이 설치할 수 있고, 인증 없는
+  `claude -p`도 실패하기 전에 SessionStart 훅을 실행한다.
 - 플러그인 루트의 `bin/`은 Bash 도구의 PATH에 들어간다. `workflows/`의 스크립트는 `/<plugin>:<meta.name>`으로 실행된다.
 - 경로 변수: `${CLAUDE_PLUGIN_ROOT}`(설치본 위치, 버전마다 바뀜), `${CLAUDE_PLUGIN_DATA}`(업데이트를 넘어 유지).
 - 플러그인 루트의 `CLAUDE.md`는 로드되지 않는다. 검증은 `claude plugin validate <dir>`로 한다.
@@ -59,6 +63,9 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 
 **compact**
 - 다시 주입되는 것: 프로젝트 루트 CLAUDE.md, 자동 메모리, plan mode의 계획
+- 설정으로 직접 읽은 상위 폴더의 AGENTS.md도 다시 들어간다. 내장 `agents-md` 플러그인이 엔진이 컨텍스트를 만들 때마다
+  디스크에서 AGENTS.md를 찾아 `project` 지침으로 넣고, 이 재계산은 compact와 `/clear` 뒤에도 일어난다. 하위 폴더의
+  AGENTS.md는 그 폴더의 파일을 다시 Read할 때 붙는다.
 - 최근에 다룬 파일을 최대 5개까지 다시 읽는다. 5,000토큰이 넘는 파일은 경로만 남는다.
 - `compact` 매처가 있는 SessionStart 훅의 출력은 compact된 컨텍스트에 추가된다.
 
@@ -107,13 +114,16 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - `codex debug models`는 모델별 effort를 보여 준다. `gpt-6-luna`는 `low`~`max`(`xhigh` 포함)이고 기본은 `medium`이다(2026-10-01).
 - Windows에서 환경 맥락의 셸은 `powershell`로 표시되고, 명령은 PowerShell 7(`pwsh.exe -Command`)로 실행된다. 이 기기의
   기준 셸은 PowerShell 7.6.6이다(2026-10-01).
+- 신뢰하지 않은 폴더에서 `codex exec`를 돌리면 전역 `config.toml`에 그 폴더의 `trust_level = "trusted"` 항목이 생길 수
+  있다(2026-10-01). 모델을 부르는 시험은 이미 신뢰한 저장소 안에서 한다.
+- Git Bash에서 `codex exec`는 stdin이 열려 있으면 시작하지 않고 기다릴 수 있다. `< /dev/null`로 닫는다.
 
 **플러그인**
 - `.codex-plugin/plugin.json`에 `skills`, `hooks`, `interface`를 둔다.
 - 마켓플레이스는 `.agents/plugins/marketplace.json`이다. 같은 저장소의 플러그인은
   `source: {"source": "local", "path": "./..."}`로 가리키고, `policy`의 `installation`과 `authentication`이 필수다.
-- 설치하면 `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`으로 복사된다(문서). 비공개 폴더도 복사되는지는
-  확인하지 않았다.
+- 설치하면 `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`으로 복사된다. `.git`과 ignore된 비공개 폴더까지
+  작업 트리 전체가 들어간다(2026-10-01, 임시 `CODEX_HOME`. 마켓플레이스 등록과 설치는 인증 없이 된다).
 - 작업 폴더의 마켓플레이스는 자동으로 잡히지 않는다. `codex plugin marketplace list`에 나오려면
   `codex plugin marketplace add <root>`로 등록해야 한다(2026-10-01).
 - 플러그인에 넣을 수 있는 것은 스킬, MCP 서버, 브라우저 확장, 훅이다. 문서에 에이전트 항목은 없다.

@@ -1,6 +1,359 @@
 #!/usr/bin/env node
 'use strict'
 // Counts one Issue cycle from the local session records of Claude Code and Codex.
-// Rules: docs/specs/metrics.md.
+// Rules: docs/specs/metrics.md. Reads only; prints fixed metric names and integers, never record text.
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const readline = require('readline')
+const { spawnSync } = require('child_process')
+// Windows looks for git.exe in the working folder before PATH; a cloned repository must not supply it.
+if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
 
-module.exports = {}
+const ISSUE_BRANCH = /^[^/]+\/(\d+)-/
+const MODEL_NAME = /^[a-z0-9.-]{1,64}$/
+const CHECKOUT = /^\S+ \S+ .*> (\d+) [+-]\d{4}\tcheckout: moving from (\S+) to (\S+)$/
+const SUB_GAP_MS = 10 * 60 * 1000
+// ponytail: readline holds a whole line before this cap applies; switch to a byte-stream parser if records reach hundreds of MB
+const MAX_LINE = 64 * 1024 * 1024
+const RUN_TIMEOUT_MS = 10000
+const KEYS = ['calls', 'inputUncached', 'cacheRead', 'cacheWrite', 'output', 'reasoning', 'tools']
+const WIN = process.platform === 'win32'
+const USAGE = `usage: devflow-metrics <issue> [--until <epoch seconds>] [--line] [--claude-dir <dir>] [--codex-dir <dir>]
+  Counts the Issue's cycle from local Claude Code and Codex session records (docs/specs/metrics.md).
+  Prints one JSON object of metric names and integers; --line prints the public checkpoint line.`
+
+const norm = p => (WIN ? path.resolve(p).toLowerCase() : path.resolve(p))
+const nat = v => (Number.isInteger(v) && v >= 0 ? v : 0)
+const tokens = v => (Number.isFinite(v) && v > 0 ? Math.round(v) : 0)
+const timeOf = rec => { const t = Date.parse(rec.timestamp); return Number.isFinite(t) ? t : null }
+const limitOf = until => (until ? (until + 1) * 1000 - 1 : Infinity)
+const isIssue = (branch, issue) => { const m = ISSUE_BRANCH.exec(typeof branch === 'string' ? branch : ''); return !!m && Number(m[1]) === issue }
+const entries = dir => { try { return fs.readdirSync(dir, { withFileTypes: true }) } catch { return [] } }
+
+function git(cwd, ...args) {
+  // Hooks export GIT_DIR and friends; the repository is found from cwd alone.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+  const r = spawnSync('git', args, { cwd, env, encoding: 'utf8', timeout: RUN_TIMEOUT_MS, windowsHide: true })
+  return r.status === 0 ? r.stdout.trim() : null
+}
+
+function context(cwd) {
+  const root = git(cwd, 'rev-parse', '--show-toplevel')
+  if (!root) return null
+  const common = git(root, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+  const worktrees = []
+  for (const l of (git(root, 'worktree', 'list', '--porcelain') || '').split('\n')) {
+    if (l.startsWith('worktree ')) worktrees.push({ path: path.resolve(l.slice(9)), branch: null, reflog: null })
+    else if (l.startsWith('branch refs/heads/') && worktrees.length) worktrees[worktrees.length - 1].branch = l.slice(18)
+  }
+  for (const w of worktrees) {
+    const p = fs.existsSync(w.path) && git(w.path, 'rev-parse', '--path-format=absolute', '--git-path', 'logs/HEAD')
+    w.reflog = p && fs.existsSync(p) ? path.resolve(p) : null
+  }
+  return { root: path.resolve(root), mainRoot: common ? path.dirname(path.resolve(common)) : path.resolve(root), worktrees }
+}
+
+// The deepest work tree containing p, compared by path segments.
+function owner(p, worktrees) {
+  if (typeof p !== 'string' || !p) return null
+  const q = norm(p)
+  let best = null
+  for (const w of worktrees) {
+    const r = norm(w.path)
+    const inside = q === r || q.startsWith(r.endsWith(path.sep) ? r : r + path.sep)
+    if (inside && (!best || r.length > norm(best.path).length)) best = w
+  }
+  return best
+}
+
+// The branch HEAD of work tree w was on at atMs. Only "checkout: moving from A to B" moves HEAD between branches;
+// before the first one HEAD was on its A, and with none it is on the current branch.
+function branchAt(w, atMs) {
+  if (!w.switches) {
+    w.switches = []
+    for (const l of fs.readFileSync(w.reflog, 'utf8').split('\n')) {
+      const m = CHECKOUT.exec(l.replace(/\r$/, ''))
+      if (m) w.switches.push({ at: Number(m[1]) * 1000, from: m[2], to: m[3] })
+    }
+  }
+  if (!w.switches.length) return w.branch
+  let b = w.switches[0].from
+  for (const s of w.switches) { if (s.at > atMs) break; b = s.to }
+  return b
+}
+
+async function readJsonl(file, onRecord, { maxLine = MAX_LINE } = {}) {
+  const r = { bad: 0, long: 0 }
+  let st
+  try { st = fs.lstatSync(file) } catch { return r }
+  if (!st.isFile()) return r
+  const lines = readline.createInterface({ input: fs.createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity })
+  for await (const line of lines) {
+    if (!line.trim()) continue
+    if (line.length > maxLine) { r.long++; continue }
+    let rec
+    try { rec = JSON.parse(line) } catch { r.bad++; continue }
+    if (rec && typeof rec === 'object') onRecord(rec)
+    else r.bad++
+  }
+  return r
+}
+
+const block = sub => Object.fromEntries([...KEYS, ...(sub ? ['subagents'] : [])].map(k => [k, 0]))
+const hostResult = () => ({
+  main: block(false), sub: block(true), intervals: { main: [], sub: [] }, last: 0, models: {},
+  skipped: { badLines: 0, longLines: 0, outsideScope: 0, noReflog: 0, fallbackSessions: 0 },
+})
+const addModel = (res, name) => {
+  const k = typeof name === 'string' && MODEL_NAME.test(name) ? name : 'other'
+  res.models[k] = (res.models[k] || 0) + 1
+}
+const addLines = (res, r) => { res.skipped.badLines += r.bad; res.skipped.longLines += r.long }
+
+// Gaps longer than SUB_GAP_MS end a span, so a resumed subagent does not count its idle time.
+function spans(times) {
+  const out = []
+  for (const t of times.sort((a, b) => a - b)) {
+    const cur = out[out.length - 1]
+    if (cur && t - cur[1] <= SUB_GAP_MS) cur[1] = t
+    else out.push([t, t])
+  }
+  return out
+}
+
+async function claude({ ctx, dir, issue, until }) {
+  const res = hostResult()
+  const limit = limitOf(until)
+  // A project folder is named after the path the session started in, every non-alphanumeric character as "-".
+  const names = ctx.worktrees.map(w => path.resolve(w.path).replace(/[^a-zA-Z0-9]/g, '-')).map(n => (WIN ? n.toLowerCase() : n))
+  const projects = path.join(dir, 'projects')
+  const seen = { main: new Map(), sub: new Map() }
+  const tools = { main: new Set(), sub: new Set() }
+  for (const f of entries(projects)) {
+    const name = WIN ? f.name.toLowerCase() : f.name
+    if (!f.isDirectory() || !names.some(n => name === n || name.startsWith(n + '-'))) continue
+    const base = path.join(projects, f.name)
+    const files = []
+    for (const e of entries(base)) {
+      if (e.isFile() && e.name.endsWith('.jsonl')) files.push({ file: path.join(base, e.name), role: 'main' })
+      else if (e.isDirectory()) {
+        for (const s of entries(path.join(base, e.name, 'subagents'))) {
+          if (s.isFile() && /^agent-.*\.jsonl$/.test(s.name)) files.push({ file: path.join(base, e.name, 'subagents', s.name), role: 'sub' })
+        }
+      }
+    }
+    for (const { file, role } of files) {
+      const times = []
+      addLines(res, await readJsonl(file, rec => {
+        const t = timeOf(rec)
+        if (t === null || t > limit || !owner(rec.cwd, ctx.worktrees)) return
+        if (!isIssue(rec.gitBranch, issue)) { if (rec.type === 'assistant') res.skipped.outsideScope++; return }
+        const m = rec.message
+        if (rec.type === 'assistant' && m && m.id && m.usage && m.model !== '<synthetic>') {
+          seen[role].set(m.id, m)
+          for (const c of Array.isArray(m.content) ? m.content : []) if (c && c.type === 'tool_use' && c.id) tools[role].add(c.id)
+        } else if (role === 'main' && rec.type === 'system' && rec.subtype === 'turn_duration' && tokens(rec.durationMs)) {
+          res.intervals.main.push([t - tokens(rec.durationMs), t])
+        } else if (role === 'main') return
+        if (role === 'sub') times.push(t)
+        res.last = Math.max(res.last, t)
+      }))
+      if (times.length) { res.sub.subagents++; res.intervals.sub.push(...spans(times)) }
+    }
+  }
+  for (const role of ['main', 'sub']) {
+    const b = res[role]
+    for (const m of seen[role].values()) {
+      const u = m.usage
+      b.calls++
+      b.inputUncached += tokens(u.input_tokens)
+      b.cacheRead += tokens(u.cache_read_input_tokens)
+      b.cacheWrite += tokens(u.cache_creation_input_tokens)
+      b.output += tokens(u.output_tokens)
+      b.reasoning += tokens(u.output_tokens_details && u.output_tokens_details.thinking_tokens)
+      addModel(res, m.model)
+    }
+    b.tools = tools[role].size
+  }
+  return res
+}
+
+function addCodexUsage(b, u) {
+  const cached = tokens(u.cached_input_tokens)
+  b.calls++
+  b.inputUncached += Math.max(0, tokens(u.input_tokens) - cached)
+  b.cacheRead += cached
+  b.cacheWrite += tokens(u.cache_write_input_tokens)
+  b.output += tokens(u.output_tokens)
+  b.reasoning += tokens(u.reasoning_output_tokens)
+}
+
+async function codex({ ctx, dir, issue, until }) {
+  const res = hostResult()
+  const limit = limitOf(until)
+  const files = []
+  const walk = d => {
+    for (const e of entries(d)) {
+      const p = path.join(d, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (e.isFile() && /^rollout-.*\.jsonl$/.test(e.name)) files.push(p)
+    }
+  }
+  walk(path.join(dir, 'sessions'))
+  walk(path.join(dir, 'archived_sessions'))
+  const responses = new Set()
+  const calls = { main: new Set(), sub: new Set() }
+  for (const file of files) {
+    let cwd = null
+    let role = 'main'
+    let model = null
+    let perCall = false
+    let inScope = false
+    const fallback = []
+    // 'in', 'branch' (this repository, another branch), 'noReflog', or null (not this repository)
+    const scope = t => {
+      const w = owner(cwd, ctx.worktrees)
+      if (!w) return null
+      if (!w.reflog) return 'noReflog'
+      return isIssue(branchAt(w, t), issue) ? 'in' : 'branch'
+    }
+    const counted = (s, t) => {
+      if (s === 'noReflog') res.skipped.noReflog++
+      if (s === 'branch') res.skipped.outsideScope++
+      if (s !== 'in') return false
+      inScope = true
+      res.last = Math.max(res.last, t)
+      return true
+    }
+    addLines(res, await readJsonl(file, rec => {
+      const p = rec.payload && typeof rec.payload === 'object' ? rec.payload : {}
+      if (rec.type === 'session_meta') {
+        cwd = p.cwd
+        role = p.source && typeof p.source === 'object' && p.source.subagent ? 'sub' : 'main'
+        return
+      }
+      if (rec.type === 'turn_context') { cwd = p.cwd || cwd; model = p.model; return }
+      const t = timeOf(rec)
+      if (t === null || t > limit) return
+      if (rec.type === 'token_usage_record') {
+        perCall = true
+        if (!p.usage || !p.response_id || responses.has(p.response_id) || !counted(scope(t), t)) return
+        responses.add(p.response_id)
+        addCodexUsage(res[role], p.usage)
+        addModel(res, model)
+      } else if (rec.type === 'event_msg' && p.type === 'token_count') {
+        if (p.info && p.info.last_token_usage) fallback.push({ t, s: scope(t), model, last: p.info.last_token_usage })
+      } else if (rec.type === 'event_msg' && p.type === 'task_complete') {
+        if (tokens(p.duration_ms) && counted(scope(t), t)) res.intervals[role].push([t - tokens(p.duration_ms), t])
+      } else if (rec.type === 'response_item' && typeof p.type === 'string' && p.type.endsWith('_call')) {
+        if (p.call_id && counted(scope(t), t)) calls[role].add(p.call_id)
+      }
+    }))
+    // Versions without token_usage_record: a changed last_token_usage is one response.
+    if (!perCall && fallback.length) {
+      let prev = null
+      let used = false
+      for (const f of fallback) {
+        const sig = JSON.stringify(f.last)
+        if (sig === prev) continue
+        prev = sig
+        if (!counted(f.s, f.t)) continue
+        addCodexUsage(res[role], f.last)
+        addModel(res, f.model)
+        used = true
+      }
+      if (used) res.skipped.fallbackSessions++
+    }
+    if (role === 'sub' && inScope) res.sub.subagents++
+  }
+  res.main.tools = calls.main.size
+  res.sub.tools = calls.sub.size
+  return res
+}
+
+function readLedger(ctx, issue) {
+  for (const root of [ctx.root, ctx.mainRoot]) {
+    try { return JSON.parse(fs.readFileSync(path.join(root, '.work', 'devflow', `i${issue}`, 'ledger.json'), 'utf8')) } catch {}
+  }
+  return null
+}
+
+function unionMs(list) {
+  let total = 0
+  let cur = null
+  for (const [a, b] of list.filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0])) {
+    if (cur && a <= cur[1]) cur[1] = Math.max(cur[1], b)
+    else { if (cur) total += cur[1] - cur[0]; cur = [a, b] }
+  }
+  return cur ? total + cur[1] - cur[0] : total
+}
+const minutes = list => Math.round(unionMs(list) / 60000)
+
+function report({ claude: c, codex: x, ledger, issue, until }) {
+  const out = (b, list) => ({ ...Object.fromEntries(KEYS.map(k => [k, b[k]])), activeMinutes: minutes(list), ...('subagents' in b ? { subagents: b.subagents } : {}) })
+  const host = h => ({ main: out(h.main, h.intervals.main), sub: out(h.sub, h.intervals.sub) })
+  const m = ledger && ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}
+  const ev = m.eval && typeof m.eval === 'object' ? m.eval : {}
+  const counts = { fix: 0, promote: 0, continue: 0 }
+  for (const t of Object.values(ledger && ledger.counts && typeof ledger.counts === 'object' ? ledger.counts : {})) {
+    for (const k of Object.keys(counts)) counts[k] += nat(t && t[k])
+  }
+  const models = { ...c.models }
+  for (const [k, v] of Object.entries(x.models)) models[k] = (models[k] || 0) + v
+  const skipped = Object.fromEntries(Object.keys(c.skipped).map(k => [k, c.skipped[k] + x.skipped[k]]))
+  const last = Math.max(c.last, x.last)
+  return {
+    schema: 1, issue, until: until || Math.floor((last || Date.now()) / 1000),
+    activeMinutes: minutes([...c.intervals.main, ...c.intervals.sub, ...x.intervals.main, ...x.intervals.sub]),
+    claude: host(c), codex: host(x), models,
+    manual: { interventions: nat(m.interventions), filterFalsePositives: nat(m.filterFalsePositives), counts, eval: { passed: nat(ev.passed), total: nat(ev.total) } },
+    skipped,
+  }
+}
+
+function line(r) {
+  const blocks = [r.claude.main, r.claude.sub, r.codex.main, r.codex.sub]
+  const sum = k => blocks.reduce((a, b) => a + (b[k] || 0), 0)
+  return `- 측정(v1): calls ${sum('calls')}, inputUncached ${sum('inputUncached')}, cacheRead ${sum('cacheRead')}, ` +
+    `cacheWrite ${sum('cacheWrite')}, output ${sum('output')}, tools ${sum('tools')}, subagents ${sum('subagents')}, ` +
+    `activeMinutes ${r.activeMinutes}, interventions ${r.manual.interventions}, filterFalsePositives ${r.manual.filterFalsePositives}`
+}
+
+const usage = () => { process.stderr.write(USAGE + '\n'); return 1 }
+
+async function main(argv) {
+  const opt = {}
+  let issue = null
+  let asLine = false
+  const rest = [...argv]
+  while (rest.length) {
+    const a = rest.shift()
+    if (a === '--line') asLine = true
+    else if (a === '--until' || a === '--claude-dir' || a === '--codex-dir') {
+      if (!rest.length) return usage()
+      opt[a] = rest.shift()
+    } else if (issue === null && /^\d+$/.test(a)) issue = Number(a)
+    else return usage()
+  }
+  if (issue === null || (opt['--until'] !== undefined && !/^\d+$/.test(opt['--until']))) return usage()
+  const ctx = context(process.cwd())
+  if (!ctx) { process.stderr.write('devflow-metrics: not inside a git work tree\n'); return 1 }
+  const until = opt['--until'] ? Number(opt['--until']) : undefined
+  const home = os.homedir()
+  const c = await claude({ ctx, dir: opt['--claude-dir'] || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), issue, until })
+  const x = await codex({ ctx, dir: opt['--codex-dir'] || process.env.CODEX_HOME || path.join(home, '.codex'), issue, until })
+  const r = report({ claude: c, codex: x, ledger: readLedger(ctx, issue), issue, until })
+  process.stdout.write((asLine ? line(r) : JSON.stringify(r, null, 2)) + '\n')
+  return 0
+}
+
+if (require.main === module) {
+  // Errors carry no detail: a message could quote a record.
+  main(process.argv.slice(2)).then(code => { process.exitCode = code }, () => {
+    process.stderr.write('devflow-metrics: internal error\n')
+    process.exitCode = 1
+  })
+}
+
+module.exports = { context, owner, branchAt, readJsonl, claude, codex, readLedger, report, line, main }

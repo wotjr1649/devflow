@@ -29,7 +29,7 @@
 
 | 지표 | 정의 | Claude 원천 | Codex 원천 | 호스트 간 비교 |
 |---|---|---|---|---|
-| `calls` | 모델 응답 수 | assistant 레코드의 `message.id` 고유 수 | `token_usage_record.response_id` 고유 수 | 가능 |
+| `calls` | 모델 응답 수 | assistant 레코드의 `message.id` 고유 수. 호스트가 만든 `<synthetic>` 메시지는 뺀다 | `token_usage_record.response_id` 고유 수 | 가능 |
 | `inputUncached` | 캐시를 거치지 않은 입력 토큰 | `usage.input_tokens` | `input_tokens − cached_input_tokens` | 가능 |
 | `cacheRead` | 캐시에서 읽은 입력 토큰 | `usage.cache_read_input_tokens` | `cached_input_tokens` | 가능 |
 | `cacheWrite` | 캐시에 쓴 입력 토큰 | `usage.cache_creation_input_tokens` | `cache_write_input_tokens`(보고된 값) | 참고만 |

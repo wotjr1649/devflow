@@ -73,6 +73,16 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   `prompt_snapshot` 항목의 `tools`가 실제로 받은 도구 목록이고, `instructions` 항목이 로드된 지침 파일 목록이다.
   플러그인 에이전트의 `tools`에 그 세션에 없는 도구(꺼진 `PowerShell`)를 적으면 오류 없이 빠진다.
 
+**세션 기록** (2026-10-02, v2.1.286, 측정 계약은 [metrics](../specs/metrics.md))
+- 위치는 `~/.claude/projects/<세션을 시작한 경로의 영숫자 밖 문자를 -로>/<세션>.jsonl`이다. 세션 안에서 worktree로 들어가도
+  같은 파일에 남는다. 레코드마다 `cwd`와 `gitBranch`가 있다. `gitBranch`는 세션의 작업 트리 브랜치를 따르고 셸의 `cwd`는
+  따르지 않았다.
+- assistant 응답은 스트리밍 조각마다 같은 `message.id`로 여러 줄 남고, 줄마다 `usage`가 같다. `input_tokens`는 캐시분을
+  빼고, 추론 토큰은 `usage.output_tokens_details.thinking_tokens`에 있다. 사용자가 중단한 자리에는 model이 `<synthetic>`인
+  메시지가 남는다.
+- 메인 턴은 `system/turn_duration`(`durationMs`)으로 남는다. `cost-state`(모델별 누적)는 종료한 세션에만 있고, 기록에
+  응답으로 없는 호출(자리 비움 요약, 제목 생성 등)을 포함한다.
+
 **compact**
 - 다시 주입되는 것: 프로젝트 루트 CLAUDE.md, 자동 메모리, plan mode의 계획
 - 설정으로 직접 읽은 상위 폴더의 AGENTS.md도 다시 들어간다. 내장 `agents-md` 플러그인이 엔진이 컨텍스트를 만들 때마다
@@ -203,6 +213,15 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   물려받아 파일 쓰기가 성공했다. 끝난 에이전트에 후속 작업을 보내면 같은 에이전트가 이어서 받는다.
 - 실행 기록: `~/.codex/sessions/`의 rollout에서 `session_meta.source.subagent.thread_spawn`이 부모 스레드, 깊이,
   `agent_role`을 담는다. 모델과 effort는 턴마다 `turn_context.model`과 `turn_context.effort`에 있다.
+
+**세션 기록** (2026-10-02, 측정 계약은 [metrics](../specs/metrics.md))
+- rollout은 시작일 폴더(`sessions/YYYY/MM/DD/`)와 `archived_sessions/`에 있다. 브랜치는 `session_meta.git`(시작 값)에만 있고
+  서브에이전트 rollout에는 없다. `cwd`는 `session_meta`와 `turn_context`에 있다.
+- 0.159는 응답마다 `token_usage_record`(`response_id`, `usage`, `thread_token_usage`)를 남기고, `usage`가
+  `thread_token_usage` 증가분과 같다. 0.146에는 이 레코드가 없고 `token_count`만 있다. `input_tokens`는 캐시분을 포함한다.
+  부모의 누적값에는 서브에이전트 사용량이 들어가지 않았다.
+- 도구 호출은 `response_item`의 `custom_tool_call`(`exec`)로 남는다. `exec` 한 번이 여러 명령을 묶을 수 있다.
+- Windows에서 `codex exec -s read-only` 안의 git 명령은 저장소 소유자 검사(`safe.directory`)로 실패했다.
 
 ## 참고 구현
 

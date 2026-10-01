@@ -1,0 +1,8 @@
+---
+max_turns: 4
+timeout_seconds: 180
+allowed_tools: [Skill, Read, Glob, Grep]
+tags: [trigger, should, pr-review-workflow]
+---
+
+PR #34를 리뷰해서 발견 사항을 정리해 줘.

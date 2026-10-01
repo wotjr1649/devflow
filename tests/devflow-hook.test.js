@@ -555,3 +555,78 @@ test('a FIFO profile cannot hold the hook open', { skip: process.platform === 'w
   assert.equal(r.status, 0)
   assert.equal(decision(r.stdout), 'deny')
 })
+
+test('PowerShell content parameters cannot hide the actual write path', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const run = c => hook.handle(pre(d, c, 'PowerShell'))
+  assert.equal(decision(run('Set-Content -Encoding utf8 _ref/x.md x')), 'deny')
+  assert.equal(decision(run('Set-Content -Value x -Path _ref/x.md')), 'deny')
+  fs.writeFileSync(path.join(d, '.devflow.json'), '{ broken')
+  assert.equal(decision(run('Set-Content -Value .devflow.json src.md')), 'deny')
+  assert.equal(run('Set-Content -Encoding utf8 .devflow.json "{}"'), '')
+  assert.equal(run('Set-Content -Value "{}" .devflow.json'), '')
+  assert.equal(run('Set-Content -LiteralPath .devflow.json -Value "{}"'), '')
+})
+
+test('an entry-point deadline is logged to the input worktree even from a subfolder', () => {
+  const parent = gitRepo('fix/8-other')
+  const input = gitRepo('fix/7-deadline')
+  const cwd = path.join(input, 'sub')
+  fs.mkdirSync(cwd)
+  fs.writeFileSync(path.join(input, 'heavy.sh'), 'echo ok\n'.repeat(8000))
+  const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
+    cwd: parent, input: pre(cwd, 'bash ../heavy.sh;'.repeat(15000)), encoding: 'utf8', timeout: 9000,
+  })
+  assert.equal(r.status, 0)
+  assert.equal(decision(r.stdout), 'deny')
+  assert.deepEqual(guards(input, 7), ['analysis-deadline'])
+  assert.deepEqual(guards(parent, 8), [])
+})
+
+test('a profile link to a device is not opened', t => {
+  const d = dir(true)
+  const profile = path.join(d, '.devflow.json')
+  fs.rmSync(profile)
+  try { fs.symlinkSync(process.platform === 'win32' ? 'NUL' : '/dev/zero', profile) }
+  catch { return t.skip('file symlinks need privileges here') }
+  const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
+    cwd: d, input: pre(d, 'echo x > src.md'), encoding: 'utf8', timeout: 8000,
+  })
+  assert.equal(r.status, 0)
+  assert.equal(decision(r.stdout), 'deny')
+  assert.match(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason, /fix .devflow.json first/)
+})
+
+test('profile replacement or growth at open cannot bypass the type and byte limits', () => {
+  for (const attack of ['link', 'grow']) {
+    const d = dir(true)
+    const profile = path.join(d, '.devflow.json')
+    const target = path.join(d, 'target.json')
+    fs.writeFileSync(target, '{}')
+    const open = fs.openSync
+    let changed = false
+    // Inject a real file change at the race boundary; opening, fstat and reading still use the native filesystem.
+    fs.openSync = (p, ...args) => {
+      if (p === profile && !changed) {
+        changed = true
+        if (attack === 'link') { fs.unlinkSync(profile); fs.symlinkSync(target, profile) }
+        else fs.appendFileSync(profile, ' '.repeat(256 * 1024))
+      }
+      return open(p, ...args)
+    }
+    try {
+      assert.equal(decision(hook.handle(pre(d, 'echo x > src.md'))), 'deny', attack)
+      assert.equal(changed, true, 'the race boundary was exercised')
+    } finally { fs.openSync = open }
+  }
+})
+
+test('non-object profile roots do not silently disable protection', () => {
+  const d = dir(true)
+  for (const profile of ['[]', '"x"', '42', 'true', '{"protected":false}', '{"protected":null}']) {
+    fs.writeFileSync(path.join(d, '.devflow.json'), profile)
+    assert.equal(decision(hook.handle(pre(d, 'echo x > src.md'))), 'deny', profile)
+    assert.equal(hook.handle(pre(d, 'echo "{}" > .devflow.json')), '', profile)
+  }
+})

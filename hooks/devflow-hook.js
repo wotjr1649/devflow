@@ -37,6 +37,10 @@ const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
 const ANALYSIS_TIMEOUT_MS = 5000
+const ANALYSIS_FAILURES = {
+  'analysis-deadline': 'devflow: the 5-second analysis deadline was exceeded, so the tool call was blocked.',
+  'hook-check-failed': 'devflow: the analyzer failed, so the tool call was blocked.',
+}
 
 const word = text => ({ text, raw: text, dynamic: /[$`]/.test(text) })
 const baseName = raw => raw.replace(/^["']|["']$/g, '').split(/[\\/]/).pop().toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, '')
@@ -492,10 +496,19 @@ function writeTargets(cmd, names) {
   const operands = rest.filter(w => !w.dynamic && !w.text.startsWith('-')).map(w => w.text)
   const add = (paths, deep) => targets.push(...paths.map(p => ({ path: p, deep })))
   if (CONTENT_WRITES.has(n)) {
-    // PowerShell content is data, not another file to write. Prefer an explicit path parameter, then position 0.
-    const i = rest.findIndex(w => /^-(literalpath|path|filepath)$/i.test(w.text))
-    const target = i >= 0 ? rest[i + 1] : rest.find(w => !w.dynamic && !w.text.startsWith('-'))
-    if (target && !target.dynamic) add([target.text], false)
+    // Content and option values are data. Unknown parameters retain the conservative operand check.
+    const positional = [], named = []
+    let unknown = false
+    for (let i = 0; i < rest.length; i++) {
+      const w = rest[i]
+      if (/^-(literalpath|path|filepath)$/i.test(w.text)) { if (rest[i + 1]) named.push(rest[++i]); }
+      else if (/^-(value|encoding|filter|include|exclude|stream|credential|delimiter)$/i.test(w.text)) i++
+      else if (/^-(force|nonewline|asbytestream|passthru|whatif|confirm|verbose|debug)$/i.test(w.text)) {}
+      else if (w.text.startsWith('-')) unknown = true
+      else positional.push(w)
+    }
+    const paths = named.length ? named : unknown ? positional : positional.slice(0, 1)
+    add(paths.filter(w => !w.dynamic).map(w => w.text), false)
   } else if (WRITE_ALL.has(n) || (n === 'sed' && rest.some(w => /^(-i|--in-place)/.test(w.text)))) add(operands, WRITE_DEEP.has(n))
   else if (WRITE_LAST.has(n) && operands.length) add([operands.at(-1)], false)
   else if (n === 'find' && rest.some(w => w.text === '-delete')) {
@@ -564,7 +577,9 @@ function protectionFor(root, cwd) {
   const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
   let globs
   try {
-    globs = JSON.parse(smallFile(path.join(root, '.devflow.json'), MAX_SCRIPT_BYTES)).protected || []
+    const profile = JSON.parse(smallFile(path.join(root, '.devflow.json'), MAX_SCRIPT_BYTES))
+    if (!profile || typeof profile !== 'object' || Array.isArray(profile)) throw new Error('invalid profile')
+    globs = profile.protected === undefined ? [] : profile.protected
     if (!Array.isArray(globs) || globs.some(g => typeof g !== 'string')) throw new Error('invalid protected paths')
   } catch {
     return targets => relativeTo(root, cwd, targets.map(t => t.path), { keepRoot: true })
@@ -664,11 +679,26 @@ function localPath(p) {
 
 function smallFile(p, maxBytes = 4096) {
   if (!localPath(p)) return null
+  let fd
   try {
     const st = fs.lstatSync(p)
-    return st.isFile() && st.size <= maxBytes ? fs.readFileSync(p, 'utf8') : null
+    if (!st.isFile() || st.size > maxBytes) return null
+    const { O_RDONLY, O_NONBLOCK = 0, O_NOFOLLOW = 0 } = fs.constants
+    fd = fs.openSync(p, O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
+    const opened = fs.fstatSync(fd)
+    if (!opened.isFile() || opened.size > maxBytes || opened.dev !== st.dev || opened.ino !== st.ino) return null
+    const buf = Buffer.alloc(maxBytes + 1)
+    let size = 0
+    while (size < buf.length) {
+      const n = fs.readSync(fd, buf, size, buf.length - size, null)
+      if (!n) break
+      size += n
+    }
+    return size <= maxBytes ? buf.toString('utf8', 0, size) : null
   } catch {
     return null
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd)
   }
 }
 
@@ -788,18 +818,24 @@ function main(inProcess = false) {
     raw = fs.readFileSync(0, 'utf8')
   } catch {}
   let out
-  let pre = false
-  try { pre = JSON.parse(raw).hook_event_name === 'PreToolUse' } catch {}
-  if (pre && !inProcess) {
+  let input
+  try { input = JSON.parse(raw) } catch {}
+  if (typeof inProcess === 'string' && ANALYSIS_FAILURES[inProcess]) {
+    out = blocked(devflowRoot(input?.cwd || process.cwd()), inProcess, ANALYSIS_FAILURES[inProcess])
+  } else if (input?.hook_event_name === 'PreToolUse' && !inProcess) {
     // A timer in the analyzer cannot interrupt synchronous parsing or a blocked file read. Keep those in a child
     // with a deadline shorter than the host's: a killed or failed analyzer produces a denial, never an empty result.
     const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main(true)', __filename], {
       input: raw, encoding: 'utf8', timeout: ANALYSIS_TIMEOUT_MS, windowsHide: true,
     })
-    out = r.error?.code === 'ETIMEDOUT'
-      ? blocked(process.cwd(), 'analysis-deadline', 'devflow: the 5-second analysis deadline was exceeded, so the tool call was blocked.')
-      : r.status !== 0 ? blocked(process.cwd(), 'hook-check-failed', 'devflow: the analyzer failed, so the tool call was blocked.')
-        : r.stdout.trim()
+    const guard = r.error?.code === 'ETIMEDOUT' ? 'analysis-deadline' : r.status !== 0 ? 'hook-check-failed' : null
+    if (guard) {
+      // Logging reads repository metadata too. Bound it separately, so even a broken log path cannot delay denial.
+      const log = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main(process.argv[2])', __filename, guard], {
+        input: raw, encoding: 'utf8', timeout: 1000, windowsHide: true,
+      })
+      out = log.status === 0 && log.stdout.trim() ? log.stdout.trim() : deny(ANALYSIS_FAILURES[guard])
+    } else out = r.stdout.trim()
   } else out = handle(raw)
   if (out) process.stdout.write(out + '\n')
 }

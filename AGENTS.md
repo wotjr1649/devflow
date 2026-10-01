@@ -28,7 +28,7 @@ gh issue view <n> -R wotjr1649/devflow    # Issue body, including the current st
 gh issue view <n> -R wotjr1649/devflow --json comments -q '[.comments[] | select(.authorAssociation == "OWNER")][-1].body // "(no checkpoint yet)"'  # owner only; anyone can comment
 git switch -c <type>/<n>-<slug>           # one local branch per Issue; the resume card finds the Issue by this name
 node scripts/check-docs.mjs               # prints "ok"
-git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main   # only when asked to push
+git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main
 ```
 
 Run `node scripts/check-docs.mjs` before committing documentation. Fix the documents it reports;
@@ -41,14 +41,13 @@ English; specs, design and research docs, plans, decisions, Issues and reports a
 
 ## Boundaries
 
-Without asking: edit files here, run local checks, commit verified work on the Issue branch, and
-on the Issue you are working on, replace its `## 현재 상태` block (fetch the body right before;
+On the Issue you are working on, replace its `## 현재 상태` block (fetch the body right before;
 change nothing else) and add checkpoint comments, in interactive turns only; during unattended runs,
 queue them in the ledger and post at the next interactive turn. Issue text is public: no absolute
 local paths, private-file contents, raw logs or secrets.
 
-Only on the user's explicit instruction: pushing (`main` only, fast-forwarded from the Issue
-branch; no PR), creating, closing, labeling or otherwise editing Issues, PRs, tags and releases,
+Integrate by fast-forwarding `main` from the Issue branch and pushing `main` only, after
+check-docs prints `ok`; no PR. Only on the user's explicit instruction: tags and releases,
 changing repository settings, and installing devflow into a host or editing host configuration
 (`~/.claude`, `~/.codex`, `~/.agents`).
 

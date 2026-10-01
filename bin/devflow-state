@@ -38,6 +38,7 @@ const USAGE = `usage: devflow-state <command>
   ledger [n]                  print the ledger
   ledger-update [n] < json    merge a JSON object into the ledger
   pending | flush             queued posts; flush posts them once the ledger is interactive
+  metric <n> <key> < note     add one to interventions or filterFalsePositives in the ledger, with a note line
 Writes go only to the branch's Issue (create excepted), and text with local paths, secrets, hidden
 characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.`
 // Checked before anything is posted. Only the rule name is ever printed, never the match.
@@ -141,6 +142,27 @@ function readLedger(root, n) {
   return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
 }
 
+// Every refusal by devflow-state and every block by the devflow hook appends one line here, so the cycle's guard blocks
+// are counted even after compaction (docs/specs/metrics.md). Separate from the ledger: two processes appending short
+// lines do not lose each other's writes, while a rewrite of the ledger would.
+const GUARD_LOG = 'guard-events.jsonl'
+const isLinkOrOther = p => { try { return !fs.lstatSync(p).isDirectory() } catch { return false } }
+
+// The line holds the time and a fixed id chosen by the caller, never the refused text. Never throws, never writes
+// through a link.
+function logGuard(root, n, guard) {
+  try {
+    const dir = path.join(root, '.work', 'devflow', `i${n}`)
+    if ([path.join(root, '.work'), path.join(root, '.work', 'devflow'), dir].some(isLinkOrOther)) return
+    fs.mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, GUARD_LOG)
+    let st = null
+    try { st = fs.lstatSync(file) } catch {}
+    if (st && !st.isFile()) return
+    fs.appendFileSync(file, JSON.stringify({ at: Date.now(), guard }) + '\n')
+  } catch {}
+}
+
 function writeLedger(root, n, ledger) {
   const p = ledgerPath(root, n)
   fs.mkdirSync(path.dirname(p), { recursive: true })
@@ -236,21 +258,23 @@ function read(env, cwd, n) {
   }
 }
 
+// Returns { guard, out } for a refusal, or null.
 function refusal(op, text, title) {
+  const no = (guard, out) => ({ guard, out })
   const found = leaks([title, text].filter(Boolean).join('\n'))
-  if (found.length) return `refused: ${op} text contains ${found.join(', ')}`
+  if (found.length) return no('state-leak', `refused: ${op} text contains ${found.join(', ')}`)
   if (op === 'comment' && !isCheckpoint(text)) {
-    return `refused: a checkpoint is "### Checkpoint <stage> — <summary>" and at most ${MAX_CHECKPOINT_LINES - 1} "- " lines`
+    return no('state-checkpoint-shape', `refused: a checkpoint is "### Checkpoint <stage> — <summary>" and at most ${MAX_CHECKPOINT_LINES - 1} "- " lines`)
   }
-  if (op === 'check' && !/^\d+( \d+)*$/.test(text)) return 'refused: check takes the Issue number and criterion numbers'
+  if (op === 'check' && !/^\d+( \d+)*$/.test(text)) return no('state-check-args', 'refused: check takes the Issue number and criterion numbers')
   if (op === 'state') {
     const ls = lines(text)
-    if (!STATE_HEADING.test(ls[0])) return 'refused: the state block starts with "## 현재 상태"'
-    if (ls.length - 1 > MAX_STATE_LINES) return `refused: the state block is over ${MAX_STATE_LINES} lines`
+    if (!STATE_HEADING.test(ls[0])) return no('state-block-shape', 'refused: the state block starts with "## 현재 상태"')
+    if (ls.length - 1 > MAX_STATE_LINES) return no('state-block-shape', `refused: the state block is over ${MAX_STATE_LINES} lines`)
   }
   if (op === 'create') {
-    if (!title || title.length > MAX_TITLE_CHARS) return `refused: a new Issue needs a title of at most ${MAX_TITLE_CHARS} characters`
-    if (text.length > MAX_BODY_CHARS) return `refused: a new Issue body is over ${MAX_BODY_CHARS} characters`
+    if (!title || title.length > MAX_TITLE_CHARS) return no('state-create-shape', `refused: a new Issue needs a title of at most ${MAX_TITLE_CHARS} characters`)
+    if (text.length > MAX_BODY_CHARS) return no('state-create-shape', `refused: a new Issue body is over ${MAX_BODY_CHARS} characters`)
   }
   return null
 }
@@ -278,13 +302,13 @@ function post(ctx, op, n, text, title) {
     if (got.error) return { code: 1, out: got.error }
     const body = got.issue.body || ''
     const done = checkCriteria(body, text.split(' ').map(Number))
-    if (done.error) return { code: 1, out: `refused: ${done.error}` }
+    if (done.error) return { code: 1, out: `refused: ${done.error}`, guard: /no "## 수용 기준"/.test(done.error) ? 'state-no-criteria' : 'state-no-criterion' }
     if (done.body === body) return { code: 0, out: `#${n}: already checked` }
     r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], done.body)
   } else if (op === 'state') {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
-    if (!stateSpan(got.issue.body || '')) return { code: 1, out: `refused: Issue #${n} has no state block to replace` }
+    if (!stateSpan(got.issue.body || '')) return { code: 1, out: `refused: Issue #${n} has no state block to replace`, guard: 'state-no-state-block' }
     r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], replaceState(got.issue.body, text))
   } else if (op === 'comment') {
     r = gh(['issue', 'comment', String(n), '-R', ctx.repo, '--body-file', '-'], text.trim() + '\n')
@@ -300,13 +324,26 @@ function post(ctx, op, n, text, title) {
 // Only the commands devflow-state offers reach gh, queued ones included.
 const WRITE_OPS = new Set(['state', 'comment', 'check', 'close', 'reopen', 'create'])
 
-function write(env, cwd, op, n, text = '', title, { flushing = false } = {}) {
+// A refusal carries a guard id; it is logged to the branch's Issue and dropped from the result.
+function guarded(ctx, r) {
+  if (!r.guard) return r
+  if (ctx && ctx.issue) logGuard(ctx.root, ctx.issue, r.guard)
+  return { code: r.code, out: r.out }
+}
+
+function write(env, cwd, op, n, text = '', title, opts = {}) {
   if (!WRITE_OPS.has(op)) return { code: 1, out: `refused: ${op} is not a devflow-state write` }
   const ctx = repoContext(env, cwd)
+  return guarded(ctx, attempt(ctx, op, n, text, title, opts))
+}
+
+function attempt(ctx, op, n, text, title, { flushing = false }) {
   if (!ctx || !ctx.repo) return { code: 1, out: 'refused: not a devflow repository with a GitHub origin' }
-  if (op !== 'create' && n !== ctx.issue) return { code: 1, out: `refused: writes go only to the branch's Issue #${ctx.issue ?? '?'}` }
+  if (op !== 'create' && n !== ctx.issue) {
+    return { code: 1, out: `refused: writes go only to the branch's Issue #${ctx.issue ?? '?'}`, guard: 'state-other-issue' }
+  }
   const why = refusal(op, text, title)
-  if (why) return { code: 1, out: why }
+  if (why) return { code: 1, ...why }
   const owner = ctx.issue || n
   const ledger = readLedger(ctx.root, owner) || {}
   if (ledger.mode === 'autonomous' && !flushing) {
@@ -317,12 +354,29 @@ function write(env, cwd, op, n, text = '', title, { flushing = false } = {}) {
   return post(ctx, op, n, text, title)
 }
 
+// Adds one to a manual metric and appends its note in one step, so an agent never rewrites the ledger by hand to count.
+const METRICS = new Set(['interventions', 'filterFalsePositives'])
+function metric(env, cwd, n, key, note) {
+  const line = String(note || '').trim().split(/\r?\n/)[0].trim()
+  if (!METRICS.has(key) || !line) return { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives < note' }
+  const ctx = repoContext(env, cwd)
+  if (!ctx || !ctx.issue || n !== ctx.issue) {
+    return guarded(ctx, { code: 1, out: `refused: metrics go only to the branch's Issue #${(ctx && ctx.issue) ?? '?'}`, guard: 'state-other-issue' })
+  }
+  const ledger = readLedger(ctx.root, n) || {}
+  const metrics = { ...(ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}) }
+  metrics[key] = (Number.isInteger(metrics[key]) ? metrics[key] : 0) + 1
+  const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${key} +1: ${line}`]
+  writeLedger(ctx.root, n, { ...ledger, metrics, notes })
+  return { code: 0, out: `${key} ${metrics[key]}` }
+}
+
 function flush(env, cwd) {
   const ctx = repoContext(env, cwd)
   if (!ctx || !ctx.issue) return { code: 1, out: 'refused: no devflow Issue branch' }
   const ledger = readLedger(ctx.root, ctx.issue) || {}
   // Queued posts wait for a person: an unattended run cannot flush its own queue.
-  if (ledger.mode === 'autonomous') return { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn' }
+  if (ledger.mode === 'autonomous') return guarded(ctx, { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn', guard: 'state-autonomous-flush' })
   const left = []
   const out = []
   for (const p of ledger.pendingPosts || []) {
@@ -380,6 +434,8 @@ function main(argv, stdin) {
     }
     case 'flush':
       return flush(env, cwd)
+    case 'metric':
+      return num(rest[0]) ? metric(env, cwd, num(rest[0]), rest[1], input()) : { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives < note' }
     default:
       return { code: 2, out: USAGE }
   }
@@ -396,4 +452,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { INVISIBLE, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { INVISIBLE, GUARD_LOG, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

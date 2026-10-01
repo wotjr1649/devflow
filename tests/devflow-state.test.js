@@ -292,3 +292,105 @@ test('git and gh are not taken from the working folder on Windows (2026-10-01 fi
   const out = require('child_process').execFileSync(process.execPath, ['-e', script], { env: childEnv, encoding: 'utf8' })
   assert.match(out, /^git version/)
 })
+
+// Issue #6: refusals are logged by fixed id; the real repository's log must not change while these tests run.
+const guardLog = (root, n = 1) => path.join(root, '.work', 'devflow', `i${n}`, 'guard-events.jsonl')
+const guardLines = (root, n = 1) => (fs.existsSync(guardLog(root, n)) ? fs.readFileSync(guardLog(root, n), 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [])
+
+const realLog = (() => {
+  const r = require('child_process').spawnSync('git', ['branch', '--show-current'], { cwd: path.join(__dirname, '..'), encoding: 'utf8' })
+  const m = /^[^/]+\/(\d+)-/.exec((r.stdout || '').trim())
+  return m ? guardLog(path.join(__dirname, '..'), Number(m[1])) : null
+})()
+const realCount = () => (realLog && fs.existsSync(realLog) ? fs.readFileSync(realLog, 'utf8').split('\n').filter(Boolean).length : 0)
+let realBefore = 0
+test.before(() => { realBefore = realCount() })
+test.after(() => assert.equal(realCount(), realBefore, 'the test suite wrote to the real guard log'))
+
+test('a refusal is logged by a fixed id, without its text, and the result is unchanged', () => {
+  const root = repo()
+  const e = env(root)
+  const r = state.write(e, '.', 'comment', 1, checkpoint('t') + `\n- 토큰 ${fakeToken()}`)
+  assert.equal(r.code, 1)
+  assert.match(r.out, /^refused: comment text contains GitHub token$/)
+  assert.deepEqual(Object.keys(r), ['code', 'out'])
+  const lines = guardLines(root)
+  assert.equal(lines.length, 1)
+  assert.deepEqual(Object.keys(lines[0]), ['at', 'guard'])
+  assert.equal(lines[0].guard, 'state-leak')
+  assert.ok(Number.isInteger(lines[0].at))
+  assert.doesNotMatch(fs.readFileSync(guardLog(root), 'utf8'), /ghp_/)
+})
+
+test('each refusal kind has its own id and is logged to the branch Issue', () => {
+  const body = '## 문제\n\n## 수용 기준\n- [ ] one\n\n' + block() + '\n'
+  const cases = [
+    [r => state.write(env(r), '.', 'comment', 7, checkpoint('x')), 'state-other-issue'],
+    [r => state.write(env(r), '.', 'comment', 1, '그냥 메모'), 'state-checkpoint-shape'],
+    [r => state.write(env(r), '.', 'check', 1, 'all'), 'state-check-args'],
+    [r => state.write(env(r), '.', 'state', 1, '- 단계: x'), 'state-block-shape'],
+    [r => state.write(env(r), '.', 'create', undefined, 'x', 'y'.repeat(200)), 'state-create-shape'],
+    [r => state.write(env(r), '.', 'check', 1, '1'), 'state-no-criteria'],
+    [r => state.write(env(r, { data: issue({ body }) }), '.', 'check', 1, '4'), 'state-no-criterion'],
+    [r => state.write(env(r, { data: issue({ body: '## 문제\n' }) }), '.', 'state', 1, block()), 'state-no-state-block'],
+    [r => state.flush(env(r), '.'), 'state-autonomous-flush', { mode: 'autonomous' }],
+  ]
+  for (const [run, id, ledger] of cases) {
+    const root = repo(ledger ? { ledger } : {})
+    assert.equal(run(root).code, 1, id)
+    assert.deepEqual(guardLines(root).map(l => l.guard), [id])
+  }
+})
+
+test('metric adds one to a ledger metric and appends its note, keeping the other keys', () => {
+  const root = repo({ ledger: { metrics: { filterFalsePositives: 2, eval: { passed: 1, total: 2 } }, notes: ['a'], stage: 'build' } })
+  const r = state.metric(env(root), '.', 1, 'interventions', 'user moved the work back to design\nsecond line ignored')
+  assert.deepEqual(r, { code: 0, out: 'interventions 1' })
+  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  assert.deepEqual(ledger.metrics, { filterFalsePositives: 2, eval: { passed: 1, total: 2 }, interventions: 1 })
+  assert.deepEqual(ledger.notes, ['a', 'interventions +1: user moved the work back to design'])
+  assert.equal(ledger.stage, 'build')
+  assert.equal(state.metric(env(root), '.', 1, 'filterFalsePositives', 'hook blocked a read').out, 'filterFalsePositives 3')
+})
+
+test('metric refuses another Issue, unknown metrics and an empty note', () => {
+  const root = repo()
+  assert.match(state.metric(env(root), '.', 7, 'interventions', 'x').out, /only to the branch's Issue #1/)
+  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-other-issue'])
+  assert.equal(state.metric(env(root), '.', 1, 'calls', 'x').code, 2)
+  assert.equal(state.metric(env(root), '.', 1, 'interventions', '  ').code, 2)
+  assert.equal(fs.existsSync(path.join(root, '.work/devflow/i1/ledger.json')), false)
+})
+
+test('logGuard never throws and does not write through a linked folder or file', t => {
+  const root = repo()
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-out-'))
+  fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
+  fs.symlinkSync(outside, path.join(root, '.work', 'devflow', 'i1'), 'junction')
+  state.logGuard(root, 1, 'state-leak')
+  assert.deepEqual(fs.readdirSync(outside), [])
+  assert.doesNotThrow(() => state.logGuard(path.join(root, 'missing', '\0bad'), 1, 'state-leak'))
+  const root2 = repo()
+  fs.mkdirSync(path.join(root2, '.work', 'devflow', 'i1'), { recursive: true })
+  const target = path.join(outside, 'target.jsonl')
+  fs.writeFileSync(target, '')
+  try { fs.symlinkSync(target, guardLog(root2)) } catch { return t.skip('file symlinks need privileges here') }
+  state.logGuard(root2, 1, 'state-leak')
+  assert.equal(fs.readFileSync(target, 'utf8'), '')
+})
+
+test('concurrent appends from several processes keep every line whole', async () => {
+  const root = repo()
+  const start = path.join(root, 'start')
+  const script = `const s = require(${JSON.stringify(path.resolve(__dirname, '../bin/devflow-state'))});` +
+    `const fs = require('fs'); while (!fs.existsSync(${JSON.stringify(start)})) {}` +
+    `for (let i = 0; i < 200; i++) s.logGuard(${JSON.stringify(root)}, 1, 'state-leak')`
+  const { spawn } = require('child_process')
+  const kids = Array.from({ length: 6 }, () => spawn(process.execPath, ['-e', script], { stdio: 'ignore' }))
+  await new Promise(r => setTimeout(r, 300))
+  fs.writeFileSync(start, '')
+  await Promise.all(kids.map(k => new Promise(r => k.on('exit', r))))
+  const raw = fs.readFileSync(guardLog(root), 'utf8').split('\n').filter(Boolean)
+  assert.equal(raw.length, 1200)
+  for (const l of raw) assert.equal(JSON.parse(l).guard, 'state-leak')
+})

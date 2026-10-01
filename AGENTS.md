@@ -1,13 +1,16 @@
 # devflow
 
 This repository is the single source of the devflow plugin, which Claude Code and Codex both
-load: skills, Claude agents, hooks, scripts and the specs they implement. It is a personal
-development loop, not a team process, and it does not restate the user's global instructions.
+load. Specs in `docs/specs/` define behavior, the plugin's skills, Claude agents, hooks and
+scripts implement it, decisions in `docs/design/decisions/` record why, and GitHub Issues hold
+work state. devflow is a personal development loop, not a team process; don't restate the
+user's global instructions here.
 
 ## Read what your task touches
 
 | When you are… | Read |
 |---|---|
+| resuming an Issue | the Issue body and its latest checkpoint (commands below), then local files named `*-i<issue>-*` in `docs/plans/` and `artifacts/handoff/` (gitignored, absent from the remote) |
 | changing what devflow is, its layers or its components | `docs/design/overview.md` |
 | writing or checking anything devflow produces or ships: Issues, plans, prompts, AGENTS.md, SKILL.md, agent prompts | `docs/specs/documents.md` |
 | changing folder layout, `.gitignore`, `.gitattributes` or the files devflow installs into projects | `docs/specs/repository.md` |
@@ -19,6 +22,19 @@ development loop, not a team process, and it does not restate the user's global 
 A spec owns its rule; decisions record why; everything else links. When a spec and another file
 disagree, the spec wins, and a wrong spec gets fixed rather than worked around.
 
+## Commands
+
+```bash
+gh issue view <n> -R wotjr1649/devflow    # Issue body, including the current state block
+gh issue view <n> -R wotjr1649/devflow --json comments -q '.comments[-1].body // "(no checkpoint yet)"'
+git switch -c <type>/<n>-<slug>           # one local branch per Issue; the resume card finds the Issue by this name
+node scripts/check-docs.mjs               # links, anchors, line endings, local paths, size budgets; prints "ok"
+git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main   # only when asked to push
+```
+
+Run `node scripts/check-docs.mjs` before committing documentation. Fix the documents it reports;
+change the checker only when its rule is wrong.
+
 ## Language
 
 Text an agent loads (AGENTS.md, SKILL.md, agent prompts, delegation briefs, hook output) is
@@ -27,11 +43,11 @@ English; design docs, decisions, Issues and reports are Korean. The rule and its
 
 ## Boundaries
 
-Without asking: edit files in this repository, run local checks, and make scoped local commits
-of verified work.
+Without asking: edit files in this repository, run local checks, and make scoped local commits of
+verified work on the Issue branch.
 
-Only on the user's explicit instruction: `git push` (this repository integrates by direct push to
-`main`, no PR), creating or editing Issues, PRs, tags and releases, changing repository settings,
+Only on the user's explicit instruction: pushing (`main` only, fast-forwarded from the Issue
+branch; no PR), creating or editing Issues, PRs, tags and releases, changing repository settings,
 and installing devflow into a host or editing host configuration (`~/.claude`, `~/.codex`,
 `~/.agents`).
 
@@ -41,3 +57,12 @@ articles or docs.
 
 A file derived from another project lands in the same commit as its `SOURCES.md` entry and its
 upstream notices.
+
+## Gotchas
+
+- Project instructions live only in this file. A `CLAUDE.md` or `CLAUDE.local.md` here or in a
+  parent directory makes Claude Code stop reading AGENTS.md while Codex keeps reading it; `/init`
+  and CLAUDE.md maintenance skills create one. If Claude-only text is ever needed, start that
+  `CLAUDE.md` with the line `@AGENTS.md`.
+- `.gitattributes` stores text as LF even where Git for Windows sets `core.autocrlf=true`; leave
+  line endings to git instead of converting files.

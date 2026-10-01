@@ -26,6 +26,9 @@
 ## 결과
 
 - 라우터와 단계 스킬의 description이 겹치지 않게 쓰고, 트리거 eval로 확인한다.
+- diff나 PR의 단독 리뷰 요청은 호스트의 리뷰 기능(Claude Code 내장 `code-review`)에 맡기고, `pr-review-workflow`는
+  PR 준비, 지적 처리, CI·머지·정리 준비, Issue 완료를 맡는다. devflow의 review 단계는 라우터가 이름으로 부르므로 그대로다.
+  첫 트리거 eval에서 단독 리뷰 요청이 내장 스킬로 갔고 두 description이 겹쳤기 때문이다(사용자 결정).
 - 라우터 SKILL.md와 각 reference는 5,000토큰 미만이고, reference는 SKILL.md에서 한 단계 깊이로만 연결한다.
 - Issue 현재 상태의 "단계" 값이 12개(+done)로 늘어난다.
 

@@ -1,6 +1,6 @@
 ---
 name: development-start
-description: Use when starting change work to align requirements, Issue tracking, and a dedicated branch/worktree. Excludes resuming from a devflow resume card, standalone reviews and release execution.
+description: Use when asked to start a change - a feature, fix or refactor - before any code is written, to align requirements, Issue tracking, and a dedicated branch/worktree. Excludes resuming from a devflow resume card, standalone reviews and release execution.
 ---
 
 # Development start

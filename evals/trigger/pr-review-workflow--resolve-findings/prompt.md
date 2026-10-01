@@ -5,4 +5,4 @@ allowed_tools: [Skill, Read, Glob, Grep]
 tags: [trigger, should, pr-review-workflow]
 ---
 
-PR #34를 리뷰해서 발견 사항을 정리해 줘.
+PR #34에 달린 리뷰 지적 사항을 처리하고, 머지할 준비가 됐는지 확인해 줘.

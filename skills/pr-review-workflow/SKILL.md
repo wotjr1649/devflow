@@ -1,6 +1,6 @@
 ---
 name: pr-review-workflow
-description: Use when preparing/reviewing PRs, resolving findings or checking merge/cleanup readiness. Excludes standalone implementation and releases.
+description: Use when preparing a PR, resolving its review findings, checking CI, merge or cleanup readiness, or completing the Issues it closes. Excludes a standalone review of a diff or PR, standalone implementation and releases.
 ---
 
 # PR workflow

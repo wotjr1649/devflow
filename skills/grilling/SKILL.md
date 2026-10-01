@@ -1,6 +1,6 @@
 ---
 name: grilling
-description: Pressure-test an idea, plan, or decision through adaptive questions. Use when the user asks to be grilled, challenged through questions, or interviewed; not for ordinary reviews or analysis of this skill.
+description: Pressure-test an idea, plan, or decision through adaptive questions. Use when the user asks to be grilled, challenged through questions, or interviewed, or before implementation when an important decision only the user can make is still open; not for ordinary reviews or analysis of this skill.
 ---
 
 # Grilling

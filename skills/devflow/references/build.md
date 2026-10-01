@@ -1,0 +1,39 @@
+# Build
+
+Done when every task in the plan (on the bounded path, the one change) is committed with the checks that execute it
+passing, and the ledger holds the last commit and the next task.
+
+## Before the first change of a task
+
+- Pick the run mode by [실행 모드](../../../docs/specs/orchestration.md#실행-모드) and record it as `runMode`; the
+  bounded path uses M0 or M1.
+- Record `base` (`git rev-parse HEAD`) in the ledger. Reviews read BASE..HEAD; `HEAD~1` drops the first commits of a
+  multi-commit task.
+
+## The change
+
+- New behaviour: see its test fail before the change, or with the change reverted. A bug fix starts from a
+  reproduction test that fails, and the fix leaves that test as it is. A test never seen failing proves nothing.
+- Run the checks that execute the change: the `.devflow.json` `checks` entry for the paths touched, and `verify`
+  before the work leaves build. Syntax checks and checks that never started are not verification; name any check
+  that could not run and why.
+- A missing dependency the project already declares is installed with the project's package manager and lockfile.
+
+## Delegating (M2, M3)
+
+The main session keeps decisions, Issue writes, integration and the ledger; a subagent gets one task through a brief
+in the shape of [위임 지시서](../../../docs/specs/orchestration.md#위임-지시서). Models and effort come from
+[모델과 effort](../../../docs/specs/orchestration.md#모델과-effort). A subagent that ends with `NEEDS_DECISION` is
+resumed after the main session decides, as in [서브에이전트의 질문](../../../docs/specs/orchestration.md#서브에이전트의-질문).
+
+## Failures
+
+Follow [수정 루프](../../../docs/specs/orchestration.md#수정-루프): an unclear cause goes to diagnosis first, the
+implementer fixes a task at most twice, then one promotion, then the main session takes it or reports the blocker.
+Count them in the ledger's `counts` for the task and add a `notes` line with the reason. A plan that turns out wrong goes back to plan; a broken
+design assumption goes back to design.
+
+## After the task
+
+Commit, then `ledger-update` with `lastCommit` and `task`. The task moves to verify; after its verify the next task
+starts here again, and after the last one verify covers every acceptance criterion.

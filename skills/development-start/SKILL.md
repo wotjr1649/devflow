@@ -1,6 +1,6 @@
 ---
 name: development-start
-description: Use when starting or resuming change work to align requirements, Issue tracking, and a dedicated branch/worktree. Excludes standalone reviews and release execution.
+description: Use when starting change work to align requirements, Issue tracking, and a dedicated branch/worktree. Excludes resuming from a devflow resume card, standalone reviews and release execution.
 ---
 
 # Development start
@@ -9,7 +9,7 @@ Apply at task/scope/branch transitions. Analysis/review alone creates no Issue o
 
 Read the project contracts relevant to this task. Changes require an Issue; repository changes, including docs, require a dedicated branch. Reuse matching work, not one new Issue per branch. Use project base/naming/checks. Resolve material conflicts without discarding work.
 
-At start/resume, reconcile the current request with the Issue: goal, every requirement, scope/exclusions, observable acceptance, validation, dependencies, and this PR's subset. Update on scope changes; compare again at PR handoff. Do not silently drop requirements or close a whole Issue for partial work.
+At start, reconcile the current request with the Issue: goal, every requirement, scope/exclusions, observable acceptance, validation, dependencies, and this PR's subset. Update on scope changes; compare again at PR handoff. Do not silently drop requirements or close a whole Issue for partial work.
 
 - Read [tracking](references/tracking.md) to resolve/register the Issue.
 - Read [workspace](references/workspace.md) before branch/worktree preparation.

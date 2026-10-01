@@ -24,6 +24,9 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - frontmatter: `name`, `description`, `when_to_use`, `disable-model-invocation`, `user-invocable`, `allowed-tools`,
   `disallowed-tools`, `model`, `effort`, `context: fork`, `agent`, `background`, `hooks`, `paths`, `shell`, `metadata`,
   `license`, `compatibility`. 모르는 필드는 오류 없이 무시한다.
+- `paths`는 자동 호출을 그 glob에 맞는 파일을 다룰 때로 제한한다. 호출을 보장하지 않는다. 직접 호출(`/name`)은 막지 않는다.
+- 스킬 본문에서 `${CLAUDE_SKILL_DIR}`, `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PROJECT_DIR}`를 치환한다. Codex는 경로 변수를
+  치환한다는 문서가 없고 스킬 파일 경로를 알려 주므로, 두 호스트가 읽는 스킬은 상대 링크를 쓴다.
 - 스킬 목록 예산은 컨텍스트의 1%이고, 항목 하나(description + when_to_use)는 1,536자에서 잘린다. 넘치면 덜 쓰는
   스킬의 description부터 뺀다.
 - compact 뒤 스킬 목록은 다시 붙지 않는다. 호출했던 스킬 본문은 스킬마다 앞 5,000토큰, 합계 25,000토큰까지 다시 붙는다.

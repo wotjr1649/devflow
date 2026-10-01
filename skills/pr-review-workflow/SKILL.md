@@ -15,6 +15,6 @@ Read:
 - Review/fixes: [review](references/review.md).
 - PR preparation/integration: [integration](references/integration.md).
 - PR preparation/integration or explicit tracking completion: [completion](references/completion.md).
-- Cleanup, including merged branches and worktrees after a verified merge: [workspace-cleanup](../workspace-cleanup/SKILL.md). Unavailable: retain targets; report blocker, no install or improvised removal.
+- Cleanup, including merged branches and worktrees after a verified merge: [cleanup handoff](references/cleanup.md).
 
 Report identity, observed/unrun checks, findings, artifacts and next/pending steps separately for each phase.

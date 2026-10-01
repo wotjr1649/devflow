@@ -113,6 +113,7 @@ test('card reports a failed lookup instead of guessing', () => {
 test('card refuses a branch without an Issue number', () => {
   const out = state.card(env(repo(), { branch: 'main' }), '.')
   assert.match(out, /Branch name has no Issue number/)
+  assert.match(out, /\nTool: node ".+\/bin\/devflow-state"$/, 'start needs the command before an Issue branch exists')
 })
 
 test('card lists commits made after the ledger', () => {

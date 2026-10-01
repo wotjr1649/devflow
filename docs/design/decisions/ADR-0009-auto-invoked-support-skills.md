@@ -28,7 +28,7 @@
 |---|---|
 | grilling | 구현에 들어가기 전에 사용자만 정할 수 있는 중요한 결정이 열려 있을 때 |
 | prompt-generator | 재개 카드로 부족해서 작업을 다른 세션이나 에이전트에 넘겨야 할 때 |
-| writing-for-agents | 그대로 둔다. Claude에서는 `paths`로 지침 파일을 다룰 때 확실히 불리게 한다 |
+| writing-for-agents | 그대로 둔다. Claude의 `paths`는 자동 호출을 그 경로로 제한할 뿐 보장하지 않으므로 쓰지 않는다(2026-10-01 확인, 처음 결정은 보장으로 잘못 알았다) |
 
 - 라우터는 정해진 단계에서 이 스킬들을 이름으로 부른다([lifecycle](../../specs/lifecycle.md)).
 - description을 바꿀 때마다 트리거 eval을 돌린다.

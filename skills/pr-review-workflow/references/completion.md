@@ -1,6 +1,6 @@
 # Completion
 
-Apply [rules](../SKILL.md). Verify start record or establish repo, linked Issues/milestones, criteria, closure gate and tracker authority.
+Apply [rules](../SKILL.md). Verify start record or establish repo, linked Issues/milestones, criteria, closure gate and tracker authority. In a repository with `.devflow.json`, Issue reads and writes (closing, reopening, comments, successors) go through the devflow-state command on the resume card's `Tool:` line: it filters what gets published and queues posts during unattended runs.
 
 PR prep: verify full/partial scope and platform closing links, including commits. Non-closing links protect pending post-merge/release gates; autoclosure cannot skip them. Milestone versions grant no release work. Approved local-only work verifies installation/artifact identity at agreed gate, not invented integration.
 

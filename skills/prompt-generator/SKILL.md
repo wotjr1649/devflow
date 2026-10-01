@@ -1,6 +1,6 @@
 ---
 name: prompt-generator
-description: Use when the user asks you to write, rewrite or improve a prompt - to resume this work in a new session, to hand a task to another agent, to serve as a system prompt, or to paste anywhere else. Not for discussing prompting or doing the task itself.
+description: Use when work has to be handed to another session or agent and the resume card does not carry it, or when the user asks to write, rewrite or improve a prompt - to resume work, to brief another agent, to serve as a system prompt, or to paste anywhere else. Not for discussing prompting or doing the task itself.
 ---
 
 # Prompt generator
@@ -18,6 +18,15 @@ or stop. A role narrows what the reader attends to; it grants no authority.
 **A prompt that resumes work carries state, not story** - what is true now, what is done, what is
 left, the next action, the decisions and the evidence behind them, the files or revisions it
 touches, and which checks last passed.
+
+## In a repository with `.devflow.json`
+
+The Issue, its latest checkpoint and the ledger already hold the state, and the resume card brings
+them back. **A resume prompt points at them and carries only what they lack** - instructions and
+decisions made since the last checkpoint - in under 500 tokens; restating the Issue costs output
+now and input in every session that reads it. A file goes to `docs/prompts/` as
+`YYYY-MM-DD-i<issue>-<slug>-prompt.md`, which replaces the naming below. A brief for a subagent
+follows [위임 지시서](../../docs/specs/orchestration.md#위임-지시서).
 
 ## Where it lands
 

@@ -7,14 +7,15 @@
 
 - 단위는 Issue 사이클이다. 계획 작업(TASK k/N)별로는 나누지 않는다.
 - 레코드의 `cwd`가 이 저장소의 작업 트리(주 작업 트리나 worktree) 안에 있고, 그 순간 세션의 작업 트리 브랜치가 Issue
-  브랜치(`.devflow.json`의 `branch` 패턴, 번호가 Issue와 같음)인 레코드만 센다. main이나 다른 Issue 브랜치에서 한 일은
+  브랜치(`<type>/<issue>-<slug>`, 재개 카드와 같은 판정)인 레코드만 센다. main이나 다른 Issue 브랜치에서 한 일은
   들어가지 않는다. 경로는 문자열 앞부분이 아니라 경로 단위로 비교한다.
   - Claude: 호스트가 레코드마다 적는 `gitBranch`를 쓴다. 세션 안에서 worktree로 들어가면 그 worktree의 브랜치가 적힌다.
   - Codex: 브랜치가 세션 시작 값(`session_meta.git`)뿐이고 서브에이전트 기록에는 없다. 그래서 레코드의 시각과 `cwd`로
     그 작업 트리의 HEAD reflog에서 브랜치 구간을 찾는다.
     - 경계는 `checkout: moving from A to B` 항목뿐이다. rebase, reset, commit 같은 다른 항목은 브랜치를 바꾸지 않는다.
     - 첫 경계 이전은 그 경계의 A, 경계가 없으면 지금 브랜치다. detached HEAD(A나 B가 커밋)는 범위 밖이다.
-    - 레코드의 `cwd`는 같은 `turn_id`의 `turn_context.cwd`, 그 전이면 `session_meta.cwd`다.
+    - 레코드의 `cwd`는 파일 순서상 직전 `turn_context.cwd`, 그 전이면 `session_meta.cwd`다.
+    - 작업 트리가 다른 작업 트리 안에 있으면(`.claude/worktrees/…`) 가장 깊은 작업 트리의 reflog를 쓴다.
     - reflog가 없는 작업 트리의 레코드는 범위 밖 개수로 낸다.
   - 알려진 차이: Claude는 세션의 worktree를 따르고 Codex는 레코드의 `cwd`를 따른다. 그래서 Issue worktree에 있는 세션이
     다른 브랜치의 주 작업 트리에서 명령을 돌린 레코드는 Claude에서만 들어간다.

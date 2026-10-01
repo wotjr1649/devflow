@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+'use strict'
+// Counts one Issue cycle from the local session records of Claude Code and Codex.
+// Rules: docs/specs/metrics.md.
+
+module.exports = {}

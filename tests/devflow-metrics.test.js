@@ -389,3 +389,26 @@ test('without --until the count runs to now, so a block logged after the last se
   assert.equal(report.manual.guardBlocks, 1)
   assert.ok(report.until >= before)
 })
+
+test('any turn_duration ends the running turn, and a long gap restarts it (2026-10-02 final review)', async () => {
+  const root = gitRepo()
+  const home = tmp('dfm-c-')
+  const on = { cwd: root, branch: 'feat/4-x' }
+  const off = { cwd: root, branch: 'main' }
+  write(path.join(claudeFolder(home, root), 's1.jsonl'), [
+    cl.assistant(150, { id: 'm1', ...on }),
+    cl.turn(160, 5000, off),
+    cl.assistant(3000, { id: 'm2', ...off }),
+    cl.assistant(5000, { id: 'm3', ...on }),
+    cl.assistant(5060, { id: 'm4', ...on }),
+  ])
+  const { c } = await measure(root, { claude: home })
+  assert.deepEqual(c.intervals.main, [[ms(5000), ms(5060)]])
+  write(path.join(claudeFolder(home, root), 's1.jsonl'), [
+    cl.assistant(150, { id: 'm1', ...on }),
+    cl.assistant(300, { id: 'm2', ...on }),
+    cl.assistant(2000, { id: 'm3', ...on }),
+    cl.assistant(2030, { id: 'm4', ...on }),
+  ])
+  assert.deepEqual((await measure(root, { claude: home })).c.intervals.main, [[ms(2000), ms(2030)]])
+})

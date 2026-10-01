@@ -224,9 +224,12 @@ async function claude({ ctx, dir, issue, until }) {
           if (t === null || t > limit) return
           const ok = inScope(rec, t)
           timeline.push([t, ok])
+          // Any turn_duration, in scope or not, ends the turn; a long gap means the running turn started later.
+          if (rec.type === 'system' && rec.subtype === 'turn_duration') open = null
           if (!ok) { outside(rec); return }
           count('main', rec, t)
-          open = rec.type === 'system' && rec.subtype === 'turn_duration' ? null : open ? [open[0], t] : [t, t]
+          if (rec.type === 'system' && rec.subtype === 'turn_duration') return
+          open = open && t - open[1] <= SUB_GAP_MS ? [open[0], t] : [t, t]
         }))
       }
       if (open && open[1] > open[0]) res.intervals.main.push(open)

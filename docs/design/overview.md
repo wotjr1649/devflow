@@ -14,7 +14,8 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
    위임은 증거가 있을 때만 넓힌다. 근거: [ADR-0005](decisions/ADR-0005-main-first-execution.md)
 3. **규칙은 계층으로.** 스킬은 안내하고, 스크립트는 분석하고, 훅은 그 순간 막고, CI는 마지막에 막고, eval은
    설정 자체의 회귀를 잡는다. 근거: [ADR-0004](decisions/ADR-0004-enforcement-layers.md)
-4. **짧은 지침, 측정되는 설정.** 라우터 스킬과 references, 크기 예산, 트리거율·통과율·작업당 토큰.
+4. **짧은 지침, 측정되는 설정.** 라우터 스킬과 references, 크기 예산, 트리거율·통과율·사이클당 토큰.
+   측정: [metrics](../specs/metrics.md)
 5. **사람은 게이트에만.** 범위가 정해지면 끝까지 진행하고, 원격 쓰기와 사용자만 정할 수 있는 결정만 묻는다.
 
 ## 계층
@@ -53,7 +54,8 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 - **Claude Workflows**: 대규모 기계적 변경과 감사(M4)
 - **훅**: 재개 카드(SessionStart), Issue 쓰기 차단과 보호 경로 차단(PreToolUse), 자율 모드 전용 계속(Stop),
   지침 파일 편집 시 감사, 공개 전 관문(git pre-push)
-- **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드), `devflow-doctor`(구조·문서 감사).
+- **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드), `devflow-doctor`(구조·문서 감사),
+  `devflow-metrics`(세션 기록에서 사이클 지표, 읽기 전용).
   리뷰에 넘기는 BASE..HEAD diff 파일(`review-package`)은 스크립트 없이 라우터의 review reference가 `git diff`로 만든다
 - **템플릿과 eval**: Issue intent, REVIEW.md, AGENTS.md, ignore·attributes 블록, 트리거·결과 eval
 

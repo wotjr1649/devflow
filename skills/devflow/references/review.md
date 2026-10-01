@@ -12,3 +12,14 @@ and verify and a narrowed re-review passed. `pr-review-workflow` runs the review
 - A change to a `.devflow.json` `highRisk` path also gets the security perspective from [perspectives](perspectives.md).
 - Fix findings that change behaviour or break a requirement; a reviewer asked to find something finds something, and
   fixing every remark over-builds the change. Record the disposition of each finding in the checkpoint.
+
+## Before integrating
+
+Measure the cycle on the Issue branch before ship moves to the default branch: worktree reflogs and old host records
+disappear later, and `devflow-state` writes only to the branch's Issue. Rules: [metrics](../../../docs/specs/metrics.md).
+
+1. Bring the ledger's `metrics` up to date for the whole cycle - user corrections and false blocks by devflow's own
+   guards, each with its `notes` line - from the ledger, the checkpoints and the session.
+2. From the Issue's work tree, run `devflow-metrics <issue>` (next to the card's `Tool:` command) and save its output as
+   `artifacts/metrics/i<issue>.json` in the main work tree.
+3. Put the line from `devflow-metrics <issue> --line --until <the saved until>` in the ship checkpoint.

@@ -17,7 +17,7 @@ devflow가 만들고 읽는 모든 문서의 위치, 크기, 형식, 작성법�
 | 계획 요약 | 파일·순서·위험·증명 네 줄 | PR 본문 또는 체크포인트 | 공개 | 영구 |
 | 프롬프트 | 새 지시와 결정 중 바뀐 부분만 | 채팅 또는 `docs/prompts/` | 비공개 | 일회성 |
 | handoff | 쓰지 않는다. 현재 상태와 체크포인트가 대신한다. 비공개 근거가 꼭 필요할 때만 | `artifacts/handoff/` | 비공개 | 필요 시 |
-| 근거 | 원시 로그, 측정값 | `artifacts/`, `.work/` | 비공개 | 보존 |
+| 근거 | 원시 로그, 측정값([metrics](metrics.md)) | `artifacts/`, `.work/` | 비공개 | 보존 |
 | 교훈 | 성격에 따라 둘 곳이 다르다([회고와 기억](lifecycle.md#회고와-기억)) | — | — | 기계로 막히면 지침에서 삭제 |
 
 한 사실은 한 곳에 둔다. 다른 곳은 링크만 건다.
@@ -37,7 +37,8 @@ Issue는 단계 경계, 결정, 막힘에서만 쓰고, 작업 단위의 진행�
 | `task` | `{current, total}` |
 | `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
 | `counts` | 작업별 `{fix, promote, continue}` |
-| `notes` | 수정·승격·경로 변경의 이유와 검증 증거, 한 줄씩 |
+| `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`([metrics](metrics.md#수동-지표)) |
+| `notes` | 수정·승격·경로 변경과 수동 지표 증가의 이유, 검증 증거, 한 줄씩 |
 | `decisions` | 열린 결정만. 내린 결정은 체크포인트나 결정 기록에 둔다 |
 | `blocked` | 막힘이나 사람을 기다리는 사유(원격 쓰기 확인 포함). 비어 있지 않으면 자율 계속을 하지 않는다 |
 | `running` | 실행 중인 백그라운드 서브에이전트 |

@@ -113,3 +113,17 @@ test('a folder outside git is reported, not crashed on', () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-doctor-nogit-'))
   assert.match(doctor(d).lines[0], /^FAIL repository: .* is not a git work tree$/)
 })
+
+test('document rules skip private paths and binary files, and cap repeats per file', () => {
+  const drive = ['C:', 'Users', 'me', 'x'].join(String.fromCharCode(92))
+  const d = repo({ ...GOOD, '.gitignore': 'node_modules/\n', 'artifacts/run.log': `${drive}\n`,
+    'blob.bin': Buffer.from([0, 1, 2, 0x20, 0x0d, 0x0a, 0xe2, 0x80, 0x8b]),
+    'docs/many.md': Array.from({ length: 5 }, () => `see ${drive}`).join('\n') + '\n' })
+  const lines = findings(d)
+  assert.ok(!lines.some(l => l.startsWith('FAIL docs: artifacts/run.log')), 'document rules skip private paths')
+  assert.ok(lines.some(l => /^FAIL gitignore: private paths are tracked: .*artifacts\/run\.log/.test(l)), 'the .gitignore check reports it')
+  assert.ok(!lines.some(l => l.startsWith('FAIL docs: blob.bin')), 'binary content is not text')
+  assert.ok(lines.includes('WARN gitattributes: blob.bin is binary but not marked binary'))
+  assert.equal(lines.filter(l => /^FAIL docs: docs\/many\.md:\d+: local absolute path$/.test(l)).length, 3)
+  assert.ok(lines.includes('FAIL docs: docs/many.md: local absolute path on 2 more lines'))
+})

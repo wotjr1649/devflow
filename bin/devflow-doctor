@@ -16,7 +16,8 @@ const REQUIRED = ['AGENTS.md', '.devflow.json', '.github/ISSUE_TEMPLATE/intent.m
 const AGENTS_SECTIONS = ['## Commands', '## Boundaries']
 const INSTRUCTION_SWITCHES = ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md']
 const BUDGETS = [[/^AGENTS\.md$/, 1000], [/^docs\/specs\/.+\.md$/, 5000], [/(^|\/)SKILL\.md$/, 5000], [/^docs\/prompts\/.+\.md$/, 500]]
-const PRIVATE_NAME = /^\d{4}-\d{2}-\d{2}-i\d+-[a-z0-9-]+-(prompt|plan|handoff)\.md$/
+const MAX_LINES_PER_RULE = 3
+const PRIVATE_NAME =/^\d{4}-\d{2}-\d{2}-i\d+-[a-z0-9-]+-(prompt|plan|handoff)\.md$/
 const LOCAL_PATH = /\b[A-Za-z]:[\\/]|(?:^|[\s'"`(=])\/[a-z]\/[^\s/]+\/|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//
 const EMPHASIS = /\b(MUST|CRITICAL|EXTREMELY|IMPORTANT|NEVER|ALWAYS)\b/g
 const READ_LIST = /\b(read (this |these |the following )?(files )?first|always read|before (every|each) (edit|change|task)[^.\n]*read)\b/i
@@ -71,15 +72,18 @@ function doctor(dir) {
     if (extra.length) warn('gitignore', `managed block has lines the standard does not: ${extra.join(', ')}`)
   }
   const privatePaths = profile.private || PRIVATE
-  const leaked = tracked.filter(f => privatePaths.some(p => f === p.replace(/\/$/, '') || f.startsWith(p)))
+  const isPrivate = f => privatePaths.some(p => f === p.replace(/\/$/, '') || f.startsWith(p))
+  const leaked = tracked.filter(isPrivate)
   if (leaked.length) fail('gitignore', `private paths are tracked: ${leaked.slice(0, 5).join(', ')}${leaked.length > 5 ? ` and ${leaked.length - 5} more` : ''}`)
 
   // .gitattributes
   const attributes = fs.existsSync(at('.gitattributes')) ? read('.gitattributes').split(/\r?\n/).map(l => l.trim()) : []
   const lacking = ATTRIBUTES.filter(l => !attributes.includes(l))
   if (lacking.length) fail('gitattributes', `lacks ${lacking.join(', ')}`)
+  const binary = new Set()
   for (const line of (git(root, ['ls-files', '--eol']) || '').split('\n').filter(Boolean)) {
     const [info, file] = line.split('\t')
+    if (/\bi\/-text\b/.test(info)) binary.add(file)
     if (/\bi\/(crlf|mixed)\b/.test(info) && /eol=lf|text=auto/.test(info)) fail('gitattributes', `${file} is stored with CRLF`)
     else if (/\bi\/-text\b/.test(info) && !/attr\/-text|binary/.test(info)) warn('gitattributes', `${file} is binary but not marked binary`)
   }
@@ -110,17 +114,21 @@ function doctor(dir) {
     if (path.dirname(d) === d) break
   }
 
-  // Document rules: line endings, hidden characters, local paths, budgets, links and anchors
+  // Document rules: line endings, hidden characters, local paths, budgets, links and anchors. They apply to text that can
+  // be published: private paths are left to the .gitignore check, and binary files are not text.
   const anchors = f => new Set(read(f).split('\n').filter(l => /^#{1,6} /.test(l)).map(l => slug(l.replace(/^#+ /, ''))))
   for (const f of files) {
-    if (f === 'LICENSE' || /\.(png|jpe?g|gif|ico|zip|gz)$/.test(f)) continue
+    if (f === 'LICENSE' || /\.(png|jpe?g|gif|ico|zip|gz)$/.test(f) || binary.has(f) || isPrivate(f)) continue
     const text = read(f)
+    if (text.includes('\0')) continue
     if (text.includes('\r')) fail('docs', `${f}: CRLF line ending`)
     if (text.charCodeAt(0) === 0xfeff) fail('docs', `${f}: byte order mark`)
-    text.split('\n').forEach((line, i) => {
-      if (INVISIBLE.test(line)) fail('docs', `${f}:${i + 1}: invisible character`)
-      if (LOCAL_PATH.test(line)) fail('docs', `${f}:${i + 1}: local absolute path`)
-    })
+    for (const [rule, re] of [['invisible character', INVISIBLE], ['local absolute path', LOCAL_PATH]]) {
+      const hits = text.split('\n').flatMap((line, i) => (re.test(line) ? [i + 1] : []))
+      // A file that repeats a finding on many lines gets three of them and a count, so one file cannot bury the rest.
+      for (const n of hits.slice(0, MAX_LINES_PER_RULE)) fail('docs', `${f}:${n}: ${rule}`)
+      if (hits.length > MAX_LINES_PER_RULE) fail('docs', `${f}: ${rule} on ${hits.length - MAX_LINES_PER_RULE} more lines`)
+    }
     for (const [re, max] of BUDGETS) if (re.test(f) && tokens(text) > max) fail('docs', `${f}: ~${tokens(text)} tokens, budget ${max}`)
     if (!f.endsWith('.md')) continue
     for (const m of text.replace(/```[\s\S]*?```/g, '').matchAll(/\]\(([^)\s]+)\)/g)) {

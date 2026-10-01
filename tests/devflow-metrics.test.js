@@ -102,7 +102,6 @@ test('claude counts the Issue branch once per response and leaves other branches
   assert.deepEqual(c.intervals.main, [[ms(160) - 20000, ms(160)]])
   assert.deepEqual({ ...c.models }, { 'claude-opus-5-5': 1 })
   assert.equal(c.skipped.badLines, 1)
-  assert.equal(c.last, ms(160))
 })
 
 test('model names outside the allowed pattern are reported as other, so no record string reaches the output', async () => {
@@ -378,4 +377,15 @@ test('a turn still running when the cycle is measured counts from its first to i
   ])
   const { c } = await measure(root, { claude: home })
   assert.deepEqual(c.intervals.main, [[ms(160) - 20000, ms(160)], [ms(300), ms(400)]])
+})
+
+test('without --until the count runs to now, so a block logged after the last session record is counted', async () => {
+  const root = gitRepo()
+  const home = tmp('dfm-c-')
+  write(path.join(claudeFolder(home, root), 's1.jsonl'), [cl.assistant(150, { id: 'm1', cwd: root, branch: 'feat/4-x' })])
+  write(path.join(root, '.work', 'devflow', 'i4', 'guard-events.jsonl'), [{ at: Date.now() - 1000, guard: 'issue-write' }])
+  const before = Math.floor(Date.now() / 1000)
+  const { report } = await measure(root, { claude: home })
+  assert.equal(report.manual.guardBlocks, 1)
+  assert.ok(report.until >= before)
 })

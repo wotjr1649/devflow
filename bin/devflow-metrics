@@ -124,7 +124,7 @@ async function readJsonl(file, onRecord, { maxLine = MAX_LINE } = {}) {
 const block = sub => Object.fromEntries([...KEYS, ...(sub ? ['subagents'] : [])].map(k => [k, 0]))
 const hostResult = () => ({
   // No prototype: a model named "constructor" must count, not hit Object.prototype.
-  main: block(false), sub: block(true), intervals: { main: [], sub: [] }, last: 0, models: Object.create(null),
+  main: block(false), sub: block(true), intervals: { main: [], sub: [] }, models: Object.create(null),
   skipped: { badLines: 0, longLines: 0, outsideScope: 0, noReflog: 0, fallbackSessions: 0 },
 })
 const addModel = (res, name) => {
@@ -210,8 +210,7 @@ async function claude({ ctx, dir, issue, until }) {
         for (const c of Array.isArray(m.content) ? m.content : []) if (c && c.type === 'tool_use' && c.id) tools[role].add(c.id)
       } else if (role === 'main' && rec.type === 'system' && rec.subtype === 'turn_duration' && tokens(rec.durationMs)) {
         res.intervals.main.push([t - tokens(rec.durationMs), t])
-      } else if (role === 'main') return
-      res.last = Math.max(res.last, t)
+      }
     }
     const outside = rec => { if (rec.type === 'assistant' && owner(rec.cwd, ctx.worktrees)) res.skipped.outsideScope++ }
     for (const { main, subs } of sessions.values()) {
@@ -308,12 +307,11 @@ async function codex({ ctx, dir, issue, until }) {
       if (!w.reflog) return 'noReflog'
       return isIssue(branchAt(w, t), issue) ? 'in' : 'branch'
     }
-    const counted = (s, t) => {
+    const counted = s => {
       if (s === 'noReflog') res.skipped.noReflog++
       if (s === 'branch') res.skipped.outsideScope++
       if (s !== 'in') return false
       inScope = true
-      res.last = Math.max(res.last, t)
       return true
     }
     addLines(res, await readJsonl(file, rec => {
@@ -328,16 +326,16 @@ async function codex({ ctx, dir, issue, until }) {
       if (t === null || t > limit) return
       if (rec.type === 'token_usage_record') {
         perCall = true
-        if (!p.usage || !p.response_id || responses.has(p.response_id) || !counted(scope(t), t)) return
+        if (!p.usage || !p.response_id || responses.has(p.response_id) || !counted(scope(t))) return
         responses.add(p.response_id)
         addCodexUsage(res[role], p.usage)
         addModel(res, model)
       } else if (rec.type === 'event_msg' && p.type === 'token_count') {
         if (p.info && p.info.last_token_usage) fallback.push({ t, s: scope(t), model, last: p.info.last_token_usage })
       } else if (rec.type === 'event_msg' && p.type === 'task_complete') {
-        if (tokens(p.duration_ms) && counted(scope(t), t)) res.intervals[role].push([t - tokens(p.duration_ms), t])
+        if (tokens(p.duration_ms) && counted(scope(t))) res.intervals[role].push([t - tokens(p.duration_ms), t])
       } else if (rec.type === 'response_item' && typeof p.type === 'string' && p.type.endsWith('_call')) {
-        if (p.call_id && counted(scope(t), t)) calls[role].add(p.call_id)
+        if (p.call_id && counted(scope(t))) calls[role].add(p.call_id)
       }
     }))
     // Versions without token_usage_record: a changed last_token_usage is one response.
@@ -348,7 +346,7 @@ async function codex({ ctx, dir, issue, until }) {
         const sig = JSON.stringify(f.last)
         if (sig === prev) continue
         prev = sig
-        if (!counted(f.s, f.t)) continue
+        if (!counted(f.s)) continue
         addCodexUsage(res[role], f.last)
         addModel(res, f.model)
         used = true
@@ -414,8 +412,8 @@ function report({ claude: c, codex: x, ledger, issue, until, guardTimes = [] }) 
   const models = Object.assign(Object.create(null), c.models)
   for (const [k, v] of Object.entries(x.models)) models[k] = (models[k] || 0) + v
   const skipped = Object.fromEntries(Object.keys(c.skipped).map(k => [k, c.skipped[k] + x.skipped[k]]))
-  const last = Math.max(c.last, x.last)
-  const end = until || Math.floor((last || Date.now()) / 1000)
+  // Without --until the count runs to now: a guard block can be logged after the last session record is flushed.
+  const end = until || Math.floor(Date.now() / 1000)
   return {
     schema: 2, issue, until: end,
     activeMinutes: minutes([...c.intervals.main, ...c.intervals.sub, ...x.intervals.main, ...x.intervals.sub]),

@@ -47,6 +47,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있
 **서브에이전트**
 - `AskUserQuestion`은 모든 서브에이전트에서 제거된다.
 - 재개: `SendMessage`로 보내면 대화 기록 전체와 호출 시 지정한 모델이 유지된다. 내장 Explore·Plan은 재개할 수 없다.
+- 모델은 호출의 `model` 파라미터, 정의의 `model`, `CLAUDE_CODE_SUBAGENT_MODEL`, 메인 모델 순으로 정해진다. effort는
+  정의의 `effort`로만 정하고 호출할 때 바꾸는 방법은 없다.
 - `SendMessage`가 있는 서브에이전트에게는 `main`과 이름 붙은 에이전트 목록이 주어진다(v2.1.206+).
 - 중첩은 기본 3단계까지(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), 동시 실행은 20개까지다.
 - 대화형 세션에서는 기본이 백그라운드 실행이고, 백그라운드에서는 쓸 수 있는 도구가 줄어든다.

@@ -39,7 +39,7 @@ architectural 경로의 계획은 대화를 보지 못한 엔지니어가 계획
 | 모드 | 언제 | 누가 쓰나 | 서브에이전트 |
 |---|---|---|---|
 | **M0** | 변경 내용을 한 문장으로 설명할 수 있다 | 메인 | 없음 |
-| **M1** (기본) | 그 밖의 일반 작업 | 메인 | 탐색, 테스트·로그 요약, verifier, 최종 리뷰 (모두 읽기 전용) |
+| **M1** (기본) | 그 밖의 일반 작업 | 메인 | 탐색, 테스트·로그 요약, 원인 분석, verifier, 최종 리뷰 (모두 읽기 전용) |
 | **M2** | 독립적으로 테스트할 수 있는 작업이 3개 이상이거나, 읽을 양이 메인 컨텍스트의 절반을 넘을 것으로 보이거나, 자율 장시간 실행 | 구현 서브에이전트가 한 번에 하나씩 | 작업별 리뷰, 최종 리뷰 |
 | **M3** (Claude 전용) | 파일이 겹치지 않고 인터페이스가 계획에 고정되어 있다 | worktree별 구현 에이전트, 동시에 2~3개까지 | 작업별 리뷰, 최종 리뷰 |
 | **M4** (Claude 전용) | 수십 개 파일에 같은 기계적 변경, 또는 저장소 전체 감사 | Workflow 스크립트 | 결과를 서로 검증하는 단계 포함. 사용자가 직접 실행 |
@@ -66,6 +66,7 @@ Check: <command>  (healthy output: …)
 Out of scope for you: push, Issue writes, spawning subagents, deleting or weakening tests, adding dependencies
 End with one status: DONE | DONE_WITH_CONCERNS | NEEDS_DECISION | BLOCKED
 Report: files changed, checks run with results, checks not run and why
+Keep working until the brief is done; stop early only with NEEDS_DECISION or BLOCKED.
 When the work in this brief is done and its checks pass, stop and report. Do not start extra
 rounds of review or changes outside the listed files; mention anything worth doing at the end.
 ```
@@ -92,9 +93,11 @@ BASE는 위임하기 전에 기록한다. `HEAD~1`로 대신하면 커밋이 여
 
 ## 수정 루프
 
-1. 같은 작업에서 구현 에이전트가 최대 2회 고친다.
-2. 그래도 실패하면 모델을 한 단계 올려 한 번 시도한다.
-3. 그래도 실패하면 메인이 직접 맡거나 막힌 지점을 보고한다.
+1. 검사나 CI 실패의 원인이 분명하지 않으면 diagnostician이 먼저 원인과 증거를 보고한다. diagnostician은 파일을
+   고치지 않는다. 분석과 수정을 나눠 증상만 덮는 수정을 줄이기 위해서다.
+2. 같은 작업에서 구현 에이전트가 최대 2회 고친다.
+3. 그래도 실패하면 [승격](#승격)을 한 칸 올려 한 번 시도한다.
+4. 그래도 실패하면 메인이 직접 맡거나 막힌 지점을 보고한다.
 
 ## 리뷰
 
@@ -123,19 +126,42 @@ BASE는 위임하기 전에 기록한다. `HEAD~1`로 대신하면 커밋이 여
 메인 컨트롤러의 모델과 effort는 사용자가 고른다. devflow는 메인에서 실행되는 스킬에 `effort`를 지정하지 않는다.
 메인에서 effort가 바뀌면 프롬프트 캐시가 무효화되기 때문이다. effort 차이는 캐시를 따로 쓰는 서브에이전트에만 둔다.
 
-| 역할 | Claude | Codex |
-|---|---|---|
-| 탐색, 테스트·로그 요약 | Sonnet 5.5 `low` | gpt-6-luna `xhigh` (지원하지 않으면 `high`) |
-| 기계적 구현 | Sonnet 5.5 `high` | gpt-6.1-sol `high` |
-| 판단이 필요한 구현 | Sonnet 5.5 `xhigh` | gpt-6.1-sol `high` |
-| 설계 대안, 계획 검증 | Opus 5.5 `high` | 메인이 수행 |
-| verifier | Sonnet 5.5 `medium` | worker에 보고만 하도록 지시 |
-| 작업별 리뷰 | Sonnet 5.5 `high` | gpt-6.1-sol `high` |
-| 최종 리뷰 | Opus 5.5 `high` | gpt-6.1-sol `high` |
-| 보안·고위험 리뷰 | Opus 5.5 `xhigh` (해당될 때만) | gpt-6.1-sol `high` |
+Claude Code에서 서브에이전트의 effort는 에이전트 정의에서만 정해지고, 모델은 호출할 때 `model`로 바꿀 수 있다(호출
+값이 정의보다 우선한다). 그래서 에이전트 정의는 effort 단계별로 두고 모델은 호출할 때 고른다.
+
+| 역할 | Claude 기본 | Claude 승격 | Codex |
+|---|---|---|---|
+| 탐색 | `explorer` Sonnet 5.5 `low` | — | gpt-6-luna `xhigh` (지원하지 않으면 `high`) |
+| 테스트·로그 요약 | `runner` Sonnet 5.5 `low` | 원인 분석은 diagnostician이 맡는다 | gpt-6-luna `xhigh` (지원하지 않으면 `high`) |
+| 실패 원인 분석 | `diagnostician` Sonnet 5.5 `high` | `model: opus` → Opus 5.5 `high` | gpt-6.1-sol `high`, worker에 보고만 하도록 지시 |
+| 기계적 구현 | `implementer` Sonnet 5.5 `medium` | `implementer-deep` + `model: sonnet` → Sonnet 5.5 `high` | gpt-6.1-sol `high` |
+| 판단이 필요한 구현 | `implementer` + `model: opus` → Opus 5.5 `medium` | `implementer-deep` → Opus 5.5 `high` | gpt-6.1-sol `high` |
+| 설계 대안, 계획 검증 | `architect` Opus 5.5 `high` | — | 메인이 수행 |
+| 실행 검증 | `verifier` Sonnet 5.5 `medium` | — | worker에 보고만 하도록 지시 |
+| 작업별 리뷰 | `task-reviewer` Sonnet 5.5 `high` | — | gpt-6.1-sol `high` |
+| 최종 리뷰 | `reviewer` Opus 5.5 `high` | — | gpt-6.1-sol `high` |
+| 보안·고위험 리뷰 | `security-reviewer` Opus 5.5 `high` | — | gpt-6.1-sol `high` |
 
 Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔다. Sonnet은 높은 effort에서 스스로 리뷰
-라운드를 돌리고 리뷰어를 띄우는 경향이 있어서, 지시서의 마지막 문단과 함께 구조적으로 막는다.
+라운드를 돌리고 리뷰어를 띄우는 경향이 있어서, 지시서의 마지막 문단과 함께 구조적으로 막는다. 반대로 `medium`
+이하의 긴 작업에서는 끝나기 전에 멈추고 확인을 구하는 경향이 있어서, 지시서에 끝까지 진행하라는 줄을 둔다.
+
+### 승격
+
+메인이 위임할 때 정한다. 한 작업에서 한 칸만 올리고, 올린 이유를 체크포인트에 한 줄 남긴다.
+
+| 조건 | 판정 | 결과 |
+|---|---|---|
+| 같은 작업에서 2회 고쳐도 실패 | 횟수 | 승격 열로 한 칸 ([수정 루프](#수정-루프)) |
+| 검사·CI 실패의 원인이 분명하지 않음 | 메인 | diagnostician. 원인을 찾지 못하면 `model: opus`로 한 번 더 |
+| 작업이 여러 모듈의 interface를 바꾸거나 계획에 설계 판단이 남아 있음 | 계획 | 판단이 필요한 구현으로 분류 |
+| 지시서가 모호함 | 구현 에이전트 | 승격하지 않고 `NEEDS_DECISION`으로 종료 |
+| `.devflow.json`의 `highRisk` 경로를 바꿈 | 경로 | security-reviewer 실행 |
+| 한 파일 안의 기계적 변경이고 `highRisk` 경로가 아님 | diff | 작업별 리뷰를 생략. 최종 리뷰가 확인한다 |
+
+다른 역할의 effort 승격(탐색 `medium`, 통합 직전 검증 `high`, 설계·리뷰·보안 `xhigh`)은 파일럿에서 부족함이
+확인되면 그 effort의 에이전트 정의를 더해서 넣는다. 승격 조건을 PreToolUse 훅(`updatedInput`)으로 강제하는 것도
+그때 검토한다. Codex는 띄울 때 지시문에 모델과 effort를 적으므로, 같은 조건을 지시문으로 적용한다.
 
 ## 두 호스트
 

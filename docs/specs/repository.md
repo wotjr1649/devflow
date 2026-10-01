@@ -114,6 +114,7 @@ doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다.
   "branch": "{type}/{issue}-{slug}",
   "private": ["docs/prompts/", "docs/plans/", "artifacts/", ".work/", "_ref/"],
   "protected": ["_ref/**"],
+  "highRisk": ["<인증·권한·암호·훅·의존성 경로>"],
   "checks": { "src/**": "<명령>", "**/*.md": "<명령>" },
   "verify": "<한 줄 전체 검사 명령>"
 }

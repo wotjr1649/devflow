@@ -13,12 +13,13 @@
   - 안전한 작업은 명시적으로 허가하고, 강한 경계 문구를 재조정한다.
   - 완료 조건을 먼저 정의한다.
 - [Prompting Claude Opus 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
-  - 기본 effort는 `medium`이고, 효과를 측정한 뒤에만 높인다.
+  - 기본 effort는 `medium`이고, 효과를 측정한 뒤에만 높인다. `medium`이 코딩에서 Opus 5의 `high`와 같거나 낫다.
   - 응답에 추론을 쓰라는 지시는 거절을 부른다.
   - 무인 실행: 체크리스트를 유지하고 자동 계속은 2~3회로 제한한다.
   - 진행 업데이트를 받는 방법, 붙여 넣은 텍스트 표시, 멀티에이전트 시간 신호.
 - [Prompting Claude Sonnet 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5-5)
-  - effort 단계가 재보정됐다.
+  - effort 단계가 재보정됐다. 에이전트 코딩은 잘 정의된 작업이면 `medium`, 어렵거나 긴 작업이면 `high`에서 시작한다.
+    가장 어려운 장기 작업에는 Opus가 낫다. `medium` 이하의 긴 작업에서는 끝나기 전에 멈추고 확인을 구하기 쉽다.
   - 범위 문단: 끝까지 진행하되 요청하지 않은 추가는 하지 않는다.
   - `xhigh`·`max`에서는 스스로 리뷰하고 리뷰어를 띄운다.
   - 실제 검사를 돌린 경우만 검증으로 인정한다.

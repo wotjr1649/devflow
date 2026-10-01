@@ -159,7 +159,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - CLI에서는 `/plugins`로 설치하고, 새 세션을 시작해야 반영된다. 셸에서는 `codex plugin add <plugin>@<marketplace>`로도
   설치된다(0.159.3). worktree를 마켓플레이스로 등록하면 캐시의 `.git`은 그 worktree의 gitdir을 가리키는 파일이다.
 - 훅 신뢰는 `config.toml`의 `[hooks.state."<plugin>@<marketplace>:<훅 파일>:<이벤트>:<i>:<j>"]`에 `trusted_hash`로
-  남는다(해시가 바뀐 훅을 다시 묻는지는 확인 전).
+  남는다. 관찰(2026-10-01): `hooks.json` 항목은 그대로 두고 훅이 실행하는 스크립트만 바꿔 다시 설치하자, 다시 묻지
+  않고 새 스크립트가 실행됐다. 신뢰는 명령 줄에 묶이고 그 명령이 부르는 파일 내용에는 묶이지 않는다.
 - 관찰(2026-10-01, 설치본): 신뢰한 SessionStart 훅의 `additionalContext`는 세션 기록에 `developer` 메시지로 들어가고
   화면에는 나오지 않는다. 훅이 받는 `CLAUDE_PLUGIN_ROOT`는 원본이 아니라 캐시 복사본이다. PreToolUse 차단은 셸
   명령에서 동작했다. `--dangerously-bypass-hook-trust`는 그 실행에서만 신뢰 없이 훅을 돌린다.

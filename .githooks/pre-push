@@ -1,0 +1,17 @@
+#!/bin/sh
+# devflow gate: push only commits whose tree passes the documentation checks.
+# The checks read the working tree, so it must be clean and every pushed commit must be HEAD.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+if [ -n "$(git status --porcelain)" ]; then
+  echo "pre-push: commit your local changes first; the gate checks the working tree" >&2
+  exit 1
+fi
+head=$(git rev-parse HEAD) || exit 1
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac   # all zeros: a ref deletion, nothing to check
+  if [ "$local_sha" != "$head" ]; then
+    echo "pre-push: check out $local_ref before pushing it; the gate checks HEAD only" >&2
+    exit 1
+  fi
+done
+node scripts/check-docs.mjs || { echo "pre-push: check-docs failed; push blocked" >&2; exit 1; }

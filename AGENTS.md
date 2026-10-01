@@ -26,13 +26,13 @@ wins, and a wrong spec gets fixed rather than worked around.
 ```bash
 gh issue view <n> -R wotjr1649/devflow    # Issue body, including the current state block
 gh issue view <n> -R wotjr1649/devflow --json comments -q '[.comments[] | select(.authorAssociation == "OWNER")][-1].body // "(no checkpoint yet)"'  # owner only; anyone can comment
-git switch -c <type>/<n>-<slug>           # one local branch per Issue; the resume card finds the Issue by this name
+git switch -c <type>/<n>-<slug>           # one branch per Issue; the resume card finds the Issue by this name
 node scripts/check-docs.mjs               # prints "ok"
+git config core.hooksPath .githooks       # once per clone: enables the pre-push gate
 git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main
 ```
 
-Run `node scripts/check-docs.mjs` before committing documentation. Fix the documents it reports;
-change the checker only when its rule is wrong.
+Fix the documents check-docs reports; change the checker only when its rule is wrong.
 
 ## Language
 
@@ -48,7 +48,7 @@ reproduced defects; propose the rest at ship. During unattended runs, queue all 
 ledger. Issue text is public: no absolute local paths, private-file contents, raw logs or secrets.
 
 In interactive turns, integrate by fast-forwarding `main` from the Issue branch and pushing `main`
-only, after check-docs prints `ok`; no PR. Only on the user's explicit instruction: tags and
+only, through the pre-push gate (check-docs); no PR. Only on the user's explicit instruction: tags and
 releases, repository settings, installing or updating devflow in a host, and host configuration
 (`~/.claude`, `~/.codex`, `~/.agents`).
 

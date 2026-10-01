@@ -10,6 +10,7 @@ devflow가 프로젝트에 설치하고 `devflow-doctor`가 검사하는 구조,
 ├── AGENTS.md          사실·명령·문서 지도·경계
 ├── .devflow.json      기계용 프로필
 ├── REVIEW.md          리뷰 패스 정의 (선택)
+├── .githooks/pre-push 공개 전 관문 (local-merge 저장소)
 ├── .github/ISSUE_TEMPLATE/intent.md
 ├── docs/
 │   ├── specs/                 제품 계약 (추적)
@@ -121,6 +122,11 @@ doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다. 
 }
 ```
 
+CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업 트리가 깨끗하고 push하는 커밋이 HEAD일 때만 `verify`를
+돌리고, 실패하면 push를 막는다. 이 관문이 통합 때의 검사 기록을 대신한다. 훅을 켜는 `git config core.hooksPath .githooks`는
+클론마다 하고(호스트 설정이 아닌 저장소 설정이지만 훅을 켜는 일이라 소유자 지시로 한다), 훅이 꺼진 클론에서는 통합
+커밋에 검사 줄을 쓴다.
+
 `integration` 값은 `pr-ci`, `local-merge`, `push-on-request` 중 하나다. 형식은 doctor 구현과 함께 확정하고,
 확정되면 이 절에서 "(계획)"을 지운다.
 
@@ -132,6 +138,7 @@ doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다. 
 | .gitignore | 관리 블록 내용, 비공개 경로가 추적되는지 |
 | .gitattributes | 기본 줄, `git ls-files --eol` 위반, 바이너리 표시 |
 | AGENTS.md | 길이, 필수 절, 링크 실존, "편집할 때마다 읽어라" 같은 고정 읽기 목록, 강조어 남용, 날짜·진행 상태 |
+| git 훅 | `local-merge` 저장소에서 `core.hooksPath`가 `.githooks`를 가리키는지 |
 | 지침을 끄는 파일 | `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`가 저장소나 상위 폴더에 있는지. git이 무시하는 파일도 본다 |
 | Issue | 본문 절, 현재 상태 블록 길이 (`gh` 조회) |
 | 로컬 문서 | 크기 예산, 이름 규칙 |

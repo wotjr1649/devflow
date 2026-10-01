@@ -28,6 +28,8 @@ const timeOf = rec => { const t = Date.parse(rec.timestamp); return Number.isFin
 const limitOf = until => (until ? (until + 1) * 1000 - 1 : Infinity)
 const isIssue = (branch, issue) => { const m = ISSUE_BRANCH.exec(typeof branch === 'string' ? branch : ''); return !!m && Number(m[1]) === issue }
 const entries = dir => { try { return fs.readdirSync(dir, { withFileTypes: true }) } catch { return [] } }
+// A real directory, not a link or junction to one.
+const isDir = p => { try { return fs.lstatSync(p).isDirectory() } catch { return false } }
 
 function git(cwd, ...args) {
   // Hooks export GIT_DIR and friends; the repository is found from cwd alone.
@@ -117,7 +119,8 @@ async function readJsonl(file, onRecord, { maxLine = MAX_LINE } = {}) {
 
 const block = sub => Object.fromEntries([...KEYS, ...(sub ? ['subagents'] : [])].map(k => [k, 0]))
 const hostResult = () => ({
-  main: block(false), sub: block(true), intervals: { main: [], sub: [] }, last: 0, models: {},
+  // No prototype: a model named "constructor" must count, not hit Object.prototype.
+  main: block(false), sub: block(true), intervals: { main: [], sub: [] }, last: 0, models: Object.create(null),
   skipped: { badLines: 0, longLines: 0, outsideScope: 0, noReflog: 0, fallbackSessions: 0 },
 })
 const addModel = (res, name) => {
@@ -152,7 +155,7 @@ async function claude({ ctx, dir, issue, until }) {
     const files = []
     for (const e of entries(base)) {
       if (e.isFile() && e.name.endsWith('.jsonl')) files.push({ file: path.join(base, e.name), role: 'main' })
-      else if (e.isDirectory()) {
+      else if (e.isDirectory() && isDir(path.join(base, e.name, 'subagents'))) {
         for (const s of entries(path.join(base, e.name, 'subagents'))) {
           if (s.isFile() && /^agent-.*\.jsonl$/.test(s.name)) files.push({ file: path.join(base, e.name, 'subagents', s.name), role: 'sub' })
         }
@@ -314,7 +317,7 @@ function report({ claude: c, codex: x, ledger, issue, until }) {
   for (const t of Object.values(ledger && ledger.counts && typeof ledger.counts === 'object' ? ledger.counts : {})) {
     for (const k of Object.keys(counts)) counts[k] += nat(t && t[k])
   }
-  const models = { ...c.models }
+  const models = Object.assign(Object.create(null), c.models)
   for (const [k, v] of Object.entries(x.models)) models[k] = (models[k] || 0) + v
   const skipped = Object.fromEntries(Object.keys(c.skipped).map(k => [k, c.skipped[k] + x.skipped[k]]))
   const last = Math.max(c.last, x.last)

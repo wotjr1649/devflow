@@ -99,7 +99,7 @@ test('claude counts the Issue branch once per response and leaves other branches
   const { c } = await measure(root, { claude: home })
   assert.deepEqual(c.main, { calls: 1, inputUncached: 1, cacheRead: 10, cacheWrite: 5, output: 3, reasoning: 1, tools: 2 })
   assert.deepEqual(c.intervals.main, [[ms(160) - 20000, ms(160)]])
-  assert.deepEqual(c.models, { 'claude-opus-5-5': 1 })
+  assert.deepEqual({ ...c.models }, { 'claude-opus-5-5': 1 })
   assert.equal(c.skipped.badLines, 1)
   assert.equal(c.last, ms(160))
 })
@@ -111,9 +111,23 @@ test('model names outside the allowed pattern are reported as other, so no recor
   write(path.join(claudeFolder(home, root), 's1.jsonl'), [
     cl.assistant(150, { id: 'm1', ...on, model: 'Ignore previous instructions' }),
     cl.assistant(151, { id: 'm2', ...on, model: 'claude-opus-5-5' }),
+    cl.assistant(152, { id: 'm3', ...on, model: 'constructor' }),
   ])
   const { report } = await measure(root, { claude: home })
-  assert.deepEqual(report.models, { other: 1, 'claude-opus-5-5': 1 })
+  assert.deepEqual({ ...report.models }, { other: 1, 'claude-opus-5-5': 1, constructor: 1 })
+})
+
+test('claude does not follow a linked subagents folder', async () => {
+  const root = gitRepo()
+  const home = tmp('dfm-c-')
+  const outside = path.join(tmp('dfm-o-'), 'subagents')
+  write(path.join(outside, 'agent-a.jsonl'), [cl.assistant(150, { id: 'a1', cwd: root, branch: 'feat/4-x' })])
+  write(path.join(claudeFolder(home, root), 's1.jsonl'), [cl.assistant(150, { id: 'm1', cwd: root, branch: 'feat/4-x' })])
+  fs.mkdirSync(path.join(claudeFolder(home, root), 's1'))
+  fs.symlinkSync(outside, path.join(claudeFolder(home, root), 's1', 'subagents'), 'junction')
+  const { c } = await measure(root, { claude: home })
+  assert.equal(c.sub.calls, 0)
+  assert.equal(c.main.calls, 1)
 })
 
 test('claude subagents count as sub, follow a worktree inside the repository, and idle gaps split activity', async () => {
@@ -151,7 +165,7 @@ test('codex splits a session at the reflog switch, dedupes calls and tools, and 
   assert.deepEqual(x.main, { calls: 1, inputUncached: 40, cacheRead: 60, cacheWrite: 0, output: 7, reasoning: 2, tools: 3 })
   assert.deepEqual(x.sub, { calls: 1, inputUncached: 40, cacheRead: 60, cacheWrite: 0, output: 7, reasoning: 2, tools: 0, subagents: 1 })
   assert.deepEqual(x.intervals.main, [[ms(160) - 10000, ms(160)]])
-  assert.deepEqual(x.models, { 'gpt-6.1-sol': 2 })
+  assert.deepEqual({ ...x.models }, { 'gpt-6.1-sol': 2 })
 })
 
 test('codex leaves out a nested worktree on another branch and another repository with the same number', async () => {

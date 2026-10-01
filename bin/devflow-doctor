@@ -1,0 +1,155 @@
+#!/usr/bin/env node
+'use strict'
+// Checks a repository against docs/specs/repository.md and the document rules in docs/specs/documents.md.
+// Read-only. Prints one line per finding, then "ok" (exit 0) or the failure count (exit 1); warnings do not fail.
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const { spawnSync } = require('child_process')
+const { INVISIBLE } = require('./devflow-state')
+
+const MANAGED_IGNORE = ['/docs/prompts/', '/docs/plans/', '/artifacts/', '/.work/', '/_ref/', '/.claude/worktrees/',
+  '/.claude/settings.local.json', 'CLAUDE.local.md']
+const ATTRIBUTES = ['* text=auto eol=lf', '*.cmd text eol=crlf', '*.bat text eol=crlf', '*.png binary', '*.zip binary']
+const PRIVATE = ['docs/prompts/', 'docs/plans/', 'artifacts/', '.work/', '_ref/']
+const REQUIRED = ['AGENTS.md', '.devflow.json', '.github/ISSUE_TEMPLATE/intent.md', 'docs/specs', 'docs/design/decisions']
+const AGENTS_SECTIONS = ['## Commands', '## Boundaries']
+const INSTRUCTION_SWITCHES = ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md']
+const BUDGETS = [[/^AGENTS\.md$/, 1000], [/^docs\/specs\/.+\.md$/, 5000], [/(^|\/)SKILL\.md$/, 5000], [/^docs\/prompts\/.+\.md$/, 500]]
+const PRIVATE_NAME = /^\d{4}-\d{2}-\d{2}-i\d+-[a-z0-9-]+-(prompt|plan|handoff)\.md$/
+const LOCAL_PATH = /\b[A-Za-z]:[\\/]|(?:^|[\s'"`(=])\/[a-z]\/[^\s/]+\/|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//
+const EMPHASIS = /\b(MUST|CRITICAL|EXTREMELY|IMPORTANT|NEVER|ALWAYS)\b/g
+const READ_LIST = /\b(read (this |these |the following )?(files )?first|always read|before (every|each) (edit|change|task)[^.\n]*read)\b/i
+const DATED = /\b20\d\d-\d\d-\d\d\b|\b(in progress|work in progress|TODO)\b|진행 중/
+
+// Rough token estimate shared with the budgets in docs/specs/documents.md: a Hangul syllable ~1 token, else ~4 chars.
+const tokens = s => {
+  const h = (s.match(/[가-힣]/g) || []).length
+  return Math.round(h + (s.length - h) / 4)
+}
+const slug = h => h.trim().toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s/g, '-')
+
+function git(root, args) {
+  const r = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', windowsHide: true })
+  return r.status === 0 ? r.stdout : null
+}
+
+function doctor(dir) {
+  const out = []
+  const fail = (area, msg) => out.push(`FAIL ${area}: ${msg}`)
+  const warn = (area, msg) => out.push(`WARN ${area}: ${msg}`)
+  const top = git(dir, ['rev-parse', '--show-toplevel'])
+  if (top === null) return { lines: [`FAIL repository: ${dir} is not a git work tree`], failures: 1 }
+  const root = top.trim()
+  const at = p => path.join(root, p)
+  const read = p => fs.readFileSync(at(p), 'utf8')
+  const files = (git(root, ['ls-files', '-co', '--exclude-standard']) || '').split('\n').filter(f => f && fs.existsSync(at(f)))
+  const tracked = (git(root, ['ls-files']) || '').split('\n').filter(Boolean)
+
+  let profile = {}
+  if (fs.existsSync(at('.devflow.json'))) {
+    try {
+      profile = JSON.parse(read('.devflow.json'))
+    } catch (e) {
+      fail('profile', `.devflow.json does not parse (${e.message})`)
+    }
+  }
+
+  // Folders
+  for (const p of REQUIRED) if (!fs.existsSync(at(p))) fail('folders', `missing ${p}`)
+
+  // .gitignore managed block and private paths
+  const ignore = fs.existsSync(at('.gitignore')) ? read('.gitignore').split(/\r?\n/) : []
+  const a = ignore.indexOf('# >>> devflow (managed)')
+  const b = ignore.indexOf('# <<< devflow')
+  if (a < 0 || b < a) fail('gitignore', 'no "# >>> devflow (managed)" … "# <<< devflow" block')
+  else {
+    const block = ignore.slice(a + 1, b).map(l => l.trim()).filter(Boolean)
+    const missing = MANAGED_IGNORE.filter(l => !block.includes(l))
+    const extra = block.filter(l => !MANAGED_IGNORE.includes(l))
+    if (missing.length) fail('gitignore', `managed block lacks ${missing.join(', ')}`)
+    if (extra.length) warn('gitignore', `managed block has lines the standard does not: ${extra.join(', ')}`)
+  }
+  const privatePaths = profile.private || PRIVATE
+  const leaked = tracked.filter(f => privatePaths.some(p => f === p.replace(/\/$/, '') || f.startsWith(p)))
+  if (leaked.length) fail('gitignore', `private paths are tracked: ${leaked.slice(0, 5).join(', ')}${leaked.length > 5 ? ` and ${leaked.length - 5} more` : ''}`)
+
+  // .gitattributes
+  const attributes = fs.existsSync(at('.gitattributes')) ? read('.gitattributes').split(/\r?\n/).map(l => l.trim()) : []
+  const lacking = ATTRIBUTES.filter(l => !attributes.includes(l))
+  if (lacking.length) fail('gitattributes', `lacks ${lacking.join(', ')}`)
+  for (const line of (git(root, ['ls-files', '--eol']) || '').split('\n').filter(Boolean)) {
+    const [info, file] = line.split('\t')
+    if (/\bi\/(crlf|mixed)\b/.test(info) && /eol=lf|text=auto/.test(info)) fail('gitattributes', `${file} is stored with CRLF`)
+    else if (/\bi\/-text\b/.test(info) && !/attr\/-text|binary/.test(info)) warn('gitattributes', `${file} is binary but not marked binary`)
+  }
+
+  // AGENTS.md
+  if (fs.existsSync(at('AGENTS.md'))) {
+    const text = read('AGENTS.md')
+    for (const s of AGENTS_SECTIONS) if (!text.split(/\r?\n/).includes(s)) fail('agents-md', `no "${s}" section`)
+    const emphasis = text.match(EMPHASIS) || []
+    if (emphasis.length) warn('agents-md', `emphasis words (${[...new Set(emphasis)].join(', ')}): give the reason instead`)
+    if (READ_LIST.test(text)) warn('agents-md', 'a fixed always-read list; tie each document to the situation that needs it')
+    if (DATED.test(text)) warn('agents-md', 'a date or progress note; those belong in the Issue or the commit')
+  }
+
+  // Git hooks for repositories that integrate locally
+  if (profile.integration === 'local-merge') {
+    if ((git(root, ['config', 'core.hooksPath']) || '').trim() !== '.githooks') fail('git-hooks', 'core.hooksPath is not .githooks')
+    if (!fs.existsSync(at('.githooks/pre-push'))) fail('git-hooks', 'no .githooks/pre-push')
+  }
+
+  // Files that make Claude Code stop reading AGENTS.md, here or above, ignored by git or not
+  const home = path.resolve(os.homedir())
+  for (let d = path.resolve(root); ; d = path.dirname(d)) {
+    for (const f of INSTRUCTION_SWITCHES) {
+      const p = path.join(d, f)
+      if (!(d === home && f === '.claude/CLAUDE.md') && fs.existsSync(p)) fail('instructions', `${p} makes Claude Code skip AGENTS.md`)
+    }
+    if (path.dirname(d) === d) break
+  }
+
+  // Document rules: line endings, hidden characters, local paths, budgets, links and anchors
+  const anchors = f => new Set(read(f).split('\n').filter(l => /^#{1,6} /.test(l)).map(l => slug(l.replace(/^#+ /, ''))))
+  for (const f of files) {
+    if (f === 'LICENSE' || /\.(png|jpe?g|gif|ico|zip|gz)$/.test(f)) continue
+    const text = read(f)
+    if (text.includes('\r')) fail('docs', `${f}: CRLF line ending`)
+    if (text.charCodeAt(0) === 0xfeff) fail('docs', `${f}: byte order mark`)
+    text.split('\n').forEach((line, i) => {
+      if (INVISIBLE.test(line)) fail('docs', `${f}:${i + 1}: invisible character`)
+      if (LOCAL_PATH.test(line)) fail('docs', `${f}:${i + 1}: local absolute path`)
+    })
+    for (const [re, max] of BUDGETS) if (re.test(f) && tokens(text) > max) fail('docs', `${f}: ~${tokens(text)} tokens, budget ${max}`)
+    if (!f.endsWith('.md')) continue
+    for (const m of text.replace(/```[\s\S]*?```/g, '').matchAll(/\]\(([^)\s]+)\)/g)) {
+      if (/^[a-z]+:/i.test(m[1])) continue
+      const [p, anchor] = m[1].split('#')
+      const target = p ? path.posix.join(path.posix.dirname(f), p) : f
+      if (!fs.existsSync(at(target))) fail('docs', `${f}: missing link target ${m[1]}`)
+      else if (anchor && fs.statSync(at(target)).isFile() && !anchors(target).has(decodeURIComponent(anchor))) fail('docs', `${f}: missing anchor ${m[1]}`)
+    }
+  }
+
+  // Private working documents: names the resume card and the skills look for
+  for (const dir of ['docs/prompts', 'docs/plans', 'artifacts/handoff']) {
+    if (!fs.existsSync(at(dir))) continue
+    for (const f of fs.readdirSync(at(dir))) {
+      if (f.endsWith('.md') && !PRIVATE_NAME.test(f)) warn('local-docs', `${dir}/${f}: name is not YYYY-MM-DD-i<issue>-<slug>-<prompt|plan|handoff>.md`)
+    }
+  }
+
+  const failures = out.filter(l => l.startsWith('FAIL')).length
+  const warnings = out.length - failures
+  out.push(failures ? `${failures} failures${warnings ? `, ${warnings} warnings` : ''}` : warnings ? `ok (${warnings} warnings)` : 'ok')
+  return { lines: out, failures }
+}
+
+if (require.main === module) {
+  const r = doctor(process.argv[2] || process.cwd())
+  process.stdout.write(r.lines.join('\n') + '\n')
+  process.exitCode = r.failures ? 1 : 0
+}
+
+module.exports = { doctor }

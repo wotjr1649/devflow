@@ -9,7 +9,7 @@ const state = require('../bin/devflow-state')
 const BRANCH = 'feat/1-x'
 const ok = stdout => ({ code: 0, stdout, stderr: '' })
 const fakeToken = () => 'ghp_' + 'a1'.repeat(18)
-// Built at run time so the published file holds no path-shaped literal (scripts/check-docs.mjs).
+// Built at run time so the published file holds no path-shaped literal (bin/devflow-doctor).
 const winPath = () => ['C:', 'Users', 'me', 'x'].join(String.fromCharCode(92))
 const homePath = () => ['', 'home', 'me', 'x'].join('/')
 

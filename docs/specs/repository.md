@@ -64,19 +64,22 @@ CLAUDE.local.md
 ```markdown
 # <프로젝트> — 무엇이고 무엇이 아닌지 1~2문장
 
-## 명령
+## Read what your task touches
+| When you are… | Read |
+
+## Commands
 - 빌드·테스트 명령과 정상 출력 예시. 경로별 검사는 .devflow.json의 checks
 
-## 문서 지도
-| 이럴 때 | 읽을 것 |
-
-## 경계
+## Boundaries
 - 묻지 않고: 로컬 빌드·테스트, 자기 변경으로 생긴 실패 수정과 재실행, 작업 브랜치 커밋
 - 지시가 있을 때만: push·태그·릴리스, 과금 스위치, <프로젝트별>
 - 읽기 전용: <경로>
 
-## 자주 틀리는 것
+## Gotchas
 ```
+
+- 에이전트가 읽는 글이라 영어로 쓴다([documents](documents.md#에이전트가-읽는-글)). doctor는 `## Commands`와
+  `## Boundaries`를 필수 절로 본다.
 
 - 한 페이지를 넘기지 않는다. 사용자 전역 지침의 내용은 다시 적지 않는다.
 - **권한 문장은 AGENTS.md에 둔다.** 예: "이 저장소 Issue의 현재 상태 블록과 체크포인트는 묻지 않고 갱신한다."
@@ -105,7 +108,7 @@ Report at most five; summarize the rest as a count.
 Generated files and anything CI already enforces.
 ```
 
-## .devflow.json (계획)
+## .devflow.json
 
 doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다. 이 파일이 있는 저장소에서만 재개 카드와 Issue 훅이
 동작한다.
@@ -127,10 +130,13 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 클론마다 하고(호스트 설정이 아닌 저장소 설정이지만 훅을 켜는 일이라 소유자 지시로 한다), 훅이 꺼진 클론에서는 통합
 커밋에 검사 줄을 쓴다.
 
-`integration` 값은 `pr-ci`, `local-merge`, `push-on-request` 중 하나다. 형식은 doctor 구현과 함께 확정하고,
-확정되면 이 절에서 "(계획)"을 지운다.
+`integration` 값은 `pr-ci`, `local-merge`, `push-on-request` 중 하나다. AGENTS.md를 비공개로 운영하면
+`"agentsMd": "private"`을 적는다.
 
-## doctor 검사 항목 (계획)
+## doctor 검사 항목
+
+`bin/devflow-doctor [path]`가 읽기만 하고 검사한다. 실패(FAIL)가 있으면 exit 1이고, 경고(WARN)는 실패시키지 않는다.
+Issue 검사는 아직 없다.
 
 | 대상 | 검사 |
 |---|---|
@@ -140,7 +146,8 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 | AGENTS.md | 길이, 필수 절, 링크 실존, "편집할 때마다 읽어라" 같은 고정 읽기 목록, 강조어 남용, 날짜·진행 상태 |
 | git 훅 | `local-merge` 저장소에서 `core.hooksPath`가 `.githooks`를 가리키는지 |
 | 지침을 끄는 파일 | `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`가 저장소나 상위 폴더에 있는지. git이 무시하는 파일도 본다 |
-| Issue | 본문 절, 현재 상태 블록 길이 (`gh` 조회) |
+| 문서 | 줄바꿈, BOM, 보이지 않는 문자, 로컬 절대 경로, 크기 예산, 상대 링크와 앵커 |
+| Issue (다음 판) | 본문 절, 현재 상태 블록 길이 (`gh` 조회) |
 | 로컬 문서 | 크기 예산, 이름 규칙 |
 
 같은 스크립트를 스킬(분석), 훅(편집 직후 알림), CI나 git pre-push 훅(실패 처리)이 함께 쓴다.

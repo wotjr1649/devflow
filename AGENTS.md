@@ -27,12 +27,12 @@ wins, and a wrong spec gets fixed rather than worked around.
 node bin/devflow-state read <n>           # Issue body and latest checkpoint, writers only, as data
 node bin/devflow-state state <n> < f.md   # or comment|check|close|reopen <n>, create --title <t>; no args: usage
 git switch <type>/<n>-<slug>              # add -c the first time; one branch per Issue, found by the resume card
-node scripts/check-docs.mjs               # prints "ok"
+node bin/devflow-doctor                   # prints "ok"; warnings do not fail
 git config core.hooksPath .githooks       # once per clone: enables the pre-push gate
 git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main
 ```
 
-Fix the documents check-docs reports; change the checker only when its rule is wrong.
+Fix what devflow-doctor reports; change a check only when its rule is wrong.
 
 ## Language
 
@@ -48,7 +48,7 @@ reproduced defects; propose the rest at ship. During unattended runs, queue all 
 ledger. Issue text is public: no absolute local paths, private-file contents, raw logs or secrets.
 
 In interactive turns, integrate by fast-forwarding `main` from the Issue branch and pushing `main`
-only, through the pre-push gate (check-docs); no PR. Only on the user's explicit instruction: tags and
+only, through the pre-push gate (doctor and tests); no PR. Only on the user's explicit instruction: tags and
 releases, repository settings, installing or updating devflow in a host, and host configuration
 (`~/.claude`, `~/.codex`, `~/.agents`).
 

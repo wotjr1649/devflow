@@ -7,8 +7,16 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있
 ## Claude Code
 
 **지침 로드**
-- 작업 폴더와 그 위쪽에 `CLAUDE.md`·`CLAUDE.local.md`가 없으면 `AGENTS.md`를 읽는다(기본 설정
-  `claude-md-or-agents-md`). `~/.claude/CLAUDE.md`는 이 판단에 들어가지 않고 함께 로드된다.
+- 작업 폴더와 그 위쪽에 `CLAUDE.md`·`.claude/CLAUDE.md`·`CLAUDE.local.md`가 없으면 `AGENTS.md`를 읽는다(기본 설정
+  `claude-md-or-agents-md`). `~/.claude/CLAUDE.md`, managed CLAUDE.md, `.claude/rules/`는 이 판단에 들어가지 않고
+  함께 로드된다.
+- 직접 읽기는 2.1.277부터 지원한다. 2.1.276 이하에서 업그레이드한 직후 첫 세션은 읽지 못할 수 있다.
+- `AGENTS.md`와 `.claude/AGENTS.md`를 읽는다. `AGENTS.override.md`, `AGENTS.local.md`, `.agents/` 아래는 읽지 않는다
+  (Codex와 다르다).
+- 설정으로 직접 읽은 `AGENTS.md`에서는 InstructionsLoaded 훅이 발화하지 않는다. `CLAUDE.md`가 import한
+  `AGENTS.md`에서는 발화한다.
+- 설정으로 직접 읽은 `AGENTS.md` 안의 `@` import가 작업 폴더 밖을 가리키면, 그 프로젝트에서 외부 import를 이미
+  승인했을 때만 묻지 않고 로드된다. `CLAUDE.md`의 같은 import는 승인 창을 띄운다.
 - 서브에이전트도 같은 지침을 로드한다. 내장 Explore·Plan과 `omitClaudeMd: true`인 에이전트는 예외다.
 
 **스킬**

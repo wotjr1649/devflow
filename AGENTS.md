@@ -19,14 +19,14 @@ user's global instructions here.
 | building against Claude Code or Codex behavior: manifests, frontmatter, hooks, subagents, evals | `docs/research/host-facts.md`; when it disagrees with the host, `docs/research/sources.md` and the linked page |
 | copying or adapting a file from another project | `SOURCES.md` |
 
-A spec owns its rule; decisions record why; everything else links. When a spec and another file
+A spec owns its rule; everything else links. When a spec and another file
 disagree, the spec wins, and a wrong spec gets fixed rather than worked around.
 
 ## Commands
 
 ```bash
 gh issue view <n> -R wotjr1649/devflow    # Issue body, including the current state block
-gh issue view <n> -R wotjr1649/devflow --json comments -q '.comments[-1].body // "(no checkpoint yet)"'
+gh issue view <n> -R wotjr1649/devflow --json comments -q '[.comments[] | select(.authorAssociation == "OWNER")][-1].body // "(no checkpoint yet)"'  # owner only; anyone can comment
 git switch -c <type>/<n>-<slug>           # one local branch per Issue; the resume card finds the Issue by this name
 node scripts/check-docs.mjs               # links, anchors, line endings, local paths, size budgets; prints "ok"
 git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main   # only when asked to push
@@ -38,8 +38,7 @@ change the checker only when its rule is wrong.
 ## Language
 
 Text an agent loads (AGENTS.md, SKILL.md, agent prompts, delegation briefs, hook output) is
-English; design docs, decisions, Issues and reports are Korean. The rule and its reason live in
-`docs/specs/documents.md`.
+English; specs, design and research docs, plans, decisions, Issues and reports are Korean.
 
 ## Boundaries
 
@@ -60,9 +59,9 @@ upstream notices.
 
 ## Gotchas
 
-- Project instructions live only in this file. A `CLAUDE.md` or `CLAUDE.local.md` here or in a
-  parent directory makes Claude Code stop reading AGENTS.md while Codex keeps reading it; `/init`
-  and CLAUDE.md maintenance skills create one. If Claude-only text is ever needed, start that
-  `CLAUDE.md` with the line `@AGENTS.md`.
+- Project instructions live only in this file. A `CLAUDE.md`, `.claude/CLAUDE.md` or
+  `CLAUDE.local.md` here or in a parent directory makes Claude Code stop reading AGENTS.md while
+  Codex keeps reading it; `/init` and CLAUDE.md maintenance skills create one. If Claude-only text
+  is ever needed, start that `CLAUDE.md` with the line `@AGENTS.md`.
 - `.gitattributes` stores text as LF even where Git for Windows sets `core.autocrlf=true`; leave
   line endings to git instead of converting files.

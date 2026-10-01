@@ -5,7 +5,6 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const readline = require('readline')
 const { spawnSync } = require('child_process')
 // Windows looks for git.exe in the working folder before PATH; a cloned repository must not supply it.
 if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
@@ -14,7 +13,6 @@ const ISSUE_BRANCH = /^[^/]+\/(\d+)-/
 const MODEL_NAME = /^[a-z0-9.-]{1,64}$/
 const CHECKOUT = /^\S+ \S+ .*> (\d+) [+-]\d{4}\tcheckout: moving from (\S+) to (\S+)$/
 const SUB_GAP_MS = 10 * 60 * 1000
-// ponytail: readline holds a whole line before this cap applies; switch to a byte-stream parser if records reach hundreds of MB
 const MAX_LINE = 64 * 1024 * 1024
 const RUN_TIMEOUT_MS = 10000
 const KEYS = ['calls', 'inputUncached', 'cacheRead', 'cacheWrite', 'output', 'reasoning', 'tools']
@@ -83,20 +81,37 @@ function branchAt(w, atMs) {
   return b
 }
 
+// Splits on "\n" only: readline also breaks at U+2028 and U+2029, which JSON strings may hold raw. A line longer than
+// maxLine is dropped as it streams, so it is never held whole.
 async function readJsonl(file, onRecord, { maxLine = MAX_LINE } = {}) {
   const r = { bad: 0, long: 0 }
   let st
   try { st = fs.lstatSync(file) } catch { return r }
   if (!st.isFile()) return r
-  const lines = readline.createInterface({ input: fs.createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity })
-  for await (const line of lines) {
-    if (!line.trim()) continue
-    if (line.length > maxLine) { r.long++; continue }
+  const handle = line => {
+    if (!line.trim()) return
     let rec
-    try { rec = JSON.parse(line) } catch { r.bad++; continue }
+    try { rec = JSON.parse(line) } catch { r.bad++; return }
     if (rec && typeof rec === 'object') onRecord(rec)
     else r.bad++
   }
+  let buf = ''
+  let dropping = false
+  for await (const chunk of fs.createReadStream(file, { encoding: 'utf8' })) {
+    let from = 0
+    for (let nl = chunk.indexOf('\n'); nl !== -1; nl = chunk.indexOf('\n', from)) {
+      const piece = chunk.slice(from, nl)
+      if (dropping) dropping = false
+      else if (buf.length + piece.length > maxLine) r.long++
+      else handle(buf + piece)
+      buf = ''
+      from = nl + 1
+    }
+    const tail = chunk.slice(from)
+    if (dropping) continue
+    if (buf.length + tail.length > maxLine) { r.long++; dropping = true; buf = '' } else buf += tail
+  }
+  if (!dropping) handle(buf)
   return r
 }
 

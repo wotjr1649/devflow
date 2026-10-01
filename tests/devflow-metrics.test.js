@@ -232,6 +232,28 @@ test('readJsonl counts malformed and over-long lines without returning their tex
   assert.deepEqual(r, { bad: 1, long: 1 })
 })
 
+test('readJsonl splits records on newlines only, not on line or paragraph separators inside strings', async () => {
+  const dir = tmp('dfm-r-')
+  const file = path.join(dir, 'a.jsonl')
+  const text = ['x', 'y', 'z'].join(String.fromCharCode(0x2028)) + String.fromCharCode(0x2029)
+  write(file, [{ a: text }, { b: 2 }])
+  const seen = []
+  const r = await metrics.readJsonl(file, rec => seen.push(rec))
+  assert.deepEqual(seen, [{ a: text }, { b: 2 }])
+  assert.deepEqual(r, { bad: 0, long: 0 })
+})
+
+test('readJsonl joins records across read chunks and drops an over-long one while streaming', async () => {
+  const dir = tmp('dfm-r-')
+  const file = path.join(dir, 'a.jsonl')
+  const big = 'b'.repeat(200 * 1024)
+  write(file, [{ a: big }, { c: 'c'.repeat(300 * 1024) }, { d: 4 }])
+  const seen = []
+  const r = await metrics.readJsonl(file, rec => seen.push(rec), { maxLine: 250 * 1024 })
+  assert.deepEqual(seen, [{ a: big }, { d: 4 }])
+  assert.deepEqual(r, { bad: 0, long: 1 })
+})
+
 test('readJsonl does not follow links', async t => {
   const dir = tmp('dfm-r-')
   const target = path.join(dir, 'target.jsonl')

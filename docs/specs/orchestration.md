@@ -108,10 +108,9 @@ BASE는 위임하기 전에 기록한다. `HEAD~1`로 대신하면 커밋이 여
 - 정확성과 요구사항에 영향을 주는 결함만 보고하게 한다. 리뷰어는 찾으라고 하면 무언가를 찾는다. 모든 지적을
   고치면 과잉 설계가 된다.
 - M2와 M3에서는 작업마다 범위가 좁은 리뷰를 추가한다.
-- 단순성 관점의 리뷰는 ponytail이 설치되어 있으면 사용자가 `/ponytail-review`로 실행한다. 코드를 직접 고치는
-  단순화 에이전트(pr-review-toolkit의 code-simplifier)는 쓰지 않는다.
-- ponytail은 켜져 있으면 모든 서브에이전트에 자기 규칙을 주입한다(`PONYTAIL_SUBAGENT_MATCHER`로 범위를 좁힐 수 있다).
-  devflow는 ponytail에 의존하지 않는다.
+- 코드를 직접 고치는 단순화 에이전트는 리뷰에 쓰지 않는다. 리뷰어는 보고만 하고, 고치는 일은 구현 쪽이 한다.
+- 다른 플러그인이 서브에이전트에 규칙을 주입하면 devflow 에이전트는 그 대상에서 빼기를 권한다. 보고 형식은
+  지시서가 정한다.
 
 ## 자율 실행
 
@@ -121,7 +120,8 @@ BASE는 위임하기 전에 기록한다. `HEAD~1`로 대신하면 커밋이 여
 - 같은 작업에 최대 2회(장부의 계속 횟수). 그 뒤로는 멈추고 검토를 받는다.
 - 작업 하나가 끝나면 검사, 커밋, 장부 갱신을 한다. `/clear`는 사용자만 실행할 수 있으므로, 무인 실행은 작업마다 구현
   서브에이전트(M2)로 새 컨텍스트를 쓰고 메인은 장부와 커밋으로 이어 간다.
-- 무인 구간에서는 Issue에 게시하지 않는다([Issue 입출력](documents.md#issue-입출력)).
+- 무인 구간에서는 Issue에 게시하지 않고 push와 통합도 하지 않는다. 장부에 남겨 다음 대화형 턴에
+  한다([Issue 입출력](documents.md#issue-입출력)). 외부에 공유되는 효과는 대화형 턴에서만 하기 때문이다.
 
 대화형 작업에서는 이 훅이 꺼져 있다.
 
@@ -135,16 +135,21 @@ Claude Code에서 서브에이전트의 effort는 에이전트 정의에서만 �
 
 | 역할 | Claude 기본 | Claude 승격 | Codex |
 |---|---|---|---|
-| 탐색 | `explorer` Sonnet 5.5 `low` | — | gpt-6-luna `xhigh` (지원하지 않으면 `high`) |
-| 테스트·로그 요약 | `runner` Sonnet 5.5 `low` | 원인 분석은 diagnostician이 맡는다 | gpt-6-luna `xhigh` (지원하지 않으면 `high`) |
+| 탐색 | `explorer` Sonnet 5.5 `low` | — | gpt-6-luna `high` (부족하면 `xhigh`) |
+| 테스트·로그 요약 | `explorer` + 요약 관점 → Sonnet 5.5 `low` | 원인 분석은 diagnostician이 맡는다 | gpt-6-luna `high` (부족하면 `xhigh`) |
 | 실패 원인 분석 | `diagnostician` Sonnet 5.5 `high` | `model: opus` → Opus 5.5 `high` | gpt-6.1-sol `high`, worker에 보고만 하도록 지시 |
 | 기계적 구현 | `implementer` Sonnet 5.5 `medium` | `implementer-deep` + `model: sonnet` → Sonnet 5.5 `high` | gpt-6.1-sol `high` |
 | 판단이 필요한 구현 | `implementer` + `model: opus` → Opus 5.5 `medium` | `implementer-deep` → Opus 5.5 `high` | gpt-6.1-sol `high` |
-| 설계 대안, 계획 검증 | `architect` Opus 5.5 `high` | — | 메인이 수행 |
+| 설계 대안, 계획 검증 | `reviewer` + 설계 관점 → Opus 5.5 `high` | — | 메인이 수행 |
 | 실행 검증 | `verifier` Sonnet 5.5 `medium` | — | worker에 보고만 하도록 지시 |
-| 작업별 리뷰 | `task-reviewer` Sonnet 5.5 `high` | — | gpt-6.1-sol `high` |
+| 작업별 리뷰 | `reviewer` + `model: sonnet` → Sonnet 5.5 `high` | — | gpt-6.1-sol `high` |
 | 최종 리뷰 | `reviewer` Opus 5.5 `high` | — | gpt-6.1-sol `high` |
-| 보안·고위험 리뷰 | `security-reviewer` Opus 5.5 `high` | — | gpt-6.1-sol `high` |
+| 보안·고위험 리뷰 | `reviewer` + 보안 관점 → Opus 5.5 `high` | — | gpt-6.1-sol `high` |
+
+에이전트 정의는 도구와 effort로 나눈 6개다. 읽기와 명령 실행만 하는 `explorer`(`low`), `verifier`(`medium`),
+`diagnostician`(`high`), 읽기만 하는 `reviewer`(`high`), 파일을 고치는 `implementer`(`medium`)와
+`implementer-deep`(`high`). 역할의 차이(요약, 설계, 보안 같은 관점)는 지시서가 정한다. 정의에 `omitClaudeMd`를 두지
+않는다. 프로젝트 지침과 경계를 그대로 받아야 하기 때문이다.
 
 Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔다. Sonnet은 높은 effort에서 스스로 리뷰
 라운드를 돌리고 리뷰어를 띄우는 경향이 있어서, 지시서의 마지막 문단과 함께 구조적으로 막는다. 반대로 `medium`
@@ -160,10 +165,10 @@ Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔�
 | 검사·CI 실패의 원인이 분명하지 않음 | 메인 | diagnostician. 원인을 찾지 못하면 `model: opus`로 한 번 더 |
 | 작업이 여러 모듈의 interface에 걸치거나, 구현 중 판단(여러 파일의 일관성, 알고리즘 선택)이 필요함 | 계획 | 판단이 필요한 구현으로 분류. 설계 판단은 위임 전에 메인이 정한다 |
 | 지시서가 모호함 | 구현 에이전트 | 승격하지 않고 `NEEDS_DECISION`으로 종료 |
-| `.devflow.json`의 `highRisk` 경로를 바꿈 | 경로 | security-reviewer 실행 |
+| `.devflow.json`의 `highRisk` 경로를 바꿈 | 경로 | 보안 관점 리뷰를 따로 한 번 |
 | 한 파일 안의 기계적 변경이고 `highRisk` 경로가 아님 | diff | 작업별 리뷰를 생략. 최종 리뷰가 확인한다 |
 
-다른 역할의 effort 승격(탐색 `medium`, 통합 직전 검증 `high`, 설계·리뷰·보안 `xhigh`)은 파일럿에서 부족함이
+다른 역할의 effort 승격(탐색 `medium`, 통합 직전 검증 `high`, 리뷰 `xhigh`)은 파일럿에서 부족함이
 확인되면 그 effort의 에이전트 정의를 더해서 넣는다. 승격 조건을 PreToolUse 훅(`updatedInput`)으로 강제하는 것도
 그때 검토한다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선하므로, 같은 조건을 그 값으로 적용한다.
 Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이전트의 `sandbox_mode`로 강제할 수 있는지는 구현 전에

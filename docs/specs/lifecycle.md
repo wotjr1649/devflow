@@ -19,9 +19,9 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 |---|---|---|---|---|---|
 | 1 | discover 구상 | 무엇을 왜 만들지: 문제, 사용자, 성공 기준, 제외 범위 | intent 초안 | 사용자가 intent를 확인함 | 라우터 reference, grilling |
 | 2 | start 착수 | Issue 등록과 대조, 수용 기준 확정, 작업 브랜치, 기준선 검사 | Issue 본문, 브랜치 | Issue 연결 확인, 기준선 통과 | development-start |
-| 3 | design 설계 | 요구사항과 설계 정리, 대안 비교, 우려 지점 표시, 계약이 바뀌면 spec과 결정 기록 | 설계 노트 또는 `docs/specs/`, 결정 기록 | 사용자만 정할 결정이 해결됨 | 라우터 reference, architect, grilling |
+| 3 | design 설계 | 요구사항과 설계 정리, 대안 비교, 우려 지점 표시, 계약이 바뀌면 spec과 결정 기록 | 설계 노트 또는 `docs/specs/`, 결정 기록 | 사용자만 정할 결정이 해결됨 | 라우터 reference, reviewer(설계 관점), grilling |
 | 4 | plan 계획 | 작업별 파일, 순서, interfaces, 증명, 위험 | 비공개 계획과 공개 요약 | 계획이 작성됨 | 라우터 reference |
-| 5 | ready 구현 가능성 확인 | [계획 품질](orchestration.md#계획) 점검, 전제(의존성, 도구, 권한, 검사 명령) 확인, 실행 모드 선택 | go 또는 no-go 체크포인트 | go | 라우터 reference, architect(새 컨텍스트 검토) |
+| 5 | ready 구현 가능성 확인 | [계획 품질](orchestration.md#계획) 점검, 전제(의존성, 도구, 권한, 검사 명령) 확인, 실행 모드 선택 | go 또는 no-go 체크포인트 | go | 라우터 reference. 계획이 `highRisk` 경로를 건드리거나 작업이 5개 이상이면 reviewer(설계 관점)가 한 번 검토 |
 | 6 | build 구현 | 모드별 실행, 실패 테스트 확인, 작업 단위 커밋 | 커밋 | 계획의 작업이 끝남 | 라우터 reference, 구현 에이전트 |
 | 7 | verify 검증 | 수용 기준을 실제로 실행해 확인, verifier가 새 컨텍스트에서 동작 확인 | 검증 증거 | 기준마다 실행 증거가 있음 | 라우터 reference, verifier |
 | 8 | review 리뷰 | 새 컨텍스트 리뷰, 발견 사항 처리 | 발견 사항과 처리 | 정확성·요구사항 결함이 없음 | pr-review-workflow |
@@ -60,7 +60,7 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 | 계획이 틀림(파일, 순서, interface), 설계는 유효 | plan → ready, 비공개 계획을 그 자리에서 고침 | 아니요 |
 | 설계 가정이 깨짐(새 제약, 접근 방식 불가) | design → plan → ready, 오래 남을 결정은 결정 기록 | 사용자만 정할 결정이면 예 |
 | 요구사항이나 수용 기준이 바뀜 | discover 또는 start, Issue intent 수정 | 예 |
-| 범위 밖의 새 문제 | 장부에 후속 후보로 남기고 ship 때 후속 Issue 제안 | 예 |
+| 범위 밖의 새 문제 | 재현된 결함과 사용자가 미루기로 정한 것은 바로 후속 Issue로, 그 밖은 장부에 남겨 ship 때 한 번에 제안 | 제안하는 것만 예 |
 | 외부 요인으로 막힘 | 현재 상태에 막힘을 적고 멈춤 | 예 |
 | 숨은 복잡도(bounded → architectural) | design | 경로가 바뀐 것을 알림 |
 

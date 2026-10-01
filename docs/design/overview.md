@@ -48,8 +48,8 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
   - 생명주기 스킬: `development-start`, `pr-review-workflow`, `workspace-cleanup`
   - 보조 스킬: `grilling`, `writing-for-agents`, `prompt-generator`
   - 근거: [ADR-0010](decisions/ADR-0010-single-router-skill.md), [ADR-0009](decisions/ADR-0009-auto-invoked-support-skills.md)
-- **Claude 에이전트**: explorer, runner, diagnostician, implementer, implementer-deep, verifier, architect,
-  reviewer, task-reviewer, security-reviewer. 모델, effort, 승격: [orchestration](../specs/orchestration.md#모델과-effort)
+- **Claude 에이전트**: 도구와 effort로 나눈 정의 6개(explorer, verifier, diagnostician, reviewer, implementer,
+  implementer-deep). 역할의 관점은 지시서가 정한다. 모델, effort, 승격: [orchestration](../specs/orchestration.md#모델과-effort)
 - **Claude Workflows**: 대규모 기계적 변경과 감사(M4)
 - **훅**: 재개 카드(SessionStart), Issue 쓰기 차단과 보호 경로 차단(PreToolUse), 자율 모드 전용 계속(Stop),
   지침 파일 편집 시 감사, 공개 전 관문(git pre-push)

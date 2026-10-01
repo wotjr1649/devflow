@@ -2,6 +2,7 @@
 
 상태: 채택 (사용자 지정). 개정: 기계적 구현을 Sonnet `high`에서 `medium`으로, 판단이 필요한 구현을 Sonnet `xhigh`에서
 Opus `medium`(승격 시 `high`)으로, 보안 리뷰 기본을 `xhigh`에서 `high`로 바꾸고, 승격 규칙과 diagnostician을 더했다.
+이어서 정의를 도구·effort 기준 6개로 합치고, Codex 탐색·요약을 Luna `high` 기본으로 바꿨다(설계 검토 반영, 사용자 결정).
 
 ## 맥락
 
@@ -19,10 +20,13 @@ Opus `medium`(승격 시 `high`)으로, 보안 리뷰 기본을 `xhigh`에서 `h
 
 - 표와 승격 조건은 [orchestration](../../specs/orchestration.md#모델과-effort)이 소유한다.
 - 메인 컨트롤러의 모델과 effort는 사용자가 고른다. effort 차이는 서브에이전트에만 둔다.
-- 에이전트 정의는 effort 단계별로 두고, 모델은 호출할 때 고른다. 구현 네 단계(Sonnet `medium`·`high`, Opus
-  `medium`·`high`)를 정의 두 개(`implementer`, `implementer-deep`)로 낸다.
+- 에이전트 정의는 도구와 effort 단계별로 두고, 모델과 관점은 호출할 때 고른다. 구현 네 단계(Sonnet `medium`·`high`,
+  Opus `medium`·`high`)를 정의 두 개(`implementer`, `implementer-deep`)로 낸다. 리뷰·설계 검토·보안 리뷰는 같은
+  `reviewer` 정의에 관점과 모델을 달리 주고, 탐색과 로그 요약은 같은 `explorer`를 쓴다. 정의는 6개다.
+- Codex의 탐색·요약은 Luna `high`에서 시작하고, 부족함이 측정되면 `xhigh`로 올린다. Codex 문서의 권고와 "`xhigh`는
+  측정한 뒤에만" 원칙에 맞춘다.
 - 승격은 메인이 위임할 때 정한다. 횟수, 경로, diff 크기처럼 기계로 판정할 수 있는 조건은 규칙대로 적용하고, 나머지는
-  메인이 판단한다. 한 작업에서 한 칸만 올리고 이유를 체크포인트에 남긴다.
+  메인이 판단한다. 한 작업에서 한 칸만 올리고 이유를 장부에 남긴다.
 - 실패 원인 분석은 파일을 고치지 않는 `diagnostician`이 맡는다. 분석과 수정을 나눠 증상만 덮는 수정을 줄인다.
 - Claude 구현 에이전트에는 `disallowedTools: Agent`, `maxTurns`, 지시서의 마무리 문단과 끝까지 진행하라는 줄을 둔다.
 
@@ -32,10 +36,12 @@ Opus `medium`(승격 시 `high`)으로, 보안 리뷰 기본을 `xhigh`에서 `h
 - gpt-6-luna가 `xhigh`를 지원하는지
 - 역할별 승격 비율과 작업당 비용. 승격이 잦은 역할은 기본값을 올린다.
 - 탐색 `low`가 놓치는 것이 있는지. 있으면 `medium` 정의를 더한다.
+- Codex 탐색에서 Luna `high`가 놓치는 것이 있는지.
 
 ## 검토한 대안
 
 - 모든 서브에이전트가 세션 모델을 상속: 단순하지만 가장 비싸다.
 - 가장 싼 모델로 통일: 리뷰 품질이 떨어질 위험이 있다.
 - 역할마다 effort 단계별 정의를 모두 둠: 승격을 그대로 표현하지만 에이전트가 늘어 목록 비용과 설명 겹침이 커진다.
+- 역할별 정의 10개: 목록에서 역할이 잘 보이지만, 같은 도구와 effort를 쓰는 정의끼리 설명이 겹친다.
 - PreToolUse 훅(`updatedInput`)으로 승격을 강제: 결정적이지만 규칙이 파일럿으로 굳기 전에 만들면 고칠 곳이 늘어난다.

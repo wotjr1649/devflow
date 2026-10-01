@@ -41,14 +41,15 @@ English; specs, design and research docs, plans, decisions, Issues and reports a
 
 ## Boundaries
 
-On the Issue you are working on, replace its `## 현재 상태` block (fetch the body right before;
-change nothing else) and add checkpoint comments, in interactive turns only; during unattended runs,
-queue them in the ledger and post at the next interactive turn. Issue text is public: no absolute
-local paths, private-file contents, raw logs or secrets.
+In interactive turns, on the Issue you are working on: replace its `## 현재 상태` block (fetch the
+body right before; change nothing else), add checkpoint comments, and close it at ship once every
+acceptance criterion is checked. Open follow-up Issues only for deferrals the user decided and for
+reproduced defects; propose the rest at ship. During unattended runs, queue all of this in the
+ledger. Issue text is public: no absolute local paths, private-file contents, raw logs or secrets.
 
-Integrate by fast-forwarding `main` from the Issue branch and pushing `main` only, after
-check-docs prints `ok`; no PR. Only on the user's explicit instruction: tags and releases,
-changing repository settings, and installing devflow into a host or editing host configuration
+In interactive turns, integrate by fast-forwarding `main` from the Issue branch and pushing `main`
+only, after check-docs prints `ok`; no PR. Only on the user's explicit instruction: tags and
+releases, repository settings, installing or updating devflow in a host, and host configuration
 (`~/.claude`, `~/.codex`, `~/.agents`).
 
 This repository is public. Commit only what may be published: nothing from private files or

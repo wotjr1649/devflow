@@ -1,7 +1,8 @@
 # 호스트 사실
 
 구현에 필요한 Claude Code·Codex 동작을 공식 문서와 실제 설치본에서 확인한 대로 적는다. 확인한 버전은
-Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있으므로, 이 문서와 실제 동작이 다르면
+Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목은 버릴 임시 저장소에서 실제로 돌려 본
+결과다(2026-10-01은 codex-cli 0.159.3). 버전이 오르면 바뀔 수 있으므로, 이 문서와 실제 동작이 다르면
 [sources](sources.md)의 원문을 다시 확인하고 이 문서를 고친다.
 
 ## Claude Code
@@ -52,6 +53,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있
 - `SendMessage`가 있는 서브에이전트에게는 `main`과 이름 붙은 에이전트 목록이 주어진다(v2.1.206+).
 - 중첩은 기본 3단계까지(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), 동시 실행은 20개까지다.
 - 대화형 세션에서는 기본이 백그라운드 실행이고, 백그라운드에서는 쓸 수 있는 도구가 줄어든다.
+- 실행 기록은 `~/.claude/projects/<프로젝트>/<세션>/subagents/agent-<id>.jsonl`이다. 줄마다 실제 모델(`message.model`)과
+  `effort`·`perTurnEffort`가 있고, 옆의 `.meta.json`에 `agentType`, 요청한 `model`, `spawnDepth`가 있다(2026-10-01).
 
 **compact**
 - 다시 주입되는 것: 프로젝트 루트 CLAUDE.md, 자동 메모리, plan mode의 계획
@@ -76,7 +79,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있
 - 맥락을 넣을 때는 `hookSpecificOutput.additionalContext`를 쓴다. SessionStart의 값은 문자열마다 10,000자까지이고,
   넘으면 파일로 저장된 뒤 경로와 앞 2,000자만 들어간다.
 - Stop과 SubagentStop은 decision `block`과 reason(또는 exit 2)으로 종료를 막는다. 입력의 `stop_hook_active`로 반복을
-  막는다. JSON에서 decision이 놓이는 위치는 구현할 때 문서 예제로 확인한다.
+  막는다. `decision`과 `reason`은 `hookSpecificOutput` 안이 아니라 최상위에 둔다. 입력에는 `stop_reason`과
+  `last_assistant_message`도 있고, 마지막 응답은 늦을 수 있는 트랜스크립트 대신 이 값으로 읽는다.
 - Windows에서 command 훅은 Git Bash가 있으면 Bash, 없으면 PowerShell로 돈다. `shell` 필드로 고를 수 있고, 두
   플랫폼에서 같이 쓰는 훅은 `args`를 쓰는 exec form을 권한다.
 
@@ -94,6 +98,14 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있
 - 초기 목록은 컨텍스트의 2% 또는 8,000자까지다. 넘치면 description을 먼저 줄이고, 그래도 넘치면 스킬을 뺀다.
 - `agents/openai.yaml`: `interface`(표시용), `policy.allow_implicit_invocation`(기본 `true`), `dependencies`.
 - 끄려면 `config.toml`의 `[[skills.config]]`에 `enabled = false`를 둔다.
+- Claude 전용 frontmatter(`when_to_use`, `allowed-tools`, `model`, `effort`, `context`, `agent`, `hooks`, `paths` 등)가 있어도
+  오류 없이 목록에 `name`과 `description`으로 올라온다(2026-10-01).
+
+**확인 도구와 셸**
+- `codex debug prompt-input`은 모델을 부르지 않고 모델이 받을 입력을 JSON으로 보여 준다. 스킬 목록과 지침 로드를 이것으로 확인한다.
+- `codex debug models`는 모델별 effort를 보여 준다. `gpt-6-luna`는 `low`~`max`(`xhigh` 포함)이고 기본은 `medium`이다(2026-10-01).
+- Windows에서 환경 맥락의 셸은 `powershell`로 표시되고, 명령은 PowerShell 7(`pwsh.exe -Command`)로 실행된다. 이 기기의
+  기준 셸은 PowerShell 7.6.6이다(2026-10-01).
 
 **플러그인**
 - `.codex-plugin/plugin.json`에 `skills`, `hooks`, `interface`를 둔다.
@@ -107,6 +119,11 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있
 - SessionStart 매처는 `startup|resume|clear|compact`다. 출력 맥락의 양은 `additionalContextLimit`로 제한한다.
 - 도구 매칭: 셸은 `Bash`, `apply_patch`는 `apply_patch`·`Edit`·`Write`, `spawn_agent`는 `Agent`로 매칭된다.
 - 차단은 `hookSpecificOutput.permissionDecision: "deny"`로 한다.
+- Stop 출력은 Claude와 같이 최상위 `decision: "block"`과 `reason`(또는 exit 2와 stderr)이다. 다만 턴을 거부하는 것이
+  아니라 reason으로 새 이어가기 프롬프트를 만든다. 입력은 `turn_id`, `stop_hook_active`, `last_assistant_message`다.
+- 플러그인 훅의 경로 변수는 `PLUGIN_ROOT`, `PLUGIN_DATA`이고, 호환용으로 `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`도 준다.
+- `apply_patch`의 PreToolUse 입력은 셸과 같은 `tool_input.command`에 패치 문자열이 든다.
+- Windows에서 훅 명령을 어떤 셸이 실행하는지는 문서에 없다. Windows 전용 명령은 `commandWindows`로 따로 줄 수 있다.
 - 플러그인 훅은 사용자가 검토하고 신뢰해야 실행된다. 문서는 도구 훅을 "완전한 경계가 아닌 가드레일"로 설명한다.
 
 **서브에이전트**
@@ -117,9 +134,13 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있
 - 서브에이전트는 부모의 sandbox를 물려받는다.
 - 띄울 때 지정한 값이 `agents.default_subagent_model`과 `agents.default_subagent_reasoning_effort`보다 우선한다.
   동시 스레드 상한은 `agents.max_concurrent_threads_per_session`이다.
-- 문서는 커스텀 에이전트를 이름으로 고를 수 있고, 내장 에이전트와 이름이 같으면 커스텀이 우선한다고 한다. 반대로
-  `spawn_agent`로는 고를 수 없다는 이슈(openai/codex#33244)도 있어서 실제 동작은 확인이 필요하다.
-- 실행 중인 서브에이전트를 조정, 중지, 닫을 수 있다. 끝난 에이전트에 후속 작업을 보내는 방법은 문서에 자세히 없다.
+- 문서는 커스텀 에이전트를 이름으로 고를 수 있고, 내장 에이전트와 이름이 같으면 커스텀이 우선한다고 한다.
+- 실행 중인 서브에이전트를 조정, 중지, 닫을 수 있다.
+- 관찰(2026-10-01, 프로젝트 `.codex/agents/*.toml`): 커스텀 에이전트를 이름으로 고를 수 있고, 정의의 `model`과
+  `model_reasoning_effort`가 적용된다. `sandbox_mode = "read-only"`는 적용되지 않았다. 부모의 `workspace-write`를 그대로
+  물려받아 파일 쓰기가 성공했다. 끝난 에이전트에 후속 작업을 보내면 같은 에이전트가 이어서 받는다.
+- 실행 기록: `~/.codex/sessions/`의 rollout에서 `session_meta.source.subagent.thread_spawn`이 부모 스레드, 깊이,
+  `agent_role`을 담는다. 모델과 effort는 턴마다 `turn_context.model`과 `turn_context.effort`에 있다.
 
 ## 참고 구현
 

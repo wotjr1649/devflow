@@ -171,15 +171,15 @@ Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔�
 다른 역할의 effort 승격(탐색 `medium`, 통합 직전 검증 `high`, 리뷰 `xhigh`)은 파일럿에서 부족함이
 확인되면 그 effort의 에이전트 정의를 더해서 넣는다. 승격 조건을 PreToolUse 훅(`updatedInput`)으로 강제하는 것도
 그때 검토한다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선하므로, 같은 조건을 그 값으로 적용한다.
-Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이전트의 `sandbox_mode`로 강제할 수 있는지는 구현 전에
-확인해 host-facts에 적는다.
+Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이전트의 `sandbox_mode`는 부모 sandbox를 좁히지 못한다
+([host-facts](../research/host-facts.md#codex)).
 
 ## 두 호스트
 
 | 장치 | Claude Code | Codex |
 |---|---|---|
 | 구현·리뷰 에이전트 | 플러그인 `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`, `isolation`) | 내장 explorer·worker, 띄울 때 모델·effort 지정 |
-| 질문 후 재개 | `SendMessage` | 같은 에이전트에 후속 작업 (문서로 확인 안 됨) |
+| 질문 후 재개 | `SendMessage` | 같은 에이전트에 후속 작업 |
 | 병렬 쓰기 (M3) | worktree 격리 | 사용하지 않음 |
 | 대규모 변경 (M4) | 플러그인 `workflows/` | 사용하지 않음 |
 | 재개 카드, Issue 쓰기 차단, 보호 경로, 자율 계속 | `hooks/hooks.json` | 같은 파일 |

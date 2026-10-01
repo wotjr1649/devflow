@@ -3,6 +3,7 @@
 // Both run only in repositories with .devflow.json. Rules: docs/specs/documents.md (Issue I/O, resume card).
 const fs = require('fs')
 const path = require('path')
+const { spawnSync } = require('child_process')
 const state = require('../bin/devflow-state')
 
 const GH_COMMANDS = new Set(('auth browse codespace discussion gist issue org pr project release repo skill cache run workflow ' +
@@ -28,12 +29,14 @@ const WRITE_ALL = new Set(['rm', 'rmdir', 'mv', 'touch', 'tee', 'truncate', 'chm
   'out-file', 'new-item', 'ni', 'rename-item', 'rni', 'clear-content', 'clc'])
 const WRITE_DEEP = new Set(['rm', 'rmdir', 'chmod', 'chown', 'shred', 'remove-item', 'ri', 'del', 'erase', 'rd'])
 const WRITE_LAST = new Set(['cp', 'copy-item', 'copy', 'cpi', 'install', 'ln'])
+const CONTENT_WRITES = new Set(['set-content', 'sc', 'add-content', 'ac', 'out-file'])
 const GIT_WRITES = new Set(['rm', 'mv', 'checkout', 'restore', 'clean'])
 const SCRIPT_FLAG =/^(-[A-Za-z]*c[A-Za-z]*|-com\w*|-e|-ec|-en\w*|\/[ck])$/i
 const HTTP_GRAPHQL = /api\.github\.com\/graphql/i
 const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
+const ANALYSIS_TIMEOUT_MS = 5000
 
 const word = text => ({ text, raw: text, dynamic: /[$`]/.test(text) })
 const baseName = raw => raw.replace(/^["']|["']$/g, '').split(/[\\/]/).pop().toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, '')
@@ -254,7 +257,9 @@ function yamlScalar(v) {
 function aliasesOf(ctx) {
   if (ctx.aliasMap === undefined) {
     // Shorter than the hook's own timeout, so a slow gh ends in a denial rather than the hook being cut off.
-    const r = ctx.env.run('gh', ['alias', 'list'], { cwd: ctx.cwd, timeout: ALIAS_TIMEOUT_MS })
+    const remaining = Math.floor(ctx.deadline - performance.now())
+    if (remaining <= 0) throw new Error('analysis deadline exceeded')
+    const r = ctx.env.run('gh', ['alias', 'list'], { cwd: ctx.cwd, timeout: Math.min(ALIAS_TIMEOUT_MS, remaining) })
     ctx.aliasMap = r.code === 0
       ? Object.fromEntries(r.stdout.split(/\r?\n/).map(l => /^([^\s:]+):\s*(.*)$/.exec(l)).filter(Boolean).map(m => [m[1], yamlScalar(m[2])]))
       : null
@@ -469,7 +474,8 @@ function analyze(src, ctx, depth = 0) {
 // languages get past it; a narrow gh token is what stops those.
 // With protect (files => the first protected one, or null), a write to a protected path counts as well.
 function issueWrite(command, { cwd = process.cwd(), env = state.realEnv, protect = null } = {}) {
-  const ctx = { cwd, env, protect, aliasMap: undefined }
+  // Leave a second for the child to return before the outer deadline, including after a slow alias lookup.
+  const ctx = { cwd, env, protect, aliasMap: undefined, deadline: performance.now() + ANALYSIS_TIMEOUT_MS - 1000 }
   if (Array.isArray(command)) return checkCommand({ words: command.map(word), stdin: [], redirects: [], pipedFrom: null }, ctx, 0)
   return analyze(String(command || ''), ctx)
 }
@@ -485,7 +491,12 @@ function writeTargets(cmd, names) {
   const rest = cmd.words.slice(lead + 1)
   const operands = rest.filter(w => !w.dynamic && !w.text.startsWith('-')).map(w => w.text)
   const add = (paths, deep) => targets.push(...paths.map(p => ({ path: p, deep })))
-  if (WRITE_ALL.has(n) || (n === 'sed' && rest.some(w => /^(-i|--in-place)/.test(w.text)))) add(operands, WRITE_DEEP.has(n))
+  if (CONTENT_WRITES.has(n)) {
+    // PowerShell content is data, not another file to write. Prefer an explicit path parameter, then position 0.
+    const i = rest.findIndex(w => /^-(literalpath|path|filepath)$/i.test(w.text))
+    const target = i >= 0 ? rest[i + 1] : rest.find(w => !w.dynamic && !w.text.startsWith('-'))
+    if (target && !target.dynamic) add([target.text], false)
+  } else if (WRITE_ALL.has(n) || (n === 'sed' && rest.some(w => /^(-i|--in-place)/.test(w.text)))) add(operands, WRITE_DEEP.has(n))
   else if (WRITE_LAST.has(n) && operands.length) add([operands.at(-1)], false)
   else if (n === 'find' && rest.some(w => w.text === '-delete')) {
     const starts = []
@@ -517,7 +528,7 @@ function mcpIssueWrite(tool) {
 // The nearest folder at or above dir with a .devflow.json, or null.
 function devflowRoot(dir) {
   for (let d = path.resolve(dir); ; d = path.dirname(d)) {
-    if (fs.existsSync(path.join(d, '.devflow.json'))) return d
+    try { fs.lstatSync(path.join(d, '.devflow.json')); return d } catch {}
     if (path.dirname(d) === d) return null
   }
 }
@@ -545,18 +556,20 @@ function relativeTo(root, cwd, files, { keepRoot = false } = {}) {
     .map(r => (keepRoot && r === '' ? '.' : r)).filter(r => r && !r.startsWith('..'))
 }
 
-// targets => the first one that writes a .devflow.json protected path, or null; null in place of the function when the
-// profile cannot be read. A target counts when it matches a protected glob, is the protected folder itself, or - for a
+// targets => the first protected path or the unreadable-profile marker, or null. An unreadable profile permits only
+// its own repair. A target counts when it matches a protected glob, is the protected folder itself, or - for a
 // deep write - contains it or is a pattern that names it (rm -rf _ref, rm -rf ., rm -rf *). Windows and macOS file
 // systems ignore case, so _REF/x must match _ref/** there.
 function protectionFor(root, cwd) {
+  const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
   let globs
   try {
-    globs = JSON.parse(fs.readFileSync(path.join(root, '.devflow.json'), 'utf8')).protected || []
+    globs = JSON.parse(smallFile(path.join(root, '.devflow.json'), MAX_SCRIPT_BYTES)).protected || []
+    if (!Array.isArray(globs) || globs.some(g => typeof g !== 'string')) throw new Error('invalid protected paths')
   } catch {
-    return null
+    return targets => relativeTo(root, cwd, targets.map(t => t.path), { keepRoot: true })
+      .some(r => fold(r) !== '.devflow.json') ? PROFILE_UNREADABLE : null
   }
-  const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
   const bases = globs.map(g => fold(g).split(/[*?[{]/)[0].replace(/\/+$/, '')).filter(Boolean)
   return targets => {
     for (const t of targets) {
@@ -572,17 +585,14 @@ function protectionFor(root, cwd) {
 }
 
 const PROTECTED = 'write to protected path '
+const PROFILE_UNREADABLE = 'unreadable profile'
 
 // Edit tools write files; an unreadable profile leaves only the profile itself editable, so it can be repaired.
 function protectedEdit(root, cwd, toolInput) {
   const protect = protectionFor(root, cwd)
   const files = editedFiles(toolInput)
-  if (!protect) {
-    const others = relativeTo(root, cwd, files).filter(r => r !== '.devflow.json')
-    return others.length ? { unreadable: true } : null
-  }
   const hit = protect(files.map(p => ({ path: p, deep: false })))
-  return hit ? { path: hit } : null
+  return hit === PROFILE_UNREADABLE ? { unreadable: true } : hit ? { path: hit } : null
 }
 
 // After an instruction file changes, report what doctor finds about it; nothing when it finds nothing.
@@ -652,11 +662,11 @@ function localPath(p) {
   return true
 }
 
-function smallFile(p) {
+function smallFile(p, maxBytes = 4096) {
   if (!localPath(p)) return null
   try {
     const st = fs.lstatSync(p)
-    return st.isFile() && st.size <= 4096 ? fs.readFileSync(p, 'utf8') : null
+    return st.isFile() && st.size <= maxBytes ? fs.readFileSync(p, 'utf8') : null
   } catch {
     return null
   }
@@ -757,6 +767,9 @@ function handle(raw, env = state.realEnv) {
       const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool)
         : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect: protectionFor(root, cwd) })
       if (!kind) return ''
+      if (kind === PROTECTED + PROFILE_UNREADABLE) {
+        return blocked(root, 'profile-unreadable', 'devflow: .devflow.json cannot be read, so its protected paths are unknown; fix .devflow.json first.')
+      }
       if (kind.startsWith(PROTECTED)) {
         return blocked(root, 'protected-path', `devflow: ${kind.slice(PROTECTED.length)} is a protected path in .devflow.json; leave it as it is.`)
       }
@@ -769,12 +782,25 @@ function handle(raw, env = state.realEnv) {
   return ''
 }
 
-function main() {
+function main(inProcess = false) {
   let raw = ''
   try {
     raw = fs.readFileSync(0, 'utf8')
   } catch {}
-  const out = handle(raw)
+  let out
+  let pre = false
+  try { pre = JSON.parse(raw).hook_event_name === 'PreToolUse' } catch {}
+  if (pre && !inProcess) {
+    // A timer in the analyzer cannot interrupt synchronous parsing or a blocked file read. Keep those in a child
+    // with a deadline shorter than the host's: a killed or failed analyzer produces a denial, never an empty result.
+    const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main(true)', __filename], {
+      input: raw, encoding: 'utf8', timeout: ANALYSIS_TIMEOUT_MS, windowsHide: true,
+    })
+    out = r.error?.code === 'ETIMEDOUT'
+      ? blocked(process.cwd(), 'analysis-deadline', 'devflow: the 5-second analysis deadline was exceeded, so the tool call was blocked.')
+      : r.status !== 0 ? blocked(process.cwd(), 'hook-check-failed', 'devflow: the analyzer failed, so the tool call was blocked.')
+        : r.stdout.trim()
+  } else out = handle(raw)
   if (out) process.stdout.write(out + '\n')
 }
 

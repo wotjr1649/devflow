@@ -488,3 +488,70 @@ test('a folder link to a network path inside the gitdir is not followed (2026-10
   assert.equal(hook.localPath(path.join(d, 'l', 'HEAD')), false)
   assert.equal(hook.localPath(path.join(d, '.devflow.json')), true)
 })
+
+test('an unreadable profile applies the same repair exception to shell and edit writes', () => {
+  const d = dir(true)
+  const run = c => hook.handle(pre(d, c))
+  for (const profile of ['{ broken', '{"protected":42}', 'null']) {
+    fs.writeFileSync(path.join(d, '.devflow.json'), profile)
+    for (const c of ['echo x > src.md', 'rm -rf .', 'cp src.md notes.md', 'bash -c "rm _ref/x"',
+      'Set-Content notes.md x', 'echo x > .devflow.json; echo x > src.md']) {
+      const out = run(c)
+      assert.equal(decision(out), 'deny', c)
+      assert.match(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /fix .devflow.json first/)
+    }
+    for (const c of ['cat < _ref/x', 'git status', 'echo "{}" > .devflow.json',
+      'Set-Content .devflow.json "{}"', 'cp fixed.json .devflow.json']) assert.equal(run(c), '', c)
+    assert.equal(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, '.devflow.json') } })), '')
+  }
+})
+
+test('large and non-regular profiles are unreadable without being opened', t => {
+  const d = dir(true)
+  const profile = path.join(d, '.devflow.json')
+  const checkProfile = () => {
+    assert.equal(decision(hook.handle(pre(d, 'echo x > src.md'))), 'deny')
+    assert.equal(hook.handle(pre(d, 'echo "{}" > .devflow.json')), '')
+    assert.equal(decision(hook.handle(pre(d, 'gh issue close 1'))), 'deny')
+  }
+  fs.writeFileSync(profile, '{}' + ' '.repeat(256 * 1024))
+  checkProfile()
+  fs.rmSync(profile)
+  fs.mkdirSync(profile)
+  checkProfile()
+  fs.rmdirSync(profile)
+  const target = path.join(d, 'linked.json')
+  fs.writeFileSync(target, '{}')
+  try { fs.symlinkSync(target, profile) } catch { return t.skip('file symlinks need privileges here') }
+  checkProfile()
+  fs.rmSync(target)
+  checkProfile() // a broken link still identifies a devflow repository
+})
+
+test('the actual PreToolUse entry point denies analysis that runs past five seconds', () => {
+  const d = gitRepo('fix/7-deadline')
+  fs.writeFileSync(path.join(d, 'heavy.sh'), 'echo ok\n'.repeat(8000))
+  const command = 'bash heavy.sh;'.repeat(15000) + 'gh issue close 1'
+  const started = Date.now()
+  const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
+    cwd: d, input: pre(d, command), encoding: 'utf8', timeout: 9000,
+  })
+  assert.equal(r.status, 0, 'the hook must finish before the host timeout')
+  const out = JSON.parse(r.stdout)
+  assert.equal(out.hookSpecificOutput.permissionDecision, 'deny')
+  assert.match(out.hookSpecificOutput.permissionDecisionReason, /5.second.*deadline/i)
+  assert.ok(Date.now() - started < 8000)
+  assert.deepEqual(guards(d, 7), ['analysis-deadline'])
+})
+
+test('a FIFO profile cannot hold the hook open', { skip: process.platform === 'win32' }, () => {
+  const d = dir(true)
+  const profile = path.join(d, '.devflow.json')
+  fs.rmSync(profile)
+  execFileSync('mkfifo', [profile])
+  const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
+    cwd: d, input: pre(d, 'echo x > src.md'), encoding: 'utf8', timeout: 8000,
+  })
+  assert.equal(r.status, 0)
+  assert.equal(decision(r.stdout), 'deny')
+})

@@ -8,7 +8,7 @@ load. Specs in `docs/specs/` define behavior, the plugin implements it, decision
 
 | When you are… | Read |
 |---|---|
-| resuming an Issue | the Issue body and its latest checkpoint (commands below), then the gitignored ledger `.work/devflow/i<issue>/` and files named `*-i<issue>-*` in `docs/plans/` and `artifacts/handoff/` |
+| resuming an Issue | the Issue body and its latest checkpoint (commands below), then the gitignored ledger `.work/devflow/i<issue>/` (if present) and files named `*-i<issue>-*` in `docs/plans/` and `artifacts/handoff/` |
 | changing what devflow is, its layers or its components | `docs/design/overview.md` |
 | writing or checking anything devflow produces or ships: Issues, plans, prompts, AGENTS.md, SKILL.md, agent prompts | `docs/specs/documents.md` |
 | changing folder layout, `.gitignore`, `.gitattributes` or the files devflow installs into projects | `docs/specs/repository.md` |
@@ -26,7 +26,7 @@ wins, and a wrong spec gets fixed rather than worked around.
 ```bash
 gh issue view <n> -R wotjr1649/devflow    # Issue body, including the current state block
 gh issue view <n> -R wotjr1649/devflow --json comments -q '[.comments[] | select(.authorAssociation == "OWNER")][-1].body // "(no checkpoint yet)"'  # owner only; anyone can comment
-git switch -c <type>/<n>-<slug>           # one branch per Issue; the resume card finds the Issue by this name
+git switch <type>/<n>-<slug>              # add -c the first time; one branch per Issue, found by the resume card
 node scripts/check-docs.mjs               # prints "ok"
 git config core.hooksPath .githooks       # once per clone: enables the pre-push gate
 git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main

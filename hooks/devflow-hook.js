@@ -628,14 +628,23 @@ const deny = reason => JSON.stringify({
   hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason },
 })
 
-// The branch named by a HEAD file; null for a detached HEAD or anything unreadable.
-function headBranch(gitDir) {
+// git metadata the hook reads only when it is a small regular file on a local path. A link, FIFO, device, network
+// path or large file could make the read wait past the hook's timeout, and a timed-out hook does not block.
+const NETWORK_PATH = /^(\\\\|\/\/)/
+function smallFile(p) {
+  if (NETWORK_PATH.test(p)) return null
   try {
-    const m = /^ref: refs\/heads\/(\S+)/.exec(fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8'))
-    return m ? m[1] : null
+    const st = fs.lstatSync(p)
+    return st.isFile() && st.size <= 4096 ? fs.readFileSync(p, 'utf8') : null
   } catch {
     return null
   }
+}
+
+// The branch named by a HEAD file; null for a detached HEAD or anything unreadable.
+function headBranch(gitDir) {
+  const m = /^ref: refs\/heads\/(\S+)/.exec(smallFile(path.join(gitDir, 'HEAD')) || '')
+  return m ? m[1] : null
 }
 
 // Where a block is logged: the Issue of the work tree's branch, or, in a worktree on another branch (an M3 task
@@ -649,15 +658,21 @@ function guardTarget(root) {
     let own = dotGit
     let common = dotGit
     if (st.isFile()) {
-      const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(dotGit, 'utf8'))
-      if (!m) return null
+      const m = /^gitdir:\s*(.+)$/m.exec(smallFile(dotGit) || '')
+      if (!m || NETWORK_PATH.test(m[1].trim())) return null
       own = path.resolve(root, m[1].trim())
-      try { common = path.resolve(own, fs.readFileSync(path.join(own, 'commondir'), 'utf8').trim()) } catch { common = own }
+      const commondir = smallFile(path.join(own, 'commondir'))
+      common = commondir ? path.resolve(own, commondir.trim()) : own
     } else if (!st.isDirectory()) return null
     const issue = issueOf(headBranch(own))
     if (issue) return { root, issue }
-    const main = common !== own && issueOf(headBranch(common))
-    return main ? { root: path.dirname(common), issue: main } : null
+    // Only a worktree nested in the main work tree (M3's) logs there, so a crafted commondir cannot place the log
+    // outside the folders above this one.
+    const mainRoot = path.dirname(common)
+    const key = p => (process.platform === 'win32' ? p.toLowerCase() : p) + path.sep
+    if (common === own || !key(root).startsWith(key(mainRoot))) return null
+    const main = issueOf(headBranch(common))
+    return main ? { root: mainRoot, issue: main } : null
   } catch {
     return null
   }

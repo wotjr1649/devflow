@@ -433,3 +433,44 @@ test('a broken .git does not change the decision', () => {
   fs.mkdirSync(path.join(d, '.git', 'HEAD'), { recursive: true })
   assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
 })
+
+test('git metadata that is large, linked, special or on a network path is not read, and the decision is unchanged (2026-10-02 security review)', t => {
+  const plain = dir(true)
+  fs.writeFileSync(path.join(plain, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const expected = hook.handle(pre(plain, 'gh issue close 1'))
+  const make = gitdirValue => {
+    const d = dir(true)
+    fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+    fs.writeFileSync(path.join(d, '.git'), 'gitdir: ' + gitdirValue)
+    return d
+  }
+  // A HEAD far larger than any real one.
+  const big = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-big-'))
+  fs.writeFileSync(path.join(big, 'HEAD'), 'ref: refs/heads/feat/7-x\n' + 'x'.repeat(64 * 1024))
+  const d1 = make(big)
+  assert.equal(hook.handle(pre(d1, 'gh issue close 1')), expected)
+  assert.equal(fs.existsSync(path.join(d1, '.work')), false)
+  // Network paths are never opened: the call returns at once.
+  const bs = String.fromCharCode(92)
+  for (const unc of [bs + bs + 'devflow-no-such-host' + bs + 'share', '//devflow-no-such-host/share']) {
+    const d = make(unc)
+    const started = Date.now()
+    assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
+    assert.ok(Date.now() - started < 5000, unc)
+  }
+  // A HEAD that is a link is not followed.
+  const linked = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-lnk-'))
+  fs.writeFileSync(path.join(big, 'small-head'), 'ref: refs/heads/feat/7-x\n')
+  try { fs.symlinkSync(path.join(big, 'small-head'), path.join(linked, 'HEAD')) } catch { return t.skip('file symlinks need privileges here') }
+  const d2 = make(linked)
+  assert.equal(hook.handle(pre(d2, 'gh issue close 1')), expected)
+  assert.equal(fs.existsSync(path.join(d2, '.work')), false)
+})
+
+test('a worktree outside the main work tree does not log to the main one (2026-10-02 security review)', () => {
+  const d = gitRepo('feat/7-x')
+  const wt = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-sib-'))) + '-wt'
+  git(d, 'worktree', 'add', '-q', '-b', 'task-2', wt)
+  assert.equal(decision(hook.handle(pre(wt, 'gh issue close 1'))), 'deny')
+  assert.deepEqual(guards(d, 7), [])
+})

@@ -16,6 +16,8 @@ const anchors = (f) => new Set(read(f).split('\n').filter((l) => /^#{1,6} /.test
 // Rough token estimate: a Hangul syllable ~1 token, other characters ~4 per token.
 const tokens = (s) => { const h = (s.match(/[가-힣]/g) || []).length; return Math.round(h + (s.length - h) / 4); };
 const budgets = [[/^AGENTS\.md$/, 1000], [/^docs\/specs\/.+\.md$/, 5000], [/(^|\/)SKILL\.md$/, 5000]];
+// Characters that hide text from a reviewer: Unicode tag block, zero-width, bidirectional controls, variation selectors.
+const invisible = /[\u{E0000}-\u{E007F}\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFE00-\uFE0F\u00AD]/u;
 const localPath = /\b[A-Za-z]:[\\/]|(?:^|[\s'"`(=])\/[a-z]\/[^\s/]+\/|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//;
 
 for (const f of files) {
@@ -23,6 +25,7 @@ for (const f of files) {
   const text = read(f);
   if (text.includes('\r')) problems.push(`${f}: CRLF line ending`);
   if (text.charCodeAt(0) === 0xfeff) problems.push(`${f}: byte order mark`);
+  text.split('\n').forEach((line, i) => { if (invisible.test(line)) problems.push(`${f}:${i + 1}: invisible character`); });
   text.split('\n').forEach((line, i) => { if (localPath.test(line)) problems.push(`${f}:${i + 1}: local absolute path`); });
   for (const [re, max] of budgets) if (re.test(f) && tokens(text) > max) problems.push(`${f}: ~${tokens(text)} tokens, budget ${max}`);
   if (!f.endsWith('.md')) continue;

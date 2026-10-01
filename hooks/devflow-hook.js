@@ -12,6 +12,7 @@ const ISSUE_WRITE_OPS = new Set('create new close comment delete develop edit lo
 const LEADERS = new Set(('timeout time nice nohup stdbuf command builtin noglob nocorrect env sudo exec watch setsid ionice flock ' +
   'if then else elif do while until ! { } call start').split(' '))
 const PRINTERS = new Set(['echo', 'printf', 'write-output', 'write-host'])
+const FILE_PRINTERS = new Set(['cat', 'type', 'get-content', 'gc'])
 const SH = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh'])
 const PWSH = new Set(['pwsh', 'powershell'])
 const EVALS = new Set(['eval', 'iex', 'invoke-expression'])
@@ -22,12 +23,37 @@ const API_FIELD_FLAGS = new Set(['-f', '-F', '--field', '--raw-field', '--input'
 const HTTP_ISSUES = /api\.github\.com\/[^\s'"]*issues/i
 const HTTP_WRITE = /(?:-X|--request|-Method)\s*['"]?(?:POST|PATCH|PUT|DELETE)\b|\s(?:-d|--data[\w-]*|--json|-Body)\b|\bmethod\s*:\s*['"](?:POST|PATCH|PUT|DELETE)/i
 const SCRIPT_FLAG = /^(-[A-Za-z]*c[A-Za-z]*|-com\w*|-e|-ec|-en\w*|\/[ck])$/i
+const HTTP_GRAPHQL = /api\.github\.com\/graphql/i
+const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
 
 const word = text => ({ text, raw: text, dynamic: /[$`]/.test(text) })
 const baseName = raw => raw.replace(/^["']|["']$/g, '').split(/[\\/]/).pop().toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, '')
 const flatten = ws => ws.flatMap(w => (w.dynamic ? [w] : w.text.split(/\s+/).filter(Boolean).map(word)))
+
+// The $(...) and `...` bodies in text the shell expands whatever quotes it holds (an unquoted heredoc body).
+function substitutions(text) {
+  const out = []
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\') i++
+    else if (text[i] === '$' && text[i + 1] === '(') {
+      let j = i + 1
+      for (let d = 0; j < text.length; j++) {
+        if (text[j] === '(') d++
+        else if (text[j] === ')' && --d === 0) break
+      }
+      out.push(text.slice(i + 2, j))
+      i = j
+    } else if (text[i] === '`') {
+      const k = text.indexOf('`', i + 1)
+      if (k < 0) break
+      out.push(text.slice(i + 1, k))
+      i = k
+    }
+  }
+  return out
+}
 
 // Splits shell text into simple commands. Bash rules first; PowerShell and cmd differ mostly in ways that only
 // make this see more, not less. Substitutions, process substitutions and heredoc bodies are kept for a closer look.
@@ -83,6 +109,8 @@ function parse(src) {
           body.push(line)
         }
         doc.owner.stdin.push(body.join('\n'))
+        // An unquoted delimiter means the shell expands the body, running any $(...) or `...` in it.
+        if (!doc.quoted) nested.push(...substitutions(body.join('\n')))
         i = j - 1
       }
     } else if (/\s/.test(c)) {
@@ -96,7 +124,7 @@ function parse(src) {
         into = 'stdin'
         i += 2
       } else if (doc) {
-        docs.push({ owner: cur, delim: doc[3], strip: doc[1] === '-' })
+        docs.push({ owner: cur, delim: doc[3], strip: doc[1] === '-', quoted: doc[2] !== '' })
         i += doc[0].length - 1
       }
     } else if ((c === '<' || c === '>') && n === '(') {
@@ -192,11 +220,26 @@ function readScript(cwd, file) {
   }
 }
 
+// gh prints aliases as YAML, so a value may be quoted ('!gh …' for a shell alias). null: a value it cannot read.
+function yamlScalar(v) {
+  v = v.trim()
+  if (v.startsWith("'")) return v.length > 1 && v.endsWith("'") ? v.slice(1, -1).replace(/''/g, "'") : null
+  if (v.startsWith('"')) {
+    try {
+      return JSON.parse(v)
+    } catch {
+      return null
+    }
+  }
+  return /^[|>]/.test(v) ? null : v
+}
+
 function aliasesOf(ctx) {
   if (ctx.aliasMap === undefined) {
-    const r = ctx.env.run('gh', ['alias', 'list'], { cwd: ctx.cwd })
+    // Shorter than the hook's own timeout, so a slow gh ends in a denial rather than the hook being cut off.
+    const r = ctx.env.run('gh', ['alias', 'list'], { cwd: ctx.cwd, timeout: ALIAS_TIMEOUT_MS })
     ctx.aliasMap = r.code === 0
-      ? Object.fromEntries(r.stdout.split(/\r?\n/).map(l => /^(\S+):\s+(.*)$/.exec(l)).filter(Boolean).map(m => [m[1], m[2].trim()]))
+      ? Object.fromEntries(r.stdout.split(/\r?\n/).map(l => /^([^\s:]+):\s*(.*)$/.exec(l)).filter(Boolean).map(m => [m[1], yamlScalar(m[2])]))
       : null
   }
   return ctx.aliasMap
@@ -212,9 +255,14 @@ function apiWrite(args) {
     let flag = t
     let value = null
     let dynamic = false
-    if (/^--[\w-]+=/.test(t)) [flag, value] = [t.slice(0, t.indexOf('=')), t.slice(t.indexOf('=') + 1)]
-    else if (/^-X./.test(t)) [flag, value] = ['-X', t.slice(2)]
-    else if (API_VALUE_FLAGS.has(t)) {
+    if (/^--[\w-]+=/.test(t)) {
+      ;[flag, value] = [t.slice(0, t.indexOf('=')), t.slice(t.indexOf('=') + 1)]
+      dynamic = args[i].dynamic
+    } else if (/^-[XfFHqtp]./.test(t)) {
+      // pflag takes a short flag's value glued on: -XPOST, -fbody=x, -Fquery=@q.graphql
+      ;[flag, value] = [t.slice(0, 2), t.slice(2)]
+      dynamic = args[i].dynamic
+    } else if (API_VALUE_FLAGS.has(t)) {
       value = args[i + 1] ? args[i + 1].text : ''
       dynamic = Boolean(args[i + 1] && args[i + 1].dynamic)
       i++
@@ -229,11 +277,12 @@ function apiWrite(args) {
     }
   }
   if (!endpoint) return null
-  if (!endpoint.dynamic && endpoint.text === 'graphql') {
+  const route = endpoint.text.replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+/, '').replace(/^api\/v3\//i, '').toLowerCase()
+  if (!endpoint.dynamic && route === 'graphql') {
     // A query read from a file or built at run time cannot be checked, so it counts as a mutation.
     return unreadableQuery || args.some(a => /\bmutation\b/i.test(a.text)) ? 'gh api graphql mutation' : null
   }
-  if (!endpoint.dynamic && !/issues/i.test(endpoint.text)) return null
+  if (!endpoint.dynamic && !/issues/.test(route)) return null
   const writes = method ? method !== 'GET' : fields
   if (!writes) return null
   return endpoint.dynamic ? 'gh api write to a path built at run time' : 'gh api Issue write'
@@ -263,6 +312,7 @@ function ghWrite(args, ctx, depth) {
   if (aliases === null) return `gh alias lookup failed for "${s}"`
   const expansion = aliases[s]
   if (expansion === undefined) return null // an extension
+  if (expansion === null) return `gh alias "${s}" could not be read`
   if (depth >= MAX_DEPTH) return 'gh alias nested too deeply to check'
   const rest = args.slice(i + 1)
   if (expansion.startsWith('!')) return analyze(`${expansion.slice(1)} ${rest.map(a => a.raw).join(' ')}`, ctx, depth + 1)
@@ -285,20 +335,33 @@ function shellWrite(cmd, k, ctx, depth) {
     const c = at(/^-(c|com\w*)$/i)
     const e = at(/^-(e|ec|en\w*)$/i)
     const f = at(/^-f(ile)?$/i)
+    const p = args.findIndex(a => !a.text.startsWith('-'))
     if (c >= 0) script = texts(c + 1)
     else if (e >= 0 && args[e + 1]) script = Buffer.from(args[e + 1].text, 'base64').toString('utf16le')
     else if (f >= 0 && args[f + 1]) file = args[f + 1].text
-    else file = (args.find(a => !a.text.startsWith('-')) || {}).text
+    // Windows PowerShell 5.1 reads a bare argument as -Command; PowerShell 7 reads it as -File.
+    else if (p >= 0) name === 'powershell' ? (script = texts(p)) : (file = args[p].text)
   } else {
     const c = at(/^-[A-Za-z]*c[A-Za-z]*$/)
     if (c >= 0) script = args[c + 1] ? args[c + 1].text : ''
-    else file = (args.find(a => !a.text.startsWith('-')) || {}).text
+    else {
+      // The first operand, past options and the values of -o/+o.
+      for (let i = 0; i < args.length && file === null; i++) {
+        if (/^[-+]o$/.test(args[i].text)) i++
+        else if (!/^[-+]/.test(args[i].text)) file = args[i].text
+      }
+    }
   }
+  if (script === '-') script = null // "-Command -": the script comes from stdin
   if (script !== null) return analyze(script, ctx, depth + 1)
   if (file) return analyze(readScript(ctx.cwd, file), ctx, depth + 1)
-  // No script and no file: the shell runs what it reads on stdin.
+  // No script and no file: the shell runs what it reads on stdin, whether piped text, a heredoc or a file cat prints.
   const from = cmd.pipedFrom
-  const input = [...cmd.stdin, ...(from ? [...from.stdin, from.words.slice(1).map(a => a.text).join(' ')] : [])]
+  const fromNames = from ? from.words.map(w => baseName(w.raw)) : []
+  const fromFiles = from && FILE_PRINTERS.has(fromNames[0])
+    ? from.words.slice(1).filter(a => !a.text.startsWith('-')).map(a => readScript(ctx.cwd, a.text))
+    : []
+  const input = [...cmd.stdin, ...(from ? [...from.stdin, from.words.slice(1).map(a => a.text).join(' '), ...fromFiles] : [])]
   for (const s of input) {
     const r = analyze(s, ctx, depth + 1)
     if (r) return r
@@ -322,6 +385,13 @@ function leadOf(words, names) {
 function checkCommand(cmd, ctx, depth) {
   const { words } = cmd
   const names = words.map(w => baseName(w.raw))
+  // env -S splits its argument into a command line of its own.
+  const split = words.findIndex((w, k) => names[k - 1] === 'env' && /^(-S|--split-string)/.test(w.text))
+  if (split >= 0) {
+    const inline = words[split].text.replace(/^(-S|--split-string=?)/, '')
+    const r = analyze([inline, ...words.slice(split + 1).map(w => w.text)].join(' ').trim(), ctx, depth + 1)
+    if (r) return r
+  }
   const lead = leadOf(words, names)
   if (lead < 0) return null
   if (words[lead].dynamic && words.some(w => /^(issue|api)$/i.test(w.text))) return 'command name built at run time with Issue words'
@@ -351,6 +421,7 @@ function analyze(src, ctx, depth = 0) {
   if (!src) return null
   if (depth > MAX_DEPTH) return 'command nested too deeply to check'
   if (HTTP_ISSUES.test(src) && HTTP_WRITE.test(src)) return 'direct GitHub API Issue write'
+  if (HTTP_GRAPHQL.test(src) && /\bmutation\b/i.test(src)) return 'direct GitHub GraphQL mutation'
   const { cmds, nested } = parse(src)
   for (const s of nested) {
     const r = analyze(s, ctx, depth + 1)

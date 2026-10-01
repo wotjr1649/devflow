@@ -10,6 +10,7 @@
   "repository": "https://github.com/wotjr1649/devflow",
   "license": "Apache-2.0",
   "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "devflow",
     "shortDescription": "Issue-driven development loop",

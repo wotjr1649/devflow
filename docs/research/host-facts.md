@@ -100,6 +100,7 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - Windows에서는 기본으로 Bash·PowerShell·훅 하위 프로세스 환경에서 `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
   `ANTHROPIC_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`을 지운다(`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`). 그래서 세션 안에서
   띄운 `claude -p`는 인증이 없다. 모델을 부르는 확인은 사용자 터미널에서 한다.
+- 세션 환경에 `CLAUDE_CODE_SESSION_ATTENDED`가 있지만 문서에 없다. 그래서 devflow는 무인 구간을 장부의 모드로만 판단한다.
 
 ## Codex
 
@@ -123,6 +124,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - `codex debug models`는 모델별 effort를 보여 준다. `gpt-6-luna`는 `low`~`max`(`xhigh` 포함)이고 기본은 `medium`이다(2026-10-01).
 - Windows에서 환경 맥락의 셸은 `powershell`로 표시되고, 명령은 PowerShell 7(`pwsh.exe -Command`)로 실행된다. 이 기기의
   기준 셸은 PowerShell 7.6.6이다(2026-10-01).
+- 기본 sandbox(`workspace-write`)는 명령의 네트워크를 막아 `gh`를 부르는 `devflow-state`가 실패한다. 소유자 설정은
+  `danger-full-access`라 해당하지 않는다(2026-10-01).
 - 신뢰하지 않은 폴더에서 `codex exec`를 돌리면 전역 `config.toml`에 그 폴더의 `trust_level = "trusted"` 항목이 생길 수
   있다(2026-10-01). 모델을 부르는 시험은 이미 신뢰한 저장소 안에서 한다.
 - Git Bash에서 `codex exec`는 stdin이 열려 있으면 시작하지 않고 기다릴 수 있다. `< /dev/null`로 닫는다.

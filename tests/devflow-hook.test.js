@@ -93,6 +93,46 @@ test('blocks GitHub MCP Issue writes only', () => {
   assert.equal(decision(hook.handle(pre(dir(true), undefined, 'mcp__github__issue_write'))), 'deny')
 })
 
+test('catches the forms the 2026-10-01 review found', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, 'post.sh'), 'gh issue close 1\n')
+  fs.writeFileSync(path.join(d, 'safe.sh'), 'echo ok\n')
+  const writes = [
+    'cat <<EOF\n$(gh issue close 1)\nEOF',
+    'cat <<EOF\n`gh issue close 1`\nEOF',
+    'gh api repos/o/r/issues/1/comments -fbody=x',
+    'gh api graphql -Fquery=@q.graphql',
+    'gh api graphql --raw-field=query="$Q"',
+    "gh api /graphql -f query='mutation { addComment(input: {}) { clientMutationId } }'",
+    'curl -X POST https://api.github.com/graphql -d \'{"query":"mutation { addComment }"}\'',
+    'powershell "gh issue close 1"',
+    'echo "gh issue close 1" | pwsh -Command -',
+    'cat post.sh | bash',
+    'env -S "gh issue close 1"',
+    'bash -o pipefail post.sh',
+  ]
+  for (const c of writes) assert.ok(check(c, d), c)
+  assert.equal(check("cat <<'EOF'\n$(gh issue close 1)\nEOF", d), null, 'a quoted heredoc is data')
+  assert.equal(check('bash -o pipefail safe.sh', d), null)
+})
+
+test('reads YAML-quoted gh aliases and refuses unreadable ones', () => {
+  const calls = []
+  const env = stdout => ({ run: (cmd, args, opts) => (calls.push(opts), { code: 0, stdout, stderr: '' }) })
+  assert.ok(hook.issueWrite('gh bye 1', { env: env('bye: \'!gh issue close "$1"\'\n') }))
+  assert.ok(hook.issueWrite('gh ic 1', { env: env('ic: "issue comment"\n') }))
+  assert.match(hook.issueWrite('gh multi 1', { env: env('multi: |-\n  issue close\n') }), /could not be read/)
+  assert.ok(calls.every(o => o.timeout <= 3000), 'alias lookup ends before the hook timeout')
+})
+
+test('the PreToolUse matcher covers shells and GitHub MCP tools only', () => {
+  const { matcher, hooks } = require('../hooks/hooks.json').hooks.PreToolUse[0]
+  const re = new RegExp(matcher)
+  for (const t of ['Bash', 'PowerShell', 'mcp__github__issue_write', 'mcp__claude_ai_GitHub__add_issue_comment']) assert.ok(re.test(t), t)
+  for (const t of ['BashOutput', 'Edit', 'mcp__memory__create_entities']) assert.ok(!re.test(t), t)
+  assert.ok(hooks[0].timeout * 1000 > 3000 + 5000, 'the hook outlives the alias lookup with room for node to start')
+})
+
 test('checks PowerShell tool commands and array commands', () => {
   assert.equal(decision(hook.handle(pre(dir(true), 'gh issue close 1', 'PowerShell'))), 'deny')
   assert.ok(check(['bash', '-lc', 'gh issue close 1']))

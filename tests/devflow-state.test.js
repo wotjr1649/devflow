@@ -195,11 +195,37 @@ test('autonomous ledger queues writes and flush posts them', () => {
   const e = env(root)
   assert.match(state.write(e, '.', 'comment', 1, checkpoint('later')).out, /queued comment/)
   assert.equal(ghWrites(e).length, 0)
+  assert.match(state.flush(e, '.').out, /autonomous mode/)
+  assert.equal(ghWrites(e).length, 0)
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), mode: 'interactive' }))
   const r = state.flush(e, '.')
   assert.equal(r.code, 0)
   assert.equal(ghWrites(e).length, 1)
-  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  assert.deepEqual(ledger.pendingPosts, [])
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).pendingPosts, [])
+})
+
+// Built at run time so no source file holds an invisible character.
+const hidden = () => String.fromCodePoint(0xe0049, 0xe0067, 0x200b, 0x202e, 0xfe0f)
+
+test('read strips invisible characters and write refuses them', () => {
+  const body = `## 문제\n본${hidden()}문\n\n${block()}\n`
+  const r = state.read(env(repo(), { data: issue({ body, title: `T${hidden()}` }) }), '.')
+  assert.match(r.out, /본문/)
+  assert.ok(![...r.out].some(ch => hidden().includes(ch)), 'no hidden character survives')
+  const w = state.write(env(repo()), '.', 'comment', 1, checkpoint('x') + `\n- 숨김${hidden()}`)
+  assert.match(w.out, /invisible character/)
+})
+
+test('card names the devflow-state command and keeps the whole card in budget', () => {
+  const root = repo({ ledger: { lastCommit: 'a0b1234' } })
+  const commits = Array.from({ length: 5 }, (_, i) => `c${i}abcde ${'커밋 제목 '.repeat(40)}`).join('\n')
+  const priv = path.join(root, 'docs/plans')
+  fs.mkdirSync(priv, { recursive: true })
+  for (let i = 0; i < 30; i++) fs.writeFileSync(path.join(priv, `2026-10-01-i1-${'긴이름'.repeat(10)}${i}-plan.md`), '')
+  const out = state.card(env(root, { data: issue({ title: '제목'.repeat(200) }), log: ok(commits) }), '.')
+  assert.match(out, /^Tool: node ".+\/bin\/devflow-state"$/m)
+  assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
 })
 
 test('read marks Issue text as data and strips comments', () => {

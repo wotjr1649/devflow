@@ -1,0 +1,20 @@
+{
+  "name": "devflow",
+  "interface": {
+    "displayName": "devflow"
+  },
+  "plugins": [
+    {
+      "name": "devflow",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

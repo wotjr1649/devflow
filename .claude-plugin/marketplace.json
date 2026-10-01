@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "devflow",
+  "description": "devflow plugin for Claude Code and Codex.",
+  "owner": {
+    "name": "wotjr1649",
+    "url": "https://github.com/wotjr1649"
+  },
+  "plugins": [
+    {
+      "name": "devflow",
+      "description": "An Issue-driven development loop for Claude Code and Codex: resume from Issues, delegate reads and checks, back rules with hooks.",
+      "source": "./"
+    }
+  ]
+}

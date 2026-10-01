@@ -38,6 +38,7 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - 플러그인 루트의 `bin/`은 Bash 도구의 PATH에 들어간다. `workflows/`의 스크립트는 `/<plugin>:<meta.name>`으로 실행된다.
 - 경로 변수: `${CLAUDE_PLUGIN_ROOT}`(설치본 위치, 버전마다 바뀜), `${CLAUDE_PLUGIN_DATA}`(업데이트를 넘어 유지).
 - 플러그인 루트의 `CLAUDE.md`는 로드되지 않는다. 검증은 `claude plugin validate <dir>`로 한다.
+- `claude --plugin-dir . plugin list --json`은 모델을 부르지 않고 `devflow@inline`(범위 `session`)으로 로드를 보여 준다(2026-10-01).
 
 **플러그인 에이전트**
 - 지원하는 필드: `name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`, `memory`,
@@ -109,7 +110,12 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 
 **플러그인**
 - `.codex-plugin/plugin.json`에 `skills`, `hooks`, `interface`를 둔다.
-- 마켓플레이스는 `.agents/plugins/marketplace.json`이다.
+- 마켓플레이스는 `.agents/plugins/marketplace.json`이다. 같은 저장소의 플러그인은
+  `source: {"source": "local", "path": "./..."}`로 가리키고, `policy`의 `installation`과 `authentication`이 필수다.
+- 설치하면 `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`으로 복사된다(문서). 비공개 폴더도 복사되는지는
+  확인하지 않았다.
+- 작업 폴더의 마켓플레이스는 자동으로 잡히지 않는다. `codex plugin marketplace list`에 나오려면
+  `codex plugin marketplace add <root>`로 등록해야 한다(2026-10-01).
 - 플러그인에 넣을 수 있는 것은 스킬, MCP 서버, 브라우저 확장, 훅이다. 문서에 에이전트 항목은 없다.
 - CLI에서는 `/plugins`로 설치하고, 새 세션을 시작해야 반영된다.
 

@@ -69,7 +69,9 @@
 - Codex
   - [Skills](https://developers.openai.com/codex/skills): 위치, 묵시적 호출, `agents/openai.yaml`, 목록 예산.
   - [Plugins](https://developers.openai.com/codex/plugins),
-    [Hooks](https://developers.openai.com/codex/hooks): 플러그인 훅, 도구 매칭, SessionStart 매처.
+    [Hooks](https://learn.chatgpt.com/docs/hooks) (옛 주소에서 옮겨 감): 플러그인 훅, 도구 매칭, SessionStart 매처,
+    Stop 입출력, 경로 변수.
+  - [Build plugins](https://developers.openai.com/plugins/build/plugins): 로컬 소스 마켓플레이스 형식, 설치 캐시 위치.
   - [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) (옛 주소에서 옮겨 감): 내장·커스텀
     에이전트, 띄울 때 지정한 모델과 effort가 기본값보다 우선.
   - [AGENTS.md](https://developers.openai.com/codex/guides/agents-md): 탐색 순서, 크기 한도.

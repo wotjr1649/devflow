@@ -1,0 +1,9 @@
+{
+  "integration": "local-merge",
+  "branch": "{type}/{issue}-{slug}",
+  "private": ["docs/prompts/", "docs/plans/", "artifacts/", ".work/", "_ref/"],
+  "protected": ["_ref/**"],
+  "highRisk": ["bin/**", "hooks/**", ".githooks/**"],
+  "checks": { "**/*.md": "node scripts/check-docs.mjs", "bin/**": "node --test tests/*.test.js", "tests/**": "node --test tests/*.test.js" },
+  "verify": "node scripts/check-docs.mjs && node --test tests/*.test.js"
+}

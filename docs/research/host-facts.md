@@ -117,6 +117,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - 신뢰하지 않은 폴더에서 `codex exec`를 돌리면 전역 `config.toml`에 그 폴더의 `trust_level = "trusted"` 항목이 생길 수
   있다(2026-10-01). 모델을 부르는 시험은 이미 신뢰한 저장소 안에서 한다.
 - Git Bash에서 `codex exec`는 stdin이 열려 있으면 시작하지 않고 기다릴 수 있다. `< /dev/null`로 닫는다.
+- 이 기기의 pwsh 7은 외부 명령의 출력을 변수나 파이프로 받을 때 콘솔 인코딩(`ks_c_5601-1987`)으로 읽어 UTF-8 한글이
+  깨진다. 직접 출력은 그대로다. 받아야 하면 먼저 `[Console]::OutputEncoding = [Text.UTF8Encoding]::new()`를 둔다(2026-10-01).
 
 **플러그인**
 - `.codex-plugin/plugin.json`에 `skills`, `hooks`, `interface`를 둔다.

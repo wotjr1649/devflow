@@ -64,6 +64,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - 대화형 세션에서는 기본이 백그라운드 실행이고, 백그라운드에서는 쓸 수 있는 도구가 줄어든다.
 - 실행 기록은 `~/.claude/projects/<프로젝트>/<세션>/subagents/agent-<id>.jsonl`이다. 줄마다 실제 모델(`message.model`)과
   `effort`·`perTurnEffort`가 있고, 옆의 `.meta.json`에 `agentType`, 요청한 `model`, `spawnDepth`가 있다(2026-10-01).
+  `prompt_snapshot` 항목의 `tools`가 실제로 받은 도구 목록이고, `instructions` 항목이 로드된 지침 파일 목록이다.
+  플러그인 에이전트의 `tools`에 그 세션에 없는 도구(꺼진 `PowerShell`)를 적으면 오류 없이 빠진다.
 
 **compact**
 - 다시 주입되는 것: 프로젝트 루트 CLAUDE.md, 자동 메모리, plan mode의 계획

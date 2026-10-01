@@ -317,3 +317,30 @@ test('Git Bash drive paths reach the protected-path check on Windows', { skip: p
   assert.equal(decision(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: `${posix}/_ref/x` } }))), 'deny')
   assert.equal(hook.handle(pre(d, `rm ${posix}/notes/x`)), '')
 })
+
+test('protected folders themselves, patterns and repository-wide writes (2026-10-01 re-review)', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const run = command => decision(hook.handle(pre(d, command))) || 'allow'
+  for (const c of ['rm -rf _ref', 'rm -rf _ref/', 'cp -r src _ref', 'rm -rf *', 'rm -rf .', 'git clean -fdx',
+    'git -C . checkout -- _ref/x', 'find _ref -delete']) assert.equal(run(c), 'deny', c)
+  for (const c of ['cat < _ref/x.md', 'while read l; do echo "$l"; done < _ref/list', 'cp notes.md .', 'mkdir build',
+    'git checkout main', 'find _ref -name "*.md"']) assert.equal(run(c), 'allow', c)
+})
+
+test('an unreadable profile still lets the session repair it', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), '{ broken')
+  const edit = file => decision(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, file) } }))) || 'allow'
+  assert.equal(edit('.devflow.json'), 'allow')
+  assert.equal(edit('src.md'), 'deny')
+  assert.equal(decision(hook.handle(pre(d, 'cat < _ref/x.md'))) || 'allow', 'allow')
+  assert.equal(decision(hook.handle(pre(d, 'gh issue close 1'))), 'deny', 'Issue writes are still checked')
+})
+
+test('an option value before -c does not hide the script (2026-10-01 re-review regression)', () => {
+  for (const c of ['pwsh -ep Bypass -c "gh issue close 1"', 'pwsh -wd . -c "gh issue close 1"', 'bash -O extglob -c "gh issue close 1"',
+    'bash --rcfile x -c "gh issue close 1"', 'pwsh -ExecutionPolicy Bypass -File nope.ps1 -Command "gh issue close 1"']) {
+    assert.ok(check(c), c)
+  }
+})

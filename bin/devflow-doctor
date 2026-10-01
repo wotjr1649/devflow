@@ -73,7 +73,10 @@ function doctor(dir, { only } = {}) {
   }
   const privatePaths = profile.private || PRIVATE
   const isPrivate = f => privatePaths.some(p => f === p.replace(/\/$/, '') || f.startsWith(p))
-  const binary = new Set()
+  // What .gitattributes says about each file: binary content is not text, and eol=crlf (*.cmd, *.bat) is meant to be CRLF.
+  const eol = (git(root, ['ls-files', '--eol', ...(only ? ['--', ...files] : [])]) || '').split('\n').filter(Boolean).map(l => l.split('\t'))
+  const binary = new Set(eol.filter(([info]) => /attr\/-text/.test(info)).map(([, f]) => f))
+  const crlf = new Set(eol.filter(([info]) => /attr\/.*eol=crlf/.test(info)).map(([, f]) => f))
 
   if (!only) {
     // Folders
@@ -98,9 +101,7 @@ function doctor(dir, { only } = {}) {
     const attributes = fs.existsSync(at('.gitattributes')) ? read('.gitattributes').split(/\r?\n/).map(l => l.trim()) : []
     const lacking = ATTRIBUTES.filter(l => !attributes.includes(l))
     if (lacking.length) fail('gitattributes', `lacks ${lacking.join(', ')}`)
-    for (const line of (git(root, ['ls-files', '--eol']) || '').split('\n').filter(Boolean)) {
-      const [info, file] = line.split('\t')
-      if (/attr\/-text/.test(info)) binary.add(file)
+    for (const [info, file] of eol) {
       if (/\bi\/(crlf|mixed)\b/.test(info) && /eol=lf|text=auto/.test(info)) fail('gitattributes', `${file} is stored with CRLF`)
       else if (/\bi\/-text\b/.test(info) && !/attr\/-text/.test(info)) warn('gitattributes', `${file} is binary but not marked binary`)
     }
@@ -143,7 +144,7 @@ function doctor(dir, { only } = {}) {
     if (f === 'LICENSE' || /\.(png|jpe?g|gif|ico|zip|gz)$/.test(f) || binary.has(f) || isPrivate(f)) continue
     const text = read(f)
     if (text.includes('\0')) continue
-    if (text.includes('\r')) fail('docs', `${f}: CRLF line ending`)
+    if (text.includes('\r') && !crlf.has(f)) fail('docs', `${f}: CRLF line ending`)
     if (text.charCodeAt(0) === 0xfeff) fail('docs', `${f}: byte order mark`)
     for (const [rule, re] of [['invisible character', INVISIBLE], ['local absolute path', LOCAL_PATH]]) {
       const hits = text.split('\n').flatMap((line, i) => (re.test(line) ? [i + 1] : []))

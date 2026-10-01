@@ -21,7 +21,7 @@ if [ -z "$verify" ]; then
   exit 1
 fi
 if ! out=$(sh -c "$verify" 2>&1); then
-  printf '%s\n' "$out" | tail -n 40 >&2
+  printf '%s\n' "$out" >&2
   echo "pre-push: verify failed ($verify); push blocked" >&2
   exit 1
 fi

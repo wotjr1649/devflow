@@ -28,11 +28,9 @@ keys of [작업 장부 키](../../docs/specs/documents.md#작업-장부-키). Th
 
 ## Unattended work
 
-`mode` is `autonomous` only while nobody is there to read a post: set it when the user steps away or asks for an
-unattended run, or when a prompt for a non-interactive run says so. Approval settings such as bypass or yolo do not
-count; they say nothing about who is present. While autonomous, Issue writes queue and nothing is pushed or
-integrated. When the user is back, set `mode` to `interactive`, show the queued posts (`pending`), and `flush` them
-once the user has read them.
+[자율 실행](../../docs/specs/orchestration.md#자율-실행) says when the ledger's `mode` becomes `autonomous` and what
+waits while it is; set it there and nowhere else. When the user is back, set `mode` to `interactive`, show the queued
+posts with `pending`, and `flush` them once the user has read them.
 
 ## Stage and path
 

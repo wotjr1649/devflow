@@ -151,3 +151,10 @@ test('the 2026-10-01 review: names, text detection, anchors, gitlinks, profile, 
   assert.ok(only.includes('FAIL docs: docs/한글.md:1: local absolute path'))
   assert.ok(!only.some(l => /docs\/lone\.md|gitignore|folders/.test(l)), 'only checks what it is given')
 })
+
+test('files .gitattributes keeps as CRLF are not CRLF findings', () => {
+  const d = repo({ ...GOOD, 'run.cmd': 'echo a\r\necho b\r\n', 'notes.md': 'a\r\n' })
+  const lines = findings(d)
+  assert.ok(!lines.some(l => l.includes('run.cmd')), 'eol=crlf files are meant to be CRLF')
+  assert.ok(lines.includes('FAIL docs: notes.md: CRLF line ending'))
+})

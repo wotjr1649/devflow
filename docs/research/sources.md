@@ -1,0 +1,85 @@
+# 조사 출처
+
+설계 근거로 쓴 자료다. 원문은 복사하지 않고 링크와 직접 쓴 요약만 둔다. 호스트 동작에 관한 주장이 의심스러우면
+여기서 원문을 다시 확인한다. 호스트 문서는 자주 바뀐다.
+
+## 사용자가 지정한 자료
+
+- [OpenAI: Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)
+  - 스킬 description은 짧고 범위가 겹치지 않게 쓴다.
+  - 여러 워크플로를 가진 스킬은 루트를 라우터로 둔다.
+  - 레시피식 지침은 새 모델을 묶는다.
+  - AGENTS.md에는 상황별 포인터를 둔다.
+  - 안전한 작업은 명시적으로 허가하고, 강한 경계 문구를 재조정한다.
+  - 완료 조건을 먼저 정의한다.
+- [Prompting Claude Opus 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
+  - 기본 effort는 `medium`이고, 효과를 측정한 뒤에만 높인다.
+  - 응답에 추론을 쓰라는 지시는 거절을 부른다.
+  - 무인 실행: 체크리스트를 유지하고 자동 계속은 2~3회로 제한한다.
+  - 진행 업데이트를 받는 방법, 붙여 넣은 텍스트 표시, 멀티에이전트 시간 신호.
+- [Prompting Claude Sonnet 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5-5)
+  - effort 단계가 재보정됐다.
+  - 범위 문단: 끝까지 진행하되 요청하지 않은 추가는 하지 않는다.
+  - `xhigh`·`max`에서는 스스로 리뷰하고 리뷰어를 띄운다.
+  - 실제 검사를 돌린 경우만 검증으로 인정한다.
+- [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)
+  - 금지보다 이유를 쓴다. 강조어는 과잉 트리거를 부른다.
+  - 처방적인 단계보다 일반 지시가 낫다.
+  - 긴 작업에서는 새 컨텍스트가 파일 시스템으로 상태를 복원하는 편이 나을 수 있다.
+  - 상태 추적은 git과 진행 기록으로 한다.
+- [Agentic coding is straining CI](https://claude.com/ko/blog/agentic-coding-is-straining-ci-heres-how-we-scaled-test-impact-analysis-at-anthropic)
+  - 에이전트가 늘면 CI 부하가 지수적으로 늘어난다.
+  - 영향받는 테스트만 고르면 에이전트가 스스로 검증하기 쉽다.
+  - 작은 PR, 서비스 계측.
+- [Skills explained](https://claude.com/ko/blog/skills-explained)
+  - 점진적 공개: 메타데이터, 본문(5,000토큰 미만), 필요할 때 파일.
+  - 프롬프트·프로젝트·서브에이전트·MCP와 스킬의 역할 차이.
+- [skill-creator 개선](https://claude.com/ko/blog/improving-skill-creator-test-measure-and-refine-agent-skills)
+  - 스킬은 역량 향상형과 선호 인코딩형으로 나뉜다.
+  - eval과 벤치마크, 블라인드 A/B, description 트리거 조정.
+- [The AI-native SDLC playbook](https://claude.com/blog/the-ai-native-sdlc-playbook)
+  - 단계마다 커밋된 산출물이 생기고, 다음 단계가 그것을 읽는다.
+  - 산출물마다 진실 원천 하나.
+  - plan mode, 짧은 CLAUDE.md, 조언으로서의 스킬과 강제로서의 훅.
+  - 피드백 루프, 설정 eval, REVIEW.md.
+- [Capture as intent.md (Academy)](https://academy.claude.com/courses/ai-native-sdlc-playbook/capture-intent)
+  - 플레이북 Plan 단계와 같다. intent 템플릿, 검토 후 커밋, 측정 지표.
+
+## 호스트 문서
+
+- Claude Code
+  - [Skills](https://code.claude.com/docs/en/skills): frontmatter, 호출 제어, 목록 예산, compact 뒤 다시 붙는 범위, eval.
+  - [Plugin reference](https://code.claude.com/docs/en/plugins-reference),
+    [Plugin components](https://code.claude.com/docs/en/plugins/components),
+    [Plugin loading](https://code.claude.com/docs/en/plugins/loading): 이름 공간, 에이전트 frontmatter 제한,
+    제자리 로드, 범위.
+  - [Plugin evals](https://code.claude.com/docs/en/plugin-evals): 플러그인 있을 때와 없을 때의 비교,
+    `tool_used: Skill` 판정.
+  - [Subagents](https://code.claude.com/docs/en/sub-agents): 메인과 서브에이전트의 선택 기준,
+    재개와 `SendMessage`, 도구 필터.
+  - [Workflows](https://code.claude.com/docs/en/workflows),
+    [Agent teams](https://code.claude.com/docs/en/agent-teams),
+    [Best practices](https://code.claude.com/docs/en/best-practices).
+  - [Memory and AGENTS.md](https://code.claude.com/docs/en/memory),
+    [Context window](https://code.claude.com/docs/en/context-window),
+    [Model config](https://code.claude.com/docs/en/model-config).
+- Codex
+  - [Skills](https://developers.openai.com/codex/skills): 위치, 묵시적 호출, `agents/openai.yaml`, 목록 예산.
+  - [Plugins](https://developers.openai.com/codex/plugins),
+    [Hooks](https://developers.openai.com/codex/hooks): 플러그인 훅, 도구 매칭, SessionStart 매처.
+  - [Subagents](https://developers.openai.com/codex/subagents): 내장·커스텀 에이전트, 모델과 effort.
+  - [AGENTS.md](https://developers.openai.com/codex/guides/agents-md): 탐색 순서, 크기 한도.
+  - [Multi-agent (Responses API)](https://developers.openai.com/api/docs/guides/responses-multi-agent):
+    spawn·message·follow-up·wait 기본 기능.
+
+## 오케스트레이션 관련 글
+
+- [Cognition: Don't Build Multi-Agents](https://cognition.com/blog/dont-build-multi-agents):
+  맥락을 공유하고, 쓰기는 한 곳에서 한다.
+- [Anthropic: Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents):
+  초기화 에이전트와 코딩 에이전트, 기능 목록, 진행 기록, 세션마다 기능 하나.
+- [Claude: When to use multi-agent systems](https://claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them):
+  토큰이 여러 배 든다. 맥락 경계로 나눈다. 검증 서브에이전트.
+- [obra/superpowers](https://github.com/obra/superpowers): brainstorming, writing-plans,
+  subagent-driven development, 브랜치 마무리.
+- [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail): 두 호스트 패키징의 실제 사례.

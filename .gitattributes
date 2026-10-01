@@ -1,0 +1,15 @@
+# Normalize to LF regardless of core.autocrlf: hook scripts, shebangs and other OSes depend on it.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.gz binary
+
+# Repository process files stay out of source archives.
+/AGENTS.md export-ignore
+/.github/** export-ignore

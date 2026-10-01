@@ -1,0 +1,13 @@
+# >>> devflow (managed)
+/docs/prompts/
+/docs/plans/
+/artifacts/
+/.work/
+/_ref/
+/.claude/worktrees/
+/.claude/settings.local.json
+CLAUDE.local.md
+# <<< devflow
+
+node_modules/
+/evals/results/

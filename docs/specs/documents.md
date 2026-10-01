@@ -87,7 +87,9 @@ Issue #<n> (<state>): <title>
 
 ## 이름 규칙
 
-- 브랜치: `<type>/<issue>-<slug>` (예: `feat/12-resume-card`)
+- 브랜치: `<type>/<issue>-<slug>` (예: `feat/12-resume-card`). 기본 브랜치에 직접 push하는 저장소도 작업 단위마다
+  이 이름의 로컬 브랜치에서 일하고, 끝나면 기본 브랜치로 fast-forward한 뒤 push한다. 재개 카드는 브랜치 이름으로
+  Issue를 찾기 때문이다.
 - 비공개 파일: `YYYY-MM-DD-i<issue>-<slug>-<kind>.md`, `kind`는 `prompt`, `plan`, `handoff`
 - 결정 기록: `ADR-<4자리>-<slug>.md`
 

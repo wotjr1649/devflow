@@ -13,7 +13,7 @@ development loop, not a team process, and it does not restate the user's global 
 | changing folder layout, `.gitignore`, `.gitattributes` or the files devflow installs into projects | `docs/specs/repository.md` |
 | changing how work runs or is delegated: phases, modes, briefs, models, effort | `docs/specs/orchestration.md` |
 | asking why a choice was made, or reversing one | `docs/design/decisions/` |
-| relying on a claim about Claude Code or Codex behavior | `docs/research/sources.md`, then the linked page |
+| building against Claude Code or Codex behavior: manifests, frontmatter, hooks, subagents, evals | `docs/research/host-facts.md`; when it disagrees with the host, `docs/research/sources.md` and the linked page |
 | copying or adapting a file from another project | `SOURCES.md` |
 
 A spec owns its rule; decisions record why; everything else links. When a spec and another file

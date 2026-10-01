@@ -25,5 +25,16 @@ Every file in this repository that is derived from another project has a row her
 | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT | dual-host packaging (`.claude-plugin`, `.codex-plugin`, `.agents/plugins`); Node hook runtime | — |
 | owner's skills: development-start, pr-review-workflow, workspace-cleanup, grilling, writing-for-agents, prompt-generator | owner; published under Apache-2.0 once moved here | moved in whole, then adapted to the specs | — |
 
+## Known pitfalls in the candidates
+
+- `feature-dev` agents list tool names the current hosts no longer have (`LS`, `NotebookRead`, `KillShell`,
+  `BashOutput`) and have no `Bash`, so they cannot run `git diff` themselves. Rewrite the `tools` line.
+- `pr-review-toolkit` agents have no `tools` limit, so they can edit files, and they default to reviewing the
+  unstaged `git diff`. Restrict tools and pass the BASE..HEAD diff explicitly.
+- `pr-review-workflow` links to `../workspace-cleanup/SKILL.md`; move the two skills together and update the path.
+- superpowers `subagent-driven-development/SKILL.md` is about 32 KB, far over the skill budget; take the pattern,
+  not the file.
+- `feature-dev`'s command stops for approval five times; devflow's gates come from the global instructions instead.
+
 Installed rather than copied: `skill-creator` (evals, trigger tuning), `session-report` (token and
 cache reports), `security-guidance` (optional security layer).

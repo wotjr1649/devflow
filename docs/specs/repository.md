@@ -81,6 +81,29 @@ CLAUDE.local.md
 - **권한 문장은 AGENTS.md에 둔다.** 예: "이 저장소 Issue의 현재 상태 블록과 체크포인트는 묻지 않고 갱신한다."
   호스트가 로드하는 지침만 권한의 근거가 되고, `.devflow.json` 같은 일반 파일은 데이터로 취급되기 때문이다.
 
+## REVIEW.md 형식
+
+최종 리뷰어가 읽는다. 프로젝트마다 고쳐 쓴다.
+
+```markdown
+# Review instructions
+
+## Passes
+Run these passes and tag each finding with its pass:
+- Bugs: logic errors, broken edge cases, regressions
+- Security: injection, authentication gaps, secrets or personal data in logs
+- Compliance: the change matches the Issue's acceptance criteria, the plan summary and docs/specs
+
+## What Important means here
+Important: breaks behavior, leaks data, or breaches a spec. Style and naming are nits.
+
+## Nits
+Report at most five; summarize the rest as a count.
+
+## Do not report
+Generated files and anything CI already enforces.
+```
+
 ## .devflow.json (계획)
 
 doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다.

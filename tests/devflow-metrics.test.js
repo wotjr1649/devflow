@@ -117,6 +117,29 @@ test('model names outside the allowed pattern are reported as other, so no recor
   assert.deepEqual({ ...report.models }, { other: 1, 'claude-opus-5-5': 1, constructor: 1 })
 })
 
+test('linked projects and sessions folders are not followed', async () => {
+  const root = gitRepo()
+  const outside = tmp('dfm-o-')
+  write(path.join(outside, 'p', enc(root), 's1.jsonl'), [cl.assistant(150, { id: 'm1', cwd: root, branch: 'feat/4-x' })])
+  write(path.join(outside, 's', 'rollout-a.jsonl'), [cx.meta(110, root), cx.turn(110, root), cx.usage(150, 'r1')])
+  const claude = tmp('dfm-c-')
+  const codex = tmp('dfm-x-')
+  fs.symlinkSync(path.join(outside, 'p'), path.join(claude, 'projects'), 'junction')
+  fs.symlinkSync(path.join(outside, 's'), path.join(codex, 'sessions'), 'junction')
+  const { c, x } = await measure(root, { claude, codex })
+  assert.equal(c.main.calls, 0)
+  assert.equal(x.main.calls, 0)
+})
+
+test('a ledger that is a link is not read', async t => {
+  const root = gitRepo()
+  const target = path.join(tmp('dfm-o-'), 'ledger.json')
+  write(target, [{ metrics: { interventions: 7 } }])
+  fs.mkdirSync(path.join(root, '.work', 'devflow', 'i4'), { recursive: true })
+  try { fs.symlinkSync(target, path.join(root, '.work', 'devflow', 'i4', 'ledger.json')) } catch { return t.skip('symlinks need privileges here') }
+  assert.equal(metrics.readLedger(metrics.context(root), 4), null)
+})
+
 test('claude does not follow a linked subagents folder', async () => {
   const root = gitRepo()
   const home = tmp('dfm-c-')

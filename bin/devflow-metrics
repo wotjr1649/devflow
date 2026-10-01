@@ -146,6 +146,7 @@ async function claude({ ctx, dir, issue, until }) {
   // A project folder is named after the path the session started in, every non-alphanumeric character as "-".
   const names = ctx.worktrees.map(w => path.resolve(w.path).replace(/[^a-zA-Z0-9]/g, '-')).map(n => (WIN ? n.toLowerCase() : n))
   const projects = path.join(dir, 'projects')
+  if (!isDir(projects)) return res
   const seen = { main: new Map(), sub: new Map() }
   const tools = { main: new Set(), sub: new Set() }
   for (const f of entries(projects)) {
@@ -218,8 +219,7 @@ async function codex({ ctx, dir, issue, until }) {
       else if (e.isFile() && /^rollout-.*\.jsonl$/.test(e.name)) files.push(p)
     }
   }
-  walk(path.join(dir, 'sessions'))
-  walk(path.join(dir, 'archived_sessions'))
+  for (const top of ['sessions', 'archived_sessions']) if (isDir(path.join(dir, top))) walk(path.join(dir, top))
   const responses = new Set()
   const calls = { main: new Set(), sub: new Set() }
   for (const file of files) {
@@ -292,7 +292,9 @@ async function codex({ ctx, dir, issue, until }) {
 
 function readLedger(ctx, issue) {
   for (const root of [ctx.root, ctx.mainRoot]) {
-    try { return JSON.parse(fs.readFileSync(path.join(root, '.work', 'devflow', `i${issue}`, 'ledger.json'), 'utf8')) } catch {}
+    const p = path.join(root, '.work', 'devflow', `i${issue}`, 'ledger.json')
+    // A ledger committed as a link could point anywhere; only a plain file is read.
+    try { if (fs.lstatSync(p).isFile()) return JSON.parse(fs.readFileSync(p, 'utf8')) } catch {}
   }
   return null
 }

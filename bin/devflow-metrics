@@ -217,16 +217,20 @@ async function claude({ ctx, dir, issue, until }) {
     for (const { main, subs } of sessions.values()) {
       // The parent's timeline: every timed record, in or out of scope, so a subagent span can ask where the parent was.
       const timeline = []
+      // A turn writes its turn_duration only when it ends; the one still running at measurement spans its records.
+      let open = null
       if (main && fresh(main)) {
         addLines(res, await readJsonl(main, rec => {
           const t = timeOf(rec)
           if (t === null || t > limit) return
           const ok = inScope(rec, t)
           timeline.push([t, ok])
-          if (ok) count('main', rec, t)
-          else outside(rec)
+          if (!ok) { outside(rec); return }
+          count('main', rec, t)
+          open = rec.type === 'system' && rec.subtype === 'turn_duration' ? null : open ? [open[0], t] : [t, t]
         }))
       }
+      if (open && open[1] > open[0]) res.intervals.main.push(open)
       const parentAt = t => { let ok = false; for (const [pt, pok] of timeline) { if (pt > t) break; ok = pok } return ok }
       for (const file of subs) {
         if (!fresh(file)) continue

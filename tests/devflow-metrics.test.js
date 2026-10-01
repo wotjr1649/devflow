@@ -365,3 +365,17 @@ test('guardBlocks counts the logged blocks up to until, reading a shared log onc
   assert.equal((await measure(root, { until: T0 + 200 })).report.manual.guardBlocks, 1)
   assert.equal((await measure(root)).report.manual.guardBlocks, 2)
 })
+
+test('a turn still running when the cycle is measured counts from its first to its last record', async () => {
+  const root = gitRepo()
+  const home = tmp('dfm-c-')
+  const on = { cwd: root, branch: 'feat/4-x' }
+  write(path.join(claudeFolder(home, root), 's1.jsonl'), [
+    cl.assistant(150, { id: 'm1', ...on }),
+    cl.turn(160, 20000, on),
+    cl.assistant(300, { id: 'm2', ...on }),
+    cl.assistant(400, { id: 'm3', ...on }),
+  ])
+  const { c } = await measure(root, { claude: home })
+  assert.deepEqual(c.intervals.main, [[ms(160) - 20000, ms(160)], [ms(300), ms(400)]])
+})

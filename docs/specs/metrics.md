@@ -41,7 +41,7 @@
 | `reasoning` | 출력 중 추론 토큰 | `usage.output_tokens_details.thinking_tokens` | `reasoning_output_tokens` | 참고만 |
 | `tools` | 도구 호출 수 | `tool_use` 블록의 `id` 고유 수 | `response_item` 중 종류가 `_call`로 끝나는 항목의 `call_id` 고유 수 | 불가. Codex `exec` 한 번이 여러 명령을 묶는다 |
 | `subagents` | 서브에이전트 실행 수 | 범위 안 레코드가 있는 `subagents/agent-*.jsonl` 수. 재개는 같은 파일이다 | `session_meta.source.subagent`가 있는 rollout 수 | 가능 |
-| `activeMinutes` | 활동 시간. 구간의 합집합이고 유휴 시간은 뺀다 | 메인은 `system/turn_duration`(레코드 시각이 끝, `durationMs`가 길이). 서브에이전트는 레코드 시각을 잇되 10분 넘게 비면 끊는다 | `task_complete`(레코드 시각이 끝, `duration_ms`가 길이) | 가능 |
+| `activeMinutes` | 활동 시간. 구간의 합집합이고 유휴 시간은 뺀다 | 메인은 `system/turn_duration`(레코드 시각이 끝, `durationMs`가 길이). 측정할 때 아직 끝나지 않은 턴은 마지막 `turn_duration` 뒤 첫 레코드부터 마지막 레코드까지. 서브에이전트는 레코드 시각을 잇되 10분 넘게 비면 끊는다 | `task_complete`(레코드 시각이 끝, `duration_ms`가 길이) | 가능 |
 
 - 토큰은 응답 하나에 한 번만 더한다. Claude는 스트리밍 조각이 같은 `message.id`로 여러 줄 남으므로 그 id의 마지막
   줄 값을 쓴다. Codex는 `response_id`마다 `token_usage_record.usage`를 쓴다. 이 값은 같은 레코드의 누적값

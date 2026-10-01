@@ -41,7 +41,7 @@
 | `reasoning` | 출력 중 추론 토큰 | `usage.output_tokens_details.thinking_tokens` | `reasoning_output_tokens` | 참고만 |
 | `tools` | 도구 호출 수 | `tool_use` 블록의 `id` 고유 수 | `response_item` 중 종류가 `_call`로 끝나는 항목의 `call_id` 고유 수 | 불가. Codex `exec` 한 번이 여러 명령을 묶는다 |
 | `subagents` | 서브에이전트 실행 수 | 범위 안 레코드가 있는 `subagents/agent-*.jsonl` 수. 재개는 같은 파일이다 | `session_meta.source.subagent`가 있는 rollout 수 | 가능 |
-| `activeMinutes` | 활동 시간. 구간의 합집합이고 유휴 시간은 뺀다 | 메인은 `system/turn_duration`(레코드 시각이 끝, `durationMs`가 길이). 측정할 때 아직 끝나지 않은 턴은 파일의 마지막 `turn_duration`(범위와 상관없이) 뒤 범위 안 레코드의 첫 시각부터 마지막 시각까지이고, 그 사이가 10분 넘게 비면 그 뒤부터. 서브에이전트는 레코드 시각을 잇되 10분 넘게 비면 끊는다 | `task_complete`(레코드 시각이 끝, `duration_ms`가 길이) | 가능 |
+| `activeMinutes` | 활동 시간. 구간의 합집합이고 유휴 시간은 뺀다 | 메인은 `system/turn_duration`(레코드 시각이 끝, `durationMs`가 길이). 측정할 때 아직 끝나지 않은 턴은 파일의 마지막 `turn_duration`(범위와 상관없이) 뒤 범위 안 레코드의 첫 시각부터 마지막 시각까지이고, 그 사이가 10분 넘게 비면 거기서 구간을 끊는다. 서브에이전트는 레코드 시각을 잇되 10분 넘게 비면 끊는다 | `task_complete`(레코드 시각이 끝, `duration_ms`가 길이) | 가능 |
 
 - 토큰은 응답 하나에 한 번만 더한다. Claude는 스트리밍 조각이 같은 `message.id`로 여러 줄 남으므로 그 id의 마지막
   줄 값을 쓴다. Codex는 `response_id`마다 `token_usage_record.usage`를 쓴다. 이 값은 같은 레코드의 누적값
@@ -65,8 +65,10 @@
 
 `guardBlocks`는 자동이다. devflow 훅의 차단(Issue 쓰기, 보호 경로, 읽을 수 없는 프로필, 검사 실패)과 `devflow-state`의
 거부가 그 Issue의 `.work/devflow/i<issue>/guard-events.jsonl`에 시각과 고정 id로 한 줄씩 남는다. 명령, 경로, 입력은
-남기지 않는다. 훅은 작업 트리의 브랜치로 Issue를 찾고, 그 브랜치가 Issue 브랜치가 아니면 주 작업 트리의 브랜치로 찾는다
-(M3 worktree). `devflow-doctor`와 pre-push 관문은 기록하지 않는다. ship에서 이 기록 중 정당한 동작을 막은 것을 가려
+남기지 않는다. 훅은 작업 트리의 브랜치로 Issue를 찾는다. 그 브랜치가 Issue 브랜치가 아니고 작업 트리가 주 작업 트리
+안에 있으면(M3 worktree) 주 작업 트리의 브랜치로 찾는다. 주 작업 트리 밖의 worktree에서 다른 브랜치로 막힌 것은 기록하지
+않는다. 훅이 읽는 git 메타데이터는 로컬 경로의 작은 일반 파일뿐이어서, 읽기가 훅의 시간 제한을 넘겨 판정을 바꾸지 않는다.
+`devflow-doctor`와 pre-push 관문은 기록하지 않는다. ship에서 이 기록 중 정당한 동작을 막은 것을 가려
 `filterFalsePositives`로 센다.
 
 트리거율과 통과율은 eval 결과다. 그 사이클에서 스킬을 바꿔 eval을 돌렸을 때만 결과의 통과 수와 전체 수를

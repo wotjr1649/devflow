@@ -631,8 +631,29 @@ const deny = reason => JSON.stringify({
 // git metadata the hook reads only when it is a small regular file on a local path. A link, FIFO, device, network
 // path or large file could make the read wait past the hook's timeout, and a timed-out hook does not block.
 const NETWORK_PATH = /^(\\\\|\/\/)/
+// A long-path prefix ("\\?\" or "\\.\") followed by a drive letter is local; a UNC share or "\\?\UNC\" is not.
+const isNetwork = s => NETWORK_PATH.test(s) && !/^(\\\\|\/\/)[?.][\\/][A-Za-z]:/.test(s)
+
+// False when p, or a folder link on the way to it, names a network path. A link is judged by its own text, read
+// without following it, so the check itself never touches the network.
+function localPath(p) {
+  if (isNetwork(p)) return false
+  const parts = []
+  for (let d = path.resolve(p); ; d = path.dirname(d)) {
+    parts.unshift(d)
+    if (path.dirname(d) === d) break
+  }
+  for (const q of parts) {
+    let st
+    try { st = fs.lstatSync(q) } catch { return true }
+    if (!st.isSymbolicLink()) continue
+    try { if (isNetwork(fs.readlinkSync(q))) return false } catch { return false }
+  }
+  return true
+}
+
 function smallFile(p) {
-  if (NETWORK_PATH.test(p)) return null
+  if (!localPath(p)) return null
   try {
     const st = fs.lstatSync(p)
     return st.isFile() && st.size <= 4096 ? fs.readFileSync(p, 'utf8') : null
@@ -659,7 +680,7 @@ function guardTarget(root) {
     let common = dotGit
     if (st.isFile()) {
       const m = /^gitdir:\s*(.+)$/m.exec(smallFile(dotGit) || '')
-      if (!m || NETWORK_PATH.test(m[1].trim())) return null
+      if (!m || isNetwork(m[1].trim())) return null
       own = path.resolve(root, m[1].trim())
       const commondir = smallFile(path.join(own, 'commondir'))
       common = commondir ? path.resolve(own, commondir.trim()) : own
@@ -757,4 +778,4 @@ function main() {
   if (out) process.stdout.write(out + '\n')
 }
 
-module.exports = { handle, issueWrite, mcpIssueWrite, main }
+module.exports = { handle, issueWrite, mcpIssueWrite, localPath, main }

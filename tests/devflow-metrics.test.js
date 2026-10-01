@@ -410,5 +410,14 @@ test('any turn_duration ends the running turn, and a long gap restarts it (2026-
     cl.assistant(2000, { id: 'm3', ...on }),
     cl.assistant(2030, { id: 'm4', ...on }),
   ])
-  assert.deepEqual((await measure(root, { claude: home })).c.intervals.main, [[ms(2000), ms(2030)]])
+  // A long gap splits the running turn; the work before the gap still counts.
+  assert.deepEqual((await measure(root, { claude: home })).c.intervals.main, [[ms(150), ms(300)], [ms(2000), ms(2030)]])
+  // An out-of-scope turn_duration ends the running turn even within ten minutes.
+  write(path.join(claudeFolder(home, root), 's1.jsonl'), [
+    cl.assistant(150, { id: 'm1', ...on }),
+    cl.turn(160, 5000, off),
+    cl.assistant(300, { id: 'm2', ...on }),
+    cl.assistant(330, { id: 'm3', ...on }),
+  ])
+  assert.deepEqual((await measure(root, { claude: home })).c.intervals.main, [[ms(300), ms(330)]])
 })

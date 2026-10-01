@@ -474,3 +474,17 @@ test('a worktree outside the main work tree does not log to the main one (2026-1
   assert.equal(decision(hook.handle(pre(wt, 'gh issue close 1'))), 'deny')
   assert.deepEqual(guards(d, 7), [])
 })
+
+test('a folder link to a network path inside the gitdir is not followed (2026-10-02 re-review)', t => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const expected = hook.handle(pre(d, 'gh issue close 1'))
+  const bs = String.fromCharCode(92)
+  const target = bs + bs + 'devflow-no-such-host' + bs + 'share'
+  try { fs.symlinkSync(target, path.join(d, 'l'), 'dir') } catch { return t.skip('folder symlinks need privileges here') }
+  // The real target must not be needed: lstat of the link itself is local, and its text names a network path.
+  fs.writeFileSync(path.join(d, '.git'), 'gitdir: ' + path.join(d, 'l'))
+  assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
+  assert.equal(hook.localPath(path.join(d, 'l', 'HEAD')), false)
+  assert.equal(hook.localPath(path.join(d, '.devflow.json')), true)
+})

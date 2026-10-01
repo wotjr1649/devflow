@@ -512,8 +512,11 @@ const globToRegExp = g => new RegExp('^' + g.split('**').map(part => part.split(
 const matchesGlob = (file, glob) => (path.posix.matchesGlob ? path.posix.matchesGlob(file, glob) : globToRegExp(glob).test(file))
 
 // Paths relative to the devflow root, in forward slashes; files outside it are left out.
+// Git Bash and Cygwin write a drive path as /d/x or /cygdrive/d/x; on Windows that is the same file, so compare it as such.
+const nativePath = f => (process.platform === 'win32' ? f.replace(/^\/(?:cygdrive\/)?([a-zA-Z])(?=\/|$)/, '$1:') : f)
+
 function relativeTo(root, cwd, files) {
-  return files.map(f => path.relative(root, path.resolve(cwd, f)).split(path.sep).join('/')).filter(r => r && !r.startsWith('..'))
+  return files.map(f => path.relative(root, path.resolve(cwd, nativePath(f))).split(path.sep).join('/')).filter(r => r && !r.startsWith('..'))
 }
 
 // files => the first one under a .devflow.json protected glob, or null. Windows and macOS file systems ignore case,

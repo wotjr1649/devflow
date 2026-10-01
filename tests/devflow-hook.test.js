@@ -307,3 +307,13 @@ test('shell writes to protected paths are blocked, reads are not', () => {
     assert.equal(decision(run('rm _Ref/x')), 'deny')
   }
 })
+
+test('Git Bash drive paths reach the protected-path check on Windows', { skip: process.platform !== 'win32' }, () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const posix = '/' + d[0].toLowerCase() + d.slice(2).split(path.sep).join('/')
+  assert.equal(decision(hook.handle(pre(d, `rm ${posix}/_ref/x`))), 'deny')
+  assert.equal(decision(hook.handle(pre(d, `rm /cygdrive${posix}/_ref/x`))), 'deny')
+  assert.equal(decision(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: `${posix}/_ref/x` } }))), 'deny')
+  assert.equal(hook.handle(pre(d, `rm ${posix}/notes/x`)), '')
+})

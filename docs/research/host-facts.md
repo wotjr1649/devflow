@@ -53,6 +53,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   `background`, `omitClaudeMd`, `isolation: worktree`, `color`
 - 무시하는 필드: `permissionMode`, `hooks`, `mcpServers`, `initialPrompt`
 - `agents/review/x.md`처럼 하위 폴더에 두면 이름이 `<plugin>:review:x`가 된다.
+- 호출의 `subagent_type`과 실행 기록의 `agentType`도 `devflow:implementer`처럼 플러그인 이름이 붙는다. 에이전트 종류로
+  거르는 다른 플러그인의 훅(예: ponytail의 `PONYTAIL_SUBAGENT_MATCHER`)도 이 이름을 본다(2026-10-01).
 
 **서브에이전트**
 - `AskUserQuestion`은 모든 서브에이전트에서 제거된다.
@@ -152,7 +154,10 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - 작업 폴더의 마켓플레이스는 자동으로 잡히지 않는다. `codex plugin marketplace list`에 나오려면
   `codex plugin marketplace add <root>`로 등록해야 한다(2026-10-01).
 - 플러그인에 넣을 수 있는 것은 스킬, MCP 서버, 브라우저 확장, 훅이다. 문서에 에이전트 항목은 없다.
-- CLI에서는 `/plugins`로 설치하고, 새 세션을 시작해야 반영된다.
+- CLI에서는 `/plugins`로 설치하고, 새 세션을 시작해야 반영된다. 셸에서는 `codex plugin add <plugin>@<marketplace>`로도
+  설치된다(0.159.3). worktree를 마켓플레이스로 등록하면 캐시의 `.git`은 그 worktree의 gitdir을 가리키는 파일이다.
+- 훅 신뢰는 `config.toml`의 `[hooks.state."<plugin>@<marketplace>:<훅 파일>:<이벤트>:<i>:<j>"]`에 `trusted_hash`로
+  남는다(해시가 바뀐 훅을 다시 묻는지는 확인 전). `--dangerously-bypass-hook-trust`는 그 실행에서만 신뢰 없이 훅을 돌린다.
 
 **훅**
 - 이벤트: SessionStart, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit,

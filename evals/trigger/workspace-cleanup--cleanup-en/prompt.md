@@ -1,5 +1,5 @@
 ---
-max_turns: 4
+max_turns: 6
 timeout_seconds: 180
 allowed_tools: [Skill, Read, Glob, Grep]
 tags: [trigger, should, workspace-cleanup]

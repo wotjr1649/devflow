@@ -22,8 +22,10 @@ filters what gets published (local paths, secrets, hidden characters, length) an
 
 Issue writes happen at stage boundaries, decisions and blockers: the state block (15 lines) and checkpoints in the
 template of [documents](../../docs/specs/documents.md#issue-템플릿). Progress inside a stage goes to the ledger:
-`task {current, total}`, `path`, `runMode`, `base`, `lastCommit`, `counts {"<task>": {fix, promote, continue}}`,
-`notes` (one line per fix, promotion or path change, with its reason), open `decisions`, `followups`.
+`stage`, `task {current, total}`, `path`, `runMode`, `base`, `lastCommit`, `counts {"<task>": {fix, promote, continue}}`,
+`notes` (one line per fix, promotion or path change, with its reason), open `decisions`, `blocked` (the reason),
+`running` (background subagents), `followups`. The Stop hook reads `stage`, `task`, `decisions`, `blocked` and
+`running` to decide whether unattended work continues, so keep them current.
 
 ## Stage and path
 

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { execFileSync } = require('child_process')
+const { execFileSync, spawnSync } = require('child_process')
 const hook = require('../hooks/devflow-hook')
 
 function dir(devflow) {
@@ -129,7 +129,8 @@ test('the PreToolUse matcher covers shells and GitHub MCP tools only', () => {
   const { matcher, hooks } = require('../hooks/hooks.json').hooks.PreToolUse[0]
   const re = new RegExp(matcher)
   for (const t of ['Bash', 'PowerShell', 'mcp__github__issue_write', 'mcp__claude_ai_GitHub__add_issue_comment']) assert.ok(re.test(t), t)
-  for (const t of ['BashOutput', 'Edit', 'mcp__memory__create_entities']) assert.ok(!re.test(t), t)
+  for (const t of ['Edit', 'Write', 'NotebookEdit', 'apply_patch']) assert.ok(re.test(t), t)
+  for (const t of ['BashOutput', 'Read', 'MultiEditor', 'mcp__memory__create_entities']) assert.ok(!re.test(t), t)
   assert.ok(hooks[0].timeout * 1000 > 3000 + 5000, 'the hook outlives the alias lookup with room for node to start')
 })
 
@@ -213,4 +214,67 @@ test('the hooks.json command runs the hook through a shell', () => {
     windowsVerbatimArguments: win,
   })
   assert.equal(decision(out.trim()), 'deny')
+})
+
+const event = (name, cwd, extra = {}) => JSON.stringify({ hook_event_name: name, cwd, ...extra })
+
+test('PreToolUse blocks edits to protected paths and nothing else', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const edit = (tool, input, cwd = d) => hook.handle(event('PreToolUse', cwd, { tool_name: tool, tool_input: input }))
+  assert.equal(decision(edit('Edit', { file_path: path.join(d, '_ref', 'x.md') })), 'deny')
+  assert.equal(decision(edit('NotebookEdit', { notebook_path: path.join(d, '_ref', 'n.ipynb') })), 'deny')
+  const patch = '*** Begin Patch\n*** Update File: _ref/a.md\n@@\n-x\n+y\n*** End Patch\n'
+  assert.equal(decision(edit('apply_patch', { command: patch })), 'deny')
+  assert.equal(decision(edit('apply_patch', { command: patch }, path.join(d, 'sub'))), '', 'relative to the sub folder it is not _ref')
+  assert.equal(edit('Write', { file_path: path.join(d, 'src', 'x.md') }), '')
+  const outside = dir(false)
+  assert.equal(edit('Edit', { file_path: path.join(outside, '_ref', 'x.md') }, outside), '')
+  fs.writeFileSync(path.join(d, '.devflow.json'), '{ broken')
+  assert.equal(decision(edit('Edit', { file_path: path.join(d, 'a.md') })), 'deny', 'an unreadable profile fails closed')
+})
+
+test('PostToolUse reports doctor findings for an edited instruction file', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-audit-'))
+  spawnSync('git', ['-C', d, 'init', '-q'])
+  fs.writeFileSync(path.join(d, '.devflow.json'), '{}')
+  fs.writeFileSync(path.join(d, 'AGENTS.md'), '# demo\n\n## Commands\n- test\n')
+  fs.writeFileSync(path.join(d, 'notes.txt'), 'x\n')
+  const post = file => hook.handle(event('PostToolUse', d, { tool_name: 'Write', tool_input: { file_path: path.join(d, file) } }))
+  const out = JSON.parse(post('AGENTS.md')).hookSpecificOutput
+  assert.equal(out.hookEventName, 'PostToolUse')
+  assert.match(out.additionalContext, /FAIL agents-md: no "## Boundaries" section/)
+  assert.equal(post('notes.txt'), '')
+  assert.equal(hook.handle(event('PostToolUse', dir(false), { tool_name: 'Write', tool_input: { file_path: 'AGENTS.md' } })), '')
+})
+
+test('Stop continues open unattended work at most twice per task', () => {
+  const root = dir(true)
+  const ledgerFile = path.join(root, '.work/devflow/i1/ledger.json')
+  const setLedger = l => {
+    fs.mkdirSync(path.dirname(ledgerFile), { recursive: true })
+    fs.writeFileSync(ledgerFile, typeof l === 'string' ? l : JSON.stringify(l))
+  }
+  const env = { run: (cmd, args) => {
+    const a = args.join(' ')
+    const out = { 'rev-parse --show-toplevel': root, 'branch --show-current': 'feat/1-x', 'rev-parse --short HEAD': 'abc1234',
+      'remote get-url origin': 'https://github.com/o/r.git' }[a]
+    return out ? { code: 0, stdout: out + '\n', stderr: '' } : { code: 1, stdout: '', stderr: '' }
+  } }
+  const stop = () => hook.handle(event('Stop', root, { stop_hook_active: false }), env)
+  const open = { mode: 'autonomous', stage: 'build', task: { current: 1, total: 2 } }
+  setLedger(open)
+  assert.equal(JSON.parse(stop()).decision, 'block')
+  assert.match(JSON.parse(stop()).reason, /task 1\/2 is open \(build\)/)
+  assert.equal(stop(), '', 'the third stop in the same task is allowed')
+  assert.equal(JSON.parse(fs.readFileSync(ledgerFile, 'utf8')).counts['1'].continue, 2)
+  for (const l of [{ ...open, mode: 'interactive' }, { ...open, decisions: ['which API?'] }, { ...open, blocked: 'CI down' },
+    { ...open, running: ['reviewer'] }, { ...open, stage: 'review' }, { ...open, task: { current: 3, total: 2 } }]) {
+    setLedger(l)
+    assert.equal(stop(), '', JSON.stringify(l))
+  }
+  setLedger({ ...open, mode: 'interactive', runMode: 'M2' })
+  assert.equal(JSON.parse(stop()).decision, 'block', 'M2 delegation counts as unattended')
+  setLedger('{ broken')
+  assert.equal(stop(), '', 'an unreadable ledger lets the session stop')
 })

@@ -453,11 +453,72 @@ function mcpIssueWrite(tool) {
   return /^(get|list|search)_|_read$/.test(name) ? null : `GitHub MCP Issue write (${name})`
 }
 
-function isDevflowRepo(dir) {
+// The nearest folder at or above dir with a .devflow.json, or null.
+function devflowRoot(dir) {
   for (let d = path.resolve(dir); ; d = path.dirname(d)) {
-    if (fs.existsSync(path.join(d, '.devflow.json'))) return true
-    if (path.dirname(d) === d) return false
+    if (fs.existsSync(path.join(d, '.devflow.json'))) return d
+    if (path.dirname(d) === d) return null
   }
+}
+
+const EDIT_TOOLS = /^(Edit|Write|NotebookEdit|apply_patch)$/
+const INSTRUCTION_FILE = /(^|\/)(AGENTS\.md|CLAUDE\.md|CLAUDE\.local\.md|SKILL\.md)$|^agents\/[^/]+\.md$/
+
+// Files an edit tool touches: Claude's file_path or notebook_path, or the file headers of a Codex apply_patch.
+function editedFiles(toolInput) {
+  const t = toolInput || {}
+  if (t.file_path || t.notebook_path) return [t.file_path || t.notebook_path]
+  const patch = Array.isArray(t.command) ? t.command.join('\n') : String(t.command || t.patch || t.input || '')
+  return [...patch.matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/gm)].map(m => m[1].trim())
+}
+
+const globToRegExp = g => new RegExp('^' + g.split('**').map(part => part.split('*').map(s => s.replace(/[.+^${}()|[\]\\?]/g, '\\$&')).join('[^/]*')).join('.*') + '$')
+const matchesGlob = (file, glob) => (path.posix.matchesGlob ? path.posix.matchesGlob(file, glob) : globToRegExp(glob).test(file))
+
+// Paths relative to the devflow root, in forward slashes; files outside it are left out.
+function relativeTo(root, cwd, files) {
+  return files.map(f => path.relative(root, path.resolve(cwd, f)).split(path.sep).join('/')).filter(r => r && !r.startsWith('..'))
+}
+
+function protectedEdit(root, cwd, toolInput) {
+  const globs = JSON.parse(fs.readFileSync(path.join(root, '.devflow.json'), 'utf8')).protected || []
+  return relativeTo(root, cwd, editedFiles(toolInput)).find(r => globs.some(g => matchesGlob(r, g))) || null
+}
+
+// After an instruction file changes, report what doctor finds about it; nothing when it finds nothing.
+function auditEdit(root, cwd, toolInput) {
+  const edited = relativeTo(root, cwd, editedFiles(toolInput)).filter(r => INSTRUCTION_FILE.test(r))
+  if (!edited.length) return ''
+  const { doctor } = require('../bin/devflow-doctor')
+  const lines = doctor(root).lines.filter(l => /^(FAIL|WARN) /.test(l) &&
+    (edited.some(r => l.includes(r)) || /^(FAIL|WARN) (agents-md|instructions):/.test(l)))
+  if (!lines.length) return ''
+  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse',
+    additionalContext: `devflow-doctor after editing ${edited.join(', ')}:\n${lines.join('\n')}` } })
+}
+
+// Autonomous work continues while a task is open and nothing waits on a person; at most twice per task.
+const MAX_CONTINUES = 2
+function continueWork(env, cwd) {
+  const ctx = state.repoContext(env, cwd)
+  if (!ctx || !ctx.issue) return ''
+  const ledger = state.readLedger(ctx.root, ctx.issue)
+  if (!ledger) return ''
+  const unattended = ledger.mode === 'autonomous' || ['M2', 'M3'].includes(ledger.runMode)
+  const task = ledger.task || {}
+  const open = ['build', 'verify'].includes(ledger.stage) && task.current <= task.total
+  const waiting = ledger.blocked || (ledger.decisions || []).length || (ledger.running || []).length
+  if (!unattended || !open || waiting) return ''
+  const key = String(task.current)
+  const counts = { ...(ledger.counts || {}) }
+  const mine = { ...(counts[key] || {}) }
+  if ((mine.continue || 0) >= MAX_CONTINUES) return ''
+  mine.continue = (mine.continue || 0) + 1
+  counts[key] = mine
+  state.writeLedger(ctx.root, ctx.issue, { ...ledger, counts })
+  return JSON.stringify({ decision: 'block', reason: `devflow: task ${task.current}/${task.total} is open (${ledger.stage}) in ` +
+    `${ledger.mode === 'autonomous' ? 'autonomous mode' : ledger.runMode}. Continue it: finish the stage, commit, update the ledger. ` +
+    `Stop only for a blocker or a decision for the user, recorded in the ledger as blocked or decisions.` })
 }
 
 const deny = reason => JSON.stringify({
@@ -482,15 +543,35 @@ function handle(raw, env = state.realEnv) {
     }
     return card ? JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: card } }) : ''
   }
+  if (input.hook_event_name === 'PostToolUse') {
+    try {
+      const root = devflowRoot(cwd)
+      return root && EDIT_TOOLS.test(String(input.tool_name || '')) ? auditEdit(root, cwd, input.tool_input) : ''
+    } catch {
+      return '' // a notice, not a guard: a failed audit stays silent rather than blocking the session
+    }
+  }
+  if (input.hook_event_name === 'Stop') {
+    try {
+      return continueWork(env, cwd)
+    } catch {
+      return '' // blocking Stop on an error would loop
+    }
+  }
   if (input.hook_event_name === 'PreToolUse') {
     try {
-      if (!isDevflowRepo(cwd)) return ''
+      const root = devflowRoot(cwd)
+      if (!root) return ''
       const tool = String(input.tool_name || '')
+      if (EDIT_TOOLS.test(tool)) {
+        const hit = protectedEdit(root, cwd, input.tool_input)
+        return hit ? deny(`devflow: ${hit} is a protected path in .devflow.json; leave it as it is.`) : ''
+      }
       const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool) : issueWrite(input.tool_input && input.tool_input.command, { cwd, env })
       return kind ? deny(`devflow: Issue writes go through devflow-state (state, comment, check, close, reopen, create), which filters ` +
         `paths, secrets and length before posting. Blocked: ${kind}.`) : ''
     } catch (e) {
-      return deny(`devflow: the Issue write check failed (${e.message}), so the command was blocked.`)
+      return deny(`devflow: the check failed (${e.message}), so the tool call was blocked.`)
     }
   }
   return ''

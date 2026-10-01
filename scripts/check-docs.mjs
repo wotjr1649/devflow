@@ -16,7 +16,7 @@ const anchors = (f) => new Set(read(f).split('\n').filter((l) => /^#{1,6} /.test
 // Rough token estimate: a Hangul syllable ~1 token, other characters ~4 per token.
 const tokens = (s) => { const h = (s.match(/[가-힣]/g) || []).length; return Math.round(h + (s.length - h) / 4); };
 const budgets = [[/^AGENTS\.md$/, 1000], [/^docs\/specs\/.+\.md$/, 5000], [/(^|\/)SKILL\.md$/, 5000]];
-const localPath = /\b[A-Za-z]:\\|\/c\/Users\/|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//;
+const localPath = /\b[A-Za-z]:[\\/]|(?:^|[\s'"`(=])\/[a-z]\/[^\s/]+\/|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//;
 
 for (const f of files) {
   if (f === 'LICENSE' || /\.(png|jpe?g|gif|ico|zip|gz)$/.test(f)) continue;

@@ -106,7 +106,8 @@ Generated files and anything CI already enforces.
 
 ## .devflow.json (계획)
 
-doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다.
+doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다. 이 파일이 있는 저장소에서만 재개 카드와 Issue 훅이
+동작한다.
 
 ```json
 {
@@ -131,7 +132,8 @@ doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다.
 | .gitignore | 관리 블록 내용, 비공개 경로가 추적되는지 |
 | .gitattributes | 기본 줄, `git ls-files --eol` 위반, 바이너리 표시 |
 | AGENTS.md | 길이, 필수 절, 링크 실존, "편집할 때마다 읽어라" 같은 고정 읽기 목록, 강조어 남용, 날짜·진행 상태 |
+| 지침을 끄는 파일 | `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`가 저장소나 상위 폴더에 있는지. git이 무시하는 파일도 본다 |
 | Issue | 본문 절, 현재 상태 블록 길이 (`gh` 조회) |
 | 로컬 문서 | 크기 예산, 이름 규칙 |
 
-같은 스크립트를 스킬(분석), 훅(편집 직후 알림), CI(실패 처리)가 함께 쓴다.
+같은 스크립트를 스킬(분석), 훅(편집 직후 알림), CI나 git pre-push 훅(실패 처리)이 함께 쓴다.

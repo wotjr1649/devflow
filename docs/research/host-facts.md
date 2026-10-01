@@ -71,9 +71,14 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있
 - 중간에 사용자 입력을 받지 않는다. 동시 에이전트는 기본 16개까지다.
 
 **훅**
-- PreToolUse 명령이 exit code 2로 끝나면 동작이 막히고 stderr가 Claude에게 전달된다.
-- 맥락을 넣을 때는 `hookSpecificOutput.additionalContext`를 쓴다.
-- Stop 훅으로 종료를 막고 계속시키는 출력 형식은 구현 전에 hooks 문서에서 확인한다.
+- PreToolUse 명령이 exit code 2로 끝나면 동작이 막히고 stderr가 Claude에게 전달된다. 다른 non-zero exit와 시간
+  초과(기본 600초)는 막지 않고 그대로 진행한다.
+- 맥락을 넣을 때는 `hookSpecificOutput.additionalContext`를 쓴다. SessionStart의 값은 문자열마다 10,000자까지이고,
+  넘으면 파일로 저장된 뒤 경로와 앞 2,000자만 들어간다.
+- Stop과 SubagentStop은 decision `block`과 reason(또는 exit 2)으로 종료를 막는다. 입력의 `stop_hook_active`로 반복을
+  막는다. JSON에서 decision이 놓이는 위치는 구현할 때 문서 예제로 확인한다.
+- Windows에서 command 훅은 Git Bash가 있으면 Bash, 없으면 PowerShell로 돈다. `shell` 필드로 고를 수 있고, 두
+  플랫폼에서 같이 쓰는 훅은 `args`를 쓰는 exec form을 권한다.
 
 ## Codex
 
@@ -110,7 +115,11 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. 버전이 오르면 바뀔 수 있
 - 커스텀 에이전트는 `~/.codex/agents/*.toml` 또는 `.codex/agents/*.toml`에 둔다. 필수 항목은 `name`, `description`,
   `developer_instructions`이고, `model`, `model_reasoning_effort`, `sandbox_mode`도 쓸 수 있다.
 - 서브에이전트는 부모의 sandbox를 물려받는다.
-- `spawn_agent`로는 커스텀 에이전트를 이름으로 고를 수 없다는 이슈가 보고되어 있다(openai/codex#33244).
+- 띄울 때 지정한 값이 `agents.default_subagent_model`과 `agents.default_subagent_reasoning_effort`보다 우선한다.
+  동시 스레드 상한은 `agents.max_concurrent_threads_per_session`이다.
+- 문서는 커스텀 에이전트를 이름으로 고를 수 있고, 내장 에이전트와 이름이 같으면 커스텀이 우선한다고 한다. 반대로
+  `spawn_agent`로는 고를 수 없다는 이슈(openai/codex#33244)도 있어서 실제 동작은 확인이 필요하다.
+- 실행 중인 서브에이전트를 조정, 중지, 닫을 수 있다. 끝난 에이전트에 후속 작업을 보내는 방법은 문서에 자세히 없다.
 
 ## 참고 구현
 

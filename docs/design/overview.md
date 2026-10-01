@@ -8,8 +8,8 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 
 ## 원칙
 
-1. **기억은 Issue에.** 상태는 Issue 본문의 현재 상태 블록과 체크포인트 댓글에 둔다. compact나 세션 교체 뒤에도
-   재개 카드 하나로 이어 간다. 근거: [ADR-0003](decisions/ADR-0003-issue-as-state.md)
+1. **기억은 Issue에.** 상태는 Issue 본문의 현재 상태 블록과 체크포인트 댓글에 두고, 작업 단위의 진행은 로컬 장부에
+   둔다. compact나 세션 교체 뒤에도 재개 카드 하나로 이어 간다. 근거: [ADR-0003](decisions/ADR-0003-issue-as-state.md)
 2. **결정과 쓰기는 한 곳, 판단 보조는 여러 곳.** 메인이 쓰고, 서브에이전트는 맥락 보호와 새 시각의 검증을 맡는다.
    위임은 증거가 있을 때만 넓힌다. 근거: [ADR-0005](decisions/ADR-0005-main-first-execution.md)
 3. **규칙은 계층으로.** 스킬은 안내하고, 스크립트는 분석하고, 훅은 그 순간 막고, CI는 마지막에 막고, eval은
@@ -25,7 +25,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 | 프로젝트 AGENTS.md | 사실·명령·문서 지도·경계 | CLAUDE.md가 없으면 직접 로드 | 로드 | 안내 |
 | 스킬 | 절차 | 플러그인 `skills/` | 같은 폴더 | 안내 |
 | 에이전트 | 격리된 작업, 도구 제한 | 플러그인 `agents/` | 내장 explorer·worker | 도구 제한은 강제 |
-| 훅 | 행동 시점 게이트 | `hooks/hooks.json` | 같은 파일 | 결정적 (Codex는 가드레일 수준) |
+| 훅 | 행동 시점 게이트 | `hooks/hooks.json` | 같은 파일 | 가드레일 (오류·시간 초과면 통과) |
 | 스크립트 | 검사·분석 | `bin/` | 스킬이 경로로 실행 | 결정적 |
 | git hook·CI | 최종 관문 | 공통 | 공통 | 결정적 |
 | eval | 스킬·훅·지침의 회귀 | `claude plugin eval`, skill-creator | 같은 프롬프트 세트 | 측정 |
@@ -51,8 +51,10 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 - **Claude 에이전트**: explorer, runner, diagnostician, implementer, implementer-deep, verifier, architect,
   reviewer, task-reviewer, security-reviewer. 모델, effort, 승격: [orchestration](../specs/orchestration.md#모델과-effort)
 - **Claude Workflows**: 대규모 기계적 변경과 감사(M4)
-- **훅**: 재개 카드(SessionStart), 보호 경로 차단(PreToolUse), 자율 모드 전용 계속(Stop), 지침 파일 편집 시 감사
-- **스크립트**: `devflow-doctor`(구조·문서 감사), `review-package`(BASE..HEAD diff를 파일로)
+- **훅**: 재개 카드(SessionStart), Issue 쓰기 차단과 보호 경로 차단(PreToolUse), 자율 모드 전용 계속(Stop),
+  지침 파일 편집 시 감사, 공개 전 관문(git pre-push)
+- **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드), `devflow-doctor`(구조·문서 감사),
+  `review-package`(BASE..HEAD diff를 파일로)
 - **템플릿과 eval**: Issue intent, REVIEW.md, AGENTS.md, ignore·attributes 블록, 트리거·결과 eval
 
 배치(저장소 루트 = 플러그인 루트): [ADR-0002](decisions/ADR-0002-repository-root-is-plugin-root.md).

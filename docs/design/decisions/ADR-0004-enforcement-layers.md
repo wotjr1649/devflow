@@ -14,11 +14,16 @@
 - 판단이 필요한 품질은 감사와 eval로 다룬다. 강제하지 않는다.
 - 훅:
   - 재개 카드 (SessionStart)
+  - `devflow-state`를 거치지 않는 Issue 쓰기 차단 (PreToolUse)
   - 보호 경로 차단 (PreToolUse)
   - 지침 파일 편집 시 감사 (PostToolUse)
   - 자율 모드 전용 계속 (Stop)
   - 수정 작업 중 테스트 파일 편집 차단 (PreToolUse, 프로젝트가 원할 때만)
 - 자율 계속 훅은 자율 모드나 M2·M3 위임 중에만 켜고, 같은 작업에 최대 2회만 작동한다.
+- 훅은 가드레일이다. Claude Code의 PreToolUse는 exit 2나 거부 결정일 때만 막고, 다른 오류와 시간 초과에는 그대로
+  진행한다. 그래서 막는 훅은 예외를 모두 잡아 거부로 끝내고, `node`를 exec form(`args`)으로 부르며, 정상·거부·오류
+  경우를 `node:test` 고정 입력으로 검사한다.
+- 공개되기 전 마지막 관문은 git pre-push 훅이다. check-docs, doctor, 테스트를 돌린다. 설치는 소유자 지시로 한다.
 - 스킬, 훅, AGENTS.md가 바뀌면 트리거 eval과 결과 eval을 돌린다.
 
 ## 결과

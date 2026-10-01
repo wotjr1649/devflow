@@ -69,7 +69,7 @@ function owner(p, worktrees) {
 
 // The branch HEAD of work tree w was on at atMs. Only "checkout: moving from A to B" moves HEAD between branches;
 // before the first one HEAD was on its A, and with none it is on the current branch.
-function branchAt(w, atMs) {
+function switchesOf(w) {
   if (!w.switches) {
     w.switches = []
     for (const l of fs.readFileSync(w.reflog, 'utf8').split('\n')) {
@@ -77,7 +77,11 @@ function branchAt(w, atMs) {
       if (m) w.switches.push({ at: Number(m[1]) * 1000, from: m[2], to: m[3] })
     }
   }
-  if (!w.switches.length) return w.branch
+  return w.switches
+}
+
+function branchAt(w, atMs) {
+  if (!switchesOf(w).length) return w.branch
   let b = w.switches[0].from
   for (const s of w.switches) { if (s.at > atMs) break; b = s.to }
   return b
@@ -140,45 +144,109 @@ function spans(times) {
   return out
 }
 
+// The first time HEAD moved onto the Issue branch in any work tree with a reflog, or null.
+function firstCheckout(ctx, issue) {
+  let first = null
+  for (const w of ctx.worktrees) {
+    if (!w.reflog) continue
+    for (const x of switchesOf(w)) if (isIssue(x.to, issue) && (first === null || x.at < first)) first = x.at
+  }
+  return first
+}
+
+const mtimeOf = p => { try { return fs.lstatSync(p).mtimeMs } catch { return 0 } }
+
 async function claude({ ctx, dir, issue, until }) {
   const res = hostResult()
   const limit = limitOf(until)
+  const encode = p => { const n = path.resolve(p).replace(/[^a-zA-Z0-9]/g, '-'); return WIN ? n.toLowerCase() : n }
   // A project folder is named after the path the session started in, every non-alphanumeric character as "-".
-  const names = ctx.worktrees.map(w => path.resolve(w.path).replace(/[^a-zA-Z0-9]/g, '-')).map(n => (WIN ? n.toLowerCase() : n))
+  const names = ctx.worktrees.map(w => encode(w.path))
+  // A session started in a folder above the repository keeps its records there. Exact names only: a prefix of an
+  // ancestor's name would match every project under it.
+  const ancestors = new Set()
+  for (const w of ctx.worktrees) {
+    for (let d = path.dirname(path.resolve(w.path)); ; d = path.dirname(d)) {
+      ancestors.add(encode(d))
+      if (path.dirname(d) === d) break
+    }
+  }
   const projects = path.join(dir, 'projects')
   if (!isDir(projects)) return res
+  const since = firstCheckout(ctx, issue)
   const seen = { main: new Map(), sub: new Map() }
   const tools = { main: new Set(), sub: new Set() }
   for (const f of entries(projects)) {
     const name = WIN ? f.name.toLowerCase() : f.name
-    if (!f.isDirectory() || !names.some(n => name === n || name.startsWith(n + '-'))) continue
+    if (!f.isDirectory()) continue
+    const own = names.some(n => name === n || name.startsWith(n + '-'))
+    if (!own && !ancestors.has(name)) continue
+    // In a folder found only as an ancestor, gitBranch is the branch of the folder the session started in, so the
+    // branch comes from the reflog of the work tree the record's cwd is in, as for Codex. Its files older than the
+    // Issue branch's first checkout cannot hold such records and are not read.
+    const byReflog = !own
+    const inScope = (rec, t) => {
+      const w = owner(rec.cwd, ctx.worktrees)
+      if (!w) return false
+      if (!byReflog) return isIssue(rec.gitBranch, issue)
+      return !!w.reflog && isIssue(branchAt(w, t), issue)
+    }
+    const fresh = file => !byReflog || since === null || mtimeOf(file) >= since
     const base = path.join(projects, f.name)
-    const files = []
+    const sessions = new Map()
+    const session = id => { if (!sessions.has(id)) sessions.set(id, { main: null, subs: [] }); return sessions.get(id) }
     for (const e of entries(base)) {
-      if (e.isFile() && e.name.endsWith('.jsonl')) files.push({ file: path.join(base, e.name), role: 'main' })
+      if (e.isFile() && e.name.endsWith('.jsonl')) session(e.name.slice(0, -6)).main = path.join(base, e.name)
       else if (e.isDirectory() && isDir(path.join(base, e.name, 'subagents'))) {
-        for (const s of entries(path.join(base, e.name, 'subagents'))) {
-          if (s.isFile() && /^agent-.*\.jsonl$/.test(s.name)) files.push({ file: path.join(base, e.name, 'subagents', s.name), role: 'sub' })
+        for (const x of entries(path.join(base, e.name, 'subagents'))) {
+          if (x.isFile() && /^agent-.*\.jsonl$/.test(x.name)) session(e.name).subs.push(path.join(base, e.name, 'subagents', x.name))
         }
       }
     }
-    for (const { file, role } of files) {
-      const times = []
-      addLines(res, await readJsonl(file, rec => {
-        const t = timeOf(rec)
-        if (t === null || t > limit || !owner(rec.cwd, ctx.worktrees)) return
-        if (!isIssue(rec.gitBranch, issue)) { if (rec.type === 'assistant') res.skipped.outsideScope++; return }
-        const m = rec.message
-        if (rec.type === 'assistant' && m && m.id && m.usage && m.model !== '<synthetic>') {
-          seen[role].set(m.id, m)
-          for (const c of Array.isArray(m.content) ? m.content : []) if (c && c.type === 'tool_use' && c.id) tools[role].add(c.id)
-        } else if (role === 'main' && rec.type === 'system' && rec.subtype === 'turn_duration' && tokens(rec.durationMs)) {
-          res.intervals.main.push([t - tokens(rec.durationMs), t])
-        } else if (role === 'main') return
-        if (role === 'sub') times.push(t)
-        res.last = Math.max(res.last, t)
-      }))
-      if (times.length) { res.sub.subagents++; res.intervals.sub.push(...spans(times)) }
+    const count = (role, rec, t) => {
+      const m = rec.message
+      if (rec.type === 'assistant' && m && m.id && m.usage && m.model !== '<synthetic>') {
+        seen[role].set(m.id, m)
+        for (const c of Array.isArray(m.content) ? m.content : []) if (c && c.type === 'tool_use' && c.id) tools[role].add(c.id)
+      } else if (role === 'main' && rec.type === 'system' && rec.subtype === 'turn_duration' && tokens(rec.durationMs)) {
+        res.intervals.main.push([t - tokens(rec.durationMs), t])
+      } else if (role === 'main') return
+      res.last = Math.max(res.last, t)
+    }
+    const outside = rec => { if (rec.type === 'assistant' && owner(rec.cwd, ctx.worktrees)) res.skipped.outsideScope++ }
+    for (const { main, subs } of sessions.values()) {
+      // The parent's timeline: every timed record, in or out of scope, so a subagent span can ask where the parent was.
+      const timeline = []
+      if (main && fresh(main)) {
+        addLines(res, await readJsonl(main, rec => {
+          const t = timeOf(rec)
+          if (t === null || t > limit) return
+          const ok = inScope(rec, t)
+          timeline.push([t, ok])
+          if (ok) count('main', rec, t)
+          else outside(rec)
+        }))
+      }
+      const parentAt = t => { let ok = false; for (const [pt, pok] of timeline) { if (pt > t) break; ok = pok } return ok }
+      for (const file of subs) {
+        if (!fresh(file)) continue
+        const recs = []
+        addLines(res, await readJsonl(file, rec => {
+          const t = timeOf(rec)
+          if (t !== null && t <= limit) recs.push([t, rec])
+        }))
+        // A span counts whole when the parent was on the Issue branch just before it began; otherwise each record
+        // needs its own branch and cwd (an M3 worktree subagent works on its own branch).
+        const times = []
+        for (const [a, b] of spans(recs.map(([t]) => t))) {
+          const parentOk = parentAt(a)
+          for (const [t, rec] of recs) {
+            if (t < a || t > b) continue
+            if (parentOk || inScope(rec, t)) { count('sub', rec, t); times.push(t) } else outside(rec)
+          }
+        }
+        if (times.length) { res.sub.subagents++; res.intervals.sub.push(...spans(times)) }
+      }
     }
   }
   for (const role of ['main', 'sub']) {
@@ -299,6 +367,26 @@ function readLedger(ctx, issue) {
   return null
 }
 
+// Times of the guard blocks logged for the Issue (bin/devflow-state logGuard), from the current and the main work tree.
+function readGuardEvents(ctx, issue) {
+  const times = []
+  const done = new Set()
+  for (const root of [ctx.root, ctx.mainRoot]) {
+    const p = path.join(root, '.work', 'devflow', `i${issue}`, 'guard-events.jsonl')
+    let real
+    try {
+      if (!fs.lstatSync(p).isFile()) continue
+      real = norm(fs.realpathSync.native(p))
+    } catch { continue }
+    if (done.has(real)) continue
+    done.add(real)
+    for (const l of fs.readFileSync(p, 'utf8').split('\n')) {
+      try { const e = JSON.parse(l); if (Number.isInteger(e.at)) times.push(e.at) } catch {}
+    }
+  }
+  return times
+}
+
 function unionMs(list) {
   let total = 0
   let cur = null
@@ -310,7 +398,7 @@ function unionMs(list) {
 }
 const minutes = list => Math.round(unionMs(list) / 60000)
 
-function report({ claude: c, codex: x, ledger, issue, until }) {
+function report({ claude: c, codex: x, ledger, issue, until, guardTimes = [] }) {
   const out = (b, list) => ({ ...Object.fromEntries(KEYS.map(k => [k, b[k]])), activeMinutes: minutes(list), ...('subagents' in b ? { subagents: b.subagents } : {}) })
   const host = h => ({ main: out(h.main, h.intervals.main), sub: out(h.sub, h.intervals.sub) })
   const m = ledger && ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}
@@ -323,11 +411,13 @@ function report({ claude: c, codex: x, ledger, issue, until }) {
   for (const [k, v] of Object.entries(x.models)) models[k] = (models[k] || 0) + v
   const skipped = Object.fromEntries(Object.keys(c.skipped).map(k => [k, c.skipped[k] + x.skipped[k]]))
   const last = Math.max(c.last, x.last)
+  const end = until || Math.floor((last || Date.now()) / 1000)
   return {
-    schema: 1, issue, until: until || Math.floor((last || Date.now()) / 1000),
+    schema: 2, issue, until: end,
     activeMinutes: minutes([...c.intervals.main, ...c.intervals.sub, ...x.intervals.main, ...x.intervals.sub]),
     claude: host(c), codex: host(x), models,
-    manual: { interventions: nat(m.interventions), filterFalsePositives: nat(m.filterFalsePositives), counts, eval: { passed: nat(ev.passed), total: nat(ev.total) } },
+    manual: { interventions: nat(m.interventions), filterFalsePositives: nat(m.filterFalsePositives),
+      guardBlocks: guardTimes.filter(t => t <= limitOf(end)).length, counts, eval: { passed: nat(ev.passed), total: nat(ev.total) } },
     skipped,
   }
 }
@@ -335,9 +425,10 @@ function report({ claude: c, codex: x, ledger, issue, until }) {
 function line(r) {
   const blocks = [r.claude.main, r.claude.sub, r.codex.main, r.codex.sub]
   const sum = k => blocks.reduce((a, b) => a + (b[k] || 0), 0)
-  return `- 측정(v1): calls ${sum('calls')}, inputUncached ${sum('inputUncached')}, cacheRead ${sum('cacheRead')}, ` +
+  return `- 측정(v2): calls ${sum('calls')}, inputUncached ${sum('inputUncached')}, cacheRead ${sum('cacheRead')}, ` +
     `cacheWrite ${sum('cacheWrite')}, output ${sum('output')}, tools ${sum('tools')}, subagents ${sum('subagents')}, ` +
-    `activeMinutes ${r.activeMinutes}, interventions ${r.manual.interventions}, filterFalsePositives ${r.manual.filterFalsePositives}`
+    `activeMinutes ${r.activeMinutes}, interventions ${r.manual.interventions}, filterFalsePositives ${r.manual.filterFalsePositives}, ` +
+    `guardBlocks ${r.manual.guardBlocks}`
 }
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 1 }
@@ -363,7 +454,7 @@ async function main(argv) {
   const home = os.homedir()
   const c = await claude({ ctx, dir: opt['--claude-dir'] || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), issue, until })
   const x = await codex({ ctx, dir: opt['--codex-dir'] || process.env.CODEX_HOME || path.join(home, '.codex'), issue, until })
-  const r = report({ claude: c, codex: x, ledger: readLedger(ctx, issue), issue, until })
+  const r = report({ claude: c, codex: x, ledger: readLedger(ctx, issue), issue, until, guardTimes: readGuardEvents(ctx, issue) })
   process.stdout.write((asLine ? line(r) : JSON.stringify(r, null, 2)) + '\n')
   return 0
 }
@@ -376,4 +467,4 @@ if (require.main === module) {
   })
 }
 
-module.exports = { context, owner, branchAt, readJsonl, claude, codex, readLedger, report, line, main }
+module.exports = { context, owner, branchAt, readJsonl, claude, codex, readLedger, readGuardEvents, report, line, main }

@@ -76,7 +76,8 @@ async function measure(root, { claude = tmp('dfm-c-'), codex = tmp('dfm-x-'), un
   const ctx = metrics.context(root)
   const c = await metrics.claude({ ctx, dir: claude, issue: 4, until })
   const x = await metrics.codex({ ctx, dir: codex, issue: 4, until })
-  return { c, x, report: metrics.report({ claude: c, codex: x, ledger: metrics.readLedger(ctx, 4), issue: 4, until }) }
+  const guardTimes = metrics.readGuardEvents(ctx, 4)
+  return { c, x, report: metrics.report({ claude: c, codex: x, ledger: metrics.readLedger(ctx, 4), issue: 4, until, guardTimes }) }
 }
 
 test('claude counts the Issue branch once per response and leaves other branches and folders out', async () => {
@@ -240,11 +241,11 @@ test('report holds integers only, sums the ledger, and the public line has a fix
   const { report } = await measure(root, { claude, codex })
   const leaves = (o, at = '') => Object.entries(o).flatMap(([k, v]) => (v && typeof v === 'object' ? leaves(v, `${at}${k}.`) : [[at + k, v]]))
   for (const [k, v] of leaves(report)) assert.ok(Number.isInteger(v), `${k} is not an integer`)
-  assert.equal(report.schema, 1)
+  assert.equal(report.schema, 2)
   assert.equal(report.activeMinutes, 2, 'claude 90 s and codex 30 s overlap into one 90 s span')
-  assert.deepEqual(report.manual, { interventions: 2, filterFalsePositives: 1, counts: { fix: 2, promote: 0, continue: 2 }, eval: { passed: 5, total: 6 } })
+  assert.deepEqual(report.manual, { interventions: 2, filterFalsePositives: 1, guardBlocks: 0, counts: { fix: 2, promote: 0, continue: 2 }, eval: { passed: 5, total: 6 } })
   assert.equal(metrics.line(report),
-    '- 측정(v1): calls 2, inputUncached 41, cacheRead 70, cacheWrite 5, output 10, tools 1, subagents 0, activeMinutes 2, interventions 2, filterFalsePositives 1')
+    '- 측정(v2): calls 2, inputUncached 41, cacheRead 70, cacheWrite 5, output 10, tools 1, subagents 0, activeMinutes 2, interventions 2, filterFalsePositives 1, guardBlocks 0')
 })
 
 test('cli prints no record text, honours --until, and refuses a malformed Issue number', () => {
@@ -265,7 +266,7 @@ test('cli prints no record text, honours --until, and refuses a malformed Issue 
   assert.equal(out.until, T0 + 160)
   assert.equal(out.skipped.badLines, 1)
   const line = run(['4', '--claude-dir', claude, '--codex-dir', codex, '--line'])
-  assert.match(line.stdout, /^- 측정\(v1\): calls 2, /)
+  assert.match(line.stdout, /^- 측정\(v2\): calls 2, .*, guardBlocks 0$/m)
   const bad = run(['4x', '--claude-dir', claude])
   assert.equal(bad.status, 1)
   assert.match(bad.stderr, /usage: devflow-metrics/)
@@ -311,4 +312,56 @@ test('readJsonl does not follow links', async t => {
   const seen = []
   await metrics.readJsonl(path.join(dir, 'link.jsonl'), rec => seen.push(rec))
   assert.deepEqual(seen, [])
+})
+
+test('a subagent span counts when the parent session was on the Issue branch just before it began', async () => {
+  const root = gitRepo()
+  const home = tmp('dfm-c-')
+  const folder = claudeFolder(home, root)
+  const task = path.join(root, '.claude', 'worktrees', 'task1')
+  write(path.join(folder, 's1.jsonl'), [
+    cl.assistant(150, { id: 'm1', cwd: root, branch: 'feat/4-x' }),
+    cl.assistant(1000, { id: 'm2', cwd: root, branch: 'main' }),
+  ])
+  // An M3-style task worktree on its own branch; the last span is resumed after the parent moved back to main.
+  write(path.join(folder, 's1', 'subagents', 'agent-a.jsonl'), [
+    cl.assistant(200, { id: 'a1', cwd: task, branch: 'task-1' }),
+    cl.assistant(260, { id: 'a2', cwd: task, branch: 'task-1' }),
+    cl.assistant(2000, { id: 'a3', cwd: task, branch: 'task-1' }),
+  ])
+  const { c } = await measure(root, { claude: home })
+  assert.equal(c.main.calls, 1)
+  assert.equal(c.sub.calls, 2)
+  assert.equal(c.sub.subagents, 1)
+  assert.deepEqual(c.intervals.sub, [[ms(200), ms(260)]])
+})
+
+test('sessions started above the repository are found by exact folder name and judged by the reflog', async () => {
+  const root = gitRepo()
+  const home = tmp('dfm-c-')
+  const parent = path.dirname(root)
+  const up = path.join(home, 'projects', enc(parent), 'up.jsonl')
+  // gitBranch in such a session names the start folder's branch; the work tree's reflog decides instead.
+  write(up, [
+    cl.assistant(50, { id: 'u0', cwd: root, branch: 'main' }),
+    cl.assistant(150, { id: 'u1', cwd: root, branch: 'main' }),
+    cl.assistant(150, { id: 'u2', cwd: path.join(parent, 'elsewhere'), branch: 'feat/4-x' }),
+  ])
+  // A name that merely starts with an ancestor's name is another project.
+  write(path.join(home, 'projects', enc(parent) + '-other', 'x.jsonl'), [cl.assistant(150, { id: 'o1', cwd: root, branch: 'feat/4-x' })])
+  const { c } = await measure(root, { claude: home })
+  assert.equal(c.main.calls, 1)
+  // A file last written before the Issue branch's first checkout is not read.
+  fs.utimesSync(up, new Date(ms(50)), new Date(ms(50)))
+  assert.equal((await measure(root, { claude: home })).c.main.calls, 0)
+})
+
+test('guardBlocks counts the logged blocks up to until, reading a shared log once', async () => {
+  const root = gitRepo()
+  write(path.join(root, '.work', 'devflow', 'i4', 'guard-events.jsonl'), [
+    { at: ms(150), guard: 'issue-write' }, { at: ms(300), guard: 'state-leak' }, 'broken',
+  ])
+  assert.deepEqual(metrics.readGuardEvents(metrics.context(root), 4), [ms(150), ms(300)])
+  assert.equal((await measure(root, { until: T0 + 200 })).report.manual.guardBlocks, 1)
+  assert.equal((await measure(root)).report.manual.guardBlocks, 2)
 })

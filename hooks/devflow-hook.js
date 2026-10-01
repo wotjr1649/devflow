@@ -608,7 +608,9 @@ function continueWork(env, cwd) {
   // Unattended means the ledger says so: approval settings such as bypass or yolo say nothing about who is present.
   const task = ledger.task || {}
   const open = ['build', 'verify'].includes(ledger.stage) && task.current <= task.total
-  const waiting = ledger.blocked || (ledger.decisions || []).length || (ledger.running || []).length
+  // Empty means empty: [] and {} are how ledger-update clears a key it cannot delete.
+  const filled = v => (v && typeof v === 'object' ? Object.keys(v).length > 0 : Boolean(v))
+  const waiting = filled(ledger.blocked) || filled(ledger.decisions) || filled(ledger.running)
   if (ledger.mode !== 'autonomous' || !open || waiting) return ''
   const key = String(task.current)
   const counts = { ...(ledger.counts || {}) }

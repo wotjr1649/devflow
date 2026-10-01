@@ -273,6 +273,10 @@ test('Stop continues open unattended work at most twice per task', () => {
     setLedger(l)
     assert.equal(stop(), '', JSON.stringify(l))
   }
+  for (const l of [{ ...open, blocked: [], decisions: [], running: [] }, { ...open, blocked: {} }, { ...open, blocked: '' }]) {
+    setLedger(l)
+    assert.equal(JSON.parse(stop()).decision, 'block', `empty keys still continue: ${JSON.stringify(l)}`)
+  }
   setLedger({ ...open, mode: 'interactive', runMode: 'M2' })
   assert.equal(stop(), '', 'an interactive session delegating in M2 is attended')
   setLedger('{ broken')

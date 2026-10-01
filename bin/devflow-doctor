@@ -6,6 +6,8 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { spawnSync } = require('child_process')
+// Windows looks for git.exe and gh.exe in the working folder before PATH; a cloned repository must not supply them.
+if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
 const { INVISIBLE } = require('./devflow-state')
 
 const MANAGED_IGNORE = ['/docs/prompts/', '/docs/plans/', '/artifacts/', '/.work/', '/_ref/', '/.claude/worktrees/',

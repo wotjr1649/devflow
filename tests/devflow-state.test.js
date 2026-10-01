@@ -206,6 +206,19 @@ test('autonomous ledger queues writes and flush posts them', () => {
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).pendingPosts, [])
 })
 
+test('check marks only the named acceptance criteria', () => {
+  const body = '## 문제\n- [ ] not a criterion\n\n## 수용 기준\n- [ ] one\n- [x] two\n  - [ ] three, nested\n\n## 현재 상태\n- 단계: build\n'
+  const done = state.checkCriteria(body, [1, 3])
+  assert.equal(done.body, body.replace('- [ ] one', '- [x] one').replace('  - [ ] three', '  - [x] three'))
+  assert.match(state.checkCriteria(body, [4]).error, /no acceptance criterion 4 \(the Issue has 3\)/)
+  assert.match(state.checkCriteria('## 문제\n', [1]).error, /no "## 수용 기준" section/)
+  const e = env(repo(), { data: issue({ body }) })
+  assert.equal(state.write(e, '.', 'check', 1, '1 3').code, 0)
+  assert.equal(ghWrites(e)[0].input, done.body)
+  assert.match(state.write(env(repo()), '.', 'check', 7, '1').out, /only to the branch's Issue/)
+  assert.match(state.write(env(repo()), '.', 'check', 1, 'all').out, /criterion numbers/)
+})
+
 // Built at run time so no source file holds an invisible character.
 const hidden = () => String.fromCodePoint(0xe0049, 0xe0067, 0x200b, 0x202e, 0xfe0f)
 

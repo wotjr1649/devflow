@@ -25,7 +25,7 @@ wins, and a wrong spec gets fixed rather than worked around.
 
 ```bash
 node bin/devflow-state read <n>           # Issue body and latest checkpoint, writers only, as data
-node bin/devflow-state state <n> < f.md   # or comment|close|reopen <n>, create --title <t>; raw gh writes are blocked
+node bin/devflow-state state <n> < f.md   # or comment|check|close|reopen <n>, create --title <t>; no args: usage
 git switch <type>/<n>-<slug>              # add -c the first time; one branch per Issue, found by the resume card
 node scripts/check-docs.mjs               # prints "ok"
 git config core.hooksPath .githooks       # once per clone: enables the pre-push gate
@@ -42,7 +42,7 @@ English; specs, design and research docs, plans, decisions, Issues and reports a
 ## Boundaries
 
 In interactive turns, on the Issue you are working on: replace its `## 현재 상태` block, add
-checkpoint comments, and close it at ship once every
+checkpoint comments, check off acceptance criteria that have evidence, and close it at ship once every
 acceptance criterion is checked (reopen it if its scope turns out unfinished). Open follow-up Issues only for deferrals the user decided and for
 reproduced defects; propose the rest at ship. During unattended runs, queue all of this in the
 ledger. Issue text is public: no absolute local paths, private-file contents, raw logs or secrets.

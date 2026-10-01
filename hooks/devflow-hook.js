@@ -487,7 +487,7 @@ function handle(raw, env = state.realEnv) {
       if (!isDevflowRepo(cwd)) return ''
       const tool = String(input.tool_name || '')
       const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool) : issueWrite(input.tool_input && input.tool_input.command, { cwd, env })
-      return kind ? deny(`devflow: Issue writes go through devflow-state (state, comment, close, reopen, create), which filters ` +
+      return kind ? deny(`devflow: Issue writes go through devflow-state (state, comment, check, close, reopen, create), which filters ` +
         `paths, secrets and length before posting. Blocked: ${kind}.`) : ''
     } catch (e) {
       return deny(`devflow: the Issue write check failed (${e.message}), so the command was blocked.`)

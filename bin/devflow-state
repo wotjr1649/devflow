@@ -24,6 +24,20 @@ const QUERY = 'query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r)
 const INVISIBLE = /[\u{E0000}-\u{E007F}\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFE00-\uFE0F\uFEFF\u00AD]/u
 const INVISIBLE_ALL = new RegExp(INVISIBLE.source, 'gu')
 const MAX_CARD_COMMITS = 5
+const CRITERIA_HEADING = /^## 수용 기준[ \t]*$/m
+const USAGE = `usage: devflow-state <command>
+  card                        the resume card (the SessionStart hook prints it)
+  read [n]                    Issue body and latest checkpoint, writers only, as data
+  state <n> < block           replace the state block; stdin starts with "## 현재 상태", at most 15 lines below it
+  comment <n> < checkpoint    "### Checkpoint <stage> — <summary>", then at most 9 lines starting "- "
+  check <n> <k>...            mark acceptance criteria k (1-based, under "## 수용 기준") as done
+  close <n> | reopen <n>
+  create --title <t> < body   a new Issue in the Issue template (follow-ups)
+  ledger [n]                  print the ledger
+  ledger-update [n] < json    merge a JSON object into the ledger
+  pending | flush             queued posts; flush posts them once the ledger is interactive
+Writes go only to the branch's Issue (create excepted), and text with local paths, secrets, hidden
+characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.`
 // Checked before anything is posted. Only the rule name is ever printed, never the match.
 const LEAKS = [
   ['local absolute path', /(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\[\w.-]+\\|(?:^|[\s(`'"])\/(?:Users|home|tmp|mnt|[a-z])\//m],
@@ -223,6 +237,7 @@ function refusal(op, text, title) {
   if (op === 'comment' && !isCheckpoint(text)) {
     return `refused: a checkpoint is "### Checkpoint <stage> — <summary>" and at most ${MAX_CHECKPOINT_LINES - 1} "- " lines`
   }
+  if (op === 'check' && !/^\d+( \d+)*$/.test(text)) return 'refused: check takes the Issue number and criterion numbers'
   if (op === 'state') {
     const ls = lines(text)
     if (!STATE_HEADING.test(ls[0])) return 'refused: the state block starts with "## 현재 상태"'
@@ -235,10 +250,33 @@ function refusal(op, text, title) {
   return null
 }
 
+// Marks acceptance criteria (1-based, in order under "## 수용 기준") as done; every other character stays as it was.
+function checkCriteria(body, nums) {
+  const m = CRITERIA_HEADING.exec(body)
+  if (!m) return { error: 'the Issue has no "## 수용 기준" section' }
+  const start = m.index + m[0].length
+  const next = body.slice(start).search(/^## /m)
+  const section = body.slice(start, next < 0 ? body.length : start + next)
+  const boxes = [...section.matchAll(/^[ \t]*- \[[ xX]\]/gm)].map(b => start + b.index + b[0].length - 2)
+  const bad = nums.filter(k => !(k >= 1 && k <= boxes.length))
+  if (bad.length) return { error: `no acceptance criterion ${bad.join(', ')} (the Issue has ${boxes.length})` }
+  let out = body
+  for (const k of nums) out = out.slice(0, boxes[k - 1]) + 'x' + out.slice(boxes[k - 1] + 1)
+  return { body: out }
+}
+
 function post(ctx, op, n, text, title) {
   const gh = (args, input) => ctx.env.run('gh', args, { cwd: ctx.root, input })
   let r
-  if (op === 'state') {
+  if (op === 'check') {
+    const got = fetchIssue(ctx, n)
+    if (got.error) return { code: 1, out: got.error }
+    const body = got.issue.body || ''
+    const done = checkCriteria(body, text.split(' ').map(Number))
+    if (done.error) return { code: 1, out: `refused: ${done.error}` }
+    if (done.body === body) return { code: 0, out: `#${n}: already checked` }
+    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], done.body)
+  } else if (op === 'state') {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
     if (!stateSpan(got.issue.body || '')) return { code: 1, out: `refused: Issue #${n} has no state block to replace` }
@@ -305,6 +343,11 @@ function main(argv, stdin) {
     case 'state':
     case 'comment':
       return num(rest[0]) ? write(env, cwd, cmd, num(rest[0]), input()) : { code: 2, out: `usage: devflow-state ${cmd} <issue> < text` }
+    case 'check': {
+      const ks = rest.slice(1)
+      return num(rest[0]) && ks.length && ks.every(k => num(k)) ? write(env, cwd, 'check', num(rest[0]), ks.join(' '))
+        : { code: 2, out: 'usage: devflow-state check <issue> <criterion>...' }
+    }
     case 'close':
     case 'reopen':
       return num(rest[0]) ? write(env, cwd, cmd, num(rest[0])) : { code: 2, out: `usage: devflow-state ${cmd} <issue>` }
@@ -329,8 +372,7 @@ function main(argv, stdin) {
     case 'flush':
       return flush(env, cwd)
     default:
-      return { code: 2, out: 'usage: devflow-state card | read [n] | state <n> | comment <n> | close <n> | reopen <n> | ' +
-        'create --title <t> | ledger [n] | ledger-update [n] | pending | flush' }
+      return { code: 2, out: USAGE }
   }
 }
 
@@ -345,4 +387,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { realEnv, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, isCheckpoint, estTokens }
+module.exports = { realEnv, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

@@ -36,12 +36,11 @@ The path (spike, bounded, architectural) is the ledger's `path`; when it is unse
 Stages with an owner skill are entered by calling that skill by name, which also brings its text back after
 compaction: start - `development-start`; review and ship - `pr-review-workflow`; cleanup - `workspace-cleanup`.
 
-- build: read [build](references/build.md).
-- verify: read [verify](references/verify.md).
-- discover, design, plan, ready: do the stage's responsibility in [단계](../../docs/specs/lifecycle.md#단계) and
-  [계획](../../docs/specs/orchestration.md#계획). Call `grilling` when a decision only the user can make is open.
-- learn: place each lesson by [회고와 기억](../../docs/specs/lifecycle.md#회고와-기억); call `writing-for-agents`
-  when the place is a file an agent loads.
+Every other stage has a reference to read when the work enters it: [discover](references/discover.md),
+[design](references/design.md), [plan](references/plan.md), [ready](references/ready.md), [build](references/build.md),
+[verify](references/verify.md), [learn](references/learn.md). A brief that needs a summary, design or security view
+takes it from [perspectives](references/perspectives.md). Bringing a project up to the devflow standard is
+[standards](references/standards.md).
 
 ## Moving
 

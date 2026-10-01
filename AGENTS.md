@@ -1,26 +1,26 @@
 # devflow
 
 This repository is the single source of the devflow plugin, which Claude Code and Codex both
-load. Specs in `docs/specs/` define behavior, the plugin's skills, Claude agents, hooks and
-scripts implement it, decisions in `docs/design/decisions/` record why, and GitHub Issues hold
-work state. devflow is a personal development loop, not a team process; don't restate the
-user's global instructions here.
+load. Specs in `docs/specs/` define behavior, the plugin implements it, decisions in
+`docs/design/decisions/` record why, and GitHub Issues hold work state. Don't restate the user's
+global instructions here.
 
 ## Read what your task touches
 
 | When you are… | Read |
 |---|---|
-| resuming an Issue | the Issue body and its latest checkpoint (commands below), then local files named `*-i<issue>-*` in `docs/plans/` and `artifacts/handoff/` (gitignored, absent from the remote) |
+| resuming an Issue | the Issue body and its latest checkpoint (commands below), then local files named `*-i<issue>-*` in `docs/plans/` and `artifacts/handoff/` (gitignored) |
 | changing what devflow is, its layers or its components | `docs/design/overview.md` |
 | writing or checking anything devflow produces or ships: Issues, plans, prompts, AGENTS.md, SKILL.md, agent prompts | `docs/specs/documents.md` |
 | changing folder layout, `.gitignore`, `.gitattributes` or the files devflow installs into projects | `docs/specs/repository.md` |
-| changing how work runs or is delegated: phases, modes, briefs, models, effort | `docs/specs/orchestration.md` |
+| changing stages, loops, or where work returns on new information | `docs/specs/lifecycle.md` |
+| changing how work runs or is delegated: modes, briefs, models, effort | `docs/specs/orchestration.md` |
 | asking why a choice was made, or reversing one | `docs/design/decisions/` |
-| building against Claude Code or Codex behavior: manifests, frontmatter, hooks, subagents, evals | `docs/research/host-facts.md`; when it disagrees with the host, `docs/research/sources.md` and the linked page |
+| building against Claude Code or Codex behavior | `docs/research/host-facts.md`; if the host disagrees, `docs/research/sources.md` |
 | copying or adapting a file from another project | `SOURCES.md` |
 
-A spec owns its rule; everything else links. When a spec and another file
-disagree, the spec wins, and a wrong spec gets fixed rather than worked around.
+A spec owns its rule; everything else links. When a spec and another file disagree, the spec
+wins, and a wrong spec gets fixed rather than worked around.
 
 ## Commands
 
@@ -42,17 +42,18 @@ English; specs, design and research docs, plans, decisions, Issues and reports a
 
 ## Boundaries
 
-Without asking: edit files in this repository, run local checks, and make scoped local commits of
-verified work on the Issue branch.
+Without asking: edit files here, run local checks, commit verified work on the Issue branch, and
+on the Issue you are working on, replace its `## 현재 상태` block (fetch the body right before;
+change nothing else) and add checkpoint comments. Issue text is public: no absolute local paths,
+private-file contents, raw logs or secrets.
 
 Only on the user's explicit instruction: pushing (`main` only, fast-forwarded from the Issue
-branch; no PR), creating or editing Issues, PRs, tags and releases, changing repository settings,
-and installing devflow into a host or editing host configuration (`~/.claude`, `~/.codex`,
-`~/.agents`).
+branch; no PR), creating, closing, labeling or otherwise editing Issues, PRs, tags and releases,
+changing repository settings, and installing devflow into a host or editing host configuration
+(`~/.claude`, `~/.codex`, `~/.agents`).
 
-This repository is public. Commit only what may be published: no content from private files or
-from other projects' private instructions, and summaries with links rather than copied text from
-articles or docs.
+This repository is public. Commit only what may be published: nothing from private files or
+other projects' private instructions, and summaries with links instead of copied article text.
 
 A file derived from another project lands in the same commit as its `SOURCES.md` entry and its
 upstream notices.
@@ -61,7 +62,6 @@ upstream notices.
 
 - Project instructions live only in this file. A `CLAUDE.md`, `.claude/CLAUDE.md` or
   `CLAUDE.local.md` here or in a parent directory makes Claude Code stop reading AGENTS.md while
-  Codex keeps reading it; `/init` and CLAUDE.md maintenance skills create one. If Claude-only text
-  is ever needed, start that `CLAUDE.md` with the line `@AGENTS.md`.
+  Codex keeps reading it; `/init` and CLAUDE.md maintenance skills create one.
 - `.gitattributes` stores text as LF even where Git for Windows sets `core.autocrlf=true`; leave
   line endings to git instead of converting files.

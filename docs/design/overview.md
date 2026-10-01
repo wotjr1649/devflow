@@ -30,23 +30,24 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 | git hook·CI | 최종 관문 | 공통 | 공통 | 결정적 |
 | eval | 스킬·훅·지침의 회귀 | `claude plugin eval`, skill-creator | 같은 프롬프트 세트 | 측정 |
 
-## 산출물과 단계
+## 단계
 
-| 단계 | 끝나면 남는 것 | 진실 원천 |
-|---|---|---|
-| start | intent와 수용 기준 | Issue 본문 |
-| plan | 경로 분류(spike·bounded·architectural), 설계, 계획 | 계약 변경은 `docs/specs/`, 계획은 로컬 비공개 + PR 요약 |
-| build | 커밋, 검사 결과, 체크포인트 | git, Issue 댓글 |
-| review | 처리된 발견 사항 | PR 또는 체크포인트 |
-| ship | 통합 방식에 따른 push·PR·머지, Issue 종료 | git, Issue |
+구상 → 착수 → 설계 → 계획 → 구현 가능성 확인 → 구현 → 검증 → 리뷰 → 통합 → 정리 → 회고, 11단계다.
 
-문서 형식과 예산: [documents](../specs/documents.md). 단계 전환과 실행 모드: [orchestration](../specs/orchestration.md).
+- 경로(spike, bounded, architectural)에 따라 일부만 돈다.
+- 계획의 작업마다 구현·검증·리뷰를 반복한다.
+- 새 정보가 생기면 정해진 단계로 돌아간다.
+
+단계, 반복, 되돌아가기: [lifecycle](../specs/lifecycle.md). 실행 방식: [orchestration](../specs/orchestration.md).
+문서 형식과 예산: [documents](../specs/documents.md).
 
 ## 구성 (계획)
 
-- **스킬**: `devflow`(라우터, 단계별 references), `workspace-cleanup`, `repo-standards`, `grilling`,
-  `writing-for-agents`, `prompt-generator`. 라우터 통합 근거: [ADR-0010](decisions/ADR-0010-single-router-skill.md),
-  보조 스킬 자동 호출: [ADR-0009](decisions/ADR-0009-auto-invoked-support-skills.md)
+- **스킬 7개**
+  - `devflow`: 라우터. 담당 스킬이 없는 단계와 표준 적용은 references로 둔다.
+  - 생명주기 스킬: `development-start`, `pr-review-workflow`, `workspace-cleanup`
+  - 보조 스킬: `grilling`, `writing-for-agents`, `prompt-generator`
+  - 근거: [ADR-0010](decisions/ADR-0010-single-router-skill.md), [ADR-0009](decisions/ADR-0009-auto-invoked-support-skills.md)
 - **Claude 에이전트**: explorer, runner, implementer, implementer-deep, verifier, architect, reviewer,
   task-reviewer, security-reviewer. 모델과 effort: [orchestration](../specs/orchestration.md#모델과-effort)
 - **Claude Workflows**: 대규모 기계적 변경과 감사(M4)

@@ -4,7 +4,28 @@ Every file in this repository that is derived from another project has a row her
 
 | devflow path | Upstream | Commit | Upstream path | License | Changes |
 |---|---|---|---|---|---|
-| — | — | — | — | — | — |
+| `skills/` (six skills, 14 files) | owner's deployed skill set (`~/.claude/skills` and `~/.agents/skills`, identical) | no VCS; per-file SHA-256 under [Imported owner skills](#imported-owner-skills) | `<skill>/…` | Apache-2.0 (owner) | 2026-10-01 import: line endings only (the copies were already LF, so no bytes changed); adaptations in later commits |
+
+## Imported owner skills
+
+Imported 2026-10-01. The deployed bytes are hashed as read; the committed bytes are the git blob.
+
+| File | Deployed SHA-256 | Committed SHA-256 |
+|---|---|---|
+| `skills/development-start/SKILL.md` | `e544d193f099fc85fe9774935a4553e90136555aa3320a9e9f0e9b0047d41748` | `e544d193f099fc85fe9774935a4553e90136555aa3320a9e9f0e9b0047d41748` |
+| `skills/development-start/references/tracking.md` | `26de5e33946fa2018e72361e0ff96664940ec2a119afd2f69db10fdb14e7d33a` | `26de5e33946fa2018e72361e0ff96664940ec2a119afd2f69db10fdb14e7d33a` |
+| `skills/development-start/references/workspace.md` | `804e570072ec347fa3f64e1582d522b4879a95538dc396a5ee7cd6a42311cf01` | `804e570072ec347fa3f64e1582d522b4879a95538dc396a5ee7cd6a42311cf01` |
+| `skills/grilling/SKILL.md` | `fb2be666081c8dde7fa2a06b0b981fa7b2e1927c524bb7c7222bb0a06424a688` | `fb2be666081c8dde7fa2a06b0b981fa7b2e1927c524bb7c7222bb0a06424a688` |
+| `skills/grilling/agents/openai.yaml` | `1411d7df7d99b7e621a1ff8283c8133cc2464be63d064e52d8ce169c6800ee9b` | `1411d7df7d99b7e621a1ff8283c8133cc2464be63d064e52d8ce169c6800ee9b` |
+| `skills/pr-review-workflow/SKILL.md` | `105d365cdc685c18184b46647809ddcaab837a623628debff8e8bd0452d4b3a3` | `105d365cdc685c18184b46647809ddcaab837a623628debff8e8bd0452d4b3a3` |
+| `skills/pr-review-workflow/references/cleanup.md` | `52c0b721dbff64bb0f73ce5247a251ce25f43ec6207f04c0b678dfa5f52762d4` | `52c0b721dbff64bb0f73ce5247a251ce25f43ec6207f04c0b678dfa5f52762d4` |
+| `skills/pr-review-workflow/references/completion.md` | `8dd76d3d2463ee2e6d536d0bef9c99b3ad6a3f677d68e125deb3933cfacb8eb5` | `8dd76d3d2463ee2e6d536d0bef9c99b3ad6a3f677d68e125deb3933cfacb8eb5` |
+| `skills/pr-review-workflow/references/integration.md` | `93f087eff9740db19a535be329b33ff826566a136cbb4167f9db306756a367fc` | `93f087eff9740db19a535be329b33ff826566a136cbb4167f9db306756a367fc` |
+| `skills/pr-review-workflow/references/review.md` | `075865be0cc0bae30f2adf0824e4e0c1f3778b62dad0ff41c11477a947c9710e` | `075865be0cc0bae30f2adf0824e4e0c1f3778b62dad0ff41c11477a947c9710e` |
+| `skills/prompt-generator/SKILL.md` | `d5e334f732783fc0158a29dc1208270daa3cc928485b5874bfec72c000eda62d` | `d5e334f732783fc0158a29dc1208270daa3cc928485b5874bfec72c000eda62d` |
+| `skills/workspace-cleanup/SKILL.md` | `8d391c77e71090821aab15eb69ae9182b2833774fada74c33d2854fbb022dd69` | `8d391c77e71090821aab15eb69ae9182b2833774fada74c33d2854fbb022dd69` |
+| `skills/workspace-cleanup/references/remote-deletion.md` | `c236f884d40de1a30893915643fb3e6808d23bc2ca5deb36658fffd04c6efa31` | `c236f884d40de1a30893915643fb3e6808d23bc2ca5deb36658fffd04c6efa31` |
+| `skills/writing-for-agents/SKILL.md` | `02f65837a753f71407868d3d223cf1bd7a1a145d7b7c9f52b3c117ef8b3eeb31` | `02f65837a753f71407868d3d223cf1bd7a1a145d7b7c9f52b3c117ef8b3eeb31` |
 
 ## Rules
 

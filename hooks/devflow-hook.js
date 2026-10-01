@@ -1,6 +1,7 @@
 'use strict'
 // SessionStart prints the resume card; PreToolUse blocks Issue writes that bypass devflow-state.
-// Both run only in repositories with .devflow.json. Rules: docs/specs/documents.md (Issue I/O, resume card).
+// Both run only in repositories with .devflow.json. Rules: docs/specs/documents.md (Issue I/O, resume card),
+// docs/specs/repository.md (profile protection, analysis deadline).
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
@@ -477,9 +478,10 @@ function analyze(src, ctx, depth = 0) {
 // A guardrail, not a sandbox: words built from variables, encodings it does not decode, or HTTP from other
 // languages get past it; a narrow gh token is what stops those.
 // With protect (files => the first protected one, or null), a write to a protected path counts as well.
-function issueWrite(command, { cwd = process.cwd(), env = state.realEnv, protect = null } = {}) {
+function issueWrite(command, { cwd = process.cwd(), env = state.realEnv, protect = null,
+  deadline = performance.now() + ANALYSIS_TIMEOUT_MS - 1000 } = {}) {
   // Leave a second for the child to return before the outer deadline, including after a slow alias lookup.
-  const ctx = { cwd, env, protect, aliasMap: undefined, deadline: performance.now() + ANALYSIS_TIMEOUT_MS - 1000 }
+  const ctx = { cwd, env, protect, aliasMap: undefined, deadline }
   if (Array.isArray(command)) return checkCommand({ words: command.map(word), stdin: [], redirects: [], pipedFrom: null }, ctx, 0)
   return analyze(String(command || ''), ctx)
 }
@@ -687,6 +689,9 @@ function smallFile(p, maxBytes = 4096) {
     fd = fs.openSync(p, O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
     const opened = fs.fstatSync(fd)
     if (!opened.isFile() || opened.size > maxBytes || opened.dev !== st.dev || opened.ino !== st.ino) return null
+    // Windows has no O_NOFOLLOW: also reject a path replaced by a link to the same inode before reading the fd.
+    const current = fs.lstatSync(p)
+    if (!current.isFile() || current.dev !== opened.dev || current.ino !== opened.ino) return null
     const buf = Buffer.alloc(maxBytes + 1)
     let size = 0
     while (size < buf.length) {
@@ -749,7 +754,7 @@ function blocked(root, guard, reason) {
 }
 
 // Returns the hook's stdout. PreToolUse fails closed: input it cannot read is denied.
-function handle(raw, env = state.realEnv) {
+function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSIS_TIMEOUT_MS - 1000) {
   let input
   try {
     input = JSON.parse(raw)
@@ -795,7 +800,7 @@ function handle(raw, env = state.realEnv) {
           : blocked(root, 'protected-path', `devflow: ${hit.path} is a protected path in .devflow.json; leave it as it is.`)
       }
       const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool)
-        : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect: protectionFor(root, cwd) })
+        : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect: protectionFor(root, cwd), deadline })
       if (!kind) return ''
       if (kind === PROTECTED + PROFILE_UNREADABLE) {
         return blocked(root, 'profile-unreadable', 'devflow: .devflow.json cannot be read, so its protected paths are unknown; fix .devflow.json first.')

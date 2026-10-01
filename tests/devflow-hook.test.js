@@ -598,20 +598,27 @@ test('a profile link to a device is not opened', t => {
   assert.match(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason, /fix .devflow.json first/)
 })
 
-test('profile replacement or growth at open cannot bypass the type and byte limits', () => {
-  for (const attack of ['link', 'grow']) {
+test('profile replacement or growth at open cannot bypass the type and byte limits', async t => {
+  for (const attack of ['link', 'same-inode-link', 'grow']) await t.test(attack, t => {
     const d = dir(true)
     const profile = path.join(d, '.devflow.json')
     const target = path.join(d, 'target.json')
     fs.writeFileSync(target, '{}')
+    if (attack !== 'grow') {
+      const probe = path.join(d, 'probe-link')
+      try { fs.symlinkSync(target, probe) } catch { return t.skip('file symlinks need privileges here') }
+      fs.unlinkSync(probe)
+    }
     const open = fs.openSync
-    let changed = false
+    let attempted = false, changed = false
     // Inject a real file change at the race boundary; opening, fstat and reading still use the native filesystem.
     fs.openSync = (p, ...args) => {
-      if (p === profile && !changed) {
-        changed = true
+      if (p === profile && !attempted) {
+        attempted = true
         if (attack === 'link') { fs.unlinkSync(profile); fs.symlinkSync(target, profile) }
+        else if (attack === 'same-inode-link') { fs.unlinkSync(target); fs.renameSync(profile, target); fs.symlinkSync(target, profile) }
         else fs.appendFileSync(profile, ' '.repeat(256 * 1024))
+        changed = true
       }
       return open(p, ...args)
     }
@@ -619,7 +626,7 @@ test('profile replacement or growth at open cannot bypass the type and byte limi
       assert.equal(decision(hook.handle(pre(d, 'echo x > src.md'))), 'deny', attack)
       assert.equal(changed, true, 'the race boundary was exercised')
     } finally { fs.openSync = open }
-  }
+  })
 })
 
 test('non-object profile roots do not silently disable protection', () => {
@@ -629,4 +636,12 @@ test('non-object profile roots do not silently disable protection', () => {
     assert.equal(decision(hook.handle(pre(d, 'echo x > src.md'))), 'deny', profile)
     assert.equal(hook.handle(pre(d, 'echo "{}" > .devflow.json')), '', profile)
   }
+})
+
+test('alias lookup consumes the remaining hook budget including profile inspection', () => {
+  const d = dir(true)
+  let timeout
+  const env = { run: (cmd, args, opts) => { timeout = opts.timeout; return { code: 0, stdout: 'co: pr checkout\n' } } }
+  assert.equal(hook.handle(pre(d, 'gh co 1'), env, performance.now() + 100), '')
+  assert.ok(timeout > 0 && timeout <= 100)
 })

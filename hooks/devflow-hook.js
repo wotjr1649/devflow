@@ -628,6 +628,50 @@ const deny = reason => JSON.stringify({
   hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason },
 })
 
+// The branch named by a HEAD file; null for a detached HEAD or anything unreadable.
+function headBranch(gitDir) {
+  try {
+    const m = /^ref: refs\/heads\/(\S+)/.exec(fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8'))
+    return m ? m[1] : null
+  } catch {
+    return null
+  }
+}
+
+// Where a block is logged: the Issue of the work tree's branch, or, in a worktree on another branch (an M3 task
+// worktree), the Issue of the main work tree. Read from HEAD files, not git, so a slow git cannot push the hook past
+// its timeout. Never throws.
+function guardTarget(root) {
+  try {
+    const issueOf = b => { const m = /^[^/]+\/(\d+)-/.exec(b || ''); return m ? Number(m[1]) : null }
+    const dotGit = path.join(root, '.git')
+    const st = fs.lstatSync(dotGit)
+    let own = dotGit
+    let common = dotGit
+    if (st.isFile()) {
+      const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(dotGit, 'utf8'))
+      if (!m) return null
+      own = path.resolve(root, m[1].trim())
+      try { common = path.resolve(own, fs.readFileSync(path.join(own, 'commondir'), 'utf8').trim()) } catch { common = own }
+    } else if (!st.isDirectory()) return null
+    const issue = issueOf(headBranch(own))
+    if (issue) return { root, issue }
+    const main = common !== own && issueOf(headBranch(common))
+    return main ? { root: path.dirname(common), issue: main } : null
+  } catch {
+    return null
+  }
+}
+
+// Logs the block for the cycle's metrics (docs/specs/metrics.md), then returns the same decision it would without it.
+function blocked(root, guard, reason) {
+  try {
+    const t = root && guardTarget(root)
+    if (t) state.logGuard(t.root, t.issue, guard)
+  } catch {}
+  return deny(reason)
+}
+
 // Returns the hook's stdout. PreToolUse fails closed: input it cannot read is denied.
 function handle(raw, env = state.realEnv) {
   let input
@@ -662,24 +706,28 @@ function handle(raw, env = state.realEnv) {
     }
   }
   if (input.hook_event_name === 'PreToolUse') {
+    let root = null
     try {
-      const root = devflowRoot(cwd)
+      root = devflowRoot(cwd)
       if (!root) return ''
       const tool = String(input.tool_name || '')
       if (EDIT_TOOLS.test(tool)) {
         const hit = protectedEdit(root, cwd, input.tool_input)
         if (!hit) return ''
-        return deny(hit.unreadable ? 'devflow: .devflow.json does not parse, so its protected paths are unknown; fix .devflow.json first.'
-          : `devflow: ${hit.path} is a protected path in .devflow.json; leave it as it is.`)
+        return hit.unreadable
+          ? blocked(root, 'profile-unreadable', 'devflow: .devflow.json does not parse, so its protected paths are unknown; fix .devflow.json first.')
+          : blocked(root, 'protected-path', `devflow: ${hit.path} is a protected path in .devflow.json; leave it as it is.`)
       }
       const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool)
         : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect: protectionFor(root, cwd) })
       if (!kind) return ''
-      if (kind.startsWith(PROTECTED)) return deny(`devflow: ${kind.slice(PROTECTED.length)} is a protected path in .devflow.json; leave it as it is.`)
-      return deny(`devflow: Issue writes go through devflow-state (state, comment, check, close, reopen, create), which filters ` +
+      if (kind.startsWith(PROTECTED)) {
+        return blocked(root, 'protected-path', `devflow: ${kind.slice(PROTECTED.length)} is a protected path in .devflow.json; leave it as it is.`)
+      }
+      return blocked(root, 'issue-write', `devflow: Issue writes go through devflow-state (state, comment, check, close, reopen, create), which filters ` +
         `paths, secrets and length before posting. Blocked: ${kind}.`)
     } catch (e) {
-      return deny(`devflow: the check failed (${e.message}), so the tool call was blocked.`)
+      return blocked(root, 'hook-check-failed', `devflow: the check failed (${e.message}), so the tool call was blocked.`)
     }
   }
   return ''

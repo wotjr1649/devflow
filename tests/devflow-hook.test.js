@@ -348,3 +348,88 @@ test('an option value before -c does not hide the script (2026-10-01 re-review r
     assert.ok(check(c), c)
   }
 })
+
+// Issue #6: blocks are logged to the Issue of the branch; the real repository's log must not change under the suite.
+const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+const git = (cwd, ...args) => {
+  const r = spawnSync('git', ['-c', 'init.defaultBranch=main', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=',
+    '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd, encoding: 'utf8', env: cleanEnv() })
+  assert.equal(r.status, 0, r.stderr)
+}
+function gitRepo(branch, profile = { protected: ['_ref/**'] }) {
+  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-hookgit-')))
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify(profile))
+  git(d, 'init', '-q')
+  git(d, 'add', '.devflow.json')
+  git(d, 'commit', '-q', '-m', 'a')
+  if (branch !== 'main') git(d, 'switch', '-q', '-c', branch)
+  return d
+}
+const guards = (root, n) => {
+  const f = path.join(root, '.work', 'devflow', `i${n}`, 'guard-events.jsonl')
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l).guard) : []
+}
+
+const repoLog = (() => {
+  const r = spawnSync('git', ['branch', '--show-current'], { cwd: path.join(__dirname, '..'), encoding: 'utf8' })
+  const m = /^[^/]+\/(\d+)-/.exec((r.stdout || '').trim())
+  return m ? path.join(__dirname, '..', '.work', 'devflow', `i${m[1]}`, 'guard-events.jsonl') : null
+})()
+const repoCount = () => (repoLog && fs.existsSync(repoLog) ? fs.readFileSync(repoLog, 'utf8').split('\n').filter(Boolean).length : 0)
+let repoBefore = 0
+test.before(() => { repoBefore = repoCount() })
+test.after(() => assert.equal(repoCount(), repoBefore, 'the test suite wrote to the real guard log'))
+
+test('a block on an Issue branch is logged by a fixed id and the decision is unchanged', () => {
+  const d = gitRepo('feat/7-x')
+  const plain = dir(true)
+  fs.writeFileSync(path.join(plain, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const runs = [
+    [cwd => hook.handle(pre(cwd, 'gh issue close 1')), 'issue-write'],
+    [cwd => hook.handle(pre(cwd, 'rm _ref/x')), 'protected-path'],
+    [cwd => hook.handle(event('PreToolUse', cwd, { tool_name: 'Edit', tool_input: { file_path: path.join(cwd, '_ref', 'x.md') } })), 'protected-path'],
+  ]
+  for (const [run, id] of runs) {
+    const out = run(d)
+    assert.equal(out, run(plain), 'same decision with and without a log')
+    assert.equal(decision(out), 'deny')
+    assert.equal(guards(d, 7).pop(), id)
+  }
+  assert.deepEqual(guards(d, 7), ['issue-write', 'protected-path', 'protected-path'])
+  assert.doesNotMatch(fs.readFileSync(path.join(d, '.work/devflow/i7/guard-events.jsonl'), 'utf8'), /gh issue|_ref/)
+  fs.writeFileSync(path.join(d, '.devflow.json'), '{ broken')
+  assert.equal(decision(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, 'src.md') } }))), 'deny')
+  assert.equal(guards(d, 7).pop(), 'profile-unreadable')
+})
+
+test('blocks off an Issue branch, allowed calls and unreadable input are not logged', () => {
+  const d = gitRepo('main')
+  assert.equal(decision(hook.handle(pre(d, 'gh issue close 1'))), 'deny')
+  assert.equal(fs.existsSync(path.join(d, '.work')), false)
+  const f = gitRepo('feat/7-x')
+  assert.equal(hook.handle(pre(f, 'npm test')), '')
+  assert.equal(decision(hook.handle('{not json')), 'deny')
+  assert.equal(fs.existsSync(path.join(f, '.work')), false)
+})
+
+test('a block in a worktree off the Issue branch is logged to the main work tree on the Issue branch (M3)', () => {
+  const d = gitRepo('feat/7-x')
+  const wt = path.join(d, '.claude', 'worktrees', 'task1')
+  git(d, 'worktree', 'add', '-q', '-b', 'task-1', wt)
+  assert.equal(decision(hook.handle(pre(wt, 'gh issue close 1'))), 'deny')
+  assert.deepEqual(guards(d, 7), ['issue-write'])
+  assert.equal(fs.existsSync(path.join(wt, '.work')), false)
+})
+
+test('a broken .git does not change the decision', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const expected = hook.handle(pre(d, 'gh issue close 1'))
+  for (const content of ['gitdir: ' + path.join(d, 'nowhere'), 'garbage', '']) {
+    fs.writeFileSync(path.join(d, '.git'), content)
+    assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
+  }
+  fs.rmSync(path.join(d, '.git'))
+  fs.mkdirSync(path.join(d, '.git', 'HEAD'), { recursive: true })
+  assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
+})

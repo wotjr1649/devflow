@@ -43,6 +43,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   `CLAUDE_PLUGIN_ROOT`는 원본 폴더라서 로드는 제자리다. 임시 설정 폴더에서는 인증 없이 설치할 수 있고, 인증 없는
   `claude -p`도 실패하기 전에 SessionStart 훅을 실행한다. `--debug`를 붙이면 설정 폴더의 `debug/`에 훅 출력과
   `provided additionalContext (<n> chars)`가 남아서, 모델 호출 없이 SessionStart 훅을 확인할 수 있다.
+- 관찰(2026-10-01, 사용자 범위 설치본): SessionStart 훅의 맥락은 세션 기록에 `hook_additional_context` 첨부로 들어가고
+  화면에는 나오지 않는다. 확인은 세션 기록에서 한다.
 - 플러그인 루트의 `bin/`은 Bash 도구의 PATH에 들어간다. `workflows/`의 스크립트는 `/<plugin>:<meta.name>`으로 실행된다.
 - 경로 변수: `${CLAUDE_PLUGIN_ROOT}`(설치본 위치, 버전마다 바뀜), `${CLAUDE_PLUGIN_DATA}`(업데이트를 넘어 유지).
 - 플러그인 루트의 `CLAUDE.md`는 로드되지 않는다. 검증은 `claude plugin validate <dir>`로 한다.
@@ -157,7 +159,10 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - CLI에서는 `/plugins`로 설치하고, 새 세션을 시작해야 반영된다. 셸에서는 `codex plugin add <plugin>@<marketplace>`로도
   설치된다(0.159.3). worktree를 마켓플레이스로 등록하면 캐시의 `.git`은 그 worktree의 gitdir을 가리키는 파일이다.
 - 훅 신뢰는 `config.toml`의 `[hooks.state."<plugin>@<marketplace>:<훅 파일>:<이벤트>:<i>:<j>"]`에 `trusted_hash`로
-  남는다(해시가 바뀐 훅을 다시 묻는지는 확인 전). `--dangerously-bypass-hook-trust`는 그 실행에서만 신뢰 없이 훅을 돌린다.
+  남는다(해시가 바뀐 훅을 다시 묻는지는 확인 전).
+- 관찰(2026-10-01, 설치본): 신뢰한 SessionStart 훅의 `additionalContext`는 세션 기록에 `developer` 메시지로 들어가고
+  화면에는 나오지 않는다. 훅이 받는 `CLAUDE_PLUGIN_ROOT`는 원본이 아니라 캐시 복사본이다. PreToolUse 차단은 셸
+  명령에서 동작했다. `--dangerously-bypass-hook-trust`는 그 실행에서만 신뢰 없이 훅을 돌린다.
 
 **훅**
 - 이벤트: SessionStart, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit,

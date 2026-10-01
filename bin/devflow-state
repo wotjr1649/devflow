@@ -324,4 +324,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { card, read, write, flush, leaks, stripComments, stateBlock, replaceState, isCheckpoint, estTokens }
+module.exports = { realEnv, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, isCheckpoint, estTokens }

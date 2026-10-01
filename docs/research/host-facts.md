@@ -38,7 +38,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - 관찰(2026-10-01, 임시 `CLAUDE_CONFIG_DIR`): `source: "./"`로 설치하면 `plugins/cache/<marketplace>/<plugin>/<version>/`에
   복사본(`.git` 제외, ignore된 비공개 폴더 포함)이 생기고 `installPath`도 그곳을 가리킨다. 그래도 세션 훅이 받는
   `CLAUDE_PLUGIN_ROOT`는 원본 폴더라서 로드는 제자리다. 임시 설정 폴더에서는 인증 없이 설치할 수 있고, 인증 없는
-  `claude -p`도 실패하기 전에 SessionStart 훅을 실행한다.
+  `claude -p`도 실패하기 전에 SessionStart 훅을 실행한다. `--debug`를 붙이면 설정 폴더의 `debug/`에 훅 출력과
+  `provided additionalContext (<n> chars)`가 남아서, 모델 호출 없이 SessionStart 훅을 확인할 수 있다.
 - 플러그인 루트의 `bin/`은 Bash 도구의 PATH에 들어간다. `workflows/`의 스크립트는 `/<plugin>:<meta.name>`으로 실행된다.
 - 경로 변수: `${CLAUDE_PLUGIN_ROOT}`(설치본 위치, 버전마다 바뀜), `${CLAUDE_PLUGIN_DATA}`(업데이트를 넘어 유지).
 - 플러그인 루트의 `CLAUDE.md`는 로드되지 않는다. 검증은 `claude plugin validate <dir>`로 한다.
@@ -125,7 +126,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - 마켓플레이스는 `.agents/plugins/marketplace.json`이다. 같은 저장소의 플러그인은
   `source: {"source": "local", "path": "./..."}`로 가리키고, `policy`의 `installation`과 `authentication`이 필수다.
 - 설치하면 `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`으로 복사된다. `.git`과 ignore된 비공개 폴더까지
-  작업 트리 전체가 들어간다(2026-10-01, 임시 `CODEX_HOME`. 마켓플레이스 등록과 설치는 인증 없이 된다).
+  작업 트리 전체가 들어간다(2026-10-01, 임시 `CODEX_HOME`. 마켓플레이스 등록과 설치는 인증 없이 된다). `CODEX_HOME`이
+  원본 폴더 안에 있으면 복사가 자기 자신을 다시 복사해 끝나지 않는다.
 - 작업 폴더의 마켓플레이스는 자동으로 잡히지 않는다. `codex plugin marketplace list`에 나오려면
   `codex plugin marketplace add <root>`로 등록해야 한다(2026-10-01).
 - 플러그인에 넣을 수 있는 것은 스킬, MCP 서버, 브라우저 확장, 훅이다. 문서에 에이전트 항목은 없다.
@@ -141,7 +143,11 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   아니라 reason으로 새 이어가기 프롬프트를 만든다. 입력은 `turn_id`, `stop_hook_active`, `last_assistant_message`다.
 - 플러그인 훅의 경로 변수는 `PLUGIN_ROOT`, `PLUGIN_DATA`이고, 호환용으로 `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`도 준다.
 - `apply_patch`의 PreToolUse 입력은 셸과 같은 `tool_input.command`에 패치 문자열이 든다.
+- 명령은 문자열만 받는다(Claude의 `args` exec form이 없다). `PLUGIN_ROOT`는 문자열 치환 없이 환경 변수로만 넘어온다.
 - Windows에서 훅 명령을 어떤 셸이 실행하는지는 문서에 없다. Windows 전용 명령은 `commandWindows`로 따로 줄 수 있다.
+  그래서 devflow는 셸이 해석할 문법이 없는 `node -e "require(process.env.CLAUDE_PLUGIN_ROOT+'/...').main()"`을 두 호스트에
+  같이 쓴다. 이 명령은 cmd, pwsh 7, Git Bash에서 같은 결과를 낸다(2026-10-01).
+- `codex debug prompt-input`에는 SessionStart 훅의 출력이 나오지 않는다(신뢰하지 않은 플러그인 훅, 2026-10-01).
 - 플러그인 훅은 사용자가 검토하고 신뢰해야 실행된다. 문서는 도구 훅을 "완전한 경계가 아닌 가드레일"로 설명한다.
 
 **서브에이전트**

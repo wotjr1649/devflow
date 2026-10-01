@@ -14,7 +14,7 @@
 
 - `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`(소스 `./`)
 - `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`
-- `skills/`, `agents/`, `hooks/`, `bin/`, `workflows/`, `evals/`
+- `skills/`, `agents/`, `hooks/`, `bin/`, `workflows/`, `evals/` (`workflows/`는 M4를 넣을 때 만든다. Issue #1 범위 밖)
 
 ## 결과
 

@@ -274,7 +274,7 @@ test('Stop continues open unattended work at most twice per task', () => {
     assert.equal(stop(), '', JSON.stringify(l))
   }
   setLedger({ ...open, mode: 'interactive', runMode: 'M2' })
-  assert.equal(JSON.parse(stop()).decision, 'block', 'M2 delegation counts as unattended')
+  assert.equal(stop(), '', 'an interactive session delegating in M2 is attended')
   setLedger('{ broken')
   assert.equal(stop(), '', 'an unreadable ledger lets the session stop')
 })

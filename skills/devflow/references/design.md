@@ -12,3 +12,5 @@ bounded path, in a design note on the architectural one.
 - Call `grilling` for decisions only the user can make; the rest is yours.
 - If the design turns out to touch one or two files with no interface change, move to the bounded path and add a `notes`
   line with the reason. Hidden complexity moves the other way.
+- On the bounded path ready happens here: run its prerequisite checks from [ready](ready.md) and record `runMode`
+  before build.

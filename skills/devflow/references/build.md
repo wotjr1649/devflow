@@ -24,6 +24,10 @@ passing, and the ledger holds the last commit and the next task.
 A change to a `.devflow.json` `highRisk` path gets one `reviewer` pass with the security perspective from
 [perspectives](perspectives.md), whatever the run mode.
 
+In M2 and M3 each task also gets a narrow review before the next starts: the `reviewer` with `model: sonnet`, given
+that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it. In M3
+the main session merges one worktree's result at a time and runs the full checks after each merge.
+
 The main session keeps decisions, Issue writes, integration and the ledger; a subagent gets one task through a brief
 in the shape of [위임 지시서](../../../docs/specs/orchestration.md#위임-지시서). Models and effort come from
 [모델과 effort](../../../docs/specs/orchestration.md#모델과-effort). A subagent that ends with `NEEDS_DECISION` is

@@ -17,7 +17,8 @@
   책임, 산출물, 넘어가는 조건, 담당은 [lifecycle](../../specs/lifecycle.md)이 정한다.
 - 경로(spike, bounded, architectural)에 따라 일부 단계만 돈다.
 - 작업 루프(다음 작업은 build부터)와 슬라이스 루프, 새 정보가 생겼을 때 돌아갈 단계를 명시한다.
-- `devflow` 라우터 스킬이 단계를 판단한다. 담당 스킬이 있는 단계(start, review, ship, cleanup, learn)는 그 스킬을 부르고,
+- `devflow` 라우터 스킬이 단계를 판단한다. 담당 스킬이 있는 단계(start, review, ship, cleanup)는 그 스킬을 부르고, learn은 둘 곳을 정하는
+  reference를 읽은 뒤 에이전트가 읽는 파일이면 writing-for-agents를 부르며(계획 8단계에서 정함),
   나머지는 라우터의 단계 reference를 읽는다.
 - 프로젝트에 devflow 표준을 적용하는 일(repository spec, doctor)은 별도 스킬 대신 라우터의 reference로 둔다.
 - 스킬은 7개다: 라우터, 생명주기 3개, 보조 3개.

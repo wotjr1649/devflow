@@ -10,7 +10,7 @@ devflow가 만들고 읽는 모든 문서의 위치, 크기, 형식, 작성법�
 | intent | 문제, 원하는 결과, 영향받는 사용자·시스템, 제약, 열린 질문, 수용 기준 | Issue 본문 위쪽 | 공개 | 범위가 바뀔 때만 수정 |
 | 현재 상태 | 단계, 브랜치·PR, 완료·남음, 다음 행동, 막힘, 최신 체크포인트 | Issue 본문 아래쪽 블록 | 공개 | **덮어쓴다** |
 | 체크포인트 | 변경, 검증(실행함·실행 안 함), 결정, 다음 | Issue 댓글 | 공개 | **추가만** |
-| 작업 장부 | 작업 번호, BASE, 마지막 커밋, 실행 모드, 수정·승격·계속 횟수와 이유, 대기 중인 결정, 후속 후보, 게시 대기 내용 | `.work/devflow/i<issue>/ledger.json` | 비공개 | Issue 종료까지 |
+| 작업 장부 | 단계, 경로, 작업 번호, BASE, 마지막 커밋, 실행 모드, 수정·승격·계속 횟수와 이유, 열린 결정, 막힘, 후속 후보, 게시 대기 내용 ([키](#작업-장부-키)) | `.work/devflow/i<issue>/ledger.json` | 비공개 | Issue 종료까지 |
 | 제품 계약 | 오래 유지되는 동작 규칙 | `docs/specs/` | 공개 | 계약이 바뀔 때 |
 | 결정 기록 | 결정과 이유, 대안 | `docs/design/decisions/` | 공개 | 대체될 때 superseded 표시 |
 | 계획 | 파일, 순서, 위험, 증명, 작업별 interfaces | `docs/plans/` | 비공개 | Issue 종료까지 |
@@ -24,6 +24,25 @@ devflow가 만들고 읽는 모든 문서의 위치, 크기, 형식, 작성법�
 
 Issue는 단계 경계, 결정, 막힘에서만 쓰고, 작업 단위의 진행은 장부에 쓴다. 공개 편집을 줄이고, 게시를 미뤄야 할 때
 쌓아 둘 곳이 필요하기 때문이다. 장부는 그 기기에만 있으므로 다른 기기에서는 Issue의 현재 상태까지만 이어진다.
+
+## 작업 장부 키
+
+`devflow-state ledger-update`로 쓰고 재개 카드와 Stop 훅이 읽는다.
+
+| 키 | 담는 것 |
+|---|---|
+| `stage`, `path` | lifecycle의 단계와 경로(spike, bounded, architectural). 단계는 상태 블록의 "단계"와 함께 바꾼다 |
+| `mode` | `interactive` 또는 `autonomous`. 무인 구간의 유일한 기준이다([자율 실행](orchestration.md#자율-실행)) |
+| `runMode` | M0~M4 |
+| `task` | `{current, total}` |
+| `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
+| `counts` | 작업별 `{fix, promote, continue}` |
+| `notes` | 수정·승격·경로 변경의 이유와 검증 증거, 한 줄씩 |
+| `decisions` | 열린 결정만. 내린 결정은 체크포인트나 결정 기록에 둔다 |
+| `blocked` | 막힘이나 사람을 기다리는 사유(원격 쓰기 확인 포함). 비어 있지 않으면 자율 계속을 하지 않는다 |
+| `running` | 실행 중인 백그라운드 서브에이전트 |
+| `followups` | ship 때 제안할 후속 후보 |
+| `pendingPosts` | 무인 구간에 쌓인 게시. `devflow-state`가 관리한다 |
 
 ## 기억 도구
 

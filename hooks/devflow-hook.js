@@ -546,11 +546,11 @@ function continueWork(env, cwd) {
   if (!ctx || !ctx.issue) return ''
   const ledger = state.readLedger(ctx.root, ctx.issue)
   if (!ledger) return ''
-  const unattended = ledger.mode === 'autonomous' || ['M2', 'M3'].includes(ledger.runMode)
+  // Unattended means the ledger says so: approval settings such as bypass or yolo say nothing about who is present.
   const task = ledger.task || {}
   const open = ['build', 'verify'].includes(ledger.stage) && task.current <= task.total
   const waiting = ledger.blocked || (ledger.decisions || []).length || (ledger.running || []).length
-  if (!unattended || !open || waiting) return ''
+  if (ledger.mode !== 'autonomous' || !open || waiting) return ''
   const key = String(task.current)
   const counts = { ...(ledger.counts || {}) }
   const mine = { ...(counts[key] || {}) }
@@ -559,7 +559,7 @@ function continueWork(env, cwd) {
   counts[key] = mine
   state.writeLedger(ctx.root, ctx.issue, { ...ledger, counts })
   return JSON.stringify({ decision: 'block', reason: `devflow: task ${task.current}/${task.total} is open (${ledger.stage}) in ` +
-    `${ledger.mode === 'autonomous' ? 'autonomous mode' : ledger.runMode}. Continue it: finish the stage, commit, update the ledger. ` +
+    'autonomous mode. Continue it: finish the stage, commit, update the ledger. ' +
     `Stop only for a blocker or a decision for the user, recorded in the ledger as blocked or decisions.` })
 }
 

@@ -37,13 +37,15 @@ Issue는 단계 경계, 결정, 막힘에서만 쓰고, 작업 단위의 진행�
 | `task` | `{current, total}` |
 | `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
 | `counts` | 작업별 `{fix, promote, continue}` |
-| `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`([metrics](metrics.md#수동-지표)) |
+| `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`. `devflow-state metric`으로 더한다([metrics](metrics.md#수동-지표)) |
 | `notes` | 수정·승격·경로 변경과 수동 지표 증가의 이유, 검증 증거, 한 줄씩 |
 | `decisions` | 열린 결정만. 내린 결정은 체크포인트나 결정 기록에 둔다 |
 | `blocked` | 막힘이나 사람을 기다리는 사유(원격 쓰기 확인 포함). 비어 있지 않으면 자율 계속을 하지 않는다 |
 | `running` | 실행 중인 백그라운드 서브에이전트 |
 | `followups` | ship 때 제안할 후속 후보 |
 | `pendingPosts` | 무인 구간에 쌓인 게시. `devflow-state`가 관리한다 |
+
+같은 폴더의 `guard-events.jsonl`은 훅과 `devflow-state`가 차단마다 덧붙이는 기록이다([metrics](metrics.md#수동-지표)).
 
 ## 기억 도구
 

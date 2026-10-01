@@ -26,6 +26,11 @@ template of [documents](../../docs/specs/documents.md#issue-템플릿). Progress
 keys of [작업 장부 키](../../docs/specs/documents.md#작업-장부-키). The Stop hook decides from `mode`, `stage`, `task`,
 `decisions`, `blocked` and `running` whether unattended work continues, so keep them current.
 
+Count as it happens, not at the end: when the user corrects the stage, path, method or an output, or a devflow guard
+blocked something legitimate, run `metric <issue> interventions` or `metric <issue> filterFalsePositives` with a
+one-line note on stdin ([수동 지표](../../docs/specs/metrics.md#수동-지표)). Guard blocks themselves are logged
+automatically.
+
 ## Unattended work
 
 [자율 실행](../../docs/specs/orchestration.md#자율-실행) says when the ledger's `mode` becomes `autonomous` and what

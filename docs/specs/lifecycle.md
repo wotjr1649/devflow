@@ -29,6 +29,9 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 | 10 | cleanup 정리 | 브랜치와 worktree 정리 | 정리 기록 | 정리 완료 | workspace-cleanup |
 | 11 | learn 회고 | 교훈을 알맞은 곳에 둠 | 아래 "회고와 기억" | 교훈이 있을 때만 | 라우터 reference, 둘 곳이 에이전트가 읽는 파일이면 writing-for-agents |
 
+ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 쓰고 Issue를 닫는다. 브랜치를 지운 뒤에는 그 Issue에
+쓸 수 없으므로, cleanup은 장부에만 남긴다.
+
 ## 경로별 단계
 
 | 경로 | 도는 단계 |
@@ -61,6 +64,7 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 | 설계 가정이 깨짐(새 제약, 접근 방식 불가) | design → plan → ready, 오래 남을 결정은 결정 기록 | 사용자만 정할 결정이면 예 |
 | 요구사항이나 수용 기준이 바뀜 | discover 또는 start, Issue intent 수정 | 예 |
 | 범위 밖의 새 문제 | 재현된 결함과 사용자가 미루기로 정한 것은 바로 후속 Issue로, 그 밖은 장부에 남겨 ship 때 한 번에 제안 | 제안하는 것만 예 |
+| ship에서 push가 거부됨 | Issue 브랜치에서 Issue를 다시 열고 상태를 되돌림. 검사 실패면 build, 그 밖은 ship | 아니요 |
 | 외부 요인으로 막힘 | 현재 상태에 막힘을 적고 멈춤 | 예 |
 | 숨은 복잡도(bounded → architectural) | design | 경로가 바뀐 것을 알림 |
 

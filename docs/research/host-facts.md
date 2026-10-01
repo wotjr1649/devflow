@@ -92,6 +92,14 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   `last_assistant_message`도 있고, 마지막 응답은 늦을 수 있는 트랜스크립트 대신 이 값으로 읽는다.
 - Windows에서 command 훅은 Git Bash가 있으면 Bash, 없으면 PowerShell로 돈다. `shell` 필드로 고를 수 있고, 두
   플랫폼에서 같이 쓰는 훅은 `args`를 쓰는 exec form을 권한다.
+- PreToolUse가 보는 셸 도구는 `Bash`와 `PowerShell`(설정으로 켜는 Windows 도구, 입력은 같은 `tool_input.command`)이다.
+  MCP 도구는 `mcp__<server>__<tool>`, 플러그인 MCP는 `mcp__plugin_<plugin>_<server>__<tool>`, claude.ai 커넥터는
+  `mcp__claude_ai_<server>__<tool>`이다. matcher에 문자·숫자·`_`·`-`·공백·`,`·`|` 밖의 글자가 있으면 고정되지 않은 JS 정규식이다.
+- 권한 문서는 Bash 규칙이 명령 텍스트를 맞출 뿐 프로그램 둘레의 보안 경계가 아니라고 한다(`bash -c`, 절대 경로는 지나감).
+  OS sandbox는 macOS, Linux, WSL2만 지원하고 네이티브 Windows는 지원하지 않는다.
+- Windows에서는 기본으로 Bash·PowerShell·훅 하위 프로세스 환경에서 `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+  `ANTHROPIC_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`을 지운다(`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`). 그래서 세션 안에서
+  띄운 `claude -p`는 인증이 없다. 모델을 부르는 확인은 사용자 터미널에서 한다.
 
 ## Codex
 
@@ -137,7 +145,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - 이벤트: SessionStart, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit,
   SubagentStart, SubagentStop, Stop
 - SessionStart 매처는 `startup|resume|clear|compact`다. 출력 맥락의 양은 `additionalContextLimit`로 제한한다.
-- 도구 매칭: 셸은 `Bash`, `apply_patch`는 `apply_patch`·`Edit`·`Write`, `spawn_agent`는 `Agent`로 매칭된다.
+- 도구 매칭: 셸(`exec_command` 포함)은 `Bash`, `apply_patch`는 `apply_patch`·`Edit`·`Write`, `spawn_agent`는 `Agent`로
+  매칭된다. MCP 도구는 Claude와 같은 `mcp__<server>__<tool>`이고 PreToolUse로 막을 수 있다.
 - 차단은 `hookSpecificOutput.permissionDecision: "deny"`로 한다.
 - Stop 출력은 Claude와 같이 최상위 `decision: "block"`과 `reason`(또는 exit 2와 stderr)이다. 다만 턴을 거부하는 것이
   아니라 reason으로 새 이어가기 프롬프트를 만든다. 입력은 `turn_id`, `stop_hook_active`, `last_assistant_message`다.

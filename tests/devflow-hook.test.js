@@ -14,8 +14,90 @@ function dir(devflow) {
   return d
 }
 
-const pre = (cwd, command) => JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd })
+const pre = (cwd, command, tool = 'Bash') => JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { command }, cwd })
 const decision = out => out && JSON.parse(out).hookSpecificOutput.permissionDecision
+const noAliases = { run: () => ({ code: 0, stdout: 'co: pr checkout\n', stderr: '' }) }
+const check = (c, cwd = '.') => hook.issueWrite(c, { cwd, env: noAliases })
+const encoded = s => Buffer.from(s, 'utf16le').toString('base64')
+const ghPath = () => ['C:', 'Program Files', 'GitHub CLI', 'gh.exe'].join(String.fromCharCode(92))
+
+test('follows what the command runs to the Issue write', () => {
+  const writes = [
+    'bash -c "gh issue comment 1 --body x"',
+    "sh -lc 'gh issue close 1'",
+    'eval "gh issue close 1"',
+    'timeout 30 gh issue close 1',
+    'env GH_DEBUG=1 gh issue close 1',
+    'echo 1 | xargs -n1 gh issue close',
+    'x=issue; gh $x comment 1 --body y',
+    'gh $(echo issue) comment 1',
+    '$GH issue close 1',
+    'echo "gh issue close 1" | bash',
+    'bash <<EOF\ngh issue close 1\nEOF',
+    'cat <<\'EOF\' | sh\ngh issue close 1\nEOF',
+    'bash <<< "gh issue close 1"',
+    'for i in 1; do gh issue comment $i --body x; done',
+    'if true; then gh issue close 1; fi',
+    '(gh issue close 1)',
+    'echo $(gh issue close 1)',
+    'find . -name x -exec gh issue close 1 \\;',
+    'pwsh -NoProfile -Command "gh issue close 1"',
+    `pwsh -EncodedCommand ${encoded('gh issue close 1')}`,
+    'cmd /c gh issue close 1',
+    'Start-Process gh -ArgumentList "issue close 1"',
+    `& "${ghPath()}" issue close 1`,
+    'sudo -u me sh -c "gh issue close 1"',
+    'node -e "fetch(\'https://api.github.com/repos/o/r/issues/1/comments\', { method: \'POST\' })"',
+  ]
+  for (const c of writes) assert.ok(check(c), c)
+})
+
+test('does not read quoted text and data as commands', () => {
+  const allowed = [
+    'git commit -m "gh issue comment docs"',
+    "git commit -m 'gh issue close 1'",
+    'git commit -F - <<EOF\ngh issue close 1\nEOF',
+    'echo "gh issue close 1"',
+    'grep -rn "gh issue comment" docs',
+    'printf "%s\\n" "gh issue close 1" > notes.txt',
+    'echo "gh issue close 1" | grep bash',
+    'gh pr comment 3 --body "gh issue close 1"',
+  ]
+  for (const c of allowed) assert.equal(check(c), null, c)
+})
+
+test('resolves gh aliases', () => {
+  const env = { run: () => ({ code: 0, stdout: 'ic: issue comment\nbye: !gh issue close "$1"\nco: pr checkout\n', stderr: '' }) }
+  assert.ok(hook.issueWrite('gh ic 1 --body x', { env }))
+  assert.ok(hook.issueWrite('gh bye 1', { env }))
+  assert.equal(hook.issueWrite('gh co 3', { env }), null)
+  const failing = { run: () => ({ code: 1, stdout: '', stderr: '' }) }
+  assert.match(hook.issueWrite('gh mystery 1', { env: failing }), /alias lookup failed/)
+})
+
+test('reads script files that a command runs', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, 'post.sh'), '#!/bin/sh\ngh issue comment 1 --body x\n')
+  assert.ok(check('bash post.sh', d))
+  assert.ok(check('./post.sh', d))
+  assert.ok(check('. ./post.sh', d))
+})
+
+test('blocks GitHub MCP Issue writes only', () => {
+  for (const t of ['mcp__github__issue_write', 'mcp__github__add_issue_comment', 'mcp__plugin_x_github__sub_issue_write', 'mcp__claude_ai_GitHub__issue_write']) {
+    assert.ok(hook.mcpIssueWrite(t), t)
+  }
+  for (const t of ['mcp__github__issue_read', 'mcp__github__list_issues', 'mcp__github__search_issues', 'mcp__github__get_issue_comments', 'mcp__linear__create_issue']) {
+    assert.equal(hook.mcpIssueWrite(t), null, t)
+  }
+  assert.equal(decision(hook.handle(pre(dir(true), undefined, 'mcp__github__issue_write'))), 'deny')
+})
+
+test('checks PowerShell tool commands and array commands', () => {
+  assert.equal(decision(hook.handle(pre(dir(true), 'gh issue close 1', 'PowerShell'))), 'deny')
+  assert.ok(check(['bash', '-lc', 'gh issue close 1']))
+  assert.equal(check(['git', 'commit', '-m', 'gh issue close 1']), null)
+})
 
 test('blocks direct Issue writes', () => {
   const writes = [

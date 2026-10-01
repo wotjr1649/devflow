@@ -4,7 +4,7 @@ Every file in this repository that is derived from another project has a row her
 
 | devflow path | Upstream | Commit | Upstream path | License | Changes |
 |---|---|---|---|---|---|
-| `skills/` (six skills, 14 files) | owner's deployed skill set (`~/.claude/skills` and `~/.agents/skills`, identical) | no VCS; per-file SHA-256 under [Imported owner skills](#imported-owner-skills) | `<skill>/…` | Apache-2.0 (owner) | 2026-10-01 import: line endings only (the copies were already LF, so no bytes changed); adaptations in later commits |
+| `skills/` (six skills, 14 files) | owner's deployed skill set (`~/.claude/skills` and `~/.agents/skills`, identical) | no VCS; per-file SHA-256 under [Imported owner skills](#imported-owner-skills) | `<skill>/…` | Apache-2.0 (owner) | 2026-10-01 import `1d1b75d`: line endings only (the copies were already LF, so no bytes changed). Then devflow adaptations: `development-start` (`SKILL.md`, `references/tracking.md`: description, no resume, Issue writes through `devflow-state`; `3744f51`, `7a5c12d`, `0b38e16`); `pr-review-workflow` (`SKILL.md`, `references/cleanup.md`, `completion.md`, `integration.md`: description without standalone review, cleanup skill called by name, local gate, criteria checked before closing; `3744f51`, `add5aef`, `7a5c12d`, `0b38e16`); `grilling` and `prompt-generator` (`SKILL.md`: description, a devflow section in prompt-generator; `3744f51`). `workspace-cleanup` and `writing-for-agents` are unchanged. |
 
 ## Imported owner skills
 
@@ -30,7 +30,8 @@ Imported 2026-10-01. The deployed bytes are hashed as read; the committed bytes 
 ## Rules
 
 - Pin the upstream commit at copy time and add the row in the same commit as the copy.
-- Apache-2.0 files keep their notices and get a header line stating they were modified in devflow.
+- Third-party Apache-2.0 files keep their notices and get a header line stating they were modified in devflow. The
+  owner's own skills are licensed by the owner here, so their changes are recorded in the row above instead.
 - MIT files keep their copyright and permission notice; the full upstream license text goes to
   `LICENSES/<upstream>-MIT.txt`.
 - Copy only the parts listed under "Take" below; anything else needs a decision record first.

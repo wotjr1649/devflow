@@ -808,7 +808,7 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       if (kind.startsWith(PROTECTED)) {
         return blocked(root, 'protected-path', `devflow: ${kind.slice(PROTECTED.length)} is a protected path in .devflow.json; leave it as it is.`)
       }
-      return blocked(root, 'issue-write', `devflow: Issue writes go through devflow-state (state, comment, check, close, reopen, create), which filters ` +
+      return blocked(root, 'issue-write', `devflow: Issue writes go through devflow-state (${[...state.WRITE_OPS].join(', ')}), which filters ` +
         `paths, secrets and length before posting. Blocked: ${kind}.`)
     } catch (e) {
       return blocked(root, 'hook-check-failed', `devflow: the check failed (${e.message}), so the tool call was blocked.`)

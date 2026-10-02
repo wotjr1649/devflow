@@ -178,6 +178,12 @@ test('PreToolUse denies a raw Issue write inside a devflow repository', () => {
   assert.match(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /devflow-state/)
 })
 
+test('the deny reason names every devflow-state write, so a new one is not left out (Issue #8)', () => {
+  const reason = JSON.parse(hook.handle(pre(dir(true), 'gh issue edit 1 --body-file b.md'))).hookSpecificOutput.permissionDecisionReason
+  const listed = /devflow-state \(([^)]*)\)/.exec(reason)[1].split(', ')
+  assert.deepEqual(listed, [...require('../bin/devflow-state').WRITE_OPS])
+})
+
 test('PreToolUse allows the same command outside a devflow repository', () => {
   assert.equal(hook.handle(pre(dir(false), 'gh issue comment 1 --body x')), '')
 })

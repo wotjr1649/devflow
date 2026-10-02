@@ -71,6 +71,20 @@ ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 �
 같은 작업의 자동 수정은 [수정 루프](orchestration.md#수정-루프)를 따른다. 같은 목표로 세 번 실패하면 방법을 바꾸거나
 멈추고 보고한다.
 
+## eval
+
+트리거 eval(`claude plugin eval . --tag trigger`)은 스킬 목록이 바뀐 사이클에서만 돌린다. BASE..HEAD로 판별한다.
+
+- 돌린다: `skills/*/SKILL.md` frontmatter의 호출 필드(`name`, `description`, `when_to_use`, `paths`,
+  `disable-model-invocation`, `user-invocable`)가 바뀌었거나, 스킬을 더하거나 지우거나 이름을 바꿨거나, `evals/trigger/`가
+  바뀌었을 때.
+- 돌리지 않는다: 스킬 본문, references, 훅, 에이전트, AGENTS.md만 바뀌었을 때. eval 실행은 격리되어 대상 플러그인만
+  로드되고, 호스트는 스킬 목록만 보고 자동 호출을 정하므로 이 변경은 결과를 바꾸지 않는다([host-facts](../research/host-facts.md)).
+- 결과 eval은 두지 않는다. 스킬 본문의 변경은 리뷰와 사이클 지표(개입, 오탐, 차단)로 보고, 개입이 늘거나 같은 실수가
+  반복되면 결과 eval 장치를 만드는 Issue를 연다.
+- eval은 사용자 터미널에서 돌린다. 세션 안에서 띄우면 인증이 없어 멈춘다. 판정은 오류 난 실행을 빼고 트리거 80% 이상,
+  오탐 10% 이하다. ship 체크포인트에 돌렸는지와 판별 근거를 남긴다.
+
 ## 회고와 기억
 
 learn은 교훈이 있을 때만 돈다. 교훈은 성격에 따라 둔다.
@@ -80,7 +94,7 @@ learn은 교훈이 있을 때만 돈다. 교훈은 성격에 따라 둔다.
 | 기계로 막을 수 있음 | 훅, 테스트, doctor 검사. 옮긴 뒤 AGENTS.md에서 지운다 |
 | 특정 영역에만 해당 | 그 영역의 spec이나 문서, 그리고 AGENTS.md 문서 지도의 한 행 |
 | 저장소 전체, 두 번 반복, 기계로 막을 수 없음 | AGENTS.md Gotchas. 예산을 넘으면 덜 쓰이는 항목을 문서로 옮긴다 |
-| 여러 저장소에 공통인 절차 | devflow 스킬, 바꾼 뒤 eval |
+| 여러 저장소에 공통인 절차 | devflow 스킬. 스킬 목록을 바꾸면 [eval](#eval) |
 | 개인 선호, 모든 저장소 공통 규칙 | 사용자 전역 지침. devflow는 제안만 한다 |
 | 경위와 결정 이력 | Issue 체크포인트, 결정 기록, 커밋 메시지 |
 | 그 컴퓨터에만 해당하는 환경 | 비공개 handoff나 호스트의 개인 메모리. 공용 지침에는 넣지 않는다 |

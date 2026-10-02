@@ -21,11 +21,15 @@ disappear later, and `devflow-state` writes only to the branch's Issue. Rules: [
 1. Read the cycle's guard blocks (`guard-events.jsonl` beside the ledger). Count each one that stopped a legitimate
    action, and any intervention not yet counted, with `metric` on the card's `Tool:` command.
 2. Run the project's `verify` gate.
-3. From the Issue's work tree, run `devflow-metrics <issue>` (next to the `Tool:` command) and save its output as
+3. Decide the trigger eval by [eval](../../../docs/specs/lifecycle.md#eval): `git diff --name-status <base>..HEAD -- skills
+   evals/trigger` shows added, deleted or renamed skills and any changed eval case, and `git diff -U0 <base>..HEAD --
+   'skills/*/SKILL.md'` shows changed frontmatter lines. When it is due, ask the user to run it in their terminal, since
+   it cannot authenticate inside a session. Either way the ship checkpoint says whether it ran and why.
+4. From the Issue's work tree, run `devflow-metrics <issue>` (next to the `Tool:` command) and save its output as
    `artifacts/metrics/i<issue>.json` in the main work tree.
-4. Post the ship checkpoint with the line from `devflow-metrics <issue> --line --until <the saved until>`, replace the
+5. Post the ship checkpoint with the line from `devflow-metrics <issue> --line --until <the saved until>`, replace the
    state block with `단계: done` and `남음: push 확인, 로컬 브랜치 정리`, and close the Issue.
-5. Integrate. If the push is refused, switch back to the Issue branch, reopen the Issue and set the state back: a failed
+6. Integrate. If the push is refused, switch back to the Issue branch, reopen the Issue and set the state back: a failed
    check returns to build, anything else to ship.
 
 Cleanup is recorded in the ledger only, and deletes the branch only once the remote default branch contains its tip.

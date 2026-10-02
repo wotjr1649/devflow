@@ -29,7 +29,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 | 훅 | 행동 시점 게이트 | `hooks/hooks.json` | 같은 파일 | 가드레일 (오류·시간 초과면 통과) |
 | 스크립트 | 검사·분석 | `bin/` | 스킬이 경로로 실행 | 결정적 |
 | git hook·CI | 최종 관문 | 공통 | 공통 | 결정적 |
-| eval | 스킬·훅·지침의 회귀 | `claude plugin eval`, skill-creator | 같은 프롬프트 세트 | 측정 |
+| eval | 스킬 호출의 회귀 | `claude plugin eval`, skill-creator | 같은 프롬프트 세트 | 측정 |
 
 ## 단계
 
@@ -57,7 +57,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 - **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드), `devflow-doctor`(구조·문서 감사),
   `devflow-metrics`(세션 기록에서 사이클 지표, 읽기 전용).
   리뷰에 넘기는 BASE..HEAD diff 파일(`review-package`)은 스크립트 없이 라우터의 review reference가 `git diff`로 만든다
-- **템플릿과 eval**: Issue intent, REVIEW.md, AGENTS.md, ignore·attributes 블록, 트리거·결과 eval
+- **템플릿과 eval**: Issue intent, REVIEW.md, AGENTS.md, ignore·attributes 블록, 트리거 eval
 
 배치(저장소 루트 = 플러그인 루트): [ADR-0002](decisions/ADR-0002-repository-root-is-plugin-root.md).
 두 호스트 공통 원본: [ADR-0001](decisions/ADR-0001-cross-host-single-source.md).

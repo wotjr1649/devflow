@@ -726,3 +726,14 @@ test('SessionStart passes the session id to the card, so its own writes are not 
   assert.doesNotMatch(card(SID), /another claude session/)
   assert.match(card('ffffffff-0000'), /another claude session/)
 })
+
+test('SessionEnd leaves a sessions file behind a linked Issue folder alone (2026-10-03 security review)', () => {
+  const root = dir(true)
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-out-'))
+  const body = JSON.stringify({ [hashOf(SID)]: { host: 'claude', at: Date.now() } })
+  fs.writeFileSync(path.join(outside, 'sessions.json'), body)
+  fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
+  fs.symlinkSync(outside, path.join(root, '.work', 'devflow', 'i1'), 'junction')
+  assert.equal(hook.handle(event('SessionEnd', root, { session_id: SID }), noGit), '')
+  assert.equal(fs.readFileSync(path.join(outside, 'sessions.json'), 'utf8'), body)
+})

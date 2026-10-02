@@ -681,10 +681,8 @@ function releaseEverywhere(cwd, sessionId) {
   for (const name of names) {
     const m = /^i(\d+)$/.exec(name)
     if (!m) continue
-    try {
-      const s = JSON.parse(fs.readFileSync(path.join(base, name, 'sessions.json'), 'utf8'))
-      if (s && s[hash]) state.releaseSessions(root, Number(m[1]), [hash], { waitMs: 0 })
-    } catch {}
+    // readSessions skips links, other file kinds and large files, so a cloned repository cannot stall the hook here.
+    if (state.readSessions(root, Number(m[1]))[hash]) state.releaseSessions(root, Number(m[1]), [hash], { waitMs: 0 })
   }
 }
 

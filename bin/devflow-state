@@ -219,9 +219,30 @@ function writeJson(p, value) {
 // in particular, so a lock older than LOCK_STALE_MS was left by an exit mid-write.
 const LOCK_STALE_MS = 10000
 const LOCK_WAIT_MS = 2000
+// The folders up to the Issue's own must be real folders: through a link the lock and the files would land outside .work.
+const issueDirOk = (root, n) =>
+  ![path.join(root, '.work'), path.join(root, '.work', 'devflow'), path.join(root, '.work', 'devflow', `i${n}`)].some(isLinkOrOther)
+
+// Drops a lock judged stale by moving it aside under a unique name. If what was moved is not the lock that was judged
+// (another waiter dropped it and took a new one in between), the new one is put back; link fails if the name is taken.
+function dropStale(lock, judged) {
+  const aside = `${lock}.${token()}.stale`
+  try {
+    fs.renameSync(lock, aside)
+  } catch {
+    return false
+  }
+  let moved = null
+  try { moved = fs.readFileSync(aside, 'utf8') } catch {}
+  if (moved !== judged) try { fs.linkSync(aside, lock) } catch {}
+  fs.rmSync(aside, { force: true })
+  return moved === judged
+}
+
+// { ok: true, value } or { ok: false, why: 'busy' | 'unsafe' }.
 function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
+  if (!issueDirOk(root, n)) return { ok: false, why: 'unsafe' }
   const dir = path.join(root, '.work', 'devflow', `i${n}`)
-  if ([path.join(root, '.work'), path.join(root, '.work', 'devflow'), dir].some(isLinkOrOther)) return { ok: false }
   fs.mkdirSync(dir, { recursive: true })
   const lock = path.join(dir, 'ledger.lock')
   const mine = token()
@@ -232,20 +253,18 @@ function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
       break
     } catch (e) {
       // Windows answers EPERM for a name whose file is still being deleted: wait as for a held lock.
-      if (!['EEXIST', ...TRANSIENT].includes(e.code)) return { ok: false }
+      if (!['EEXIST', ...TRANSIENT].includes(e.code)) return { ok: false, why: 'unsafe' }
     }
     try {
       const st = fs.lstatSync(lock)
-      if (!st.isFile()) return { ok: false }
-      // Moved aside under a unique name, so of several waiters only one drops it.
-      if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
-        const aside = `${lock}.${mine}.stale`
-        fs.renameSync(lock, aside)
-        fs.rmSync(aside, { force: true })
+      if (!st.isFile()) return { ok: false, why: 'unsafe' }
+      // A time far ahead of now is as wrong as one far behind it: an archive can carry any mtime.
+      if (Math.abs(Date.now() - st.mtimeMs) > LOCK_STALE_MS) {
+        dropStale(lock, fs.readFileSync(lock, 'utf8'))
         continue
       }
     } catch {}
-    if (Date.now() >= until) return { ok: false }
+    if (Date.now() >= until) return { ok: false, why: 'busy' }
     sleep(10)
   }
   try {
@@ -264,9 +283,11 @@ function updateLedger(root, n, fn, opts) {
     if (ledger) writeLedger(root, n, ledger)
     return { ledger, result }
   }, opts)
-  return r.ok ? { ok: true, ...r.value } : { ok: false }
+  return r.ok ? { ok: true, ...r.value } : r
 }
-const LOCKED = n => ({ code: 1, out: `refused: another write holds the ledger of Issue #${n}; try again`, guard: 'state-ledger-locked' })
+const LOCKED = (n, why) => (why === 'unsafe'
+  ? { code: 1, out: `refused: .work/devflow/i${n} is not a plain folder (a link, or a ledger lock that is not a file); fix it first`, guard: 'state-ledger-unsafe' }
+  : { code: 1, out: `refused: another write holds the ledger of Issue #${n}; try again`, guard: 'state-ledger-locked' })
 
 // Which session writes (Issue #10). The innermost host's id comes first: a Codex run started from Claude inherits
 // Claude's variables, and the SessionStart hook hands Claude's own id to its shell as DEVFLOW_SESSION_ID. Subagents run
@@ -279,16 +300,22 @@ function sessionId(vars = {}) {
 }
 const ACTIVE_MS = 30 * 60000
 const sessionsPath = (root, n) => path.join(root, '.work', 'devflow', `i${n}`, 'sessions.json')
+// The file comes from the working tree, which a cloned repository controls: only small plain files in real folders,
+// and only entries shaped as devflow writes them reach a warning.
+const MAX_SESSIONS_BYTES = 65536
 function readSessions(root, n) {
   try {
     const p = sessionsPath(root, n)
-    const s = fs.lstatSync(p).isFile() ? JSON.parse(fs.readFileSync(p, 'utf8')) : {}
+    const st = fs.lstatSync(p)
+    if (!issueDirOk(root, n) || !st.isFile() || st.size > MAX_SESSIONS_BYTES) return {}
+    const s = JSON.parse(fs.readFileSync(p, 'utf8'))
     return s && typeof s === 'object' && !Array.isArray(s) ? s : {}
   } catch {
     return {}
   }
 }
-const recent = (s, now) => Object.fromEntries(Object.entries(s).filter(([, v]) => v && now - v.at < ACTIVE_MS))
+const recent = (s, now) => Object.fromEntries(Object.entries(s).filter(([h, v]) => /^[0-9a-f]{12}$/.test(h) && v &&
+  ['claude', 'codex'].includes(v.host) && Number.isFinite(v.at) && now - v.at < ACTIVE_MS && v.at <= now + 60000))
 
 // Records a write by this session; a failure to record never fails the write itself.
 function recordWrite(root, n, vars) {
@@ -317,12 +344,17 @@ function releaseSessions(root, n, hashes, opts) {
 }
 
 // One line per other session that wrote to the Issue in the last 30 minutes and did not release it.
+// At most two lines and a count of the rest, so the warnings never push the Issue state out of the card.
+const MAX_SESSION_WARNINGS = 2
 function sessionWarnings(root, n, own) {
   const now = Date.now()
-  return Object.entries(recent(readSessions(root, n), now)).filter(([h]) => !own.includes(h)).map(([h, v]) =>
-    `Warning: another ${v.host === 'codex' ? 'codex' : 'claude'} session (${h.slice(0, 6)}) wrote to Issue #${n} ` +
-    `${Math.floor((now - v.at) / 60000)} min ago; two sessions may overwrite each other's ledger and state. ` +
+  const others = Object.entries(recent(readSessions(root, n), now)).filter(([h]) => !own.includes(h)).sort((a, b) => b[1].at - a[1].at)
+  const lines = others.slice(0, MAX_SESSION_WARNINGS).map(([h, v]) =>
+    `Warning: another ${v.host} session (${h.slice(0, 6)}) wrote to Issue #${n} ` +
+    `${Math.max(0, Math.floor((now - v.at) / 60000))} min ago; two sessions may overwrite each other's ledger and state. ` +
     `A session that hands over runs "release ${n}".`)
+  const more = others.length - lines.length
+  return more > 0 ? [...lines, `Warning: and ${more} more sessions wrote to Issue #${n} in the last 30 min.`] : lines
 }
 
 function privateFiles(root, n) {
@@ -695,9 +727,11 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
     const pendingPosts = [...queued, { id: token(), op, issue: n, title, text, at: new Date().toISOString() }]
     return { ledger: { ...ledger, pendingPosts }, result: { code: 0, out: `queued ${op} for the next interactive turn (${pendingPosts.length} pending)` } }
   }
-  // A new Issue from a branch without one has no ledger yet.
-  const queued = owner ? updateLedger(ctx.root, owner, decide) : { ok: true, result: null }
-  if (!queued.ok) return LOCKED(owner)
+  // An interactive write only reads the ledger, so it needs no lock and a folder that cannot take one does not stop it.
+  // Queueing is decided again under the lock. A new Issue from a branch without one has no ledger yet.
+  const peek = owner && issueDirOk(ctx.root, owner) ? readLedger(ctx.root, owner) || {} : {}
+  const queued = owner && peek.mode === 'autonomous' && !flushing ? updateLedger(ctx.root, owner, decide) : { ok: true, result: decide(peek).result }
+  if (!queued.ok) return LOCKED(owner, queued.why)
   return queued.result || post(ctx, op, n, text, title)
 }
 
@@ -716,7 +750,7 @@ function metric(env, cwd, n, key, note) {
     const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${key} +1: ${line}`]
     return { ledger: { ...ledger, metrics, notes }, result: metrics[key] }
   })
-  return r.ok ? { code: 0, out: `${key} ${r.result}` } : guarded(ctx, LOCKED(n))
+  return r.ok ? { code: 0, out: `${key} ${r.result}` } : guarded(ctx, LOCKED(n, r.why))
 }
 
 // Appends one line to notes. ledger-update replaces whole keys, so two sessions adding notes that way would drop one.
@@ -731,14 +765,15 @@ function note(env, cwd, n, text) {
     const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), line]
     return { ledger: { ...ledger, notes }, result: notes.length }
   })
-  return r.ok ? { code: 0, out: `notes ${r.result}` } : guarded(ctx, LOCKED(n))
+  return r.ok ? { code: 0, out: `notes ${r.result}` } : guarded(ctx, LOCKED(n, r.why))
 }
 
 // A flush claims the whole queue under the lock and posts outside it, removing each item by id once posted. Another
 // flush that finds a fresh claim leaves the queue alone: posting part of it would break the order. An item posted by a
 // flush that died before removing it can post again once its claim expires.
 const CLAIM_MS = 10 * 60000
-function flush(env, cwd) {
+const REMOVE_WAIT_MS = 10000
+function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   const ctx = repoContext(env, cwd)
   if (!ctx || !ctx.issue) return { code: 1, out: 'refused: no devflow Issue branch' }
   const n = ctx.issue
@@ -748,34 +783,54 @@ function flush(env, cwd) {
     // Queued posts wait for a person: an unattended run cannot flush its own queue.
     if (ledger.mode === 'autonomous') return { result: 'autonomous' }
     const queued = ledger.pendingPosts || []
-    if (queued.some(p => p.claimed && now - p.claimed.at < CLAIM_MS)) return { result: 'busy' }
+    // A claim dated ahead of now is void: it would hold the queue for as long as the date says.
+    if (queued.some(p => p.claimed && now - p.claimed.at < CLAIM_MS && p.claimed.at <= now + 60000)) return { result: 'busy' }
     const pendingPosts = queued.map(p => ({ ...p, id: p.id || token(), claimed: { by, at: now } }))
     return { ledger: { ...ledger, pendingPosts }, result: pendingPosts.map(p => p.id) }
   })
-  if (!claim.ok) return guarded(ctx, LOCKED(n))
+  if (!claim.ok) return guarded(ctx, LOCKED(n, claim.why))
   if (claim.result === 'autonomous') return guarded(ctx, { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn', guard: 'state-autonomous-flush' })
   if (claim.result === 'busy') return { code: 1, out: 'refused: another flush is posting this queue; try again later' }
   const posts = claim.ledger ? claim.ledger.pendingPosts : []
   const out = []
-  let failed = 0
+  const tryUpdate = fn => {
+    try {
+      return updateLedger(ctx.root, n, fn, { waitMs })
+    } catch {
+      return { ok: false }
+    }
+  }
+  let posted = 0
+  let failed = false
+  let stuck = null
   // Posts go in order and stop at the first failure: a later intent would renumber the criteria a failed check names.
+  // A posted item still in the queue would post again, so one that cannot be removed stops the flush too.
   for (const p of posts) {
     const r = write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true })
     out.push(r.out)
     if (r.code !== 0) {
-      failed = posts.length - posts.indexOf(p)
+      failed = true
       break
     }
-    updateLedger(ctx.root, n, l => ({ ledger: { ...l, pendingPosts: (l.pendingPosts || []).filter(q => q.id !== p.id) } }))
+    posted++
+    if (!tryUpdate(l => ({ ledger: { ...l, pendingPosts: (l.pendingPosts || []).filter(q => q.id !== p.id) } })).ok) {
+      stuck = p
+      break
+    }
   }
-  if (failed) {
-    // What is left goes back unclaimed for the next flush.
-    updateLedger(ctx.root, n, l => ({
-      ledger: { ...l, pendingPosts: (l.pendingPosts || []).map(q => (q.claimed && q.claimed.by === by ? (({ claimed, ...rest }) => rest)(q) : q)) },
+  if (failed || stuck) {
+    // What was not posted goes back unclaimed for the next flush; an unremoved item keeps its claim, so no flush
+    // posts it again before someone removes it.
+    const back = tryUpdate(l => ({
+      ledger: { ...l, pendingPosts: (l.pendingPosts || []).map(q =>
+        (q.claimed && q.claimed.by === by && !(stuck && q.id === stuck.id) ? (({ claimed, ...rest }) => rest)(q) : q)) },
     }))
-    if (failed > 1) out.push(`${failed - 1} later posts wait behind the failed one`)
+    if (stuck) out.push(`posted ${stuck.op} (${stuck.id}) but could not remove it from the queue; remove it with ledger-update before the next flush, or it posts again in ${CLAIM_MS / 60000} min`)
+    if (!back.ok) out.push(`the queue stays claimed for ${CLAIM_MS / 60000} min`)
+    const later = posts.length - posted - (failed ? 1 : 0)
+    if (later > 0) out.push(`${later} later posts wait behind the ${failed ? 'failed' : 'unremoved'} one`)
   }
-  return { code: failed ? 1 : 0, out: out.join('\n') || 'nothing pending' }
+  return { code: failed || stuck ? 1 : 0, out: out.join('\n') || 'nothing pending' }
 }
 
 // Writes that count as this session's activity (Issue #10). After one succeeds, it is recorded and the other sessions
@@ -834,7 +889,7 @@ function command(argv, stdin, env, cwd) {
       // Top-level keys are replaced as sent; a note goes through note, which appends under the lock.
       const patch = JSON.parse(input())
       const r = updateLedger(ctx.root, n, ledger => ({ ledger: { ...ledger, ...patch } }))
-      return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n))
+      return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n, r.why))
     }
     case 'note':
       return num(rest[0]) ? note(env, cwd, num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state note <issue> < line' }
@@ -871,4 +926,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, note, main, sessionId, releaseSessions, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

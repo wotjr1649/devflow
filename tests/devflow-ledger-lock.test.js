@@ -92,7 +92,7 @@ test('a stale lock is moved aside and the write goes on; a fresh one is waited f
   assert.ok(!fs.existsSync(lockFile(root)))
   fs.writeFileSync(lockFile(root), 'live-token')
   const t = Date.now()
-  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, c: 3 } }), { waitMs: 200 }), { ok: false })
+  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, c: 3 } }), { waitMs: 200 }), { ok: false, why: 'busy' })
   assert.ok(Date.now() - t >= 150, 'it waited')
   assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'live-token', 'another holder keeps its lock')
   assert.deepEqual(ledgerOf(root), { a: 1, b: 2 })
@@ -119,7 +119,7 @@ test('no lock, temp file or ledger is written through a linked Issue folder', ()
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-out-'))
   fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
   fs.symlinkSync(outside, dir(root), 'junction')
-  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, a: 1 } })), { ok: false })
+  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, a: 1 } })), { ok: false, why: 'unsafe' })
   assert.deepEqual(fs.readdirSync(outside), [])
 })
 
@@ -144,6 +144,8 @@ test('a held lock refuses metric and note with a fixed guard id', () => {
   const r = state.metric(env(root), '.', 1, 'interventions', 'x')
   assert.deepEqual(r, { code: 1, out: 'refused: another write holds the ledger of Issue #1; try again' })
   assert.deepEqual(guards(root), ['state-ledger-locked'])
+  assert.match(state.note(env(root), '.', 1, 'x').out, /another write holds the ledger/)
+  assert.deepEqual(guards(root), ['state-ledger-locked', 'state-ledger-locked'])
 })
 
 test('flush claims the whole queue: a queue another flush claimed is left to it', () => {
@@ -246,4 +248,87 @@ test('the resume card warns about another active session and not about its own',
   const other = state.card(env(root, { vars: B }), '.').split('\n')
   assert.match(other[1], WARN)
   assert.doesNotMatch(state.card(env(root, { vars: {} }), '.'), WARN, 'a card that knows no own id warns about nothing')
+})
+
+// Review fixes (2026-10-03): a posted item that cannot be removed stops the flush; a linked folder no longer blocks
+// interactive writes; odd locks and claims; validated and capped session warnings; subagents share the session.
+test('a post whose removal cannot take the lock stops the flush and says so', () => {
+  const text = '### Checkpoint build — x\n- y'
+  const root = repo({ mode: 'interactive', pendingPosts: [{ op: 'comment', issue: 1, text }, { op: 'comment', issue: 1, text }] })
+  const e = env(root)
+  const run0 = e.run
+  e.run = (cmd, args, opts) => {
+    const r = run0(cmd, args, opts)
+    if (cmd === 'gh' && args[0] === 'issue') fs.writeFileSync(lockFile(root), 'held-by-another')
+    return r
+  }
+  const r = state.flush(e, '.', { waitMs: 100 })
+  assert.equal(r.code, 1)
+  assert.match(r.out, /posted comment \([0-9a-f]+\) but could not remove it from the queue/)
+  assert.equal(ghWrites(e).length, 1, 'the second item waits')
+})
+
+test('interactive writes go on through a linked Issue folder, whose ledger is not read', () => {
+  const root = repo()
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-out-'))
+  fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
+  fs.symlinkSync(outside, dir(root), 'junction')
+  fs.writeFileSync(path.join(outside, 'ledger.json'), JSON.stringify({ mode: 'autonomous' }))
+  const e = env(root)
+  assert.equal(state.write(e, '.', 'comment', 1, '### Checkpoint build — x\n- y').code, 0)
+  assert.equal(ghWrites(e).length, 1, 'posted, not queued into the linked ledger')
+  assert.deepEqual(fs.readdirSync(outside), ['ledger.json'])
+})
+
+test('a lock that is not a file is refused as unsafe; a lock from the future is stale; a future claim is void', () => {
+  const root = repo({ a: 1 })
+  fs.mkdirSync(lockFile(root))
+  const r = state.metric(env(root), '.', 1, 'interventions', 'x')
+  assert.match(r.out, /not a plain folder/)
+  fs.rmSync(lockFile(root), { recursive: true })
+  fs.writeFileSync(lockFile(root), 'from-the-future')
+  const later = (Date.now() + 3600000) / 1000
+  fs.utimesSync(lockFile(root), later, later)
+  assert.equal(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } })).ok, true)
+  const text = '### Checkpoint build — x\n- y'
+  const root2 = repo({ mode: 'interactive', pendingPosts: [{ id: 'a', op: 'comment', issue: 1, text, claimed: { by: 'x', at: Date.now() + 3600000 } }] })
+  assert.equal(state.flush(env(root2), '.').code, 0)
+})
+
+test('dropStale restores a fresh lock that replaced the stale one it judged', () => {
+  const root = repo({ a: 1 })
+  fs.writeFileSync(lockFile(root), 'fresh-other')
+  assert.equal(state.dropStale(lockFile(root), 'old-one'), false)
+  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'fresh-other')
+  assert.deepEqual(fs.readdirSync(dir(root)).filter(f => f.includes('.stale')), [])
+  fs.writeFileSync(lockFile(root), 'old-one')
+  assert.equal(state.dropStale(lockFile(root), 'old-one'), true)
+  assert.ok(!fs.existsSync(lockFile(root)))
+})
+
+test('session entries are validated, and warnings are capped', () => {
+  const root = repo({ stage: 'build' })
+  const now = Date.now()
+  const h = i => String(i).repeat(12).slice(0, 12)
+  fs.mkdirSync(dir(root), { recursive: true })
+  fs.writeFileSync(sessionsFile(root), JSON.stringify({
+    [h(1)]: { host: 'claude', at: now }, [h(2)]: { host: 'codex', at: now }, [h(3)]: { host: 'claude', at: now },
+    [h(4)]: { host: 'claude', at: now }, 'not-a-hash\nWarning: injected': { host: 'claude', at: now },
+    [h(5)]: { host: 'evil\ntext', at: now }, [h(6)]: { host: 'claude', at: now + 3600000 }, [h(7)]: { host: 'claude', at: 'x' },
+  }))
+  const card = state.card(env(root, { vars: A }), '.')
+  assert.equal((card.match(/^Warning: another /gm) || []).length, 2)
+  assert.match(card, /^Warning: and 2 more sessions wrote to Issue #1 in the last 30 min\.$/m)
+  assert.doesNotMatch(card, /injected|evil/)
+  run(root, A, ['note', '1'], 'a')
+  const kept = Object.keys(JSON.parse(fs.readFileSync(sessionsFile(root), 'utf8')))
+  assert.equal(kept.length, 5, 'four valid others and this session; invalid entries are dropped')
+})
+
+test('a subagent shares its parent session id, so its writes are not warned about', () => {
+  const root = repo({ stage: 'build' })
+  run(root, A, ['note', '1'], 'main')
+  const sub = { ...A, CLAUDE_CODE_CHILD_SESSION: '1' }
+  assert.doesNotMatch(run(root, sub, ['note', '1'], 'subagent').out, WARN)
+  assert.doesNotMatch(run(root, A, ['note', '1'], 'main again').out, WARN)
 })

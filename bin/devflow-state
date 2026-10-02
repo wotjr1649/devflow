@@ -113,14 +113,15 @@ function repoContext(env, cwd) {
   return { env, root, branch, head: git('rev-parse', '--short', 'HEAD'), repo: origin && origin[1], issue: issue && Number(issue[1]) }
 }
 
-// Only the scope names survive: reduced to [a-z:_, ] and clipped, so no other header text reaches an output.
+// Only scope names survive: lowercase letters, "_" and one ":" per element, so no free text reaches an output.
+// Broadness is judged on every element; only the displayed list is clipped.
+const SCOPE = /^[a-z_]+(:[a-z_]+)?$/
 function scopesOf(head) {
-  const m = /^x-oauth-scopes:[ \t]*(.*)$/im.exec(head)
-  const value = m ? m[1].replace(/[^a-z:_, ]/g, '').slice(0, 80) : ''
-  return value.trim() ? value : null
+  const m = /^x-oauth-scopes:[ 	]*(.*)$/im.exec(head)
+  const list = m ? m[1].split(',').map(x => x.trim()).filter(x => SCOPE.test(x)) : []
+  if (!list.length) return null
+  return { scopes: list.join(', ').slice(0, 80), broad: list.some(x => x === 'repo' || x === 'public_repo') }
 }
-
-const isBroad = scopes => !!scopes && scopes.split(',').some(s => ['repo', 'public_repo'].includes(s.trim()))
 
 // include: ask gh for the response headers too, to read the token scopes from the same call.
 function fetchIssue(ctx, n, { include } = {}) {
@@ -129,16 +130,16 @@ function fetchIssue(ctx, n, { include } = {}) {
   if (r.code !== 0) return { error: `Issue #${n} lookup failed (gh exit ${r.code})` }
   try {
     let json = r.stdout
-    let scopes = null
+    let found = null
     if (include && !json.trimStart().startsWith('{')) {
       const cut = /\r?\n\r?\n/.exec(json)
       if (cut) {
-        scopes = scopesOf(json.slice(0, cut.index))
+        found = scopesOf(json.slice(0, cut.index))
         json = json.slice(cut.index + cut[0].length)
       }
     }
     const issue = JSON.parse(json).data.repository.issue
-    return issue ? { issue, scopes } : { error: `Issue #${n} not found` }
+    return issue ? { issue, scopes: found && found.scopes, broad: !!(found && found.broad) } : { error: `Issue #${n} not found` }
   } catch {
     return { error: `Issue #${n} lookup returned unreadable data` }
   }
@@ -211,7 +212,7 @@ function card(env, cwd) {
   if (!ctx.issue) return stop('Branch name has no Issue number (<type>/<issue>-<slug>)')
   const got = fetchIssue(ctx, ctx.issue, { include: true })
   if (got.error) return stop(got.error)
-  if (isBroad(got.scopes)) {
+  if (got.broad) {
     warning = `Warning: gh uses a broad OAuth or classic token (scopes: ${got.scopes}) that reaches every repository it can; ` +
       'use a fine-grained token limited to the repositories agents work on (docs/specs/documents.md, Issue 입출력).'
   }

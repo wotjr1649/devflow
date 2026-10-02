@@ -338,10 +338,10 @@ function criteria(body) {
 // text exactly once beforehand: a second pass could turn what a reader sees into a comment and drop it.
 const criterionKey = s => s.replace(/\s+/g, ' ').trim()
 // Every task-list form GitHub renders as a checkbox, nested markers and quotes included. criteria() counts only
-// "- [ ]", so an intent may use no other form under "## 수용 기준". Each repeat starts with a marker or ">", never with
-// a space, so a long line of markers matches in linear time.
-const ANY_TASK = /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+|>[ \t]*)+\[[ xX]\]/gm
-const CHECKED_TASK = /^([ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+|>[ \t]*)+)\[[xX]\]/gm
+// "- [ ]", so an intent may use no other form under "## 수용 기준". A list marker comes right before the box; each repeat
+// starts with a marker or ">", never with a space, so a long line of markers matches in linear time.
+const ANY_TASK = /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+|>[ \t]*)*(?:[-*+]|\d+[.)])[ \t]+\[[ xX]\]/gm
+const CHECKED_TASK = /^([ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+|>[ \t]*)*(?:[-*+]|\d+[.)])[ \t]+)\[[xX]\]/gm
 
 // Marks acceptance criteria (1-based, in order under "## 수용 기준") as done; every other character stays as it was.
 function checkCriteria(body, nums) {

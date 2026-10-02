@@ -718,4 +718,6 @@ test('no checked box survives in the intent: other headings, quotes and sections
   const e = env(repo(), { data: issue({ body: oldBody(['- [ ] a']) }) })
   assert.equal(state.write(e, '.', 'intent', 1, variant).code, 0)
   assert.doesNotMatch(ghWrites(e)[0].input, /\[[xX]\]/)
+  const quoted = state.carryChecks('', intentOf(['- [ ] a']) + '\n> [x] text, not a box\n', true)
+  assert.match(quoted.body, /^> \[x\] text, not a box$/m, 'a quote without a list marker is not a task item')
 })

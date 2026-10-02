@@ -180,3 +180,70 @@ test('a failed post keeps it and the later items unclaimed for the next flush', 
   assert.equal(left.length, 2)
   assert.ok(left.every(p => p.id && !p.claimed))
 })
+
+// Sessions: a write records its session (hashed); another session's write in the last 30 minutes is warned about.
+const A = { CLAUDE_CODE_SESSION_ID: 'aaaaaaaa-1111' }
+const B = { CLAUDE_CODE_SESSION_ID: 'bbbbbbbb-2222' }
+const run = (root, vars, argv, input = '') => state.main(argv, () => input, env(root, { vars }), '.')
+const sessionsFile = root => path.join(dir(root), 'sessions.json')
+const WARN = /^Warning: another claude session \([0-9a-f]{6}\) wrote to Issue #1 \d+ min ago/m
+
+test('a write by another session in the last 30 minutes is warned about; the same session is not', () => {
+  const root = repo({ stage: 'build' })
+  assert.doesNotMatch(run(root, A, ['note', '1'], 'a').out, WARN)
+  assert.doesNotMatch(run(root, A, ['note', '1'], 'again').out, WARN, 'the same session')
+  const r = run(root, B, ['note', '1'], 'b')
+  assert.equal(r.code, 0)
+  assert.match(r.out, WARN)
+  assert.match(r.out, /release 1/)
+  assert.match(run(root, A, ['ledger-update', '1'], '{"x":1}').out, WARN, 'A now sees B')
+})
+
+test('activity older than 30 minutes is ignored and dropped', () => {
+  const root = repo({ stage: 'build' })
+  run(root, A, ['note', '1'], 'a')
+  const s = JSON.parse(fs.readFileSync(sessionsFile(root), 'utf8'))
+  const [hash] = Object.keys(s)
+  s[hash].at = Date.now() - 31 * 60000
+  fs.writeFileSync(sessionsFile(root), JSON.stringify(s))
+  assert.doesNotMatch(run(root, B, ['note', '1'], 'b').out, WARN)
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(sessionsFile(root), 'utf8'))).length, 1, 'the old entry is gone')
+  s[hash].at = Date.now() - 29 * 60000
+  fs.writeFileSync(sessionsFile(root), JSON.stringify(s))
+  assert.match(run(root, B, ['note', '1'], 'b').out, /29 min ago/)
+})
+
+test('release takes the session out of the warnings', () => {
+  const root = repo({ stage: 'build' })
+  run(root, A, ['note', '1'], 'a')
+  assert.match(run(root, B, ['note', '1'], 'b').out, WARN)
+  assert.deepEqual(run(root, A, ['release', '1']), { code: 0, out: 'released this session from Issue #1' })
+  assert.doesNotMatch(run(root, B, ['note', '1'], 'c').out, WARN)
+})
+
+test('the session id is kept only as a hash, the Codex id wins, and no id means no record', () => {
+  const root = repo({ stage: 'build' })
+  run(root, { CODEX_THREAD_ID: 'cccc-3333', CLAUDE_CODE_SESSION_ID: 'aaaaaaaa-1111' }, ['note', '1'], 'a')
+  const text = fs.readFileSync(sessionsFile(root), 'utf8')
+  assert.doesNotMatch(text, /cccc-3333|aaaaaaaa-1111/)
+  assert.deepEqual(Object.values(JSON.parse(text)).map(v => v.host), ['codex'])
+  assert.match(run(root, A, ['note', '1'], 'b').out, /another codex session/)
+  const root2 = repo({ stage: 'build' })
+  run(root2, {}, ['note', '1'], 'a')
+  assert.ok(!fs.existsSync(sessionsFile(root2)))
+  run(root2, A, ['note', '1'], 'a')
+  assert.doesNotMatch(run(root2, {}, ['note', '1'], 'b').out, WARN, 'without an id there is nothing to compare')
+})
+
+test('the resume card warns about another active session and not about its own', () => {
+  const root = repo({ stage: 'build' })
+  run(root, A, ['note', '1'], 'a')
+  const ownByHook = state.card(env(root, { vars: {} }), '.', { sessionId: A.CLAUDE_CODE_SESSION_ID })
+  assert.doesNotMatch(ownByHook, WARN)
+  const hookAndShellDiffer = state.card(env(root, { vars: B }), '.', { sessionId: A.CLAUDE_CODE_SESSION_ID })
+  assert.doesNotMatch(hookAndShellDiffer, WARN, 'the id the hook received counts as its own too')
+  assert.doesNotMatch(state.card(env(root, { vars: A }), '.'), WARN)
+  const other = state.card(env(root, { vars: B }), '.').split('\n')
+  assert.match(other[1], WARN)
+  assert.doesNotMatch(state.card(env(root, { vars: {} }), '.'), WARN, 'a card that knows no own id warns about nothing')
+})

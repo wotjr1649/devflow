@@ -334,12 +334,14 @@ function criteria(body) {
   })
   return { section: body.slice(start, end), boxes }
 }
-// What a criterion is compared by: the text a reader sees, whitespace collapsed, so a wrapped criterion is one line.
-const criterionKey = s => stripHidden(s).replace(/\s+/g, ' ').trim()
+// What a criterion is compared by, with whitespace collapsed so a wrapped criterion is one line. Callers strip hidden
+// text exactly once beforehand: a second pass could turn what a reader sees into a comment and drop it.
+const criterionKey = s => s.replace(/\s+/g, ' ').trim()
 // Every task-list form GitHub renders as a checkbox, nested markers and quotes included. criteria() counts only
-// "- [ ]", so an intent may use no other form under "## 수용 기준".
-const ANY_TASK = /^(?:[ \t>]*(?:[-*+]|\d+[.)])[ \t]+)+\[[ xX]\]/gm
-const CHECKED_TASK = /^((?:[ \t>]*(?:[-*+]|\d+[.)])[ \t]+)+)\[[xX]\]/gm
+// "- [ ]", so an intent may use no other form under "## 수용 기준". Each repeat starts with a marker or ">", never with
+// a space, so a long line of markers matches in linear time.
+const ANY_TASK = /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+|>[ \t]*)+\[[ xX]\]/gm
+const CHECKED_TASK = /^([ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+|>[ \t]*)+)\[[xX]\]/gm
 
 // Marks acceptance criteria (1-based, in order under "## 수용 기준") as done; every other character stays as it was.
 function checkCriteria(body, nums) {
@@ -371,9 +373,10 @@ function carryChecks(oldBody, intent, trusted) {
   }
   const left = bag(moved)
   // Numbered as check counts them; when only the visible body has a criteria section, as a reader counts them.
-  const old = criteria(oldBody) || criteria(stripHidden(oldBody))
+  const raw = criteria(oldBody)
+  const old = raw || criteria(stripHidden(oldBody))
   const dropped = []
-  if (old) old.boxes.forEach((b, i) => b.checked && !take(left, criterionKey(b.text)) && dropped.push(i + 1))
+  if (old) old.boxes.forEach((b, i) => b.checked && !take(left, criterionKey(raw ? stripHidden(b.text) : b.text)) && dropped.push(i + 1))
   return { body, dropped }
 }
 

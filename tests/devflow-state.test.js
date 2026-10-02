@@ -689,6 +689,21 @@ test('a moved check is not reported, and a heading only a reader sees still repo
   assert.match(state.write(e2, '.', 'intent', 1, intentOf(['- [ ] a'])).out, /not carried over .*: 2$/)
 })
 
+test('hidden text is stripped once, so a comment a reader sees as text is not dropped from the key (2026-10-02 re-review 3)', () => {
+  const zw = String.fromCodePoint(0x200b)
+  const e = env(repo(), { data: issue({ body: oldBody([`- [x] a <${zw}!-- x -->`]) }) })
+  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] a']))
+  assert.match(ghWrites(e)[0].input, /- \[ \] a\n/, 'a reader saw a different criterion')
+  assert.match(r.out, /not carried over .*: 1$/)
+})
+
+test('a long line of list markers is checked in linear time (2026-10-02 re-review 3)', () => {
+  const line = '*  '.repeat(28) + 'x'
+  const t = Date.now()
+  state.write(env(repo()), '.', 'intent', 1, intentOf(['- [ ] a', line]))
+  assert.ok(Date.now() - t < 1000)
+})
+
 test('intent refuses nested or quoted task items under the criteria heading (2026-10-02 re-review 2)', () => {
   for (const crit of [['- [ ] a', '- - [ ] b'], ['- [ ] a', '> - [ ] b']]) {
     const root = repo()

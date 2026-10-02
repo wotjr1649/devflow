@@ -129,6 +129,24 @@ BASE는 위임하기 전에 기록한다. `HEAD~1`로 대신하면 커밋이 여
 
 대화형 작업에서는 이 훅이 꺼져 있다.
 
+## 동시 세션
+
+같은 기기의 두 세션(Claude와 Claude 또는 Codex)이 인계나 메시지로 한 Issue를 이어받을 때다.
+
+- 장부 쓰기는 짧은 잠금(`ledger.lock`) 아래에서 읽고 고쳐 임시 파일로 바꿔 쓴다. 잠금 안에서는 네트워크를 쓰지 않으므로
+  10초 지난 잠금은 버리고, 2초 안에 잡지 못한 쓰기는 거부한다.
+- `ledger-update`는 보낸 최상위 키를 바꾸고, 덧붙이는 기록은 `note`와 `metric`으로 한다. 그래야 두 세션의 기록이 함께 남는다.
+- 쓰기(Issue와 장부)는 세션을 `sessions.json`에 남긴다(id 해시와 시각). 다른 세션이 30분 안에 쓰고 해제하지 않았으면
+  재개 카드와 쓰기 출력이 경고한다. 거부하지 않고, 읽기는 세지 않는다.
+- 세션 id: Codex는 `CODEX_THREAD_ID`, Claude는 SessionStart 훅이 셸에 넘기는 `DEVFLOW_SESSION_ID`(없으면
+  `CLAUDE_CODE_SESSION_ID`). 서브에이전트는 부모의 id다. 자기 id를 모르면 기록도 경고도 하지 않는다.
+- 넘길 때는 `release <n>`으로 이 세션을 뺀다. Claude는 SessionEnd 훅(`/clear` 포함)이 모든 Issue에서 빼고, Codex는 해제
+  명령이나 30분 만료에 맡긴다.
+- flush는 대기열 전체를 claim하고 잠금 밖에서 게시한 뒤 항목마다 지운다. 다른 flush가 10분 안에 claim했으면 건너뛴다.
+  게시 뒤 지우기 전에 끊기면 claim이 끝난 뒤 다시 게시될 수 있다.
+- Issue 쓰기는 잠그지 않는다. 다른 기기의 세션은 모르고, 한 호스트 안에서 띄운 다른 호스트(Codex 안의 Claude)는 바깥
+  세션으로 보인다.
+
 ## 모델과 effort
 
 메인 컨트롤러의 모델과 effort는 사용자가 고른다. devflow는 메인에서 실행되는 스킬에 `effort`를 지정하지 않는다.
@@ -187,3 +205,4 @@ Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이�
 | 병렬 쓰기 (M3) | worktree 격리 | 사용하지 않음 |
 | 대규모 변경 (M4) | 플러그인 `workflows/` | 사용하지 않음 |
 | 재개 카드, Issue 쓰기 차단, 보호 경로, 자율 계속 | `hooks/hooks.json` | 같은 파일 |
+| 세션이 끝날 때 해제 | `hooks/claude-hooks.json` (매니페스트의 `hooks`) | 없음(해제 명령, 30분 만료) |

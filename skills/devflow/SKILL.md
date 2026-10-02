@@ -26,6 +26,10 @@ template of [documents](../../docs/specs/documents.md#issue-템플릿). Progress
 keys of [작업 장부 키](../../docs/specs/documents.md#작업-장부-키). The Stop hook decides from `mode`, `stage`, `task`,
 `decisions`, `blocked` and `running` whether unattended work continues, so keep them current.
 
+Add a line to the ledger's notes with `note`: `ledger-update` replaces whole keys, so two sessions adding notes through
+it would drop one. When you hand the Issue to another session, run `release <issue>` so that session is not warned
+about this one ([동시 세션](../../docs/specs/orchestration.md#동시-세션)).
+
 When the requirements or acceptance criteria change, show the user the new intent (the body above the state block) and,
 once they approve the text, post it with `intent`, never by hand: the command keeps the state block and unchecks
 criteria whose text changed, since their evidence no longer applies.

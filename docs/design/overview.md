@@ -26,7 +26,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 | 프로젝트 AGENTS.md | 사실·명령·문서 지도·경계 | CLAUDE.md가 없으면 직접 로드 | 로드 | 안내 |
 | 스킬 | 절차 | 플러그인 `skills/` | 같은 폴더 | 안내 |
 | 에이전트 | 격리된 작업, 도구 제한 | 플러그인 `agents/` | 내장 explorer·worker | 도구 제한은 강제 |
-| 훅 | 행동 시점 게이트 | `hooks/hooks.json` | 같은 파일 | 가드레일 (오류·시간 초과면 통과) |
+| 훅 | 행동 시점 게이트 | `hooks/hooks.json`, `hooks/claude-hooks.json` | `hooks/hooks.json` | 가드레일 (오류·시간 초과면 통과) |
 | 스크립트 | 검사·분석 | `bin/` | 스킬이 경로로 실행 | 결정적 |
 | git hook·CI | 최종 관문 | 공통 | 공통 | 결정적 |
 | eval | 스킬 호출의 회귀 | `claude plugin eval`, skill-creator | 같은 프롬프트 세트 | 측정 |

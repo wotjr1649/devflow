@@ -132,6 +132,12 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   `last_assistant_message`도 있고, 마지막 응답은 늦을 수 있는 트랜스크립트 대신 이 값으로 읽는다.
 - Windows에서 command 훅은 Git Bash가 있으면 Bash, 없으면 PowerShell로 돈다. `shell` 필드로 고를 수 있고, 두
   플랫폼에서 같이 쓰는 훅은 `args`를 쓰는 exec form을 권한다.
+- SessionEnd는 세션이 끝날 때(`/clear`, `/resume` 포함) 돈다. 입력은 `session_id`, `cwd`, `reason`(clear, resume, logout,
+  prompt_input_exit, other)이다. 막을 수 없고, 모든 SessionEnd 훅이 합쳐 1.5초 안에 끝나야 한다(긴 timeout을 주면 60초까지
+  늘어난다). 플러그인 매니페스트의 `hooks`(파일 경로, 인라인, 배열)는 기본 `hooks/hooks.json`에 합쳐진다(2026-10-03 문서).
+- 세션 id(2026-10-03 실측): Bash의 `CLAUDE_CODE_SESSION_ID`는 그 세션 기록 파일 이름(= 훅의 `session_id`)과 같다. 문서에 없는
+  변수다. 서브에이전트의 셸도 부모와 같은 값을 갖는다(문서: 서브에이전트는 부모 session_id로 돌고 훅 입력에 `agent_id`가
+  붙는다). Bash와 훅에는 `CLAUDE_CODE_CHILD_SESSION=1`이 붙는다.
 - PreToolUse가 보는 셸 도구는 `Bash`와 `PowerShell`(설정으로 켜는 Windows 도구, 입력은 같은 `tool_input.command`)이다.
   MCP 도구는 `mcp__<server>__<tool>`, 플러그인 MCP는 `mcp__plugin_<plugin>_<server>__<tool>`, claude.ai 커넥터는
   `mcp__claude_ai_<server>__<tool>`이다. matcher에 문자·숫자·`_`·`-`·공백·`,`·`|` 밖의 글자가 있으면 고정되지 않은 JS 정규식이다.
@@ -210,6 +216,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - Stop 출력은 Claude와 같이 최상위 `decision: "block"`과 `reason`(또는 exit 2와 stderr)이다. 다만 턴을 거부하는 것이
   아니라 reason으로 새 이어가기 프롬프트를 만든다. 입력은 `turn_id`, `stop_hook_active`, `last_assistant_message`다.
 - 플러그인 훅의 경로 변수는 `PLUGIN_ROOT`, `PLUGIN_DATA`이고, 호환용으로 `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`도 준다.
+- 세션 id(2026-10-03 실측, `codex exec`): 셸에 `CODEX_THREAD_ID`와 `CODEX_SESSION_ID`가 같은 값으로 있다. Claude 안에서
+  띄우면 Claude의 변수도 물려받는다. SessionEnd 이벤트는 없다.
 - `apply_patch`의 PreToolUse 입력은 셸과 같은 `tool_input.command`에 패치 문자열이 든다.
 - 명령은 문자열만 받는다(Claude의 `args` exec form이 없다). `PLUGIN_ROOT`는 문자열 치환 없이 환경 변수로만 넘어온다.
 - Windows에서 훅 명령을 어떤 셸이 실행하는지는 문서에 없다. Windows 전용 명령은 `commandWindows`로 따로 줄 수 있다.

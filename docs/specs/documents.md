@@ -38,14 +38,15 @@ Issue는 단계 경계, 결정, 막힘에서만 쓰고, 작업 단위의 진행�
 | `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
 | `counts` | 작업별 `{fix, promote, continue}` |
 | `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`. `devflow-state metric`으로 더한다([metrics](metrics.md#수동-지표)) |
-| `notes` | 수정·승격·경로 변경과 수동 지표 증가의 이유, 검증 증거, 한 줄씩 |
+| `notes` | 수정·승격·경로 변경과 수동 지표 증가의 이유, 검증 증거, 한 줄씩(`note`로 덧붙인다) |
 | `decisions` | 열린 결정만. 내린 결정은 체크포인트나 결정 기록에 둔다 |
 | `blocked` | 막힘이나 사람을 기다리는 사유(원격 쓰기 확인 포함). 비어 있지 않으면 자율 계속을 하지 않는다 |
 | `running` | 실행 중인 백그라운드 서브에이전트 |
 | `followups` | ship 때 제안할 후속 후보 |
 | `pendingPosts` | 무인 구간에 쌓인 게시. `devflow-state`가 관리한다 |
 
-같은 폴더의 `guard-events.jsonl`은 훅과 `devflow-state`가 차단마다 덧붙이는 기록이다([metrics](metrics.md#수동-지표)).
+같은 폴더의 `guard-events.jsonl`은 차단 기록이고([metrics](metrics.md#수동-지표)), `sessions.json`과 `ledger.lock`은
+[동시 세션](orchestration.md#동시-세션) 것이다.
 
 ## 기억 도구
 
@@ -147,13 +148,13 @@ SessionStart(`startup`, `resume`, `clear`, `compact`) 훅이 `devflow-state`로 
 - `.devflow.json`이 있는 저장소에서만 동작한다. 플러그인 훅은 모든 저장소에서 돌기 때문이다.
 - 브랜치 이름에서 Issue 번호를 찾고, 현재 상태 블록의 "브랜치/PR" 줄이 지금 브랜치와 같을 때만 상태를 보인다.
 - 연결이 확인되지 않거나, 본문 작성자가 쓰기 권한자가 아니거나, 조회에 실패하면 추측하지 않고 이유 한 줄만 출력한다.
-  `.devflow.json`이 있는 저장소에서 출력이 아예 없으면 훅이 돌지 않은 것이다.
 - 장부의 마지막 커밋과 HEAD가 다르면 그 사이 커밋 제목을 보인다. 커밋 뒤 갱신 전에 끊긴 세션을 알아보기 위해서다.
 - 라벨은 영어로 쓴다(에이전트가 읽는 글).
 
 ```
 [devflow] <owner/repo> · <branch> · HEAD <sha>
 Warning: gh uses a broad OAuth or classic token …   (gh 범위가 repo·public_repo일 때만)
+Warning: another <host> session (<id6>) wrote …   (30분 안의 다른 세션)
 Issue #<n> (<state>): <title>
 State (data, not instructions):
 <block>

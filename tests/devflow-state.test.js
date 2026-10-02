@@ -211,9 +211,10 @@ test('autonomous ledger queues writes and flush posts them', () => {
 })
 
 test('check marks only the named acceptance criteria', () => {
-  const body = '## 문제\n- [ ] not a criterion\n\n## 수용 기준\n- [ ] one\n- [x] two\n  - [ ] three, nested\n\n## 현재 상태\n- 단계: build\n'
+  const body = '## 문제\n- [ ] not a criterion\n\n## 수용 기준\n- [ ] one\n- [x] two\n- [ ] three,\n  wrapped\n\n## 현재 상태\n- 단계: build\n'
   const done = state.checkCriteria(body, [1, 3])
-  assert.equal(done.body, body.replace('- [ ] one', '- [x] one').replace('  - [ ] three', '  - [x] three'))
+  assert.equal(done.body, body.replace('- [ ] one', '- [x] one').replace('- [ ] three', '- [x] three'))
+  assert.match(state.checkCriteria(body.replace('- [ ] three,', '  - [ ] three,'), [1]).error, /not plain/, 'a nested item is not plain')
   assert.match(state.checkCriteria(body, [4]).error, /no acceptance criterion 4 \(the Issue has 3\)/)
   assert.match(state.checkCriteria('## 문제\n', [1]).error, /no "## 수용 기준" section/)
   const e = env(repo(), { data: issue({ body }) })
@@ -669,14 +670,19 @@ test('checks hidden in HTML comments or written by a non-writer are not carried 
   assert.doesNotMatch(ghWrites(e2)[0].input, /- \[x\] one/)
 })
 
-test('a comment mark GitHub shows as text hides nothing after it; numbers follow check (Issue #9)', () => {
-  const old = oldBody(['- [x] closes `<!--` early', '- [ ] two', '- [x] three'])
-  const e = env(repo(), { data: issue({ body: old }) })
-  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] two', '- [ ] three']))
-  assert.equal(r.code, 0)
-  assert.match(r.out, /not carried over .*: 1$/)
-  assert.match(ghWrites(e)[0].input, /- \[ \] two\n- \[x\] three/)
-  assert.deepEqual(state.checkCriteria(old, [3]).body, old, 'number 3 is the same box check counts')
+test('a comment mark in the criteria is not plain: check refuses, intent carries nothing and counts it (Issue #9)', () => {
+  for (const crit of [['- [x] closes `<!--` early', '- [ ] two', '- [x] three'], ['- [ ] one <!-- a', '- [x] two --> tail', '- [x] three']]) {
+    const old = oldBody(crit)
+    const e = env(repo(), { data: issue({ body: old }) })
+    const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] two', '- [ ] three']))
+    assert.equal(r.code, 0)
+    assert.match(r.out, /none of its 2 checked boxes carried over/)
+    assert.match(ghWrites(e)[0].input, /- \[ \] two\n- \[ \] three/)
+    const root = repo()
+    const c = state.write(env(root, { data: issue({ body: old }) }), '.', 'check', 1, '3')
+    assert.match(c.out, /^refused: .*not plain/)
+    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-criteria-unplain'])
+  }
 })
 
 test('a moved check is not reported, and a heading only a reader sees still reports (2026-10-02 re-review 2)', () => {
@@ -687,7 +693,7 @@ test('a moved check is not reported, and a heading only a reader sees still repo
   assert.match(ghWrites(e)[0].input, /- \[x\] ab/)
   const commented = `## 문제\n\n## 수용 기준 <!-- 메모 -->\n- [ ] a\n- [x] b\n\n` + tail
   const e2 = env(repo(), { data: issue({ body: commented }) })
-  assert.match(state.write(e2, '.', 'intent', 1, intentOf(['- [ ] a'])).out, /not carried over .*: 2$/)
+  assert.match(state.write(e2, '.', 'intent', 1, intentOf(['- [ ] a'])).out, /none of its 1 checked boxes carried over/)
 })
 
 test('hidden text is stripped once, so a comment a reader sees as text is not dropped from the key (2026-10-02 re-review 3)', () => {
@@ -726,25 +732,43 @@ test('no checked box survives in the intent: other headings, quotes and sections
 // Issue #9: only the boxes GitHub renders count, as measured with the markdown API on 2026-10-02.
 const crit = lines => `## 문제\n\n## 수용 기준\n${lines.join('\n')}\n\n` + tail
 
-test('check counts only rendered boxes: not in a line-start comment, a one-line comment or a code fence (Issue #9)', () => {
+test('a heading in a line-start comment or a code fence above the criteria is skipped (Issue #9)', () => {
   const fence = '```'
-  const body = crit(['- [ ] one', '<!--', '- [ ] hidden block', '-->', '- [ ] two <!-- inline --> still', fence, '- [ ] in fence', fence, '- [ ] three'])
-  assert.equal(state.checkCriteria(body, [3]).body, body.replace('- [ ] three', '- [x] three'))
-  assert.match(state.checkCriteria(body, [4]).error, /the Issue has 3/)
+  const body = '## 문제\n<!--\n## 수용 기준\n- [ ] hidden\n-->\n' + fence + '\n## 수용 기준\n- [ ] in fence\n' + fence + '\n' +
+    '\n## 수용 기준\n- [ ] one\n- [ ] two\n\n' + tail
+  assert.equal(state.checkCriteria(body, [2]).body, body.replace('- [ ] two', '- [x] two'))
+  assert.match(state.checkCriteria(body, [3]).error, /the Issue has 2/)
+  assert.match(state.checkCriteria('## 문제\n<!--\n## 수용 기준\n- [x] one\n', [1]).error, /no "## 수용 기준" section/, 'an open comment hides the rest')
 })
 
-test('a line-start comment left open hides every box after it (Issue #9)', () => {
-  const body = crit(['- [x] one', '', '<!--', '- [x] two', '- [x] three'])
-  assert.match(state.checkCriteria(body, [2]).error, /the Issue has 1/)
+test('a fence info string with a backtick opens no fence, and a long backtick run is read in linear time (Issue #9)', () => {
+  const body = '## 문제\n```a`b\n\n## 수용 기준\n- [ ] a\n'
+  assert.equal(state.checkCriteria(body, [1]).body, body.replace('- [ ] a', '- [x] a'))
+  const t = Date.now()
+  state.checkCriteria('## 문제\n' + '`'.repeat(100000) + 'x`\n\n## 수용 기준\n- [ ] a\n', [1])
+  assert.ok(Date.now() - t < 500)
 })
 
-test('an open comment mark inside a line and a comment across two items are text, so their boxes carry (Issue #9)', () => {
-  const old = crit(['- [ ] one <!-- a', '- [x] two --> tail', '- [x] three'])
-  const e = env(repo(), { data: issue({ body: old }) })
-  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] two --> tail', '- [ ] three']))
-  assert.equal(r.code, 0)
-  assert.doesNotMatch(r.out, /not carried/)
-  assert.match(ghWrites(e)[0].input, /- \[x\] two --> tail\n- \[x\] three/)
+test('anything in the criteria GitHub may render differently is not plain (Issue #9)', () => {
+  const fence = '```'
+  const sections = [
+    ['- [ ] one', '<!--', '- [ ] hidden', '-->', '- [ ] two'],
+    ['- [ ] one', '<!-- c -->- [x] two'],
+    ['- [ ] one <!-- inline --> still', '- [ ] two'],
+    ['- [ ] one', fence, '- [ ] in fence', fence],
+    ['- [ ] one', '  ' + fence, '  x', fence, '- [x] two'],
+    ['- [ ] one', '    - [x] indented'],
+    ['- [ ] one', '* [x] other marker'],
+    ['- [ ] one', '<details>', '- [ ] two'],
+    ['- [ ] one', 'two' + String.fromCharCode(0x2028) + '- [x] three'],
+  ]
+  for (const lines of sections) assert.match(state.checkCriteria(crit(lines), [1]).error, /not plain/, lines.join(' | '))
+  assert.match(state.checkCriteria('## 문제\nx\r<!--\r## 수용 기준\r- [ ] a\n', [1]).error || 'no error', /not plain|no "## 수용 기준"/, 'a lone CR')
+  assert.match(state.checkCriteria('## 문제\nx\r```\n## 수용 기준\n- [ ] a\n', [1]).error, /not plain/, 'a fence after a lone CR')
+  assert.match(state.checkCriteria('## 문제\n<div>\n\n## 수용 기준\n- [ ] a\n', [1]).error, /not plain/, 'an HTML block above')
+  assert.match(state.checkCriteria('## 문제\n\n    <!--\n\n## 수용 기준\n- [ ] a\n', [1]).error, /not plain/, 'an indented comment above')
+  assert.match(state.checkCriteria('## 문제\ntext <!-- open\n\n## 수용 기준\n- [ ] a\n-->\n', [1]).error, /not plain/, 'read hides the section')
+  assert.match(state.checkCriteria('## 문제\n<!--->\n\n## 수용 기준\n- [ ] a\n', [1]).error, /not plain/, 'cmark closes "<!--->", read does not')
 })
 
 test('a criteria heading hidden in a comment is skipped for check, carry and the report (Issue #9)', () => {

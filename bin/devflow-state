@@ -338,10 +338,11 @@ const RAW_MARKUP = /<[A-Za-z/!?]|&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-
 const mentionsCriteria = s => /수용|기준/.test(s.normalize('NFC'))
 const SETEXT_UNDERLINE = /^[ \t>]*(?:=+|-+)[ \t]*$/
 const likeCriteria = (ls, i) => {
-  if (/^[ \t>*+\-\d.)]*#/.test(ls[i].text)) return mentionsCriteria(ls[i].text)
+  if (/^[ \t>*+\-\d.)]*#{1,6}(?:[ \t]|$)/.test(ls[i].text)) return mentionsCriteria(ls[i].text)
   if (!SETEXT_UNDERLINE.test(ls[i].text)) return false
-  // The paragraph ends at a blank, hidden or earlier underline line, so each line is walked back over at most once.
-  for (let j = i - 1; j >= 0 && !ls[j].skip && ls[j].text.trim() && !SETEXT_UNDERLINE.test(ls[j].text); j--) {
+  // The paragraph ends at a blank line (spaces and tabs only, as in CommonMark), a hidden line or an earlier underline,
+  // so each line is walked back over at most once.
+  for (let j = i - 1; j >= 0 && !ls[j].skip && !/^[ \t]*$/.test(ls[j].text) && !SETEXT_UNDERLINE.test(ls[j].text); j--) {
     if (mentionsCriteria(ls[j].text)) return true
   }
   return false

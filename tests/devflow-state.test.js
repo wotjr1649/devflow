@@ -678,8 +678,28 @@ test('a check below an unclosed comment is not carried silently; numbers follow 
   assert.deepEqual(state.checkCriteria(old, [3]).body, old, 'number 3 is the same box check counts')
 })
 
+test('a moved check is not reported, and a heading only a reader sees still reports (2026-10-02 re-review 2)', () => {
+  const bom = String.fromCodePoint(0xfeff)
+  const e = env(repo(), { data: issue({ body: oldBody([`- [x] a${bom}b`]) }) })
+  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] ab']))
+  assert.doesNotMatch(r.out, /not carried/)
+  assert.match(ghWrites(e)[0].input, /- \[x\] ab/)
+  const commented = `## 문제\n\n## 수용 기준 <!-- 메모 -->\n- [ ] a\n- [x] b\n\n` + tail
+  const e2 = env(repo(), { data: issue({ body: commented }) })
+  assert.match(state.write(e2, '.', 'intent', 1, intentOf(['- [ ] a'])).out, /not carried over .*: 2$/)
+})
+
+test('intent refuses nested or quoted task items under the criteria heading (2026-10-02 re-review 2)', () => {
+  for (const crit of [['- [ ] a', '- - [ ] b'], ['- [ ] a', '> - [ ] b']]) {
+    const root = repo()
+    const r = state.write(env(root), '.', 'intent', 1, intentOf(crit))
+    assert.equal(r.code, 1, crit.join(' / '))
+    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-shape'])
+  }
+})
+
 test('no checked box survives in the intent: other headings, quotes and sections (2026-10-02 re-review)', () => {
-  const variant = intentOf(['- [ ] a']) + '\n##  수용 기준\n- [x] b\n\n## 수용 기준 #\n- [X] c\n\n> - [x] d\n'
+  const variant = intentOf(['- [ ] a']) + '\n##  수용 기준\n- [x] b\n\n## 수용 기준 #\n- [X] c\n\n> - [x] d\n- - [x] e\n1. > - [x] f\n'
   const e = env(repo(), { data: issue({ body: oldBody(['- [ ] a']) }) })
   assert.equal(state.write(e, '.', 'intent', 1, variant).code, 0)
   assert.doesNotMatch(ghWrites(e)[0].input, /\[[xX]\]/)

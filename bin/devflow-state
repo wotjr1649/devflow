@@ -330,12 +330,16 @@ function criteria(body) {
   const boxes = found.map((b, i) => {
     const after = start + b.index + b[0].length
     const until = i + 1 < found.length ? start + found[i + 1].index : end
-    return { at: after - 2, checked: b[1] !== ' ', text: body.slice(after, until).replace(/\s+/g, ' ').trim() }
+    return { at: after - 2, checked: b[1] !== ' ', text: body.slice(after, until) }
   })
   return { section: body.slice(start, end), boxes }
 }
-// Every task-list form GitHub renders as a checkbox; criteria() counts only "- [ ]", so an intent may use no other.
-const ANY_TASK = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[ xX]\]/gm
+// What a criterion is compared by: the text a reader sees, whitespace collapsed, so a wrapped criterion is one line.
+const criterionKey = s => stripHidden(s).replace(/\s+/g, ' ').trim()
+// Every task-list form GitHub renders as a checkbox, nested markers and quotes included. criteria() counts only
+// "- [ ]", so an intent may use no other form under "## 수용 기준".
+const ANY_TASK = /^(?:[ \t>]*(?:[-*+]|\d+[.)])[ \t]+)+\[[ xX]\]/gm
+const CHECKED_TASK = /^((?:[ \t>]*(?:[-*+]|\d+[.)])[ \t]+)+)\[[xX]\]/gm
 
 // Marks acceptance criteria (1-based, in order under "## 수용 기준") as done; every other character stays as it was.
 function checkCriteria(body, nums) {
@@ -352,23 +356,24 @@ function checkCriteria(body, nums) {
 // A new intent starts with every task box unchecked, whatever its form or section: a check stands for evidence, which
 // only check adds. Each check a reader can see in a writer's old body re-checks one new criterion with the same text.
 // Every checked old box whose check did not move is reported by its number in the old body, as check counts it.
-const CHECKED_TASK = /^([ \t>]*(?:[-*+]|\d+[.)])[ \t]+)\[[xX]\]/gm
 function carryChecks(oldBody, intent, trusted) {
-  const bag = texts => texts.reduce((m, t) => m.set(t, (m.get(t) || 0) + 1), new Map())
-  const take = (m, t) => m.get(t) > 0 && !!m.set(t, m.get(t) - 1)
-  const checkedTexts = c => (c ? c.boxes.filter(b => b.checked).map(b => b.text) : [])
-  const visible = bag(trusted ? checkedTexts(criteria(stripHidden(oldBody))) : [])
+  const bag = keys => keys.reduce((m, k) => m.set(k, (m.get(k) || 0) + 1), new Map())
+  const take = (m, k) => m.get(k) > 0 && !!m.set(k, m.get(k) - 1)
+  const checkedKeys = c => (c ? c.boxes.filter(b => b.checked).map(b => criterionKey(b.text)) : [])
+  const visible = bag(trusted ? checkedKeys(criteria(stripHidden(oldBody))) : [])
   let body = intent.replace(CHECKED_TASK, '$1[ ]')
   const moved = []
   for (const b of criteria(body).boxes) {
-    if (!take(visible, b.text)) continue
+    const key = criterionKey(b.text)
+    if (!take(visible, key)) continue
     body = body.slice(0, b.at) + 'x' + body.slice(b.at + 1)
-    moved.push(b.text)
+    moved.push(key)
   }
   const left = bag(moved)
-  const raw = criteria(oldBody)
+  // Numbered as check counts them; when only the visible body has a criteria section, as a reader counts them.
+  const old = criteria(oldBody) || criteria(stripHidden(oldBody))
   const dropped = []
-  if (raw) raw.boxes.forEach((b, i) => b.checked && !take(left, stripHidden(b.text).replace(/\s+/g, ' ').trim()) && dropped.push(i + 1))
+  if (old) old.boxes.forEach((b, i) => b.checked && !take(left, criterionKey(b.text)) && dropped.push(i + 1))
   return { body, dropped }
 }
 

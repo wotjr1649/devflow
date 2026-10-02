@@ -476,7 +476,7 @@ function analyze(src, ctx, depth = 0) {
 // Returns what kind of Issue write the shell command makes, or null. It follows what the text runs: separators,
 // substitutions, shells given a script, eval, piped or heredoc input to a shell, script files and gh aliases.
 // A guardrail, not a sandbox: words built from variables, encodings it does not decode, or HTTP from other
-// languages get past it; a narrow gh token is what stops those.
+// languages get past it; a narrow gh token limits where those reach (docs/specs/documents.md, Issue 입출력).
 // With protect (files => the first protected one, or null), a write to a protected path counts as well.
 function issueWrite(command, { cwd = process.cwd(), env = state.realEnv, protect = null,
   deadline = performance.now() + ANALYSIS_TIMEOUT_MS - 1000 } = {}) {

@@ -69,7 +69,8 @@ const realEnv = {
   },
 }
 
-const stripComments = s => s.replace(/<!--[\s\S]*?(?:-->|$)/g, '')
+const COMMENTS = /<!--[\s\S]*?(?:-->|$)/g
+const stripComments = s => s.replace(COMMENTS, '')
 // Hidden text an Issue can carry past a human reader: comments and invisible characters.
 const stripHidden = s => stripComments(s).replace(INVISIBLE_ALL, '')
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
@@ -321,13 +322,21 @@ function refusal(op, text, title) {
 
 // GitHub rendering devflow follows, measured with the markdown API (Issue #9): an HTML comment that opens a line hides
 // every line up to the one holding its closing "-->" (to the end without one), and a fenced code block shows its lines
-// as code; neither holds a heading or a box. Lines split at "\n" only, so a body with another line break (a lone "\r",
+// as code; neither holds a heading or a box. Only openers at column 0 are followed: an indented one may sit in a list
+// item, which GitHub closes with the item. Lines split at "\n" only, so a body with another line break (a lone "\r",
 // U+2028, U+2029) is never plain: GitHub and these patterns would disagree on where a line starts.
 const LINE_SEPARATORS = String.fromCharCode(0x2028, 0x2029)
 const oddBreak = s => /\r(?!\n)/.test(s) || [...LINE_SEPARATORS].some(c => s.includes(c))
-// Lines whose meaning depends on structure this model does not follow: an indented fence or comment (inside a list
-// item or a code block) and any other HTML block.
+// Lines whose meaning depends on structure this model does not follow: an indented fence or comment and any other
+// HTML block.
 const UNSURE_LINE = /^(?:[ \t]+(?:`{3,}|~{3,}|<!--)|[ \t]{0,3}<(?!!--)[A-Za-z/?!])/
+// GitHub renders other spellings as a "수용 기준" heading too (indented, spaced, closed, another level, setext, other
+// Unicode forms); one above the section would be the criteria a reader sees first.
+const likeCriteria = (line, next) => {
+  const t = line.text.normalize('NFC')
+  return /^ {0,3}#{1,6}[ \t]+수용\s*기준/.test(t) ||
+    (/^ {0,3}수용\s*기준\s*$/.test(t) && !!next && /^ {0,3}(?:=+|-+)[ \t]*$/.test(next.text))
+}
 function bodyLines(body) {
   const out = []
   let fence = null
@@ -336,7 +345,7 @@ function bodyLines(body) {
     const text = m[0].replace(/\r?\n$/, '')
     const line = { at: m.index, text, skip: true }
     out.push(line)
-    if (comment || (!fence && /^ {0,3}<!--/.test(text))) {
+    if (comment || (!fence && text.startsWith('<!--'))) {
       // "<!-->" and "<!--->" close on their own line, as cmark reads them.
       comment = !text.slice(comment ? 0 : text.indexOf('<!--') + 2).includes('-->')
       continue
@@ -349,7 +358,7 @@ function bodyLines(body) {
       if (mark && mark[0] === fence[0] && mark.length >= fence.length && /^[ \t]*$/.test(text.slice(f[0].length))) fence = null
       continue
     }
-    if (mark) {
+    if (mark && f[0] === mark) {
       fence = mark
       continue
     }
@@ -372,14 +381,15 @@ function criteria(body) {
   const found = findCriteria(body)
   if (!found) return null
   const { ls, h, section, boxes } = found
-  // read shows the body through stripHidden: it must hold the same boxes, or the numbers an agent reads there would not
-  // be the numbers check uses.
-  const read = findCriteria(stripHidden(body))
+  // read shows the body with comments removed (stripHidden). The same body with those comments blanked keeps every
+  // position, so the agent's view must hold the same boxes at the same places with the same text, or the numbers an
+  // agent reads there would not be the numbers check uses.
+  const read = findCriteria(body.replace(COMMENTS, c => c.replace(/[^\n]/g, ' ')))
   const plain = !oddBreak(body) &&
-    ls.slice(0, h).every(l => l.skip || !UNSURE_LINE.test(l.text)) &&
+    ls.slice(0, h).every((l, i) => l.skip || (!UNSURE_LINE.test(l.text) && !likeCriteria(l, ls[i + 1]))) &&
     section.every(l => PLAIN_LINE.test(l.text)) &&
     !!read && read.boxes.length === boxes.length &&
-    read.boxes.every((b, i) => b.checked === boxes[i].checked && b.text === boxes[i].text)
+    read.boxes.every((b, i) => b.at === boxes[i].at && b.checked === boxes[i].checked && b.text === boxes[i].text)
   return { boxes, plain }
 }
 

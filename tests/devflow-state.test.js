@@ -769,6 +769,15 @@ test('anything in the criteria GitHub may render differently is not plain (Issue
   assert.match(state.checkCriteria('## 문제\n\n    <!--\n\n## 수용 기준\n- [ ] a\n', [1]).error, /not plain/, 'an indented comment above')
   assert.match(state.checkCriteria('## 문제\ntext <!-- open\n\n## 수용 기준\n- [ ] a\n-->\n', [1]).error, /not plain/, 'read hides the section')
   assert.match(state.checkCriteria('## 문제\n<!--->\n\n## 수용 기준\n- [ ] a\n', [1]).error, /not plain/, 'cmark closes "<!--->", read does not')
+  const listFence = '## 문제\n- 재현:\n  ```\nnode x\n  ```\n\n## 수용 기준\n- [x] one\n'
+  assert.match(state.checkCriteria(listFence, [1]).error, /not plain/, 'a fence indented into a list item')
+  assert.match(state.checkCriteria('## 문제\n- 메모:\n  <!--\n\n## 수용 기준\n- [ ] a\n', [1]).error, /not plain/, 'a comment indented into a list item')
+  const real = '\n\n## 수용 기준\n- [ ] fake\n'
+  for (const variant of [' ## 수용 기준', '##  수용 기준', '## 수용 기준 ##', '# 수용 기준', '수용 기준\n---', '수용 기준\n===', '## 수용 기준'.normalize('NFD')]) {
+    assert.match(state.checkCriteria(`## 문제\n${variant}\n- [ ] real` + real, [1]).error, /not plain/, `an earlier heading ${JSON.stringify(variant)}`)
+  }
+  const twin = '<!-->\n## 수용 기준\n- [ ] a\n## x -->\n## 수용 기준\n- [ ] a\n'
+  assert.match(state.checkCriteria(twin, [1]).error, /not plain/, 'read finds the same boxes in another section')
 })
 
 test('a criteria heading hidden in a comment is skipped for check, carry and the report (Issue #9)', () => {

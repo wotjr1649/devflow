@@ -333,10 +333,18 @@ const oddBreak = s => /\r(?!\n)/.test(s) || [...LINE_SEPARATORS].some(c => s.inc
 // none of these, since its filter refuses comments and invisible characters; a body edited by hand may.
 const INDENTED_FENCE = /^[ \t]+(?:`{3,}|~{3,})/
 const RAW_MARKUP = /<[A-Za-z/!?]|&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);/
-const likeCriteria = (line, next) => {
-  const t = line.text.normalize('NFC')
-  const heading = /^[ \t>*+\-\d.)]*#/.test(t) || (!!next && /^[ \t>]*(?:=+|-+)[ \t]*$/.test(next.text))
-  return heading && t.replace(/^[ \t>*+\-\d.)]*#*/, '').replace(/[^가-힣A-Za-z0-9]/g, '') === '수용기준'
+// Spellings are open-ended (prefixed, emphasized, linked, split over lines, other Unicode forms), so above the section
+// no heading and no paragraph a setext underline turns into one may mention the words at all.
+const mentionsCriteria = s => /수용|기준/.test(s.normalize('NFC'))
+const SETEXT_UNDERLINE = /^[ \t>]*(?:=+|-+)[ \t]*$/
+const likeCriteria = (ls, i) => {
+  if (/^[ \t>*+\-\d.)]*#/.test(ls[i].text)) return mentionsCriteria(ls[i].text)
+  if (!SETEXT_UNDERLINE.test(ls[i].text)) return false
+  // The paragraph ends at a blank, hidden or earlier underline line, so each line is walked back over at most once.
+  for (let j = i - 1; j >= 0 && !ls[j].skip && ls[j].text.trim() && !SETEXT_UNDERLINE.test(ls[j].text); j--) {
+    if (mentionsCriteria(ls[j].text)) return true
+  }
+  return false
 }
 function bodyLines(body) {
   const out = []
@@ -372,9 +380,9 @@ function bodyLines(body) {
 }
 
 // A plain criteria section holds only boxes at the start of a line, text continuing them (up to five spaces in, not
-// starting a list, quote, heading, table, code or HTML), plain text and blank lines.
+// starting a list, quote, heading, setext underline, table, code or HTML), plain text and blank lines.
 const BOX = /^- \[([ xX])\]/
-const PLAIN_LINE = /^(?:- \[[ xX]\](?:[ \t].*)?|[ \t]*| {0,5}(?![-*+>#|<`~ \t]|\d+[.)])\S.*)$/
+const PLAIN_LINE = /^(?:- \[[ xX]\](?:[ \t].*)?|[ \t]*| {0,5}(?![-*+>#|<`~= \t]|\d+[.)])\S.*)$/
 
 // The acceptance criteria: the first "## 수용 기준" GitHub renders as that heading and its "- [ ]" boxes up to the next
 // "## " heading, each with where its check character is, whether it is checked, and its text as a key. Numbers and
@@ -390,7 +398,7 @@ function criteria(body) {
   const read = findCriteria(body.replace(COMMENTS, c => c.replace(/[^\n]/g, ' ')))
   const sure = (l, i) => l.skip ? i < h && !l.unsure
     : !INVISIBLE.test(l.text) && !RAW_MARKUP.test(l.text) &&
-      (i < h ? !INDENTED_FENCE.test(l.text) && !likeCriteria(l, ls[i + 1]) : i === h || PLAIN_LINE.test(l.text))
+      (i < h ? !INDENTED_FENCE.test(l.text) && !likeCriteria(ls, i) : i === h || PLAIN_LINE.test(l.text))
   const plain = !oddBreak(body) && ls.slice(0, h + 1 + section.length).every(sure) &&
     !!read && read.boxes.length === boxes.length &&
     read.boxes.every((b, i) => b.at === boxes[i].at && b.checked === boxes[i].checked && b.text === boxes[i].text)

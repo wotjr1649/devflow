@@ -783,9 +783,10 @@ test('anything in the criteria GitHub may render differently is not plain (Issue
     '<!-- -->## 수용 기준', `${zw}## 수용 기준`, '## **수용 기준**', `## ${zw}수용 기준`, '> ## 수용 기준', '- ## 수용 기준',
     '## 수&#50857; 기준', '- 항목\n  ## 수용 기준', '- 수용 기준\n  ---', 'x <h2>수용 기준</h2>',
   ]
-  const prose = '## 문제\n수용 기준과 현재 상태를 적는다\n---\n\n## 수용 기준과 현재 상태\n\n## 수용 기준\n- [ ] a\n'
-  assert.equal(state.checkCriteria(prose, [1]).body, prose.replace('- [ ] a', '- [x] a'), 'a heading that only mentions the words is fine')
-  above.push('1. 수용 기준\n   ===')
+  const prose = '## 문제\n수용 기준이 바뀌면 intent를 고친다.\n\n---\n\n## 수용 기준\n- [ ] a\n'
+  assert.equal(state.checkCriteria(prose, [1]).body, prose.replace('- [ ] a', '- [x] a'), 'prose and a thematic break are fine')
+  above.push('1. 수용 기준\n   ===', '## 수용 기준[](x)', '## [수용 기준](#a)', '수용\n기준\n---', '수용 기준\n이다\n---', '## 수용 기준과 현재 상태')
+  assert.match(state.checkCriteria(crit(['- [ ] a', '', '범위 밖', '===', '- [ ] b']), [1]).error, /not plain/, 'a setext heading in the section')
   for (const variant of above) {
     assert.match(state.checkCriteria(`## 문제\n${variant}\n- [ ] fake` + real, [1]).error, /not plain/, `above: ${JSON.stringify(variant)}`)
   }

@@ -35,7 +35,7 @@ const USAGE = `usage: devflow-state <command>
                               replace the body above the state block once the user approved it; "## 수용 기준" is
                               required, and checks stay only on criteria whose text is unchanged
   comment <n> < checkpoint    "### Checkpoint <stage> — <summary>", then at most 9 lines starting "- "
-  check <n> <k>...            mark acceptance criteria k (1-based, under "## 수용 기준") as done
+  check <n> <k>...            mark acceptance criteria k (1-based boxes GitHub renders under "## 수용 기준") as done
   close <n> | reopen <n>
   create --title <t> < body   a new Issue in the Issue template (follow-ups)
   ledger [n]                  print the ledger
@@ -309,7 +309,7 @@ function refusal(op, text, title) {
     if (STATE_HEADING.test(text)) return no('state-intent-shape', 'refused: the intent is the body above "## 현재 상태" and must not contain it')
     const c = criteria(text)
     if (!c || !c.boxes.length) return no('state-intent-shape', 'refused: the intent needs a "## 수용 기준" section with "- [ ]" criteria')
-    if ((c.section.match(ANY_TASK) || []).length !== c.boxes.length || text.match(new RegExp(CRITERIA_HEADING.source, 'gm')).length > 1) {
+    if (c.tasks !== c.boxes.length || text.match(new RegExp(CRITERIA_HEADING.source, 'gm')).length > 1) {
       return no('state-intent-shape', 'refused: write each criterion as "- [ ] …" under a single "## 수용 기준"')
     }
     if (text.length > MAX_BODY_CHARS) return no('state-intent-shape', `refused: the intent is over ${MAX_BODY_CHARS} characters`)
@@ -320,23 +320,62 @@ function refusal(op, text, title) {
 
 // The checkboxes under "## 수용 기준", in order: where the check character is, whether it is checked, and the text up
 // to the next box with whitespace collapsed, so a wrapped criterion compares as one line.
-function criteria(body) {
-  const m = CRITERIA_HEADING.exec(body)
-  if (!m) return null
-  const start = m.index + m[0].length
-  const next = body.slice(start).search(/^## /m)
-  const end = next < 0 ? body.length : start + next
-  const found = [...body.slice(start, end).matchAll(/^[ \t]*- \[([ xX])\]/gm)]
-  const boxes = found.map((b, i) => {
-    const after = start + b.index + b[0].length
-    const until = i + 1 < found.length ? start + found[i + 1].index : end
-    return { at: after - 2, checked: b[1] !== ' ', text: body.slice(after, until) }
-  })
-  return { section: body.slice(start, end), boxes }
+// What GitHub renders, measured with the markdown API (Issue #9): an HTML comment that opens a line hides everything up
+// to its closing "-->" (to the end when there is none), a comment opened and closed within a line is hidden, and any
+// other comment mark is shown as text. A fenced code block shows its lines as code, so they hold no headings or boxes.
+// Returns the body with hidden text blanked to spaces, so every position still matches the body, and the code lines.
+function rendered(body) {
+  const blank = s => s.replace(/[^\n]/g, ' ')
+  const inline = s => s.replace(/<!--[^\n]*?-->/g, blank)
+  let shown = ''
+  const code = []
+  let fence = null
+  let comment = false
+  for (const m of body.matchAll(/[^\n]*\n|[^\n]+$/g)) {
+    const line = m[0]
+    const opens = !comment && !fence && /^ {0,3}<!--/.test(line)
+    if (comment || opens) {
+      const close = line.indexOf('-->', opens ? line.indexOf('<!--') + 4 : 0)
+      comment = close < 0
+      shown += comment ? blank(line) : blank(line.slice(0, close + 3)) + inline(line.slice(close + 3))
+      continue
+    }
+    const f = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    if (fence || f) {
+      code.push(m.index)
+      if (!fence) fence = f[1]
+      else if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !line.slice(f[0].length).trim()) fence = null
+      shown += line
+      continue
+    }
+    shown += inline(line)
+  }
+  return { shown, code: new Set(code) }
 }
-// What a criterion is compared by, with whitespace collapsed so a wrapped criterion is one line. Callers strip hidden
-// text exactly once beforehand: a second pass could turn what a reader sees into a comment and drop it.
-const criterionKey = s => s.replace(/\s+/g, ' ').trim()
+
+// The acceptance criteria as GitHub renders them: the first "## 수용 기준" outside comments and code, and its "- [ ]"
+// boxes in order, each with where its check character is, whether it is checked, and its visible text as a key.
+function criteria(body) {
+  const { shown, code } = rendered(body)
+  const lineAt = i => shown.lastIndexOf('\n', i - 1) + 1
+  const outside = re => [...shown.matchAll(re)].filter(m => !code.has(lineAt(m.index)))
+  const heading = outside(new RegExp(CRITERIA_HEADING.source, 'gm'))[0]
+  if (!heading) return null
+  const start = heading.index + heading[0].length
+  const next = outside(/^## /gm).find(m => m.index >= start)
+  const end = next ? next.index : shown.length
+  const inSection = m => m.index >= start && m.index < end
+  const found = outside(/^[ \t]*- \[([ xX])\]/gm).filter(inSection)
+  const boxes = found.map((b, i) => {
+    const after = b.index + b[0].length
+    const until = i + 1 < found.length ? found[i + 1].index : end
+    return { at: after - 2, checked: b[1] !== ' ', text: criterionKey(shown.slice(after, until)) }
+  })
+  return { tasks: outside(ANY_TASK).filter(inSection).length, boxes }
+}
+// What a criterion is compared by: its visible text without invisible characters, whitespace collapsed so a wrapped
+// criterion is one line.
+const criterionKey = s => s.replace(INVISIBLE_ALL, '').replace(/\s+/g, ' ').trim()
 // Every task-list form GitHub renders as a checkbox, nested markers and quotes included. criteria() counts only
 // "- [ ]", so an intent may use no other form under "## 수용 기준". A list marker comes right before the box; each repeat
 // starts with a marker or ">", never with a space, so a long line of markers matches in linear time.
@@ -356,28 +395,23 @@ function checkCriteria(body, nums) {
 }
 
 // A new intent starts with every task box unchecked, whatever its form or section: a check stands for evidence, which
-// only check adds. Each check a reader can see in a writer's old body re-checks one new criterion with the same text.
-// Every checked old box whose check did not move is reported by its number in the old body, as check counts it.
+// only check adds. Each rendered check in a writer's old body re-checks one new criterion with the same text, and every
+// rendered check that did not move is reported by its number, which is the number check uses.
 function carryChecks(oldBody, intent, trusted) {
   const bag = keys => keys.reduce((m, k) => m.set(k, (m.get(k) || 0) + 1), new Map())
   const take = (m, k) => m.get(k) > 0 && !!m.set(k, m.get(k) - 1)
-  const checkedKeys = c => (c ? c.boxes.filter(b => b.checked).map(b => criterionKey(b.text)) : [])
-  const visible = bag(trusted ? checkedKeys(criteria(stripHidden(oldBody))) : [])
+  const old = criteria(oldBody)
+  const checked = old ? old.boxes.map((b, i) => ({ ...b, n: i + 1 })).filter(b => b.checked) : []
+  const evidence = bag(trusted ? checked.map(b => b.text) : [])
   let body = intent.replace(CHECKED_TASK, '$1[ ]')
   const moved = []
   for (const b of criteria(body).boxes) {
-    const key = criterionKey(b.text)
-    if (!take(visible, key)) continue
+    if (!take(evidence, b.text)) continue
     body = body.slice(0, b.at) + 'x' + body.slice(b.at + 1)
-    moved.push(key)
+    moved.push(b.text)
   }
   const left = bag(moved)
-  // Numbered as check counts them; when only the visible body has a criteria section, as a reader counts them.
-  const raw = criteria(oldBody)
-  const old = raw || criteria(stripHidden(oldBody))
-  const dropped = []
-  if (old) old.boxes.forEach((b, i) => b.checked && !take(left, criterionKey(raw ? stripHidden(b.text) : b.text)) && dropped.push(i + 1))
-  return { body, dropped }
+  return { body, dropped: checked.filter(b => !take(left, b.text)).map(b => b.n) }
 }
 
 // The state block and everything after it stay byte for byte; a body without one is all intent.
@@ -408,7 +442,7 @@ function post(ctx, op, n, text, title) {
     const old = got.issue.body || ''
     const span = stateSpan(old)
     // Criteria below the state block would survive the replacement with their checks; refuse rather than leave two.
-    if (span && CRITERIA_HEADING.test(old.slice(span[0]))) {
+    if (span && CRITERIA_HEADING.test(rendered(old).shown.slice(span[0]))) {
       return { code: 1, out: `refused: Issue #${n} has "## 수용 기준" below its state block; move it above first`, guard: 'state-intent-order' }
     }
     const carried = carryChecks(old, text, WRITERS.has(got.issue.authorAssociation))

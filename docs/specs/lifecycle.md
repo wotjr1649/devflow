@@ -62,7 +62,7 @@ ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 �
 | 통합 중 CI 실패 | build | 아니요 |
 | 계획이 틀림(파일, 순서, interface), 설계는 유효 | plan → ready, 비공개 계획을 그 자리에서 고침 | 아니요 |
 | 설계 가정이 깨짐(새 제약, 접근 방식 불가) | design → plan → ready, 오래 남을 결정은 결정 기록 | 사용자만 정할 결정이면 예 |
-| 요구사항이나 수용 기준이 바뀜 | discover 또는 start, Issue intent 수정 | 예 |
+| 요구사항이나 수용 기준이 바뀜 | discover 또는 start, 사용자가 확인한 intent를 `devflow-state intent`로 교체 | 예 |
 | 범위 밖의 새 문제 | 재현된 결함과 사용자가 미루기로 정한 것은 바로 후속 Issue로, 그 밖은 장부에 남겨 ship 때 한 번에 제안 | 제안하는 것만 예 |
 | ship에서 push가 거부됨 | Issue 브랜치에서 Issue를 다시 열고 상태를 되돌림. 검사 실패면 build, 그 밖은 ship | 아니요 |
 | 외부 요인으로 막힘 | 현재 상태에 막힘을 적고 멈춤 | 예 |

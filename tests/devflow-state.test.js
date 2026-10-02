@@ -524,13 +524,13 @@ test('intent carries checks of unchanged criteria only, ignores [x] in the input
 })
 
 test('intent matches criteria by whitespace-normalized text, one check per checked criterion', () => {
-  const old = oldBody(['- [x]  two  words', '- [x] dup', '- [ ] dup', `- [x] hid${hidden()}den`])
+  const old = oldBody(['- [x]  two  words', '- [x] dup', '- [ ] dup'])
   const e = env(repo(), { data: issue({ body: old.replace(/\n/g, '\r\n') }) })
-  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] two', '  words', '- [ ] dup', '- [ ] dup', '- [ ] hidden']))
+  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] two', '  words', '- [ ] dup', '- [ ] dup']))
   assert.equal(r.code, 0)
   assert.doesNotMatch(r.out, /not carried/)
   const sent = ghWrites(e)[0].input
-  assert.deepEqual(sent.match(/- \[[ x]\] \w+/g).slice(0, 4), ['- [x] two', '- [x] dup', '- [ ] dup', '- [x] hidden'])
+  assert.deepEqual(sent.match(/- \[[ x]\] \w+/g).slice(0, 3), ['- [x] two', '- [x] dup', '- [ ] dup'])
 })
 
 test('intent refuses the state heading, a missing criteria section, a long body and a bad title', () => {
@@ -685,23 +685,25 @@ test('a comment mark in the criteria is not plain: check refuses, intent carries
   }
 })
 
-test('a moved check is not reported, and a heading only a reader sees still reports (2026-10-02 re-review 2)', () => {
-  const bom = String.fromCodePoint(0xfeff)
-  const e = env(repo(), { data: issue({ body: oldBody([`- [x] a${bom}b`]) }) })
-  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] ab']))
-  assert.doesNotMatch(r.out, /not carried/)
-  assert.match(ghWrites(e)[0].input, /- \[x\] ab/)
+test('invisible characters in the old criteria carry nothing, and a heading only a reader sees still reports (Issue #9)', () => {
+  for (const invisible of [String.fromCodePoint(0xfeff), hidden(), String.fromCodePoint(0x200b)]) {
+    const e = env(repo(), { data: issue({ body: oldBody([`- [x] a${invisible}b`]) }) })
+    const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] ab']))
+    assert.match(r.out, /none of its 1 checked boxes carried over/)
+    assert.match(ghWrites(e)[0].input, /- \[ \] ab/)
+  }
   const commented = `## 문제\n\n## 수용 기준 <!-- 메모 -->\n- [ ] a\n- [x] b\n\n` + tail
   const e2 = env(repo(), { data: issue({ body: commented }) })
   assert.match(state.write(e2, '.', 'intent', 1, intentOf(['- [ ] a'])).out, /none of its 1 checked boxes carried over/)
 })
 
-test('hidden text is stripped once, so a comment a reader sees as text is not dropped from the key (2026-10-02 re-review 3)', () => {
-  const zw = String.fromCodePoint(0x200b)
-  const e = env(repo(), { data: issue({ body: oldBody([`- [x] a <${zw}!-- x -->`]) }) })
-  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] a']))
-  assert.match(ghWrites(e)[0].input, /- \[ \] a\n/, 'a reader saw a different criterion')
-  assert.match(r.out, /not carried over .*: 1$/)
+test('a changed criterion in a plain section is reported by its check number (Issue #9)', () => {
+  const e = env(repo(), { data: issue({ body: oldBody(['- [ ] keep', '- [x] a <b> c']) }) })
+  assert.match(state.write(e, '.', 'intent', 1, intentOf(['- [ ] keep', '- [ ] a'])).out, /none of its 1 checked boxes/, 'HTML is not plain')
+  const e2 = env(repo(), { data: issue({ body: oldBody(['- [ ] keep', '- [x] a, then b']) }) })
+  const r = state.write(e2, '.', 'intent', 1, intentOf(['- [ ] keep', '- [ ] a']))
+  assert.match(ghWrites(e2)[0].input, /- \[ \] a\n/)
+  assert.match(r.out, /not carried over .*: 2$/)
 })
 
 test('a long line of list markers is checked in linear time (2026-10-02 re-review 3)', () => {
@@ -776,6 +778,19 @@ test('anything in the criteria GitHub may render differently is not plain (Issue
   for (const variant of [' ## 수용 기준', '##  수용 기준', '## 수용 기준 ##', '# 수용 기준', '수용 기준\n---', '수용 기준\n===', '## 수용 기준'.normalize('NFD')]) {
     assert.match(state.checkCriteria(`## 문제\n${variant}\n- [ ] real` + real, [1]).error, /not plain/, `an earlier heading ${JSON.stringify(variant)}`)
   }
+  const zw = String.fromCodePoint(0x200b)
+  const above = [
+    '<!-- -->## 수용 기준', `${zw}## 수용 기준`, '## **수용 기준**', `## ${zw}수용 기준`, '> ## 수용 기준', '- ## 수용 기준',
+    '## 수&#50857; 기준', '- 항목\n  ## 수용 기준', '- 수용 기준\n  ---', 'x <h2>수용 기준</h2>',
+  ]
+  const prose = '## 문제\n수용 기준과 현재 상태를 적는다\n---\n\n## 수용 기준과 현재 상태\n\n## 수용 기준\n- [ ] a\n'
+  assert.equal(state.checkCriteria(prose, [1]).body, prose.replace('- [ ] a', '- [x] a'), 'a heading that only mentions the words is fine')
+  above.push('1. 수용 기준\n   ===')
+  for (const variant of above) {
+    assert.match(state.checkCriteria(`## 문제\n${variant}\n- [ ] fake` + real, [1]).error, /not plain/, `above: ${JSON.stringify(variant)}`)
+  }
+  assert.match(state.checkCriteria(crit(['- [ ] a', `${zw}- [ ] b`, '- [ ] c']), [1]).error, /not plain/, 'an invisible character in the section')
+  assert.match(state.checkCriteria(crit(['- [ ] a &amp; b']), [1]).error, /not plain/, 'an entity in the section')
   const twin = '<!-->\n## 수용 기준\n- [ ] a\n## x -->\n## 수용 기준\n- [ ] a\n'
   assert.match(state.checkCriteria(twin, [1]).error, /not plain/, 'read finds the same boxes in another section')
 })

@@ -327,15 +327,16 @@ function refusal(op, text, title) {
 // U+2028, U+2029) is never plain: GitHub and these patterns would disagree on where a line starts.
 const LINE_SEPARATORS = String.fromCharCode(0x2028, 0x2029)
 const oddBreak = s => /\r(?!\n)/.test(s) || [...LINE_SEPARATORS].some(c => s.includes(c))
-// Lines whose meaning depends on structure this model does not follow: an indented fence or comment and any other
-// HTML block.
-const UNSURE_LINE = /^(?:[ \t]+(?:`{3,}|~{3,}|<!--)|[ \t]{0,3}<(?!!--)[A-Za-z/?!])/
-// GitHub renders other spellings as a "수용 기준" heading too (indented, spaced, closed, another level, setext, other
-// Unicode forms); one above the section would be the criteria a reader sees first.
+// Outside a column-0 comment or fence, nothing up to the end of the criteria may hold what this model does not follow:
+// an indented fence (it may sit in a list item), invisible characters, HTML (tags, comment marks, entities), or another
+// line GitHub could render as a "수용 기준" heading, which a reader would take for the criteria. devflow's own posts hold
+// none of these, since its filter refuses comments and invisible characters; a body edited by hand may.
+const INDENTED_FENCE = /^[ \t]+(?:`{3,}|~{3,})/
+const RAW_MARKUP = /<[A-Za-z/!?]|&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);/
 const likeCriteria = (line, next) => {
   const t = line.text.normalize('NFC')
-  return /^ {0,3}#{1,6}[ \t]+수용\s*기준/.test(t) ||
-    (/^ {0,3}수용\s*기준\s*$/.test(t) && !!next && /^ {0,3}(?:=+|-+)[ \t]*$/.test(next.text))
+  const heading = /^[ \t>*+\-\d.)]*#/.test(t) || (!!next && /^[ \t>]*(?:=+|-+)[ \t]*$/.test(next.text))
+  return heading && t.replace(/^[ \t>*+\-\d.)]*#*/, '').replace(/[^가-힣A-Za-z0-9]/g, '') === '수용기준'
 }
 function bodyLines(body) {
   const out = []
@@ -346,8 +347,11 @@ function bodyLines(body) {
     const line = { at: m.index, text, skip: true }
     out.push(line)
     if (comment || (!fence && text.startsWith('<!--'))) {
-      // "<!-->" and "<!--->" close on their own line, as cmark reads them.
-      comment = !text.slice(comment ? 0 : text.indexOf('<!--') + 2).includes('-->')
+      // "<!-->" and "<!--->" close on their own line, as cmark reads them. Text after the close stays on the line, where
+      // read (which removes the comment) and GitHub may show it differently.
+      const close = text.indexOf('-->', comment ? 0 : 2)
+      comment = close < 0
+      if (!comment && /\S/.test(text.slice(close + 3))) line.unsure = true
       continue
     }
     // A backtick fence takes no backtick after it. The lookahead captures the whole run so the check never backtracks
@@ -368,8 +372,7 @@ function bodyLines(body) {
 }
 
 // A plain criteria section holds only boxes at the start of a line, text continuing them (up to five spaces in, not
-// starting a list, quote, heading, table, code or HTML), plain text and blank lines. A comment mark inside a line makes
-// read show other text than the body, which the comparison with read catches.
+// starting a list, quote, heading, table, code or HTML), plain text and blank lines.
 const BOX = /^- \[([ xX])\]/
 const PLAIN_LINE = /^(?:- \[[ xX]\](?:[ \t].*)?|[ \t]*| {0,5}(?![-*+>#|<`~ \t]|\d+[.)])\S.*)$/
 
@@ -385,9 +388,10 @@ function criteria(body) {
   // position, so the agent's view must hold the same boxes at the same places with the same text, or the numbers an
   // agent reads there would not be the numbers check uses.
   const read = findCriteria(body.replace(COMMENTS, c => c.replace(/[^\n]/g, ' ')))
-  const plain = !oddBreak(body) &&
-    ls.slice(0, h).every((l, i) => l.skip || (!UNSURE_LINE.test(l.text) && !likeCriteria(l, ls[i + 1]))) &&
-    section.every(l => PLAIN_LINE.test(l.text)) &&
+  const sure = (l, i) => l.skip ? i < h && !l.unsure
+    : !INVISIBLE.test(l.text) && !RAW_MARKUP.test(l.text) &&
+      (i < h ? !INDENTED_FENCE.test(l.text) && !likeCriteria(l, ls[i + 1]) : i === h || PLAIN_LINE.test(l.text))
+  const plain = !oddBreak(body) && ls.slice(0, h + 1 + section.length).every(sure) &&
     !!read && read.boxes.length === boxes.length &&
     read.boxes.every((b, i) => b.at === boxes[i].at && b.checked === boxes[i].checked && b.text === boxes[i].text)
   return { boxes, plain }
@@ -408,14 +412,14 @@ function findCriteria(body) {
   }))
   return { ls, h, section, boxes }
 }
-// What a criterion is compared by: its text without invisible characters, whitespace collapsed so a wrapped criterion
-// is one line.
-const criterionKey = s => s.replace(INVISIBLE_ALL, '').replace(/\s+/g, ' ').trim()
+// What a criterion is compared by: its text with whitespace collapsed, so a wrapped criterion is one line.
+const criterionKey = s => s.replace(/\s+/g, ' ').trim()
 // Every task-list form GitHub renders as a checkbox, nested markers and quotes included. A list marker comes right
 // before the box; each repeat starts with a marker or ">", never with a space, so a long line matches in linear time.
 const CHECKED_TASK = /^([ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+|>[ \t]*)*(?:[-*+]|\d+[.)])[ \t]+)\[[xX]\]/gm
-const UNPLAIN = 'the "## 수용 기준" section is not plain "- [ ]" lines (a comment, code, HTML, a nested or indented item, ' +
-  'an odd line break, or boxes read does not show); replace the intent with plain criteria first'
+const UNPLAIN = 'the "## 수용 기준" section is not plain "- [ ]" lines (a comment, code, HTML, an entity, an invisible character, ' +
+  'a nested or indented item, an odd line break, another heading like it above, or boxes read does not show); replace the ' +
+  'intent with plain criteria first'
 
 // Marks acceptance criteria (1-based, in order under "## 수용 기준") as done; every other character stays as it was.
 function checkCriteria(body, nums) {

@@ -40,14 +40,15 @@
 - Codex: 네트워크 없는 sandbox에서 돌리고 `devflow-state`를 승인으로 실행한다.
 - 전제: 스크립트 위치만으로는 경계가 되지 않는다. sandbox 밖에서 도는 `devflow-state`는 sandbox가 쓸 수 있는 작업 저장소의
   상태를 믿는다.
-  - 쓰기 대상: `.git/config`의 origin
-  - 무인 판단: 장부의 `mode`
+  - 쓰기 대상: `.git/config`의 origin, 그리고 쓸 Issue 번호를 정하는 지금 브랜치 이름
+  - 무인 판단과 게시 대기: 장부의 `mode`와 `pendingPosts`
   - git 실행: `.git/config` 전체와 cwd
 - 경계로 쓰려면 다음을 sandbox 밖에서 정해야 한다.
   - 스크립트와 그 환경을 sandbox가 쓸 수 없는 곳(플러그인 캐시 등)에 둔다.
   - 대상 저장소를 sandbox 밖 설정으로 고정한다.
   - git과 gh를 절대 경로로 부른다.
-  - 무인 판단을 작업 폴더 밖에서 한다.
+  - 무인 판단과 게시 대기를 작업 폴더 밖에서 한다.
+  - 쓸 Issue 번호를 sandbox 밖에서 고정한다. 그러지 않으면 고정한 저장소 안에서 어느 Issue에 쓰는지는 sandbox 쪽이 정한다.
 - 이것을 갖추기 전에는 이 경로를 경계라고 부르지 않는다.
 
 ## 다시 볼 조건

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"require(process.env.CLAUDE_PLUGIN_ROOT+'/hooks/devflow-hook.js').main()\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

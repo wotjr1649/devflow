@@ -661,3 +661,68 @@ test('alias lookup consumes the remaining hook budget including profile inspecti
   assert.equal(hook.handle(pre(d, 'gh co 1'), env, performance.now() + 100), '')
   assert.ok(timeout > 0 && timeout <= 100)
 })
+
+// Issue #10: Claude's SessionStart hands its session id to the shell; SessionEnd drops the session from every Issue's
+// recent writers. Both live where Codex cannot read them: Codex has no SessionEnd and no CLAUDE_ENV_FILE.
+const hashOf = id => require('crypto').createHash('sha256').update(id).digest('hex').slice(0, 12)
+const SID = '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0'
+const noGit = { run: () => ({ code: 1, stdout: '', stderr: '' }) }
+
+test('SessionStart writes the session id to CLAUDE_ENV_FILE only in a devflow repository, for a well-formed id, outside Codex', () => {
+  const envFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-envfile-')), 'env.sh')
+  const start = (cwd, sid, vars) => hook.handle(event('SessionStart', cwd, { source: 'startup', session_id: sid }), { ...noGit, vars })
+  start(dir(true), SID, { CLAUDE_ENV_FILE: envFile })
+  assert.equal(fs.readFileSync(envFile, 'utf8'), `export DEVFLOW_SESSION_ID="${SID}"\n`)
+  fs.rmSync(envFile)
+  start(dir(true), 'x"; rm -rf ~; "', { CLAUDE_ENV_FILE: envFile })
+  start(dir(false), SID, { CLAUDE_ENV_FILE: envFile })
+  start(dir(true), SID, { CLAUDE_ENV_FILE: envFile, CODEX_THREAD_ID: 'c-1' })
+  start(dir(true), SID, {})
+  assert.ok(!fs.existsSync(envFile))
+})
+
+test('SessionEnd releases the session from every Issue folder and gives up fast on a held lock', () => {
+  const root = dir(true)
+  const other = hashOf('someone-else')
+  const write = n => {
+    const d = path.join(root, '.work', 'devflow', `i${n}`)
+    fs.mkdirSync(d, { recursive: true })
+    fs.writeFileSync(path.join(d, 'sessions.json'), JSON.stringify({ [hashOf(SID)]: { host: 'claude', at: Date.now() }, [other]: { host: 'codex', at: Date.now() } }))
+    return path.join(d, 'sessions.json')
+  }
+  const [s1, s2] = [write(1), write(2)]
+  fs.writeFileSync(path.join(path.dirname(s1), 'ledger.lock'), 'held')
+  const t = Date.now()
+  assert.equal(hook.handle(event('SessionEnd', path.join(root, 'sub'), { session_id: SID, reason: 'clear' }), noGit), '')
+  assert.ok(Date.now() - t < 1000, 'well inside the 1.5 s SessionEnd budget')
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(s2, 'utf8'))), [other])
+  assert.equal(Object.keys(JSON.parse(fs.readFileSync(s1, 'utf8'))).length, 2, 'a held lock is left alone; 30 minutes clear it')
+  assert.equal(hook.handle(event('SessionEnd', dir(false), { session_id: SID }), noGit), '')
+})
+
+test('SessionEnd lives in a Claude-only hook file the Claude manifest names; hooks.json, which Codex reads, has none', () => {
+  const claude = require('../hooks/claude-hooks.json').hooks
+  assert.deepEqual(Object.keys(claude), ['SessionEnd'])
+  const shared = require('../hooks/hooks.json').hooks
+  assert.equal(shared.SessionEnd, undefined)
+  const { command, timeout } = claude.SessionEnd[0].hooks[0]
+  assert.equal(command, shared.Stop[0].hooks[0].command)
+  assert.ok(timeout <= 5)
+  assert.equal(require('../.claude-plugin/plugin.json').hooks, './hooks/claude-hooks.json')
+  assert.equal(require('../.codex-plugin/plugin.json').hooks, './hooks/hooks.json')
+})
+
+test('SessionStart passes the session id to the card, so its own writes are not warned about', () => {
+  const root = dir(true)
+  const d = path.join(root, '.work', 'devflow', 'i1')
+  fs.mkdirSync(d, { recursive: true })
+  fs.writeFileSync(path.join(d, 'sessions.json'), JSON.stringify({ [hashOf(SID)]: { host: 'claude', at: Date.now() } }))
+  const gitEnv = { vars: {}, run: (cmd, args) => {
+    const out = { 'rev-parse --show-toplevel': root, 'branch --show-current': 'feat/1-x', 'rev-parse --short HEAD': 'abc1234',
+      'remote get-url origin': 'https://github.com/o/r.git' }[args.join(' ')]
+    return out ? { code: 0, stdout: out + '\n', stderr: '' } : { code: 1, stdout: '', stderr: '' }
+  } }
+  const card = sid => JSON.parse(hook.handle(event('SessionStart', root, { source: 'resume', session_id: sid }), gitEnv)).hookSpecificOutput.additionalContext
+  assert.doesNotMatch(card(SID), /another claude session/)
+  assert.match(card('ffffffff-0000'), /another claude session/)
+})

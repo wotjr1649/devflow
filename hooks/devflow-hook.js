@@ -5,6 +5,7 @@
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
+const crypto = require('crypto')
 const state = require('../bin/devflow-state')
 
 const GH_COMMANDS = new Set(('auth browse codespace discussion gist issue org pr project release repo skill cache run workflow ' +
@@ -657,6 +658,36 @@ function continueWork(env, cwd) {
     `Stop only for a blocker or a decision for the user, recorded in the ledger as blocked or decisions.` })
 }
 
+// Issue #10. Claude's shell gets the session id through CLAUDE_ENV_FILE, which every later Bash command sources, so
+// devflow-state names the same session the hooks see, also after /clear starts a new one. Only in a devflow repository,
+// only for an id that cannot break out of the quotes, and never inside Codex, whose own id comes first anyway.
+const SESSION_ID = /^[A-Za-z0-9-]{1,128}$/
+function shareSessionId(vars, cwd, sessionId) {
+  try {
+    if (!vars.CLAUDE_ENV_FILE || vars.CODEX_THREAD_ID || !SESSION_ID.test(String(sessionId || '')) || !devflowRoot(cwd)) return
+    fs.appendFileSync(vars.CLAUDE_ENV_FILE, `export DEVFLOW_SESSION_ID="${sessionId}"\n`)
+  } catch {}
+}
+
+// A session that ends stops counting as a recent writer of any Issue. One try per lock: SessionEnd has 1.5 s in all,
+// and an entry left behind expires in 30 minutes.
+function releaseEverywhere(cwd, sessionId) {
+  const root = devflowRoot(cwd)
+  if (!root || !SESSION_ID.test(String(sessionId || ''))) return
+  const hash = crypto.createHash('sha256').update(String(sessionId)).digest('hex').slice(0, 12)
+  const base = path.join(root, '.work', 'devflow')
+  let names = []
+  try { names = fs.readdirSync(base) } catch { return }
+  for (const name of names) {
+    const m = /^i(\d+)$/.exec(name)
+    if (!m) continue
+    try {
+      const s = JSON.parse(fs.readFileSync(path.join(base, name, 'sessions.json'), 'utf8'))
+      if (s && s[hash]) state.releaseSessions(root, Number(m[1]), [hash], { waitMs: 0 })
+    } catch {}
+  }
+}
+
 const deny = reason => JSON.stringify({
   hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason },
 })
@@ -769,13 +800,20 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
   }
   const cwd = input.cwd || process.cwd()
   if (input.hook_event_name === 'SessionStart') {
+    shareSessionId(env.vars || {}, cwd, input.session_id)
     let card
     try {
-      card = state.card(env, cwd)
+      card = state.card(env, cwd, { sessionId: input.session_id })
     } catch (e) {
       card = `[devflow] resume card failed: ${e.message}`
     }
     return card ? JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: card } }) : ''
+  }
+  if (input.hook_event_name === 'SessionEnd') {
+    try {
+      releaseEverywhere(cwd, input.session_id)
+    } catch {}
+    return '' // SessionEnd cannot block, and its output is dropped
   }
   if (input.hook_event_name === 'PostToolUse') {
     try {

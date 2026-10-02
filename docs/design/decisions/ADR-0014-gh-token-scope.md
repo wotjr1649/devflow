@@ -1,4 +1,4 @@
-# ADR-0014: Issue 쓰기의 자격 증명 경계 대신 gh 토큰 범위를 좁힌다
+# ADR-0014: Issue 쓰기의 자격 증명 경계는 두지 않고, 토큰 범위를 좁히기를 권하며 넓은 토큰을 경고한다
 
 상태: 채택 (사용자 결정, #3)
 
@@ -16,17 +16,20 @@
 
 ## 결정
 
-- 에이전트가 일하는 저장소들만 고른 fine-grained 토큰을 쓴다. 권한은 Contents·Issues·Pull requests 쓰기, Metadata·Actions·
-  Commit statuses 읽기다. 소유자가 발급하고 설치한다. 오래된 GitHub 자격 증명은 지운다.
+- 에이전트가 일하는 저장소들만 고른 fine-grained 토큰을 권한다. 권한은 Contents·Issues·Pull requests 쓰기, Metadata·Actions·
+  Commit statuses 읽기다. 발급과 설치, 오래된 자격 증명 정리는 소유자가 정한다.
+- 이 기기의 소유자는 지금 OAuth 토큰(`repo` 등)을 유지한다(2026-10-02). fine-grained 토큰은 저장소를 고르는 대신 다른
+  저장소와 조직 저장소의 gh 작업을 막고 90일마다 갱신해야 하기 때문이다. 토큰 값이 저장소, Issue, 작업 파일, 세션 기록에 없음은
+  확인했다.
 - 재개 카드는 gh 응답 헤더 `X-Oauth-Scopes`에 `repo`나 `public_repo`가 있으면 경고한다.
 - 경계가 없는 이유, 남는 위험, OS 격리를 쓸 때의 경로는 [documents](../../specs/documents.md#issue-입출력)에 둔다.
 
 ## 결과
 
-- 훅을 지난 쓰기는 고른 저장소까지만 닿는다. 고른 저장소 안에서는 Issue 쓰기, push, force-push, 브랜치 삭제가 여전히 가능하다.
-  기본 브랜치 ruleset은 소유자가 고른다.
-- 토큰 만료와 갱신은 소유자의 일이다. 고르지 않은 저장소와 조직 저장소는 이 토큰으로 닿지 않는다.
-- 워크플로 파일을 바꾸는 push는 실패한다(Workflows 권한 없음).
+- 이 기기에서 훅을 지난 쓰기는 지금 토큰이 닿는 곳, 곧 계정의 모든 저장소까지 닿는다. 카드는 세션마다 이를 알린다.
+- fine-grained 토큰으로 바꾸면 고른 저장소까지만 닿는다. 고른 저장소 안에서는 Issue 쓰기, push, force-push, 브랜치 삭제가
+  여전히 가능하다. 기본 브랜치 ruleset은 소유자가 고른다. 토큰 만료와 갱신, 고르지 않은 저장소와 조직 저장소에 닿지 않는 것,
+  워크플로 파일 push 실패(Workflows 권한 없음)가 따라온다.
 
 ## 다시 볼 조건
 

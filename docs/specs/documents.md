@@ -76,8 +76,8 @@ AGENTS.md이고, 기억 도구의 내용과 충돌하면 진실 원천이 이긴
 - 보안 취약점은 결함이든 고치는 작업이든 공개 Issue 대신 GitHub 비공개 보안 권고로 추적한다.
 - `gh` 인증은 소유자가 정한다. 에이전트가 일하는 저장소들만 고른 fine-grained 토큰을 권한다. 권한은 Contents·Issues·Pull
   requests 쓰기와 Metadata·Actions·Commit statuses 읽기이고, 관리·워크플로 권한은 넣지 않는다. 범위가 `repo`나
-  `public_repo`인 OAuth·classic 토큰이면 재개 카드가 경고한다. 오래된 GitHub 자격 증명(git 자격 증명 관리자의 항목 등)은
-  지운다.
+  `public_repo`인 OAuth·classic 토큰이면 재개 카드가 경고한다. 넓은 토큰을 계속 쓸지는 소유자가 정하고, 그동안
+  카드는 세션마다 경고한다. 오래된 GitHub 자격 증명(git 자격 증명 관리자의 항목 등)은 지우기를 권한다.
 - 저장소 안에서 셸과 `devflow-state`를 나누는 자격 증명 경계는 OS 격리 없이는 없다. 같은 OS 사용자의 프로세스는 keyring과
   git 자격 증명 도우미로 토큰을 꺼낼 수 있고, `devflow-state`도 에이전트 셸의 하위 프로세스다. 그래서 훅을 지난 쓰기는 그
   사용자가 읽을 수 있는 모든 GitHub 자격 증명이 닿는 곳까지 닿는다. 고른 저장소 안에서는 push, force-push, 브랜치 삭제까지다.

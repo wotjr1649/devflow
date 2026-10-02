@@ -193,6 +193,7 @@ function logGuard(root, n, guard) {
 // while another process has the file open, so a few short retries.
 const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 const token = () => crypto.randomBytes(8).toString('hex')
+const TRANSIENT = ['EPERM', 'EBUSY', 'EACCES']
 function writeLedger(root, n, ledger) {
   const p = ledgerPath(root, n)
   fs.mkdirSync(path.dirname(p), { recursive: true })
@@ -202,7 +203,7 @@ function writeLedger(root, n, ledger) {
     try {
       return fs.renameSync(tmp, p)
     } catch (e) {
-      if (!['EPERM', 'EBUSY', 'EACCES'].includes(e.code) || i >= 3) {
+      if (!TRANSIENT.includes(e.code) || i >= 20) {
         fs.rmSync(tmp, { force: true })
         throw e
       }
@@ -228,7 +229,8 @@ function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
       fs.writeFileSync(lock, mine, { flag: 'wx' })
       break
     } catch (e) {
-      if (e.code !== 'EEXIST') return { ok: false }
+      // Windows answers EPERM for a name whose file is still being deleted: wait as for a held lock.
+      if (!['EEXIST', ...TRANSIENT].includes(e.code)) return { ok: false }
     }
     try {
       const st = fs.lstatSync(lock)

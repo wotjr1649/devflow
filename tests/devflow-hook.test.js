@@ -287,6 +287,16 @@ test('Stop continues open unattended work at most twice per task', () => {
   assert.equal(stop(), '', 'an interactive session delegating in M2 is attended')
   setLedger('{ broken')
   assert.equal(stop(), '', 'an unreadable ledger lets the session stop')
+  // Issue #10: the count goes through the ledger lock; a lock another write holds lets the session stop untouched.
+  setLedger(open)
+  const lock = path.join(path.dirname(ledgerFile), 'ledger.lock')
+  fs.writeFileSync(lock, 'other-writer')
+  assert.equal(stop(), '', 'a held lock lets the session stop')
+  assert.equal(JSON.parse(fs.readFileSync(ledgerFile, 'utf8')).counts, undefined)
+  assert.equal(fs.readFileSync(lock, 'utf8'), 'other-writer')
+  fs.rmSync(lock)
+  assert.equal(JSON.parse(stop()).decision, 'block')
+  assert.ok(!fs.existsSync(lock), 'the hook releases its own lock')
 })
 
 test('a script operand ends the shell options (2026-10-01 review)', () => {

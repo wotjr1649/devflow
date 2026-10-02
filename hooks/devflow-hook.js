@@ -630,23 +630,29 @@ const MAX_CONTINUES = 2
 function continueWork(env, cwd) {
   const ctx = state.repoContext(env, cwd)
   if (!ctx || !ctx.issue) return ''
-  const ledger = state.readLedger(ctx.root, ctx.issue)
-  if (!ledger) return ''
-  // Unattended means the ledger says so: approval settings such as bypass or yolo say nothing about who is present.
-  const task = ledger.task || {}
-  const open = ['build', 'verify'].includes(ledger.stage) && task.current <= task.total
-  // Empty means empty: [] and {} are how ledger-update clears a key it cannot delete.
-  const filled = v => (v && typeof v === 'object' ? Object.keys(v).length > 0 : Boolean(v))
-  const waiting = filled(ledger.blocked) || filled(ledger.decisions) || filled(ledger.running)
-  if (ledger.mode !== 'autonomous' || !open || waiting) return ''
-  const key = String(task.current)
-  const counts = { ...(ledger.counts || {}) }
-  const mine = { ...(counts[key] || {}) }
-  if ((mine.continue || 0) >= MAX_CONTINUES) return ''
-  mine.continue = (mine.continue || 0) + 1
-  counts[key] = mine
-  state.writeLedger(ctx.root, ctx.issue, { ...ledger, counts })
-  return JSON.stringify({ decision: 'block', reason: `devflow: task ${task.current}/${task.total} is open (${ledger.stage}) in ` +
+  // No ledger, no lock: the lock would create the Issue's folder in every repository branch the hook runs in.
+  if (!state.readLedger(ctx.root, ctx.issue)) return ''
+  // Decided and counted under the ledger lock, so a write another session makes meanwhile is kept (Issue #10). A lock
+  // that cannot be taken lets the session stop.
+  const r = state.updateLedger(ctx.root, ctx.issue, ledger => {
+    // Unattended means the ledger says so: approval settings such as bypass or yolo say nothing about who is present.
+    const task = ledger.task || {}
+    const open = ['build', 'verify'].includes(ledger.stage) && task.current <= task.total
+    // Empty means empty: [] and {} are how ledger-update clears a key it cannot delete.
+    const filled = v => (v && typeof v === 'object' ? Object.keys(v).length > 0 : Boolean(v))
+    const waiting = filled(ledger.blocked) || filled(ledger.decisions) || filled(ledger.running)
+    if (ledger.mode !== 'autonomous' || !open || waiting) return { result: null }
+    const key = String(task.current)
+    const counts = { ...(ledger.counts || {}) }
+    const mine = { ...(counts[key] || {}) }
+    if ((mine.continue || 0) >= MAX_CONTINUES) return { result: null }
+    mine.continue = (mine.continue || 0) + 1
+    counts[key] = mine
+    return { ledger: { ...ledger, counts }, result: { task, stage: ledger.stage } }
+  })
+  if (!r.ok || !r.result) return ''
+  const { task, stage } = r.result
+  return JSON.stringify({ decision: 'block', reason: `devflow: task ${task.current}/${task.total} is open (${stage}) in ` +
     'autonomous mode. Continue it: finish the stage, commit, update the ledger. ' +
     `Stop only for a blocker or a decision for the user, recorded in the ledger as blocked or decisions.` })
 }

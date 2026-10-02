@@ -40,7 +40,7 @@ function repo({ ledger, devflow = true } = {}) {
   return root
 }
 
-function env(root, { data = issue(), gh = null, log = ok(''), branch = BRANCH } = {}) {
+function env(root, { data = issue(), gh = null, log = ok(''), branch = BRANCH, headers = null } = {}) {
   const calls = []
   return {
     calls,
@@ -55,6 +55,10 @@ function env(root, { data = issue(), gh = null, log = ok(''), branch = BRANCH } 
         if (args[0] === 'log') return log
       }
       if (cmd === 'gh' && gh) return gh
+      // A test that sets headers gets them before the JSON only when the call asks for --include, as real gh does.
+      if (cmd === 'gh' && args[0] === 'api' && headers !== null && args.includes('--include')) {
+        return ok(headers + JSON.stringify({ data: { repository: { issue: data } } }))
+      }
       if (cmd === 'gh' && args[0] === 'api') return ok(JSON.stringify({ data: { repository: { issue: data } } }))
       if (cmd === 'gh') return ok('https://github.com/o/r/issues/1#issuecomment-9\n')
       return { code: 127, stdout: '', stderr: '' }
@@ -393,4 +397,79 @@ test('concurrent appends from several processes keep every line whole', async ()
   const raw = fs.readFileSync(guardLog(root), 'utf8').split('\n').filter(Boolean)
   assert.equal(raw.length, 1200)
   for (const l of raw) assert.equal(JSON.parse(l).guard, 'state-leak')
+})
+
+// gh api --include prints a status line, headers, a blank line, then the body; real gh output uses CRLF.
+const withScopes = (scopes, eol = '\r\n') =>
+  ['HTTP/2.0 200 OK', 'Content-Type: application/json', ...(scopes === null ? [] : [`X-Oauth-Scopes: ${scopes}`]), 'X-Github-Request-Id: ABCD'].join(eol) + eol + eol
+const WARNING = /^Warning: gh uses a broad OAuth or classic token \(scopes: (.*)\) that reaches every repository it can; use a fine-grained token limited to the repositories agents work on \(docs\/specs\/documents\.md, Issue 입출력\)\.$/m
+
+test('card warns right after the top line when gh uses a repo-wide token (CRLF headers)', () => {
+  const out = state.card(env(repo(), { headers: withScopes('repo, read:org') }), '.')
+  const ls = out.split('\n')
+  assert.match(ls[0], /^\[devflow\] o\/r/)
+  assert.match(ls[1], WARNING)
+  assert.equal(WARNING.exec(out)[1], 'repo, read:org')
+  assert.match(out, /Latest checkpoint: https:\/\/github.com\/o\/r\/issues\/1#c1/)
+})
+
+test('card warns with LF headers too', () => {
+  assert.match(state.card(env(repo(), { headers: withScopes('repo', '\n') }), '.'), WARNING)
+})
+
+test('card without headers is unchanged and has no warning', () => {
+  const plain = state.card(env(repo()), '.')
+  assert.doesNotMatch(plain, /Warning:/)
+  assert.equal(state.card(env(repo(), { headers: '' }), '.'), plain)
+  assert.equal(state.card(env(repo(), { headers: withScopes(null) }), '.'), plain)
+  assert.equal(state.card(env(repo(), { headers: withScopes('') }), '.'), plain)
+})
+
+test('card does not warn for narrow scopes', () => {
+  for (const s of ['read:org, gist', 'repo:status, read:repo_hook']) {
+    assert.doesNotMatch(state.card(env(repo(), { headers: withScopes(s) }), '.'), /Warning:/, s)
+  }
+})
+
+test('card warns for public_repo only', () => {
+  assert.match(state.card(env(repo(), { headers: withScopes('public_repo') }), '.'), WARNING)
+})
+
+test('card reduces the scopes header to scope characters and clips it', () => {
+  const out = state.card(env(repo(), { headers: withScopes('repo, <b>Gist</b>; $(x) ' + 'a'.repeat(200)) }), '.')
+  const shown = WARNING.exec(out)[1]
+  assert.match(shown, /^[a-z:_, ]{1,80}$/)
+  assert.ok(shown.startsWith('repo, bistb x'))
+  assert.doesNotMatch(out, /ABCD|application\/json|HTTP\/2/)
+})
+
+test('every stop card after a lookup carries the warning; none before or after a failed lookup', () => {
+  const body = `${block('feat/2-other')}\n`
+  const out = state.card(env(repo(), { data: issue({ body }), headers: withScopes('repo') }), '.')
+  assert.match(out.split('\n')[1], WARNING)
+  assert.match(out, /state names another branch; no Issue state shown\./)
+  const failed = state.card(env(repo(), { gh: { code: 1, stdout: '', stderr: 'boom' }, headers: withScopes('repo') }), '.')
+  assert.doesNotMatch(failed, /Warning:/)
+  assert.doesNotMatch(state.card(env(repo(), { branch: 'main', headers: withScopes('repo') }), '.'), /Warning:/)
+})
+
+test('read, state and check call gh api without --include', () => {
+  const e = env(repo(), { headers: withScopes('repo') })
+  assert.equal(state.read(e, '.', 1).code, 0)
+  state.write(e, '.', 'state', 1, block())
+  state.write(e, '.', 'check', 1, '1')
+  const api = e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'api')
+  assert.ok(api.length >= 2)
+  for (const c of api) assert.ok(!c.args.includes('--include'))
+})
+
+test('card with the warning stays under the token budget and keeps the line', () => {
+  const root = repo({ ledger: { lastCommit: 'a0b1234' } })
+  const commits = Array.from({ length: 5 }, (_, i) => `c${i}abcde ${'커밋 제목 '.repeat(40)}`).join('\n')
+  const priv = path.join(root, 'docs/plans')
+  fs.mkdirSync(priv, { recursive: true })
+  for (let i = 0; i < 30; i++) fs.writeFileSync(path.join(priv, `2026-10-01-i1-${'긴이름'.repeat(10)}${i}-plan.md`), '')
+  const out = state.card(env(root, { data: issue({ title: '제목'.repeat(200) }), log: ok(commits), headers: withScopes('repo') }), '.')
+  assert.match(out, WARNING)
+  assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
 })

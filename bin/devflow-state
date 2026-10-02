@@ -117,7 +117,7 @@ function repoContext(env, cwd) {
 // Broadness is judged on every element; only the displayed list is clipped.
 const SCOPE = /^[a-z_]+(:[a-z_]+)?$/
 function scopesOf(head) {
-  const m = /^x-oauth-scopes:[ 	]*(.*)$/im.exec(head)
+  const m = /^x-oauth-scopes:[ \t]*(.*)$/im.exec(head)
   const list = m ? m[1].split(',').map(x => x.trim()).filter(x => SCOPE.test(x)) : []
   if (!list.length) return null
   return { scopes: list.join(', ').slice(0, 80), broad: list.some(x => x === 'repo' || x === 'public_repo') }

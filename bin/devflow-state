@@ -255,15 +255,22 @@ function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
       // Windows answers EPERM for a name whose file is still being deleted: wait as for a held lock.
       if (!['EEXIST', ...TRANSIENT].includes(e.code)) return { ok: false, why: 'unsafe' }
     }
+    let judged = null
     try {
-      const st = fs.lstatSync(lock)
-      if (!st.isFile()) return { ok: false, why: 'unsafe' }
-      // A time far ahead of now is as wrong as one far behind it: an archive can carry any mtime.
-      if (Math.abs(Date.now() - st.mtimeMs) > LOCK_STALE_MS) {
-        dropStale(lock, fs.readFileSync(lock, 'utf8'))
-        continue
+      if (!fs.lstatSync(lock).isFile()) return { ok: false, why: 'unsafe' }
+      // Time and token come from one open file, so the lock judged stale is the lock whose time was read. A time far
+      // ahead of now is as wrong as one far behind it: an archive can carry any mtime.
+      const fd = fs.openSync(lock, 'r')
+      try {
+        if (Math.abs(Date.now() - fs.fstatSync(fd).mtimeMs) > LOCK_STALE_MS) judged = fs.readFileSync(fd, 'utf8')
+      } finally {
+        fs.closeSync(fd)
       }
     } catch {}
+    if (judged !== null) {
+      dropStale(lock, judged)
+      continue
+    }
     if (Date.now() >= until) return { ok: false, why: 'busy' }
     sleep(10)
   }
@@ -305,9 +312,10 @@ const sessionsPath = (root, n) => path.join(root, '.work', 'devflow', `i${n}`, '
 const MAX_SESSIONS_BYTES = 65536
 function readSessions(root, n) {
   try {
+    if (!issueDirOk(root, n)) return {}
     const p = sessionsPath(root, n)
     const st = fs.lstatSync(p)
-    if (!issueDirOk(root, n) || !st.isFile() || st.size > MAX_SESSIONS_BYTES) return {}
+    if (!st.isFile() || st.size > MAX_SESSIONS_BYTES) return {}
     const s = JSON.parse(fs.readFileSync(p, 'utf8'))
     return s && typeof s === 'object' && !Array.isArray(s) ? s : {}
   } catch {

@@ -676,12 +676,15 @@ function releaseEverywhere(cwd, sessionId) {
   if (!root || !SESSION_ID.test(String(sessionId || ''))) return
   const hash = crypto.createHash('sha256').update(String(sessionId)).digest('hex').slice(0, 12)
   const base = path.join(root, '.work', 'devflow')
+  // Real folders only: a .work that is a link (to a network share, say) is not listed.
+  const realDir = p => { try { return fs.lstatSync(p).isDirectory() } catch { return false } }
+  if (!realDir(path.join(root, '.work')) || !realDir(base)) return
   let names = []
   try { names = fs.readdirSync(base) } catch { return }
   for (const name of names) {
     const m = /^i(\d+)$/.exec(name)
     if (!m) continue
-    // readSessions skips links, other file kinds and large files, so a cloned repository cannot stall the hook here.
+    // readSessions skips linked folders, other file kinds and large files.
     if (state.readSessions(root, Number(m[1]))[hash]) state.releaseSessions(root, Number(m[1]), [hash], { waitMs: 0 })
   }
 }

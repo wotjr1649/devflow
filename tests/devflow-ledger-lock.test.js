@@ -1,0 +1,182 @@
+'use strict'
+// Issue #10: every ledger write holds a short lock, so two sessions (or a session and the Stop hook) keep each other's
+// changes; queued posts are claimed so two flushes never post the same item twice.
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const { spawn } = require('child_process')
+const state = require('../bin/devflow-state')
+
+const BRANCH = 'feat/1-x'
+const ok = stdout => ({ code: 0, stdout, stderr: '' })
+const block = () => ['## 현재 상태', '', '- 단계: build', `- 브랜치/PR: ${BRANCH}`].join('\n')
+const issue = () => ({
+  number: 1, title: 'T', state: 'OPEN', url: 'https://github.com/o/r/issues/1', authorAssociation: 'OWNER',
+  body: `## 문제\nx\n\n## 수용 기준\n- [ ] a\n\n${block()}\n`, comments: { nodes: [] },
+})
+
+function repo(ledger) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-lock-'))
+  fs.writeFileSync(path.join(root, '.devflow.json'), '{}')
+  if (ledger) {
+    fs.mkdirSync(path.join(root, '.work/devflow/i1'), { recursive: true })
+    fs.writeFileSync(path.join(root, '.work/devflow/i1/ledger.json'), JSON.stringify(ledger))
+  }
+  return root
+}
+
+function env(root, { gh = null, vars = {} } = {}) {
+  const calls = []
+  return {
+    calls,
+    vars,
+    run(cmd, args, opts = {}) {
+      calls.push({ cmd, args, input: opts.input })
+      const a = args.join(' ')
+      if (cmd === 'git') {
+        if (a === 'rev-parse --show-toplevel') return ok(root + '\n')
+        if (a === 'branch --show-current') return ok(BRANCH + '\n')
+        if (a === 'rev-parse --short HEAD') return ok('abc1234\n')
+        if (a === 'remote get-url origin') return ok('https://github.com/o/r.git\n')
+      }
+      if (cmd === 'gh' && gh) return gh
+      if (cmd === 'gh' && args[0] === 'api') return ok(JSON.stringify({ data: { repository: { issue: issue() } } }))
+      if (cmd === 'gh') return ok('https://github.com/o/r/issues/1#issuecomment-9\n')
+      return { code: 127, stdout: '', stderr: '' }
+    },
+  }
+}
+
+const dir = root => path.join(root, '.work', 'devflow', 'i1')
+const ledgerOf = root => JSON.parse(fs.readFileSync(path.join(dir(root), 'ledger.json'), 'utf8'))
+const lockFile = root => path.join(dir(root), 'ledger.lock')
+const ghWrites = e => e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue')
+const guards = root => {
+  const f = path.join(dir(root), 'guard-events.jsonl')
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map(l => JSON.parse(l).guard) : []
+}
+
+test('concurrent ledger writes from several processes keep every change', async () => {
+  const root = repo({ stage: 'build' })
+  const start = path.join(root, 'start')
+  const mod = JSON.stringify(path.resolve(__dirname, '../bin/devflow-state'))
+  const kid = body => `const s = require(${mod}); const fs = require('fs'); const r = ${JSON.stringify(root)};` +
+    `while (!fs.existsSync(${JSON.stringify(start)})) {} for (let i = 0; i < 20; i++) { ${body} }`
+  const kids = [
+    ...[0, 1, 2].map(k => kid(`if (!s.updateLedger(r, 1, l => ({ ledger: { ...l, ['k${k}_' + i]: i } }), { waitMs: 30000 }).ok) process.exit(3)`)),
+    ...[0, 1, 2].map(k => kid(`if (!s.updateLedger(r, 1, l => ({ ledger: { ...l, notes: [...(l.notes || []), '${k}-' + i] } }), { waitMs: 30000 }).ok) process.exit(3)`)),
+    ...[0, 1].map(() => kid(`if (!s.updateLedger(r, 1, l => ({ ledger: { ...l, count: (l.count || 0) + 1 } }), { waitMs: 30000 }).ok) process.exit(3)`)),
+  ].map(script => spawn(process.execPath, ['-e', script], { stdio: 'ignore' }))
+  await new Promise(r => setTimeout(r, 300))
+  fs.writeFileSync(start, '')
+  const codes = await Promise.all(kids.map(k => new Promise(r => k.on('exit', r))))
+  assert.deepEqual(codes, kids.map(() => 0))
+  const l = ledgerOf(root)
+  assert.equal(l.stage, 'build')
+  for (const k of [0, 1, 2]) for (let i = 0; i < 20; i++) assert.equal(l[`k${k}_${i}`], i)
+  assert.equal(l.notes.length, 60)
+  assert.equal(l.count, 40)
+  assert.ok(!fs.existsSync(lockFile(root)), 'the lock is gone')
+  assert.deepEqual(fs.readdirSync(dir(root)).filter(f => /\.tmp$/.test(f)), [], 'no temp file is left')
+})
+
+test('a stale lock is moved aside and the write goes on; a fresh one is waited for, then refused', () => {
+  const root = repo({ a: 1 })
+  fs.writeFileSync(lockFile(root), 'old-token')
+  const old = (Date.now() - 11000) / 1000
+  fs.utimesSync(lockFile(root), old, old)
+  assert.equal(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } })).ok, true)
+  assert.deepEqual(ledgerOf(root), { a: 1, b: 2 })
+  assert.ok(!fs.existsSync(lockFile(root)))
+  fs.writeFileSync(lockFile(root), 'live-token')
+  const t = Date.now()
+  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, c: 3 } }), { waitMs: 200 }), { ok: false })
+  assert.ok(Date.now() - t >= 150, 'it waited')
+  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'live-token', 'another holder keeps its lock')
+  assert.deepEqual(ledgerOf(root), { a: 1, b: 2 })
+})
+
+test('a lock is released only by the holder whose token it carries', () => {
+  const root = repo({ a: 1 })
+  const r = state.updateLedger(root, 1, l => {
+    fs.writeFileSync(lockFile(root), 'someone-else')
+    return { ledger: { ...l, b: 2 }, result: 'done' }
+  })
+  assert.deepEqual(r, { ok: true, ledger: { a: 1, b: 2 }, result: 'done' })
+  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'someone-else')
+})
+
+test('nothing is written when fn returns no ledger, and the result comes back', () => {
+  const root = repo({ a: 1 })
+  assert.deepEqual(state.updateLedger(root, 1, () => ({ result: 7 })), { ok: true, ledger: undefined, result: 7 })
+  assert.deepEqual(ledgerOf(root), { a: 1 })
+})
+
+test('no lock, temp file or ledger is written through a linked Issue folder', () => {
+  const root = repo()
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-out-'))
+  fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
+  fs.symlinkSync(outside, dir(root), 'junction')
+  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, a: 1 } })), { ok: false })
+  assert.deepEqual(fs.readdirSync(outside), [])
+})
+
+test('a failed rename leaves no temp file behind', () => {
+  const root = repo()
+  fs.mkdirSync(path.join(dir(root), 'ledger.json'), { recursive: true })
+  assert.throws(() => state.writeLedger(root, 1, { a: 1 }))
+  assert.deepEqual(fs.readdirSync(dir(root)).filter(f => /\.tmp$/.test(f)), [])
+})
+
+test('note appends one line to the branch Issue ledger under the lock', () => {
+  const root = repo({ notes: ['a'], stage: 'build' })
+  assert.deepEqual(state.note(env(root), '.', 1, 'second\nignored'), { code: 0, out: 'notes 2' })
+  assert.deepEqual(ledgerOf(root).notes, ['a', 'second'])
+  assert.equal(state.note(env(root), '.', 7, 'x').code, 1)
+  assert.equal(state.note(env(root), '.', 1, '  ').code, 2)
+})
+
+test('a held lock refuses metric and note with a fixed guard id', () => {
+  const root = repo({ stage: 'build' })
+  fs.writeFileSync(lockFile(root), 'live-token')
+  const r = state.metric(env(root), '.', 1, 'interventions', 'x')
+  assert.deepEqual(r, { code: 1, out: 'refused: another write holds the ledger of Issue #1; try again' })
+  assert.deepEqual(guards(root), ['state-ledger-locked'])
+})
+
+test('flush claims the whole queue: a queue another flush claimed is left to it', () => {
+  const root = repo({ mode: 'interactive', pendingPosts: [
+    { id: 'a', op: 'comment', issue: 1, text: '### Checkpoint build — x\n- y', claimed: { by: 'other', at: Date.now() } },
+  ] })
+  const e = env(root)
+  const r = state.flush(e, '.')
+  assert.equal(r.code, 1)
+  assert.match(r.out, /another flush is posting/)
+  assert.equal(ghWrites(e).length, 0)
+  assert.equal(ledgerOf(root).pendingPosts.length, 1)
+})
+
+test('flush posts two same-millisecond items once each and an expired claim again', () => {
+  const at = new Date().toISOString()
+  const text = '### Checkpoint build — x\n- y'
+  const root = repo({ mode: 'interactive', pendingPosts: [
+    { op: 'comment', issue: 1, text, at }, { op: 'comment', issue: 1, text, at },
+    { id: 'c', op: 'comment', issue: 1, text, at, claimed: { by: 'dead', at: Date.now() - 11 * 60000 } },
+  ] })
+  const e = env(root)
+  assert.equal(state.flush(e, '.').code, 0)
+  assert.equal(ghWrites(e).length, 3)
+  assert.deepEqual(ledgerOf(root).pendingPosts, [])
+})
+
+test('a failed post keeps it and the later items unclaimed for the next flush', () => {
+  const text = '### Checkpoint build — x\n- y'
+  const root = repo({ mode: 'interactive', pendingPosts: [{ op: 'comment', issue: 1, text }, { op: 'comment', issue: 1, text }] })
+  const e = env(root, { gh: { code: 1, stdout: '', stderr: '' } })
+  assert.equal(state.flush(e, '.').code, 1)
+  const left = ledgerOf(root).pendingPosts
+  assert.equal(left.length, 2)
+  assert.ok(left.every(p => p.id && !p.claimed))
+})

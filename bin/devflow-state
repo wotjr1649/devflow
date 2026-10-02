@@ -5,6 +5,7 @@
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
+const crypto = require('crypto')
 // Windows looks for git.exe and gh.exe in the working folder before PATH; a cloned repository must not supply them.
 if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
 
@@ -39,7 +40,8 @@ const USAGE = `usage: devflow-state <command>
   close <n> | reopen <n>
   create --title <t> < body   a new Issue in the Issue template (follow-ups)
   ledger [n]                  print the ledger
-  ledger-update [n] < json    merge a JSON object into the ledger
+  ledger-update [n] < json    replace the top-level keys given in a JSON object
+  note <n> < line             append one line to the ledger's notes
   pending | flush             queued posts; flush posts them once the ledger is interactive
   metric <n> <key> < note     add one to interventions or filterFalsePositives in the ledger, with a note line
 Writes go only to the branch's Issue (create excepted), and text with local paths, secrets, hidden
@@ -187,11 +189,80 @@ function logGuard(root, n, guard) {
   } catch {}
 }
 
+// A whole new file under a temporary name, then one rename: a reader never sees half a ledger. Windows refuses the rename
+// while another process has the file open, so a few short retries.
+const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+const token = () => crypto.randomBytes(8).toString('hex')
 function writeLedger(root, n, ledger) {
   const p = ledgerPath(root, n)
   fs.mkdirSync(path.dirname(p), { recursive: true })
-  fs.writeFileSync(p, JSON.stringify(ledger, null, 2) + '\n')
+  const tmp = `${p}.${token()}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(ledger, null, 2) + '\n', { flag: 'wx' })
+  for (let i = 0; ; i++) {
+    try {
+      return fs.renameSync(tmp, p)
+    } catch (e) {
+      if (!['EPERM', 'EBUSY', 'EACCES'].includes(e.code) || i >= 3) {
+        fs.rmSync(tmp, { force: true })
+        throw e
+      }
+      sleep(25)
+    }
+  }
 }
+
+// Every ledger write holds one short lock (Issue #10): sessions, devflow-state and the Stop hook each read, change and
+// write the whole file, so without it a later write drops an earlier one. Nothing slow runs under the lock, no network
+// in particular, so a lock older than LOCK_STALE_MS was left by an exit mid-write.
+const LOCK_STALE_MS = 10000
+const LOCK_WAIT_MS = 2000
+function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
+  const dir = path.join(root, '.work', 'devflow', `i${n}`)
+  if ([path.join(root, '.work'), path.join(root, '.work', 'devflow'), dir].some(isLinkOrOther)) return { ok: false }
+  fs.mkdirSync(dir, { recursive: true })
+  const lock = path.join(dir, 'ledger.lock')
+  const mine = token()
+  const until = Date.now() + waitMs
+  for (;;) {
+    try {
+      fs.writeFileSync(lock, mine, { flag: 'wx' })
+      break
+    } catch (e) {
+      if (e.code !== 'EEXIST') return { ok: false }
+    }
+    try {
+      const st = fs.lstatSync(lock)
+      if (!st.isFile()) return { ok: false }
+      // Moved aside under a unique name, so of several waiters only one drops it.
+      if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+        const aside = `${lock}.${mine}.stale`
+        fs.renameSync(lock, aside)
+        fs.rmSync(aside, { force: true })
+        continue
+      }
+    } catch {}
+    if (Date.now() >= until) return { ok: false }
+    sleep(10)
+  }
+  try {
+    return { ok: true, value: fn() }
+  } finally {
+    // Only the holder releases: a lock taken over after it went stale belongs to someone else now.
+    try { if (fs.readFileSync(lock, 'utf8') === mine) fs.rmSync(lock) } catch {}
+  }
+}
+
+// Reads, changes and writes the ledger under the lock. fn gets the ledger ({} when there is none) and returns
+// { ledger, result }; without a ledger nothing is written.
+function updateLedger(root, n, fn, opts) {
+  const r = withLock(root, n, () => {
+    const { ledger, result } = fn(readLedger(root, n) || {})
+    if (ledger) writeLedger(root, n, ledger)
+    return { ledger, result }
+  }, opts)
+  return r.ok ? { ok: true, ...r.value } : { ok: false }
+}
+const LOCKED = n => ({ code: 1, out: `refused: another write holds the ledger of Issue #${n}; try again`, guard: 'state-ledger-locked' })
 
 function privateFiles(root, n) {
   const re = new RegExp(`-i${n}-`)
@@ -543,21 +614,25 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
   const why = refusal(op, text, title)
   if (why) return { code: 1, ...why }
   const owner = ctx.issue || n
-  const ledger = readLedger(ctx.root, owner) || {}
-  // A queued check posted after this intent would land on the renumbered criteria.
-  if (op === 'intent' && !flushing && ledger.mode !== 'autonomous' && (ledger.pendingPosts || []).some(p => p.op === 'check' && p.issue === n)) {
-    return { code: 1, out: 'refused: a queued check waits for this Issue; flush the queue first', guard: 'state-intent-pending-check' }
-  }
-  if (ledger.mode === 'autonomous' && !flushing) {
-    // Check numbers were read from the body before a queued intent renumbers it.
-    if (op === 'check' && (ledger.pendingPosts || []).some(p => p.op === 'intent' && p.issue === n)) {
-      return { code: 1, out: 'refused: a queued intent renumbers the criteria; check after it is posted', guard: 'state-check-after-intent' }
+  // Decided and queued under the ledger lock, so a queue another process changes in between is not overwritten.
+  const decide = ledger => {
+    const queued = ledger.pendingPosts || []
+    // A queued check posted after this intent would land on the renumbered criteria.
+    if (op === 'intent' && !flushing && ledger.mode !== 'autonomous' && queued.some(p => p.op === 'check' && p.issue === n)) {
+      return { result: { code: 1, out: 'refused: a queued check waits for this Issue; flush the queue first', guard: 'state-intent-pending-check' } }
     }
-    ledger.pendingPosts = [...(ledger.pendingPosts || []), { op, issue: n, title, text, at: new Date().toISOString() }]
-    writeLedger(ctx.root, owner, ledger)
-    return { code: 0, out: `queued ${op} for the next interactive turn (${ledger.pendingPosts.length} pending)` }
+    if (ledger.mode !== 'autonomous' || flushing) return { result: null }
+    // Check numbers were read from the body before a queued intent renumbers it.
+    if (op === 'check' && queued.some(p => p.op === 'intent' && p.issue === n)) {
+      return { result: { code: 1, out: 'refused: a queued intent renumbers the criteria; check after it is posted', guard: 'state-check-after-intent' } }
+    }
+    const pendingPosts = [...queued, { id: token(), op, issue: n, title, text, at: new Date().toISOString() }]
+    return { ledger: { ...ledger, pendingPosts }, result: { code: 0, out: `queued ${op} for the next interactive turn (${pendingPosts.length} pending)` } }
   }
-  return post(ctx, op, n, text, title)
+  // A new Issue from a branch without one has no ledger yet.
+  const queued = owner ? updateLedger(ctx.root, owner, decide) : { ok: true, result: null }
+  if (!queued.ok) return LOCKED(owner)
+  return queued.result || post(ctx, op, n, text, title)
 }
 
 // Adds one to a manual metric and appends its note in one step, so an agent never rewrites the ledger by hand to count.
@@ -569,35 +644,72 @@ function metric(env, cwd, n, key, note) {
   if (!ctx || !ctx.issue || n !== ctx.issue) {
     return guarded(ctx, { code: 1, out: `refused: metrics go only to the branch's Issue #${(ctx && ctx.issue) ?? '?'}`, guard: 'state-other-issue' })
   }
-  const ledger = readLedger(ctx.root, n) || {}
-  const metrics = { ...(ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}) }
-  metrics[key] = (Number.isInteger(metrics[key]) ? metrics[key] : 0) + 1
-  const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${key} +1: ${line}`]
-  writeLedger(ctx.root, n, { ...ledger, metrics, notes })
-  return { code: 0, out: `${key} ${metrics[key]}` }
+  const r = updateLedger(ctx.root, n, ledger => {
+    const metrics = { ...(ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}) }
+    metrics[key] = (Number.isInteger(metrics[key]) ? metrics[key] : 0) + 1
+    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${key} +1: ${line}`]
+    return { ledger: { ...ledger, metrics, notes }, result: metrics[key] }
+  })
+  return r.ok ? { code: 0, out: `${key} ${r.result}` } : guarded(ctx, LOCKED(n))
 }
 
+// Appends one line to notes. ledger-update replaces whole keys, so two sessions adding notes that way would drop one.
+function note(env, cwd, n, text) {
+  const line = String(text || '').trim().split(/\r?\n/)[0].trim()
+  if (!line) return { code: 2, out: 'usage: devflow-state note <issue> < line' }
+  const ctx = repoContext(env, cwd)
+  if (!ctx || !ctx.issue || n !== ctx.issue) {
+    return guarded(ctx, { code: 1, out: `refused: notes go only to the branch's Issue #${(ctx && ctx.issue) ?? '?'}`, guard: 'state-other-issue' })
+  }
+  const r = updateLedger(ctx.root, n, ledger => {
+    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), line]
+    return { ledger: { ...ledger, notes }, result: notes.length }
+  })
+  return r.ok ? { code: 0, out: `notes ${r.result}` } : guarded(ctx, LOCKED(n))
+}
+
+// A flush claims the whole queue under the lock and posts outside it, removing each item by id once posted. Another
+// flush that finds a fresh claim leaves the queue alone: posting part of it would break the order. An item posted by a
+// flush that died before removing it can post again once its claim expires.
+const CLAIM_MS = 10 * 60000
 function flush(env, cwd) {
   const ctx = repoContext(env, cwd)
   if (!ctx || !ctx.issue) return { code: 1, out: 'refused: no devflow Issue branch' }
-  const ledger = readLedger(ctx.root, ctx.issue) || {}
-  // Queued posts wait for a person: an unattended run cannot flush its own queue.
-  if (ledger.mode === 'autonomous') return guarded(ctx, { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn', guard: 'state-autonomous-flush' })
-  const left = []
+  const n = ctx.issue
+  const by = token()
+  const now = Date.now()
+  const claim = updateLedger(ctx.root, n, ledger => {
+    // Queued posts wait for a person: an unattended run cannot flush its own queue.
+    if (ledger.mode === 'autonomous') return { result: 'autonomous' }
+    const queued = ledger.pendingPosts || []
+    if (queued.some(p => p.claimed && now - p.claimed.at < CLAIM_MS)) return { result: 'busy' }
+    const pendingPosts = queued.map(p => ({ ...p, id: p.id || token(), claimed: { by, at: now } }))
+    return { ledger: { ...ledger, pendingPosts }, result: pendingPosts.map(p => p.id) }
+  })
+  if (!claim.ok) return guarded(ctx, LOCKED(n))
+  if (claim.result === 'autonomous') return guarded(ctx, { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn', guard: 'state-autonomous-flush' })
+  if (claim.result === 'busy') return { code: 1, out: 'refused: another flush is posting this queue; try again later' }
+  const posts = claim.ledger ? claim.ledger.pendingPosts : []
   const out = []
+  let failed = 0
   // Posts go in order and stop at the first failure: a later intent would renumber the criteria a failed check names.
-  for (const p of ledger.pendingPosts || []) {
-    if (left.length) {
-      left.push(p)
-      continue
-    }
+  for (const p of posts) {
     const r = write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true })
     out.push(r.out)
-    if (r.code !== 0) left.push(p)
+    if (r.code !== 0) {
+      failed = posts.length - posts.indexOf(p)
+      break
+    }
+    updateLedger(ctx.root, n, l => ({ ledger: { ...l, pendingPosts: (l.pendingPosts || []).filter(q => q.id !== p.id) } }))
   }
-  if (left.length > 1) out.push(`${left.length - 1} later posts wait behind the failed one`)
-  writeLedger(ctx.root, ctx.issue, { ...ledger, pendingPosts: left })
-  return { code: left.length ? 1 : 0, out: out.join('\n') || 'nothing pending' }
+  if (failed) {
+    // What is left goes back unclaimed for the next flush.
+    updateLedger(ctx.root, n, l => ({
+      ledger: { ...l, pendingPosts: (l.pendingPosts || []).map(q => (q.claimed && q.claimed.by === by ? (({ claimed, ...rest }) => rest)(q) : q)) },
+    }))
+    if (failed > 1) out.push(`${failed - 1} later posts wait behind the failed one`)
+  }
+  return { code: failed ? 1 : 0, out: out.join('\n') || 'nothing pending' }
 }
 
 function main(argv, stdin) {
@@ -640,10 +752,13 @@ function main(argv, stdin) {
       const n = num(rest[0]) || (ctx && ctx.issue)
       if (!ctx || !n) return { code: 1, out: 'refused: no devflow Issue' }
       if (cmd === 'ledger') return { code: 0, out: JSON.stringify(readLedger(ctx.root, n), null, 2) }
+      // Top-level keys are replaced as sent; a note goes through note, which appends under the lock.
       const patch = JSON.parse(input())
-      writeLedger(ctx.root, n, { ...readLedger(ctx.root, n), ...patch })
-      return { code: 0, out: 'ledger updated' }
+      const r = updateLedger(ctx.root, n, ledger => ({ ledger: { ...ledger, ...patch } }))
+      return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n))
     }
+    case 'note':
+      return num(rest[0]) ? note(env, cwd, num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state note <issue> < line' }
     case 'pending': {
       const ctx = repoContext(env, cwd)
       const posts = (ctx && ctx.issue && (readLedger(ctx.root, ctx.issue) || {}).pendingPosts) || []
@@ -669,4 +784,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { INVISIBLE, GUARD_LOG, WRITE_OPS, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, note, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

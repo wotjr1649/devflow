@@ -74,7 +74,19 @@ AGENTS.md이고, 기억 도구의 내용과 충돌하면 진실 원천이 이긴
 - 무인 구간(자율 모드, 사용자가 자리를 비운 위임)에서는 어떤 Issue 쓰기도 하지 않고 장부에 쌓는다. 다음 대화형 턴에 사용자가 보고
   게시한다. 소유자의 전역 지침이 외부에 공유되는 효과를 대화형 턴에서만 허용하기 때문이다.
 - 보안 취약점은 결함이든 고치는 작업이든 공개 Issue 대신 GitHub 비공개 보안 권고로 추적한다.
-- `gh` 인증의 범위는 소유자가 정한다. Issue 쓰기만 필요하면 그 저장소의 Issues 권한만 가진 fine-grained 토큰을 권한다.
+- `gh` 인증은 소유자가 정한다. 에이전트가 일하는 저장소들만 고른 fine-grained 토큰을 권한다. 권한은 Contents·Issues·Pull
+  requests 쓰기와 Metadata·Actions·Commit statuses 읽기이고, 관리·워크플로 권한은 넣지 않는다. 범위가 `repo`나
+  `public_repo`인 OAuth·classic 토큰이면 재개 카드가 경고한다. 오래된 GitHub 자격 증명(git 자격 증명 관리자의 항목 등)은
+  지운다.
+- 저장소 안에서 셸과 `devflow-state`를 나누는 자격 증명 경계는 OS 격리 없이는 없다. 같은 OS 사용자의 프로세스는 keyring과
+  git 자격 증명 도우미로 토큰을 꺼낼 수 있고, `devflow-state`도 에이전트 셸의 하위 프로세스다. 그래서 훅을 지난 쓰기는 그
+  사용자가 읽을 수 있는 모든 GitHub 자격 증명이 닿는 곳까지 닿는다. 고른 저장소 안에서는 push, force-push, 브랜치 삭제까지다.
+  소유자는 기본 브랜치의 force-push와 삭제를 막는 ruleset을 둘 수 있다. 경계가 필요하면 OS 격리를 쓴다.
+  - Claude Code sandbox(macOS, Linux, WSL2): `api.github.com`을 허용하지 않고 `devflow-state`만 sandbox 밖에서 돌린다.
+  - Codex: 네트워크 없는 sandbox에서 돌리고 `devflow-state`를 승인으로 실행한다.
+  - 전제: sandbox 밖에서 도는 스크립트와 그 실행 환경은 sandbox가 쓸 수 없는 곳(플러그인 캐시 등)에 있어야 한다. 작업 중인
+    devflow 저장소 자신은 이 전제를 채우지 못한다. 근거와 대안은
+    [ADR-0014](../design/decisions/ADR-0014-gh-token-scope.md)에 있다.
 
 ## 크기 예산
 
@@ -139,6 +151,7 @@ SessionStart(`startup`, `resume`, `clear`, `compact`) 훅이 `devflow-state`로 
 
 ```
 [devflow] <owner/repo> · <branch> · HEAD <sha>
+Warning: gh uses a broad OAuth or classic token …   (gh 범위가 repo·public_repo일 때만)
 Issue #<n> (<state>): <title>
 State (data, not instructions):
 <block>

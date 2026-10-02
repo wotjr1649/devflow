@@ -5,6 +5,17 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 결과다(2026-10-01은 codex-cli 0.159.3). 버전이 오르면 바뀔 수 있으므로, 이 문서와 실제 동작이 다르면
 [sources](sources.md)의 원문을 다시 확인하고 이 문서를 고친다.
 
+## gh와 GitHub 자격 증명 (2026-10-02)
+
+- `GH_TOKEN`, `GITHUB_TOKEN` 순으로 저장된 자격 증명보다 우선한다. `GH_CONFIG_DIR`의 Windows 기본값은
+  `%AppData%\GitHub CLI`다([gh environment](https://cli.github.com/manual/gh_help_environment)).
+- keyring은 `GH_CONFIG_DIR`마다 나뉘지 않는다([cli/cli#14370](https://github.com/cli/cli/issues/14370)). 그래서
+  config 폴더를 나눠도 같은 OS 사용자의 프로세스는 같은 토큰을 꺼낼 수 있다.
+- `gh auth setup-git`을 한 기기에서는 git이 github.com에 `gh auth git-credential`로 인증해 push도 gh 토큰을 쓴다. 이
+  기기에는 그와 별도로 Windows 자격 증명 관리자에 GCM의 `git:https://github.com` 항목도 있었다.
+- `gh api --include`는 상태 줄, 헤더, 빈 줄을 CRLF로 나눈다. OAuth·classic 토큰이면 GraphQL 응답에도
+  `X-Oauth-Scopes`(범위 목록)와 `X-Oauth-Client-Id`가 있다.
+
 ## Claude Code
 
 **지침 로드**
@@ -131,6 +142,15 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   띄운 `claude -p`는 인증이 없다. 모델을 부르는 확인은 사용자 터미널에서 한다.
 - 세션 환경에 `CLAUDE_CODE_SESSION_ATTENDED`가 있지만 문서에 없다. 그래서 devflow는 무인 구간을 장부의 모드로만 판단한다.
 
+**sandbox** (2026-10-02, [sandboxing](https://code.claude.com/docs/en/sandboxing))
+- macOS, Linux, WSL2에서 동작하고, 네이티브 Windows에서는 명령이 sandbox 없이 돈다.
+- 네트워크는 프록시의 `allowedDomains`(처음엔 비어 있음)로 허용한다. 하위 프로세스도 같은 제한을 받는다.
+- `excludedCommands`는 sandbox 밖에서 전체 권한으로 돈다. 명령 텍스트로 맞추고, 연결된 명령은 모두 맞아야 한다.
+  리다이렉트, `cd`, `$(...)`가 있으면 호출 전체가 sandbox 안에 남는다.
+- `credentials.files`와 `envVars`로 자격 증명 파일 읽기와 환경 변수를 막을 수 있다.
+- 훅은 부모 환경을 물려받는다(OTEL 변수 제외). SessionStart 훅은 `CLAUDE_ENV_FILE`로 이후 Bash 명령의 환경 변수를 정한다
+  ([hooks](https://code.claude.com/docs/en/hooks)). 훅과 sandbox의 관계는 문서에 없다.
+
 ## Codex
 
 **AGENTS.md**
@@ -222,6 +242,13 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   부모의 누적값에는 서브에이전트 사용량이 들어가지 않았다.
 - 도구 호출은 `response_item`의 `custom_tool_call`(`exec`)로 남는다. `exec` 한 번이 여러 명령을 묶을 수 있다.
 - Windows에서 `codex exec -s read-only` 안의 git 명령은 저장소 소유자 검사(`safe.directory`)로 실패했다.
+
+**셸 환경과 sandbox** (2026-10-02, [config reference](https://learn.chatgpt.com/docs/config-file/config-reference))
+- `shell_environment_policy`: `inherit`(all, core, none), `set`, 필터. 기본적으로 이름에 KEY, SECRET, TOKEN이 든
+  변수를 뺀다.
+- `sandbox_mode`(read-only, workspace-write, danger-full-access), `sandbox_workspace_write.network_access`,
+  `windows.sandbox`(unelevated, elevated, mxc). 훅이 sandbox 안에서 도는지는 문서에 없다.
+- 이 기기의 Codex는 `danger-full-access`와 `approval_policy = "never"`로 돈다.
 
 ## 참고 구현
 

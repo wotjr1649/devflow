@@ -349,18 +349,27 @@ function checkCriteria(body, nums) {
   return { body: out }
 }
 
-// A new intent's criteria start unchecked whatever the input says: a check stands for evidence, which only check adds.
-// Each checked old criterion re-checks one new criterion with the same text; the old numbers left over are dropped.
-function carryChecks(oldBody, intent) {
-  const left = new Map()
-  const old = criteria(oldBody)
-  if (old) old.boxes.forEach((b, i) => b.checked && left.set(b.text, [...(left.get(b.text) || []), i + 1]))
-  let body = intent
-  for (const b of criteria(intent).boxes) {
-    const q = left.get(b.text)
-    body = body.slice(0, b.at) + (q && q.length ? (q.shift(), 'x') : ' ') + body.slice(b.at + 1)
+// A new intent starts with every task box unchecked, whatever its form or section: a check stands for evidence, which
+// only check adds. Each check a reader can see in a writer's old body re-checks one new criterion with the same text.
+// Every checked old box whose check did not move is reported by its number in the old body, as check counts it.
+const CHECKED_TASK = /^([ \t>]*(?:[-*+]|\d+[.)])[ \t]+)\[[xX]\]/gm
+function carryChecks(oldBody, intent, trusted) {
+  const bag = texts => texts.reduce((m, t) => m.set(t, (m.get(t) || 0) + 1), new Map())
+  const take = (m, t) => m.get(t) > 0 && !!m.set(t, m.get(t) - 1)
+  const checkedTexts = c => (c ? c.boxes.filter(b => b.checked).map(b => b.text) : [])
+  const visible = bag(trusted ? checkedTexts(criteria(stripHidden(oldBody))) : [])
+  let body = intent.replace(CHECKED_TASK, '$1[ ]')
+  const moved = []
+  for (const b of criteria(body).boxes) {
+    if (!take(visible, b.text)) continue
+    body = body.slice(0, b.at) + 'x' + body.slice(b.at + 1)
+    moved.push(b.text)
   }
-  return { body, dropped: [...left.values()].flat().sort((a, b) => a - b) }
+  const left = bag(moved)
+  const raw = criteria(oldBody)
+  const dropped = []
+  if (raw) raw.boxes.forEach((b, i) => b.checked && !take(left, stripHidden(b.text).replace(/\s+/g, ' ').trim()) && dropped.push(i + 1))
+  return { body, dropped }
 }
 
 // The state block and everything after it stay byte for byte; a body without one is all intent.
@@ -394,8 +403,7 @@ function post(ctx, op, n, text, title) {
     if (span && CRITERIA_HEADING.test(old.slice(span[0]))) {
       return { code: 1, out: `refused: Issue #${n} has "## 수용 기준" below its state block; move it above first`, guard: 'state-intent-order' }
     }
-    // Only checks a reader can see, in a body a writer wrote, count as evidence to carry.
-    const carried = carryChecks(WRITERS.has(got.issue.authorAssociation) ? stripHidden(old) : '', text)
+    const carried = carryChecks(old, text, WRITERS.has(got.issue.authorAssociation))
     const body = replaceIntent(old, carried.body)
     const lf = s => s.replace(/\r\n/g, '\n')
     if (lf(body) === lf(old) && (title === undefined || title === got.issue.title)) return { code: 0, out: `#${n}: intent unchanged` }

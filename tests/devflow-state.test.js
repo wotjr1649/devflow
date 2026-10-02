@@ -507,7 +507,7 @@ test('intent replaces only the part above the state block and keeps the rest byt
   assert.equal(w.length, 1)
   assert.deepEqual(w[0].args.slice(0, 6), ['issue', 'edit', '1', '-R', 'o/r', '--body-file'])
   assert.ok(!w[0].args.includes('--title'))
-  assert.equal(w[0].input, next.trimEnd() + '\n\n' + tail)
+  assert.equal(w[0].input, next.replace('- [x] not', '- [ ] not').trimEnd() + '\n\n' + tail)
 })
 
 test('intent carries checks of unchanged criteria only, ignores [x] in the input and reports the rest', () => {
@@ -519,7 +519,7 @@ test('intent carries checks of unchanged criteria only, ignores [x] in the input
   const sent = ghWrites(e)[0].input
   const boxes = sent.slice(sent.indexOf('## 수용 기준'), sent.indexOf('## 범위')).match(/- \[[ x]\] \S+/g)
   assert.deepEqual(boxes, ['- [x] same', '- [ ] changed', '- [ ] open', '- [ ] wrapped', '- [ ] new'])
-  assert.match(sent, /## 범위\n- \[x\] not a criterion/)
+  assert.match(sent, /## 범위\n- \[ \] not a criterion/, 'a box outside the criteria is no evidence either')
 })
 
 test('intent matches criteria by whitespace-normalized text, one check per checked criterion', () => {
@@ -587,9 +587,9 @@ test('intent goes only to the branch Issue and queues with its title while auton
 test('intent replaces the whole body when there is no state block, and skips an unchanged intent', () => {
   const e = env(repo(), { data: issue({ body: '## 문제\n손으로 쓴 Issue\n' }) })
   assert.equal(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one'])).code, 0)
-  assert.equal(ghWrites(e)[0].input, intentOf(['- [ ] one']).trimEnd() + '\n')
+  assert.equal(ghWrites(e)[0].input, intentOf(['- [ ] one']).replace('- [x] not', '- [ ] not').trimEnd() + '\n')
   const same = intentOf(['- [x] one'])
-  const crlf = (same.trimEnd() + '\n\n' + tail).replace(/\n/g, '\r\n')
+  const crlf = (same.replace('- [x] not', '- [ ] not').trimEnd() + '\n\n' + tail).replace(/\n/g, '\r\n')
   const e2 = env(repo(), { data: issue({ body: crlf }) })
   assert.deepEqual(state.write(e2, '.', 'intent', 1, same), { code: 0, out: '#1: intent unchanged' })
   assert.equal(ghWrites(e2).length, 0)
@@ -664,6 +664,23 @@ test('checks hidden in HTML comments or written by a non-writer are not carried 
   assert.equal(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one', '- [ ] two'])).code, 0)
   assert.doesNotMatch(ghWrites(e)[0].input, /- \[x\] two/)
   const e2 = env(repo(), { data: issue({ body: oldBody(['- [x] one']), authorAssociation: 'NONE' }) })
-  assert.equal(state.write(e2, '.', 'intent', 1, intentOf(['- [ ] one'])).code, 0)
+  const r2 = state.write(e2, '.', 'intent', 1, intentOf(['- [ ] one']))
+  assert.match(r2.out, /not carried over .*: 1$/)
   assert.doesNotMatch(ghWrites(e2)[0].input, /- \[x\] one/)
+})
+
+test('a check below an unclosed comment is not carried silently; numbers follow check (2026-10-02 re-review)', () => {
+  const old = oldBody(['- [x] closes `<!--` early', '- [ ] two', '- [x] three'])
+  const e = env(repo(), { data: issue({ body: old }) })
+  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] two', '- [ ] three']))
+  assert.equal(r.code, 0)
+  assert.match(r.out, /not carried over .*: 1, 3$/)
+  assert.deepEqual(state.checkCriteria(old, [3]).body, old, 'number 3 is the same box check counts')
+})
+
+test('no checked box survives in the intent: other headings, quotes and sections (2026-10-02 re-review)', () => {
+  const variant = intentOf(['- [ ] a']) + '\n##  수용 기준\n- [x] b\n\n## 수용 기준 #\n- [X] c\n\n> - [x] d\n'
+  const e = env(repo(), { data: issue({ body: oldBody(['- [ ] a']) }) })
+  assert.equal(state.write(e, '.', 'intent', 1, variant).code, 0)
+  assert.doesNotMatch(ghWrites(e)[0].input, /\[[xX]\]/)
 })

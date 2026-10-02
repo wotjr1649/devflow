@@ -619,3 +619,51 @@ test('a check queued after a queued intent is refused; one queued before it is k
   assert.deepEqual(guardLines(root).map(l => l.guard), ['state-check-after-intent'])
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8')).pendingPosts.map(p => p.op), ['check', 'intent'])
 })
+
+test('flush stops at the first failed post and keeps it and every later post in order (2026-10-02 final review)', () => {
+  const root = repo({ ledger: { mode: 'autonomous' } })
+  const e = env(root, { data: issue({ body: oldBody(['- [ ] one', '- [ ] two', '- [ ] three']) }) })
+  state.write(e, '.', 'check', 1, '4')
+  state.write(e, '.', 'intent', 1, intentOf(['- [ ] one', '- [ ] two', '- [ ] three', '- [ ] four']))
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), mode: 'interactive' }))
+  const r = state.flush(e, '.')
+  assert.equal(r.code, 1)
+  assert.equal(ghWrites(e).length, 0, 'the intent behind the failed check is not posted')
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).pendingPosts.map(p => p.op), ['check', 'intent'])
+})
+
+test('intent refuses task items in other list forms and a second criteria section (2026-10-02 final review)', () => {
+  for (const crit of [['- [ ] a', '* [x] b'], ['- [ ] a', '+ [x] b'], ['- [ ] a', '1. [x] b'], ['- [ ] a', '-  [x] b']]) {
+    const root = repo()
+    const e = env(root)
+    const r = state.write(e, '.', 'intent', 1, intentOf(crit))
+    assert.equal(r.code, 1, crit.join(' / '))
+    assert.equal(ghWrites(e).length, 0)
+    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-shape'])
+  }
+  const root = repo()
+  const r = state.write(env(root), '.', 'intent', 1, intentOf(['- [ ] a']) + '\n## 수용 기준\n- [x] b\n')
+  assert.equal(r.code, 1)
+  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-shape'])
+})
+
+test('a direct intent is refused while a check for the Issue still waits in the queue (2026-10-02 security review)', () => {
+  const root = repo({ ledger: { mode: 'interactive', pendingPosts: [{ op: 'check', issue: 1, text: '1' }] } })
+  const e = env(root, { data: issue({ body: oldBody(['- [ ] one']) }) })
+  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] one', '- [ ] two']))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /^refused: /)
+  assert.equal(ghWrites(e).length, 0)
+  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-pending-check'])
+})
+
+test('checks hidden in HTML comments or written by a non-writer are not carried (2026-10-02 security review)', () => {
+  const hiddenBox = oldBody(['- [ ] one', '<!--', '- [x] two', '- [ ] -->'])
+  const e = env(repo(), { data: issue({ body: hiddenBox }) })
+  assert.equal(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one', '- [ ] two'])).code, 0)
+  assert.doesNotMatch(ghWrites(e)[0].input, /- \[x\] two/)
+  const e2 = env(repo(), { data: issue({ body: oldBody(['- [x] one']), authorAssociation: 'NONE' }) })
+  assert.equal(state.write(e2, '.', 'intent', 1, intentOf(['- [ ] one'])).code, 0)
+  assert.doesNotMatch(ghWrites(e2)[0].input, /- \[x\] one/)
+})

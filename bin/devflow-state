@@ -309,6 +309,9 @@ function refusal(op, text, title) {
     if (STATE_HEADING.test(text)) return no('state-intent-shape', 'refused: the intent is the body above "## 현재 상태" and must not contain it')
     const c = criteria(text)
     if (!c || !c.boxes.length) return no('state-intent-shape', 'refused: the intent needs a "## 수용 기준" section with "- [ ]" criteria')
+    if ((c.section.match(ANY_TASK) || []).length !== c.boxes.length || text.match(new RegExp(CRITERIA_HEADING.source, 'gm')).length > 1) {
+      return no('state-intent-shape', 'refused: write each criterion as "- [ ] …" under a single "## 수용 기준"')
+    }
     if (text.length > MAX_BODY_CHARS) return no('state-intent-shape', `refused: the intent is over ${MAX_BODY_CHARS} characters`)
     if (title !== undefined && (!title || title.length > MAX_TITLE_CHARS)) return no('state-intent-shape', `refused: a title has 1 to ${MAX_TITLE_CHARS} characters`)
   }
@@ -316,7 +319,7 @@ function refusal(op, text, title) {
 }
 
 // The checkboxes under "## 수용 기준", in order: where the check character is, whether it is checked, and the text up
-// to the next box with hidden characters dropped and whitespace collapsed, so a wrapped criterion compares as one line.
+// to the next box with whitespace collapsed, so a wrapped criterion compares as one line.
 function criteria(body) {
   const m = CRITERIA_HEADING.exec(body)
   if (!m) return null
@@ -327,10 +330,12 @@ function criteria(body) {
   const boxes = found.map((b, i) => {
     const after = start + b.index + b[0].length
     const until = i + 1 < found.length ? start + found[i + 1].index : end
-    return { at: after - 2, checked: b[1] !== ' ', text: stripHidden(body.slice(after, until)).replace(/\s+/g, ' ').trim() }
+    return { at: after - 2, checked: b[1] !== ' ', text: body.slice(after, until).replace(/\s+/g, ' ').trim() }
   })
-  return { boxes }
+  return { section: body.slice(start, end), boxes }
 }
+// Every task-list form GitHub renders as a checkbox; criteria() counts only "- [ ]", so an intent may use no other.
+const ANY_TASK = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[ xX]\]/gm
 
 // Marks acceptance criteria (1-based, in order under "## 수용 기준") as done; every other character stays as it was.
 function checkCriteria(body, nums) {
@@ -389,7 +394,8 @@ function post(ctx, op, n, text, title) {
     if (span && CRITERIA_HEADING.test(old.slice(span[0]))) {
       return { code: 1, out: `refused: Issue #${n} has "## 수용 기준" below its state block; move it above first`, guard: 'state-intent-order' }
     }
-    const carried = carryChecks(old, text)
+    // Only checks a reader can see, in a body a writer wrote, count as evidence to carry.
+    const carried = carryChecks(WRITERS.has(got.issue.authorAssociation) ? stripHidden(old) : '', text)
     const body = replaceIntent(old, carried.body)
     const lf = s => s.replace(/\r\n/g, '\n')
     if (lf(body) === lf(old) && (title === undefined || title === got.issue.title)) return { code: 0, out: `#${n}: intent unchanged` }
@@ -434,6 +440,10 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
   if (why) return { code: 1, ...why }
   const owner = ctx.issue || n
   const ledger = readLedger(ctx.root, owner) || {}
+  // A queued check posted after this intent would land on the renumbered criteria.
+  if (op === 'intent' && !flushing && ledger.mode !== 'autonomous' && (ledger.pendingPosts || []).some(p => p.op === 'check' && p.issue === n)) {
+    return { code: 1, out: 'refused: a queued check waits for this Issue; flush the queue first', guard: 'state-intent-pending-check' }
+  }
   if (ledger.mode === 'autonomous' && !flushing) {
     // Check numbers were read from the body before a queued intent renumbers it.
     if (op === 'check' && (ledger.pendingPosts || []).some(p => p.op === 'intent' && p.issue === n)) {
@@ -471,11 +481,17 @@ function flush(env, cwd) {
   if (ledger.mode === 'autonomous') return guarded(ctx, { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn', guard: 'state-autonomous-flush' })
   const left = []
   const out = []
+  // Posts go in order and stop at the first failure: a later intent would renumber the criteria a failed check names.
   for (const p of ledger.pendingPosts || []) {
+    if (left.length) {
+      left.push(p)
+      continue
+    }
     const r = write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true })
     out.push(r.out)
     if (r.code !== 0) left.push(p)
   }
+  if (left.length > 1) out.push(`${left.length - 1} later posts wait behind the failed one`)
   writeLedger(ctx.root, ctx.issue, { ...ledger, pendingPosts: left })
   return { code: left.length ? 1 : 0, out: out.join('\n') || 'nothing pending' }
 }

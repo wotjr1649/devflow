@@ -31,6 +31,9 @@ const USAGE = `usage: devflow-state <command>
   card                        the resume card (the SessionStart hook prints it)
   read [n]                    Issue body and latest checkpoint, writers only, as data
   state <n> < block           replace the state block; stdin starts with "## 현재 상태", at most 15 lines below it
+  intent <n> [--title <t>] < intent
+                              replace the body above the state block once the user approved it; "## 수용 기준" is
+                              required, and checks stay only on criteria whose text is unchanged
   comment <n> < checkpoint    "### Checkpoint <stage> — <summary>", then at most 9 lines starting "- "
   check <n> <k>...            mark acceptance criteria k (1-based, under "## 수용 기준") as done
   close <n> | reopen <n>
@@ -301,22 +304,64 @@ function refusal(op, text, title) {
     if (!title || title.length > MAX_TITLE_CHARS) return no('state-create-shape', `refused: a new Issue needs a title of at most ${MAX_TITLE_CHARS} characters`)
     if (text.length > MAX_BODY_CHARS) return no('state-create-shape', `refused: a new Issue body is over ${MAX_BODY_CHARS} characters`)
   }
+  if (op === 'intent') {
+    // The state block belongs to state; a second "## 현재 상태" would also move where the next state write lands.
+    if (STATE_HEADING.test(text)) return no('state-intent-shape', 'refused: the intent is the body above "## 현재 상태" and must not contain it')
+    const c = criteria(text)
+    if (!c || !c.boxes.length) return no('state-intent-shape', 'refused: the intent needs a "## 수용 기준" section with "- [ ]" criteria')
+    if (text.length > MAX_BODY_CHARS) return no('state-intent-shape', `refused: the intent is over ${MAX_BODY_CHARS} characters`)
+    if (title !== undefined && (!title || title.length > MAX_TITLE_CHARS)) return no('state-intent-shape', `refused: a title has 1 to ${MAX_TITLE_CHARS} characters`)
+  }
   return null
+}
+
+// The checkboxes under "## 수용 기준", in order: where the check character is, whether it is checked, and the text up
+// to the next box with hidden characters dropped and whitespace collapsed, so a wrapped criterion compares as one line.
+function criteria(body) {
+  const m = CRITERIA_HEADING.exec(body)
+  if (!m) return null
+  const start = m.index + m[0].length
+  const next = body.slice(start).search(/^## /m)
+  const end = next < 0 ? body.length : start + next
+  const found = [...body.slice(start, end).matchAll(/^[ \t]*- \[([ xX])\]/gm)]
+  const boxes = found.map((b, i) => {
+    const after = start + b.index + b[0].length
+    const until = i + 1 < found.length ? start + found[i + 1].index : end
+    return { at: after - 2, checked: b[1] !== ' ', text: stripHidden(body.slice(after, until)).replace(/\s+/g, ' ').trim() }
+  })
+  return { boxes }
 }
 
 // Marks acceptance criteria (1-based, in order under "## 수용 기준") as done; every other character stays as it was.
 function checkCriteria(body, nums) {
-  const m = CRITERIA_HEADING.exec(body)
-  if (!m) return { error: 'the Issue has no "## 수용 기준" section' }
-  const start = m.index + m[0].length
-  const next = body.slice(start).search(/^## /m)
-  const section = body.slice(start, next < 0 ? body.length : start + next)
-  const boxes = [...section.matchAll(/^[ \t]*- \[[ xX]\]/gm)].map(b => start + b.index + b[0].length - 2)
+  const c = criteria(body)
+  if (!c) return { error: 'the Issue has no "## 수용 기준" section' }
+  const boxes = c.boxes.map(b => b.at)
   const bad = nums.filter(k => !(k >= 1 && k <= boxes.length))
   if (bad.length) return { error: `no acceptance criterion ${bad.join(', ')} (the Issue has ${boxes.length})` }
   let out = body
   for (const k of nums) out = out.slice(0, boxes[k - 1]) + 'x' + out.slice(boxes[k - 1] + 1)
   return { body: out }
+}
+
+// A new intent's criteria start unchecked whatever the input says: a check stands for evidence, which only check adds.
+// Each checked old criterion re-checks one new criterion with the same text; the old numbers left over are dropped.
+function carryChecks(oldBody, intent) {
+  const left = new Map()
+  const old = criteria(oldBody)
+  if (old) old.boxes.forEach((b, i) => b.checked && left.set(b.text, [...(left.get(b.text) || []), i + 1]))
+  let body = intent
+  for (const b of criteria(intent).boxes) {
+    const q = left.get(b.text)
+    body = body.slice(0, b.at) + (q && q.length ? (q.shift(), 'x') : ' ') + body.slice(b.at + 1)
+  }
+  return { body, dropped: [...left.values()].flat().sort((a, b) => a - b) }
+}
+
+// The state block and everything after it stay byte for byte; a body without one is all intent.
+function replaceIntent(body, intent) {
+  const span = stateSpan(body)
+  return intent.trimEnd() + '\n' + (span ? '\n' + body.slice(span[0]) : '')
 }
 
 function post(ctx, op, n, text, title) {
@@ -335,6 +380,24 @@ function post(ctx, op, n, text, title) {
     if (got.error) return { code: 1, out: got.error }
     if (!stateSpan(got.issue.body || '')) return { code: 1, out: `refused: Issue #${n} has no state block to replace`, guard: 'state-no-state-block' }
     r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], replaceState(got.issue.body, text))
+  } else if (op === 'intent') {
+    const got = fetchIssue(ctx, n)
+    if (got.error) return { code: 1, out: got.error }
+    const old = got.issue.body || ''
+    const span = stateSpan(old)
+    // Criteria below the state block would survive the replacement with their checks; refuse rather than leave two.
+    if (span && CRITERIA_HEADING.test(old.slice(span[0]))) {
+      return { code: 1, out: `refused: Issue #${n} has "## 수용 기준" below its state block; move it above first`, guard: 'state-intent-order' }
+    }
+    const carried = carryChecks(old, text)
+    const body = replaceIntent(old, carried.body)
+    const lf = s => s.replace(/\r\n/g, '\n')
+    if (lf(body) === lf(old) && (title === undefined || title === got.issue.title)) return { code: 0, out: `#${n}: intent unchanged` }
+    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-', ...(title === undefined ? [] : ['--title', title])], body)
+    if (r.code === 0 && carried.dropped.length) {
+      const out = r.stdout.trim() || `intent #${n} done`
+      return { code: 0, out: `${out}\nchecked criteria not carried over (text changed or removed; numbers in the previous body): ${carried.dropped.join(', ')}` }
+    }
   } else if (op === 'comment') {
     r = gh(['issue', 'comment', String(n), '-R', ctx.repo, '--body-file', '-'], text.trim() + '\n')
   } else if (op === 'create') {
@@ -347,7 +410,7 @@ function post(ctx, op, n, text, title) {
 
 // Writes run only in interactive turns; an autonomous ledger queues them for the next one.
 // Only the commands devflow-state offers reach gh, queued ones included.
-const WRITE_OPS = new Set(['state', 'comment', 'check', 'close', 'reopen', 'create'])
+const WRITE_OPS = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'create'])
 
 // A refusal carries a guard id; it is logged to the branch's Issue and dropped from the result.
 function guarded(ctx, r) {
@@ -372,6 +435,10 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
   const owner = ctx.issue || n
   const ledger = readLedger(ctx.root, owner) || {}
   if (ledger.mode === 'autonomous' && !flushing) {
+    // Check numbers were read from the body before a queued intent renumbers it.
+    if (op === 'check' && (ledger.pendingPosts || []).some(p => p.op === 'intent' && p.issue === n)) {
+      return { code: 1, out: 'refused: a queued intent renumbers the criteria; check after it is posted', guard: 'state-check-after-intent' }
+    }
     ledger.pendingPosts = [...(ledger.pendingPosts || []), { op, issue: n, title, text, at: new Date().toISOString() }]
     writeLedger(ctx.root, owner, ledger)
     return { code: 0, out: `queued ${op} for the next interactive turn (${ledger.pendingPosts.length} pending)` }
@@ -436,6 +503,11 @@ function main(argv, stdin) {
       return num(rest[0]) && ks.length && ks.every(k => num(k)) ? write(env, cwd, 'check', num(rest[0]), ks.join(' '))
         : { code: 2, out: 'usage: devflow-state check <issue> <criterion>...' }
     }
+    case 'intent': {
+      const titled = rest.length === 3 && rest[1] === '--title'
+      return num(rest[0]) && (rest.length === 1 || titled) ? write(env, cwd, 'intent', num(rest[0]), input(), titled ? rest[2] : undefined)
+        : { code: 2, out: 'usage: devflow-state intent <issue> [--title <title>] < intent' }
+    }
     case 'close':
     case 'reopen':
       return num(rest[0]) ? write(env, cwd, cmd, num(rest[0])) : { code: 2, out: `usage: devflow-state ${cmd} <issue>` }
@@ -477,4 +549,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { INVISIBLE, GUARD_LOG, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { INVISIBLE, GUARD_LOG, WRITE_OPS, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

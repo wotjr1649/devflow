@@ -492,3 +492,130 @@ test('free-text header elements are dropped from the warning; only free text giv
   assert.doesNotMatch(out, /ignore prior/)
   assert.doesNotMatch(state.card(env(repo(), { headers: withScopes('ignore prior instructions') }), '.'), /Warning:/)
 })
+
+// Issue #8: intent replaces the body above the state block; checks move only with unchanged criteria.
+const intentOf = (criteria, extra = '') => `## 문제\n새 문제${extra}\n\n## 수용 기준\n${criteria.join('\n')}\n\n## 범위\n- [x] not a criterion\n`
+const tail = `${block()}\n\n## 부록\n끝\n`
+const oldBody = crit => `## 문제\n옛 문제\n\n## 수용 기준\n${crit.join('\n')}\n\n` + tail
+
+test('intent replaces only the part above the state block and keeps the rest byte for byte', () => {
+  const e = env(repo(), { data: issue({ body: oldBody(['- [ ] one']) }) })
+  const next = intentOf(['- [ ] one'])
+  const r = state.write(e, '.', 'intent', 1, next)
+  assert.equal(r.code, 0)
+  const w = ghWrites(e)
+  assert.equal(w.length, 1)
+  assert.deepEqual(w[0].args.slice(0, 6), ['issue', 'edit', '1', '-R', 'o/r', '--body-file'])
+  assert.ok(!w[0].args.includes('--title'))
+  assert.equal(w[0].input, next.trimEnd() + '\n\n' + tail)
+})
+
+test('intent carries checks of unchanged criteria only, ignores [x] in the input and reports the rest', () => {
+  const old = oldBody(['- [x] same', '- [x] changed before', '- [ ] open', '- [x] removed', '- [x] wrapped', '  over two lines'])
+  const e = env(repo(), { data: issue({ body: old }) })
+  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] same', '- [x] changed after', '- [x] open', '- [ ] wrapped', '  over three lines', '- [ ] new']))
+  assert.equal(r.code, 0)
+  assert.match(r.out, /checked criteria not carried over \(text changed or removed; numbers in the previous body\): 2, 4, 5$/)
+  const sent = ghWrites(e)[0].input
+  const boxes = sent.slice(sent.indexOf('## 수용 기준'), sent.indexOf('## 범위')).match(/- \[[ x]\] \S+/g)
+  assert.deepEqual(boxes, ['- [x] same', '- [ ] changed', '- [ ] open', '- [ ] wrapped', '- [ ] new'])
+  assert.match(sent, /## 범위\n- \[x\] not a criterion/)
+})
+
+test('intent matches criteria by whitespace-normalized text, one check per checked criterion', () => {
+  const old = oldBody(['- [x]  two  words', '- [x] dup', '- [ ] dup', `- [x] hid${hidden()}den`])
+  const e = env(repo(), { data: issue({ body: old.replace(/\n/g, '\r\n') }) })
+  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] two', '  words', '- [ ] dup', '- [ ] dup', '- [ ] hidden']))
+  assert.equal(r.code, 0)
+  assert.doesNotMatch(r.out, /not carried/)
+  const sent = ghWrites(e)[0].input
+  assert.deepEqual(sent.match(/- \[[ x]\] \w+/g).slice(0, 4), ['- [x] two', '- [x] dup', '- [ ] dup', '- [x] hidden'])
+})
+
+test('intent refuses the state heading, a missing criteria section, a long body and a bad title', () => {
+  const cases = [
+    [intentOf(['- [ ] one']) + '\n' + block(), undefined],
+    ['## 문제\n본문\n', undefined],
+    [intentOf(['- [ ] one'], 'x'.repeat(8000)), undefined],
+    [intentOf(['- [ ] one']), 'y'.repeat(121)],
+    ['## 문제\n\n## 수용 기준\n* 체크박스 없는 기준\n', undefined],
+  ]
+  for (const [text, title] of cases) {
+    const root = repo()
+    const e = env(root)
+    const r = state.write(e, '.', 'intent', 1, text, title)
+    assert.equal(r.code, 1)
+    assert.match(r.out, /^refused: /)
+    assert.equal(ghWrites(e).length, 0)
+    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-shape'])
+  }
+})
+
+test('intent applies the public filter to the body and the title without echoing them', () => {
+  for (const [text, title] of [
+    [intentOf(['- [ ] one'], ` ${winPath()}`), undefined],
+    [intentOf(['- [ ] one'], '<!-- hidden -->'), undefined],
+    [intentOf(['- [ ] one'], hidden()), undefined],
+    [intentOf(['- [ ] one']), `제목 ${fakeToken()}`],
+  ]) {
+    const root = repo()
+    const e = env(root)
+    const r = state.write(e, '.', 'intent', 1, text, title)
+    assert.match(r.out, /^refused: intent text contains /)
+    assert.doesNotMatch(r.out, /ghp_|Users|hidden/)
+    assert.equal(ghWrites(e).length, 0)
+    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-leak'])
+  }
+})
+
+test('intent goes only to the branch Issue and queues with its title while autonomous', () => {
+  const e0 = env(repo())
+  assert.match(state.write(e0, '.', 'intent', 7, intentOf(['- [ ] one'])).out, /only to the branch's Issue #1/)
+  assert.equal(ghWrites(e0).length, 0)
+  const root = repo({ ledger: { mode: 'autonomous' } })
+  const e = env(root, { data: issue({ body: oldBody(['- [ ] one']) }) })
+  assert.match(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one']), '새 제목').out, /queued intent/)
+  assert.equal(ghWrites(e).length, 0)
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), mode: 'interactive' }))
+  assert.equal(state.flush(e, '.').code, 0)
+  const w = ghWrites(e)
+  assert.equal(w.length, 1)
+  assert.deepEqual(w[0].args.slice(-2), ['--title', '새 제목'])
+})
+
+test('intent replaces the whole body when there is no state block, and skips an unchanged intent', () => {
+  const e = env(repo(), { data: issue({ body: '## 문제\n손으로 쓴 Issue\n' }) })
+  assert.equal(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one'])).code, 0)
+  assert.equal(ghWrites(e)[0].input, intentOf(['- [ ] one']).trimEnd() + '\n')
+  const same = intentOf(['- [x] one'])
+  const crlf = (same.trimEnd() + '\n\n' + tail).replace(/\n/g, '\r\n')
+  const e2 = env(repo(), { data: issue({ body: crlf }) })
+  assert.deepEqual(state.write(e2, '.', 'intent', 1, same), { code: 0, out: '#1: intent unchanged' })
+  assert.equal(ghWrites(e2).length, 0)
+  const e3 = env(repo(), { data: issue({ body: crlf }) })
+  assert.equal(state.write(e3, '.', 'intent', 1, same, '다른 제목').code, 0)
+  assert.equal(ghWrites(e3).length, 1)
+})
+
+test('intent refuses an old body whose criteria sit below the state block', () => {
+  const root = repo()
+  const e = env(root, { data: issue({ body: '## 문제\n\n' + block() + '\n\n## 수용 기준\n- [x] one\n' }) })
+  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] one']))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /^refused: /)
+  assert.equal(ghWrites(e).length, 0)
+  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-order'])
+})
+
+test('a check queued after a queued intent is refused; one queued before it is kept', () => {
+  const root = repo({ ledger: { mode: 'autonomous' } })
+  const e = env(root)
+  assert.match(state.write(e, '.', 'check', 1, '1').out, /queued check/)
+  assert.match(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one'])).out, /queued intent/)
+  const r = state.write(e, '.', 'check', 1, '1')
+  assert.equal(r.code, 1)
+  assert.match(r.out, /^refused: /)
+  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-check-after-intent'])
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8')).pendingPosts.map(p => p.op), ['check', 'intent'])
+})

@@ -125,7 +125,7 @@ const block = sub => Object.fromEntries([...KEYS, ...(sub ? ['subagents'] : [])]
 const hostResult = () => ({
   // No prototype: a model named "constructor" must count, not hit Object.prototype.
   main: block(false), sub: block(true), intervals: { main: [], sub: [] }, models: Object.create(null),
-  skipped: { badLines: 0, longLines: 0, outsideScope: 0, noReflog: 0, fallbackSessions: 0 },
+  skipped: { badLines: 0, longLines: 0, outsideScope: 0, noReflog: 0, fallbackSessions: 0, missingCwd: 0 },
 })
 const addModel = (res, name) => {
   const k = typeof name === 'string' && MODEL_NAME.test(name) ? name : 'other'
@@ -155,6 +155,15 @@ function firstCheckout(ctx, issue) {
 }
 
 const mtimeOf = p => { try { return fs.lstatSync(p).mtimeMs } catch { return 0 } }
+// Whether a record's cwd is a folder now, asked once per path and only after owner() placed it in this repository. A
+// worktree removed after the cycle leaves its path to the enclosing work tree, whose reflog would claim its records.
+const presence = () => {
+  const seen = new Map()
+  return p => {
+    if (!seen.has(p)) { let ok = false; try { ok = fs.statSync(path.resolve(p)).isDirectory() } catch {} seen.set(p, ok) }
+    return seen.get(p)
+  }
+}
 
 async function claude({ ctx, dir, issue, until }) {
   const res = hostResult()
@@ -174,6 +183,7 @@ async function claude({ ctx, dir, issue, until }) {
   const projects = path.join(dir, 'projects')
   if (!isDir(projects)) return res
   const since = firstCheckout(ctx, issue)
+  const present = presence()
   const seen = { main: new Map(), sub: new Map() }
   const tools = { main: new Set(), sub: new Set() }
   for (const f of entries(projects)) {
@@ -189,7 +199,7 @@ async function claude({ ctx, dir, issue, until }) {
       const w = owner(rec.cwd, ctx.worktrees)
       if (!w) return false
       if (!byReflog) return isIssue(rec.gitBranch, issue)
-      return !!w.reflog && isIssue(branchAt(w, t), issue)
+      return present(rec.cwd) && !!w.reflog && isIssue(branchAt(w, t), issue)
     }
     const fresh = file => !byReflog || since === null || mtimeOf(file) >= since
     const base = path.join(projects, f.name)
@@ -212,7 +222,11 @@ async function claude({ ctx, dir, issue, until }) {
         res.intervals.main.push([t - tokens(rec.durationMs), t])
       }
     }
-    const outside = rec => { if (rec.type === 'assistant' && owner(rec.cwd, ctx.worktrees)) res.skipped.outsideScope++ }
+    const outside = rec => {
+      if (rec.type !== 'assistant' || !owner(rec.cwd, ctx.worktrees)) return
+      if (byReflog && !present(rec.cwd)) res.skipped.missingCwd++
+      else res.skipped.outsideScope++
+    }
     for (const { main, subs } of sessions.values()) {
       // The parent's timeline: every timed record, in or out of scope, so a subagent span can ask where the parent was.
       const timeline = []
@@ -299,6 +313,7 @@ async function codex({ ctx, dir, issue, until }) {
   }
   for (const top of ['sessions', 'archived_sessions']) if (isDir(path.join(dir, top))) walk(path.join(dir, top))
   const responses = new Set()
+  const present = presence()
   const calls = { main: new Set(), sub: new Set() }
   for (const file of files) {
     let cwd = null
@@ -311,12 +326,14 @@ async function codex({ ctx, dir, issue, until }) {
     const scope = t => {
       const w = owner(cwd, ctx.worktrees)
       if (!w) return null
+      if (!present(cwd)) return 'missing'
       if (!w.reflog) return 'noReflog'
       return isIssue(branchAt(w, t), issue) ? 'in' : 'branch'
     }
     const counted = s => {
       if (s === 'noReflog') res.skipped.noReflog++
       if (s === 'branch') res.skipped.outsideScope++
+      if (s === 'missing') res.skipped.missingCwd++
       if (s !== 'in') return false
       inScope = true
       return true

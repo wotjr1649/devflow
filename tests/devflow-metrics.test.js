@@ -183,6 +183,7 @@ test('codex splits a session at the reflog switch, dedupes calls and tools, and 
     cx.done(160, 10000),
   ])
   // A subagent rollout has no git field; it is attributed by its cwd. Archived sessions are read too.
+  fs.mkdirSync(path.join(root, 'sub'))
   rollout(home, 'b', [cx.meta(170, path.join(root, 'sub'), true), cx.turn(170, path.join(root, 'sub')), cx.usage(175, 'r2')], 'archived_sessions')
   const { x } = await measure(root, { codex: home })
   assert.deepEqual(x.main, { calls: 1, inputUncached: 40, cacheRead: 60, cacheWrite: 0, output: 7, reasoning: 2, tools: 3 })
@@ -202,6 +203,38 @@ test('codex leaves out a nested worktree on another branch and another repositor
   rollout(home, 'c', [cx.meta(250, other), cx.turn(250, other), cx.usage(300, 'r3')])
   const { x } = await measure(root, { codex: home })
   assert.equal(x.main.calls, 1)
+})
+
+test('codex records of a nested worktree removed after the cycle stay out of scope, counted as missingCwd (#7)', async () => {
+  const root = gitRepo()
+  const nested = path.join(root, '.work', 'probe')
+  git(root, 200, 'worktree', 'add', '-q', '-b', 'test/9999-probe', nested)
+  const home = tmp('dfm-x-')
+  rollout(home, 'a', [cx.meta(250, root), cx.turn(250, root), cx.usage(300, 'r1')])
+  rollout(home, 'b', [cx.meta(250, nested), cx.turn(250, nested), cx.usage(300, 'r2'), cx.call(301, 'custom_tool_call', 'c2'), cx.done(310, 9000)])
+  const before = (await measure(root, { codex: home, until: T0 + 400 })).report
+  git(root, 500, 'worktree', 'remove', nested)
+  const after = (await measure(root, { codex: home, until: T0 + 400 })).report
+  assert.deepEqual(after.codex, before.codex)
+  assert.equal(after.codex.main.calls, 1)
+  assert.equal(before.skipped.missingCwd, 0)
+  assert.equal(after.skipped.missingCwd, 3)
+  assert.equal(after.skipped.outsideScope, before.skipped.outsideScope - 3)
+})
+
+test('a session started above the repository with a cwd that is gone is out of scope, and so are the subagent spans it parents (#7)', async () => {
+  const root = gitRepo()
+  const other = path.join(root, '.claude', 'worktrees', 'i5')
+  git(root, 120, 'worktree', 'add', '-q', '-b', 'feat/5-y', other)
+  const home = tmp('dfm-c-')
+  const folder = path.join(home, 'projects', enc(path.dirname(root)))
+  write(path.join(folder, 'up.jsonl'), [cl.assistant(150, { id: 'g1', cwd: path.join(root, 'scratch'), branch: 'main' })])
+  write(path.join(folder, 'up', 'subagents', 'agent-a.jsonl'), [cl.assistant(200, { id: 'a1', cwd: other, branch: 'main' })])
+  const { c, report } = await measure(root, { claude: home })
+  assert.equal(c.main.calls, 0)
+  assert.equal(c.sub.calls, 0)
+  assert.equal(report.skipped.missingCwd, 1)
+  assert.equal(report.skipped.outsideScope, 1)
 })
 
 test('codex rollouts without per-call records fall back to token_count and are flagged', async () => {

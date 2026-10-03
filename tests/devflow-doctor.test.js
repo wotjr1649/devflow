@@ -103,7 +103,8 @@ test('#23 review: folder values are normalised, instruction files take no except
   // User homes without a trailing slash, and WSL forms, are caught in a listed file.
   const listed = '{ "allowLocalPaths": ["src/*"] }\n'
   const sl = (...parts) => parts.join('/')
-  for (const p of [sl('', 'home', 'alice'), 'HOME=' + sl('', 'Users', 'alice'), sl('', 'mnt', 'c', 'Users', 'alice'), ['\\\\wsl$', 'Ubuntu', 'home', 'alice'].join('\\')]) {
+  for (const p of [sl('', 'home', 'alice', ''), 'HOME=' + sl('', 'Users', 'alice', 'x'), sl('', 'mnt', 'c', 'Users', 'alice'),
+    sl('', '', 'wsl.localhost', 'Ubuntu', 'home', 'alice'), ['\\\\wsl$', 'Ubuntu', 'home', 'alice'].join('\\')]) {
     assert.ok(has(repo({ ...GOOD, '.devflow.json': listed, 'src/a.txt': `p = ${p}\n` }), /^FAIL docs: src\/a\.txt:1: local absolute path$/), p)
   }
 })
@@ -115,15 +116,22 @@ test('#23 re-review: budget case, agent folders, and user homes in unlisted file
     assert.ok(has(repo(caseOff), /^FAIL docs: docs\/specs\/big\.md: ~\d+ tokens, budget 5000$/), 'a case-folded folder keeps its budget')
   }
   const sys = ['C', '\\Program Files\\Tool'].join(':')
-  for (const f of ['.claude/agents/x.md', '.codex/agents/x.toml', 'plugin/agents/y.md']) {
+  for (const f of ['.claude/agents/x.md', '.codex/agents/x.toml', 'plugin/agents/y.md', 'agents/review/z.md', '.claude/rules/r.md', 'AGENTS.override.md']) {
     const d = repo({ ...GOOD, '.devflow.json': '{ "allowLocalPaths": ["**"] }\n', [f]: `p = ${sys}\n` })
     assert.ok(has(d, new RegExp(`^FAIL docs: ${f.replace(/\./g, '\\.')}:1: local absolute path$`)), f)
   }
   const bs = '\\'
   const sl = (...parts) => parts.join('/')
-  for (const p of [sl('', 'home', 'alice'), sl('', 'mnt', 'c', 'Users', 'alice'), [bs + bs + 'wsl.localhost', 'Ubuntu', 'home', 'alice'].join(bs)]) {
+  for (const p of [sl('', 'home', 'alice', ''), sl('', 'mnt', 'c', 'Users', 'alice'), sl('', '', 'wsl$', 'Ubuntu', 'home', 'alice'), [bs + bs + 'wsl.localhost', 'Ubuntu', 'home', 'alice'].join(bs)]) {
     assert.ok(has(repo({ ...GOOD, 'docs/b.md': `p = ${p}\n` }), /^FAIL docs: docs\/b\.md:1: local absolute path$/), p)
   }
+})
+
+test('#23 re-review: web routes are not user homes', () => {
+  // A route names no user; LOCAL_PATH never caught these, and allowLocalPaths could not have turned them off.
+  const routes = 'GET `/users/{id}` and `router.get(\'/users/:id\')` and `fetch("/home/feed")`\n'
+  assert.deepEqual(failures(repo({ ...GOOD, 'docs/api.md': routes })), [])
+  assert.deepEqual(failures(repo({ ...GOOD, '.devflow.json': '{ "allowLocalPaths": ["docs/*"] }\n', 'docs/api.md': routes })), [])
 })
 
 test('#23 review: working-tree CRLF is only a warning when git will store LF, and a tracked Agents.md is caught', () => {

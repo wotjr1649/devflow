@@ -155,7 +155,8 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 - `specs`, `decisions`: 계약과 결정 기록 폴더. 기본은 `docs/specs`, `docs/design/decisions`이고, 다른 폴더(저장소 안,
   `/`로 구분, `.`·`..` 없음)를 적거나 그런 폴더를 두지 않으면 `false`를 적는다. spec 크기 예산은 `specs` 폴더를 따르고 `false`면 적용하지 않는다.
 - `allowLocalPaths`: 로컬 절대 경로를 담아도 되는 파일의 glob 목록(제품이 정당하게 담은 시스템 경로). 이 파일에서도
-  사용자 홈 아래 경로는 실패이고, 지침 파일(AGENTS.md, SKILL.md, 에이전트 정의)에는 적용하지 않는다.
+  사용자 홈 아래 경로는 실패이고(POSIX 홈은 웹 경로와 구별하려고 이름 뒤 `/`가 있을 때만), 지침 파일(AGENTS.md,
+  SKILL.md, `.claude/rules`, 에이전트 정의)에는 적용하지 않는다.
 
 ## doctor 검사 항목
 

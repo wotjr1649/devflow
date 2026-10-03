@@ -69,9 +69,8 @@
 
 `guardBlocks`는 자동이다. devflow 훅의 차단(Issue 쓰기, 보호 경로, 읽을 수 없는 프로필, 검사 실패)과 `devflow-state`의
 거부가 그 Issue의 `.work/devflow/i<issue>/guard-events.jsonl`에 시각과 고정 id로 한 줄씩 남는다. 명령, 경로, 입력은
-남기지 않는다. 훅은 작업 트리의 브랜치로 Issue를 찾는다. 그 브랜치가 Issue 브랜치가 아니고 작업 트리가 주 작업 트리
-안에 있으면(M3 worktree) 주 작업 트리의 브랜치로 찾는다. 주 작업 트리 밖의 worktree에서 다른 브랜치로 막힌 것은 기록하지
-않는다. 훅이 읽는 git 메타데이터는 로컬 경로의 작은 일반 파일뿐이어서, 읽기가 훅의 시간 제한을 넘겨 판정을 바꾸지 않는다.
+남기지 않는다. 훅은 작업 트리의 브랜치로 Issue를 찾고, Issue 브랜치가 아니면 주 작업 트리의 브랜치로 찾는다. 기록이 남는 곳과 그
+조건은 [Issue 폴더](repository.md#issue-폴더)가 정한다. 훅이 읽는 git 메타데이터는 로컬 경로의 작은 일반 파일뿐이어서, 읽기가 훅의 시간 제한을 넘겨 판정을 바꾸지 않는다.
 `devflow-doctor`와 pre-push 관문은 기록하지 않는다. ship에서 이 기록 중 정당한 동작을 막은 것을 가려
 `filterFalsePositives`로 센다.
 
@@ -108,7 +107,7 @@
 
 ## 둘 곳
 
-- 보존: 주 작업 트리(`git rev-parse --git-common-dir`의 부모)의 `artifacts/metrics/i<issue>.json`이다. 에이전트가 명령의
+- 보존: 주 작업 트리([Issue 폴더](repository.md#issue-폴더))의 `artifacts/metrics/i<issue>.json`이다. 에이전트가 명령의
   출력을 그대로 저장한다. 비공개이고 worktree를 지우거나 Issue가 닫혀도 남는다. 기준값도 같은 폴더에 둔다.
 - 공개: `--line`의 줄을 ship 체크포인트에 넣는다. 이 체크포인트와 상태 done, Issue 종료는 Issue 브랜치에서 통합하기 전에
   한다. `devflow-state`는 Issue를 그 브랜치에서만 쓰기 때문이다. 순서는 라우터의 review reference가 안내한다.

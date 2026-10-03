@@ -23,6 +23,19 @@ devflow가 프로젝트에 설치하고 `devflow-doctor`가 검사하는 구조,
 
 AGENTS.md를 비공개로 운영하는 프로젝트는 AGENTS.md를 ignore에 추가하고, 그 사실을 `.devflow.json`에 적는다.
 
+### Issue 폴더
+
+Issue 폴더(`.work/devflow/i<issue>/`: 장부, 차단 기록, 세션 기록, 잠금)는 주 작업 트리에 둔다(#14). worktree를 지워도
+남고, 어느 worktree의 세션이든 같은 장부와 잠금을 쓰게 하기 위해서다.
+
+- 주 작업 트리는 `git worktree list`의 첫 항목이고, 그곳에 `.devflow.json`이 있을 때만 그렇게 본다. separate git dir나
+  bare 배치에서는 첫 항목이 git 디렉터리라서 지금 작업 트리에 둔다.
+- Issue 브랜치가 아닌 worktree(M3 작업 worktree)는 장부 명령에서 주 작업 트리 브랜치의 Issue로 본다. Issue 쓰기는 그
+  브랜치 자신의 Issue만 받는다.
+- 훅은 차단 기록을 주 작업 트리에 남기기 전에, git 기록으로 그 worktree가 그 저장소의 것임을 확인한다. gitdir이 저장소의
+  `.git/worktrees/` 바로 아래에 있고, 거기의 되돌림 링크가 그 worktree를 가리켜야 한다. 확인되지 않으면 예전처럼 기록한다.
+- worktree에만 옛 Issue 폴더가 있으면 재개 카드가 옮기라고 경고하고, 옮길 때까지 그 Issue의 장부와 Issue 쓰기를 거부한다.
+
 ## .gitignore 관리 블록
 
 `devflow-doctor`는 표시 사이의 내용만 비교하고 갱신한다. 블록 밖은 프로젝트 소유다.

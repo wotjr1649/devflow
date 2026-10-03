@@ -199,8 +199,9 @@ test('write goes only to the branch Issue', () => {
 })
 
 test('write reports a failed post', () => {
-  const r = state.write(env(repo(), { gh: { code: 1, stdout: '', stderr: '' } }), '.', 'close', 1)
-  assert.deepEqual(r, { code: 1, out: 'close failed (gh exit 1)' })
+  // reopen posts without reading the Issue first; close now reads its criteria (#27).
+  const r = state.write(env(repo(), { gh: { code: 1, stdout: '', stderr: '' } }), '.', 'reopen', 1)
+  assert.deepEqual(r, { code: 1, out: 'reopen failed (gh exit 1)' })
 })
 
 test('autonomous ledger queues writes and flush posts them', () => {
@@ -345,7 +346,6 @@ test('each refusal kind has its own id and is logged to the branch Issue', () =>
     [r => state.write(env(r), '.', 'create', undefined, 'x', 'y'.repeat(200)), 'state-create-shape'],
     [r => state.write(env(r), '.', 'check', 1, '1'), 'state-no-criteria'],
     [r => state.write(env(r, { data: issue({ body }) }), '.', 'check', 1, '4'), 'state-no-criterion'],
-    [r => state.write(env(r, { data: issue({ body: '## 문제\n' }) }), '.', 'state', 1, block()), 'state-no-state-block'],
     [r => state.flush(env(r), '.'), 'state-autonomous-flush', { mode: 'autonomous' }],
   ]
   for (const [run, id, ledger] of cases) {
@@ -399,6 +399,31 @@ test('tests lock records the commit, unlock needs a reason and leaves it in note
   assert.match(refused.out, /commit the test files first/)
 })
 
+test('metric eval records passed/total under the lock and keeps the other metrics (#27)', () => {
+  const root = repo({ ledger: { metrics: { interventions: 2 }, notes: [], stage: 'ship' } })
+  const e = env(root)
+  assert.deepEqual(state.main(['metric', '1', 'eval', '41/41'], () => 'trigger eval after a description change', e, '.'), { code: 0, out: 'eval 41/41' })
+  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  assert.deepEqual(ledger.metrics, { interventions: 2, eval: { passed: 41, total: 41 } })
+  assert.equal(ledger.notes[ledger.notes.length - 1], 'eval 41/41: trigger eval after a description change')
+  for (const v of ['42/41', 'x/2', '1/0', '']) assert.equal(state.main(['metric', '1', 'eval', v], () => 'n', e, '.').code, 2, v)
+  assert.equal(state.main(['metric', '1', 'eval', '1/2'], () => ' ', e, '.').code, 2, 'a note is required')
+})
+
+test('ledger-update leaves pendingPosts to devflow-state and keeps running delegations (#27)', () => {
+  const root = repo({ ledger: { stage: 'build', running: ['reviewer'], pendingPosts: [{ id: 'p1' }] } })
+  const e = env(root)
+  const up = body => state.main(['ledger-update', '1'], () => body, e, '.')
+  assert.match(up('{"pendingPosts":[]}').out, /pendingPosts .*devflow-state/)
+  assert.match(up('{"running":[]}').out, /running .*running <issue> done/)
+  assert.equal(up('{"stage":"verify"}').code, 0)
+  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  assert.deepEqual([ledger.running, ledger.pendingPosts, ledger.stage], [['reviewer'], [{ id: 'p1' }], 'verify'])
+  // A new ledger, or one with no delegation running, may still set running.
+  const fresh = repo()
+  assert.equal(state.main(['ledger-update', '1'], () => '{"stage":"build","running":[]}', env(fresh), '.').code, 0)
+})
+
 test('metric --undo takes one back with its reason, and never goes below zero (#22)', () => {
   const root = repo()
   const e = env(root)
@@ -432,6 +457,8 @@ test('running adds and removes one delegation under the lock and keeps the other
   assert.equal(run('add', '  ').code, 2)
   assert.equal(state.main(['running', '1', 'add'], () => '', e, '.').code, 2)
   assert.match(state.main(['running', '7', 'add', 'x'], () => '', e, '.').out, /only to the branch's Issue #1/)
+  // ledger-update may not replace running while a delegation is in it (#27), so the last one comes out first.
+  run('done', 'reviewer')
   // Older shapes become labels done can remove: {} is empty, an object lists its keys, other items their JSON text.
   for (const [old, label] of [[{}, null], [{ implementer: 'task 2' }, 'implementer'], [[{ a: 1 }], '{"a":1}'], ['reviewer', 'reviewer'],
     [[''], null], ['  ', null], [[' reviewer '], 'reviewer'], [{ '': 1 }, null], [true, 'true'], [null, null]]) {
@@ -672,6 +699,27 @@ test('intent goes only to the branch Issue and queues with its title while auton
   const w = ghWrites(e)
   assert.equal(w.length, 1)
   assert.deepEqual(w[0].args.slice(-2), ['--title', '새 제목'])
+})
+
+test('state adds the block to an Issue that has none, and create needs plain criteria (#27)', () => {
+  const e = env(repo(), { data: issue({ body: '## 문제\n손으로 쓴 Issue\n' }) })
+  assert.equal(state.write(e, '.', 'state', 1, block()).code, 0)
+  assert.equal(ghWrites(e)[0].input, `## 문제\n손으로 쓴 Issue\n\n${block()}\n`)
+  const created = body => state.write(env(repo()), '.', 'create', undefined, body, 'title')
+  assert.match(created('## 문제\nx\n').out, /needs a "## 수용 기준" section/)
+  assert.match(created('## 문제\nx\n\n## 수용 기준\n\n- [ ] a\n  - [ ] nested\n').out, /each criterion/)
+  assert.equal(created(`## 문제\nx\n\n## 수용 기준\n- [ ] a\n\n${block('없음')}\n`).code, 0, 'a new Issue may name no branch yet')
+})
+
+test('close refuses while an acceptance criterion is unchecked (#27)', () => {
+  const body = c => `## 문제\nx\n\n## 수용 기준\n- [x] a\n- [${c}] b\n\n${block()}\n`
+  const open = env(repo(), { data: issue({ body: body(' ') }) })
+  const r = state.write(open, '.', 'close', 1)
+  assert.equal(r.code, 1)
+  assert.match(r.out, /criterion 2 is not checked/)
+  assert.equal(ghWrites(open).length, 0)
+  const done = env(repo(), { data: issue({ body: body('x') }) })
+  assert.equal(state.write(done, '.', 'close', 1).code, 0)
 })
 
 test('intent replaces the whole body when there is no state block, and skips an unchanged intent', () => {

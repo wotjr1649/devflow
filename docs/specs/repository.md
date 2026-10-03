@@ -39,7 +39,7 @@ Issue 폴더(`.work/devflow/i<issue>/`: 장부, 차단 기록, 세션 기록, �
 
 ## .gitignore 관리 블록
 
-`devflow-doctor`는 표시 사이의 내용만 비교하고 갱신한다. 블록 밖은 프로젝트 소유다.
+`devflow-doctor`는 표시 사이의 내용만 비교하고 고치지 않는다. 블록 밖은 프로젝트 소유다.
 
 ```gitignore
 # >>> devflow (managed)
@@ -150,7 +150,8 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 커밋에 검사 줄을 쓴다.
 
 `integration` 값은 `pr-ci`, `local-merge`, `push-on-request` 중 하나다. AGENTS.md를 비공개로 운영하면
-`"agentsMd": "private"`을 적는다. 그러면 AGENTS.md는 필수 경로가 아니고, 추적되면 실패다. 다른 저장소에 맞추는 값(#23):
+`"agentsMd": "private"`을 적는다. `private`는 기본 목록을 대신하는 경로 접두어 목록(저장소 안, `/`로 구분)이고, 비우면
+doctor가 경고한다. 그러면 AGENTS.md는 필수 경로가 아니고, 추적되면 실패다. 다른 저장소에 맞추는 값(#23):
 
 - `specs`, `decisions`: 계약과 결정 기록 폴더. 기본은 `docs/specs`, `docs/design/decisions`이고, 다른 폴더(저장소 안,
   `/`로 구분, `.`·`..` 없음)를 적거나 그런 폴더를 두지 않으면 `false`를 적는다. spec 크기 예산은 `specs` 폴더를 따르고 `false`면 적용하지 않는다.
@@ -164,7 +165,8 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 이름이 바뀐 시험 파일을 실패로 낸다. verify와 ship은 Issue 브랜치에서 doctor를 돌리므로 훅이 놓친 셸 편집이 거기서
 드러난다(main의 pre-push와 CI에는 장부가 없어 이 검사가 없다). 커밋하지 않은 시험이 있으면 잠그지 않는다. 시험 자체가
 틀렸으면 `tests <n> unlock`에 이유를 주어 풀고, 이유는 장부 notes에 남아 ship 체크포인트로 간다. `ledger-update`는
-`testsLocked`를 바꾸지 못하고 `notes`는 덧붙이기만 하며, 읽을 수 없는 장부는 잠긴 것으로 본다. 장부는 추적되지 않는
+`testsLocked`를 바꾸지 못하고 `notes`는 덧붙이기만 하며, 읽을 수 없는 장부는 잠긴 것으로 본다. 그때는 에이전트가
+장부를 고칠 수 없으므로 사람이 JSON을 바로잡는다. 장부는 추적되지 않는
 로컬 파일이라 훅이 못 본 셸 명령으로 지우면 doctor의 이 검사도 사라진다. 훅과 이 검사는 가드레일이다. rebase한 뒤에는 풀고(이유: rebase) 다시 잠근다.
 적지 않으면 잠금 명령은 거부되고 훅과 doctor는 아무것도 하지 않는다.
 

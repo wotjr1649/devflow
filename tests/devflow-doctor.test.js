@@ -70,6 +70,22 @@ test('a test changed since the lock fails the gate on the Issue branch, by commi
   assert.ok(has(repo({ ...GOOD, '.devflow.json': '{ "tests": "tests/**" }\n' }), /^FAIL profile: tests is a list of path globs$/))
 })
 
+test('a profile that is not an object, and private paths that are not a list of prefixes, fail without a crash (#27)', () => {
+  for (const body of ['null\n', '[]\n', '3\n']) {
+    const lines = doctor(repo({ ...GOOD, '.devflow.json': body })).lines
+    assert.ok(lines.includes('FAIL profile: .devflow.json is not a JSON object'), body)
+  }
+  for (const p of ['"docs/"', '[1]', '[""]', '["./"]', '["/abs/"]', '["../up/"]', '["a\\\\b/"]']) {
+    assert.ok(has(repo({ ...GOOD, '.devflow.json': `{ "private": ${p} }\n` }), /^FAIL profile: private is a list of path prefixes inside the repository$/), p)
+  }
+  assert.ok(has(repo({ ...GOOD, '.devflow.json': '{ "private": [] }\n' }), /^WARN profile: private is empty, so no tracked path is checked as private$/))
+  assert.deepEqual(failures(repo({ ...GOOD, '.devflow.json': '{ "private": ["docs/prompts/", "_ref/"] }\n' })), [])
+})
+
+test('a skill reference over 5000 tokens fails the budget (#27)', () => {
+  assert.ok(has(repo({ ...GOOD, 'skills/x/references/big.md': '가'.repeat(5200) + '\n' }), /^FAIL docs: skills\/x\/references\/big\.md: ~\d+ tokens, budget 5000$/))
+})
+
 test('a private AGENTS.md is not required, and must not be tracked (#23)', () => {
   const { 'AGENTS.md': agents, ...rest } = GOOD
   const profile = '{ "integration": "pr-ci", "agentsMd": "private" }\n'

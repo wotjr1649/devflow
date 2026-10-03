@@ -15,14 +15,14 @@
 | `task` | `{current, total}` |
 | `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
 | `counts` | 작업별 `{fix, promote, continue}` |
-| `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`. `devflow-state metric`으로 더한다([metrics](metrics.md#수동-지표)) |
+| `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`. 개수는 `devflow-state metric`으로 더하고, eval은 `metric <n> eval <통과>/<전체>`로 적는다([metrics](metrics.md#수동-지표)) |
 | `notes` | 수정·승격·경로 변경과 수동 지표 증가의 이유, 검증 증거, 한 줄씩(`note`로 덧붙인다) |
 | `decisions` | 열린 결정만. 내린 결정은 체크포인트나 결정 기록에 둔다 |
 | `blocked` | 막힘이나 사람을 기다리는 사유(원격 쓰기 확인 포함). 비어 있지 않으면 자율 계속을 하지 않는다 |
 | `running` | 실행 중인 백그라운드 위임의 이름 목록. 띄울 때 `devflow-state running <n> add <이름>`, 결과가 오거나 실패·중단했으면 `done`으로 뺀다. 남은
 항목은 무인 계속을 막으므로, 새 세션은 장부를 보고 끝난 위임을 뺀다. `ledger-update`로 통째로 바꾸면 다른 위임이 빠져 Stop 훅이 그 위에서 계속하므로 쓰지 않는다(#24) |
 | `followups` | ship 때 제안할 후속 후보 |
-| `pendingPosts` | 무인 구간에 쌓인 게시. `devflow-state`가 관리한다 |
+| `pendingPosts` | 무인 구간에 쌓인 게시. `devflow-state`가 관리하고 `ledger-update`는 거부한다 |
 
 같은 폴더의 `guard-events.jsonl`은 차단 기록이고([metrics](metrics.md#수동-지표)), `sessions.json`과 `ledger.lock`은
 [동시 세션](#동시-세션) 것이다.

@@ -21,7 +21,8 @@ const INSTRUCTION_SWITCHES = ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // specs is the folder of devflow-style contracts, or null when the project keeps none (profile `"specs": false`).
 const FOLDS_CASE = process.platform === 'win32' || process.platform === 'darwin'
-const budgets = specs => [[/^AGENTS\.md$/, 1000], ...(specs ? [[new RegExp(`^${escapeRe(specs)}/.+\\.md$`, FOLDS_CASE ? 'i' : ''), 5000]] : []), [/(^|\/)SKILL\.md$/, 5000]]
+const budgets = specs => [[/^AGENTS\.md$/, 1000], ...(specs ? [[new RegExp(`^${escapeRe(specs)}/.+\\.md$`, FOLDS_CASE ? 'i' : ''), 5000]] : []), [/(^|\/)SKILL\.md$/, 5000],
+  [/(^|\/)skills\/[^/]+\/references\/.+\.md$/, 5000]]
 const PROMPT_BUDGET = 500
 const INTEGRATIONS = ['pr-ci', 'local-merge', 'push-on-request']
 const MAX_LINES_PER_RULE = 3
@@ -88,6 +89,11 @@ function doctor(dir, { only } = {}) {
     } catch (e) {
       fail('profile', `.devflow.json does not parse (${e.message})`)
     }
+    // null, a list or a number parses but holds no keys; every check below reads keys (Issue #27).
+    if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+      fail('profile', '.devflow.json is not a JSON object')
+      profile = {}
+    }
   }
   if (profile.integration !== undefined && !INTEGRATIONS.includes(profile.integration)) {
     fail('profile', `integration is "${profile.integration}", not one of ${INTEGRATIONS.join(', ')}`)
@@ -107,7 +113,17 @@ function doctor(dir, { only } = {}) {
   if (!Array.isArray(tests) || tests.some(g => typeof g !== 'string' || !g)) fail('profile', 'tests is a list of path globs')
   const localPathAllowed = f => !INSTRUCTION.test(f) && Array.isArray(allowLocalPaths) &&
     allowLocalPaths.some(g => typeof g === 'string' && matchesGlob(f, g))
-  const privatePaths = profile.private || PRIVATE
+  // The profile's list replaces the default one. Each entry is a prefix inside the repository, as git lists paths: an
+  // empty, absolute, "./" or ".." entry matches nothing or everything and would switch the leak check off unseen (#27).
+  const prefixOk = p => typeof p === 'string' && p !== '' && !/^(\/|\.\/|\.\.?$)|\\|(^|\/)\.\.(\/|$)/.test(p)
+  let privatePaths = PRIVATE
+  if (profile.private !== undefined) {
+    if (!Array.isArray(profile.private) || !profile.private.every(prefixOk)) fail('profile', 'private is a list of path prefixes inside the repository')
+    else {
+      privatePaths = profile.private
+      if (!privatePaths.length) warn('profile', 'private is empty, so no tracked path is checked as private')
+    }
+  }
   const isPrivate = f => privatePaths.some(p => f === p.replace(/\/$/, '') || f.startsWith(p))
   // What .gitattributes says about each file: binary content is not text, and eol=crlf (*.cmd, *.bat) is meant to be CRLF.
   const eol = (git(root, ['ls-files', '--eol', ...(only ? ['--', ...files] : [])]) || '').split('\n').filter(Boolean).map(l => l.split('\t'))

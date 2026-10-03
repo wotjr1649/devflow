@@ -78,7 +78,7 @@
 `filterFalsePositives`로 센다.
 
 트리거율과 통과율은 eval 결과다. 그 사이클에서 스킬을 바꿔 eval을 돌렸을 때만 결과의 통과 수와 전체 수를
-`metrics.eval`에 `{passed, total}`로 옮긴다.
+`devflow-state metric <issue> eval <통과>/<전체>`로 `metrics.eval`에 `{passed, total}`로 적는다.
 
 ## 출력
 

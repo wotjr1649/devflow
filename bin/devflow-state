@@ -38,7 +38,7 @@ const USAGE = `usage: devflow-state <command>
   comment <n> < checkpoint    "### Checkpoint <stage> — <summary>", then at most 9 lines starting "- "
   check <n> <k>...            mark acceptance criteria k (1-based boxes GitHub renders under "## 수용 기준") as done
   close <n> | reopen <n>
-  create --title <t> < body   a new Issue in the Issue template (follow-ups)
+  create --title <t> < body   a new Issue in the Issue template; "## 수용 기준" needs plain "- [ ]" criteria
   ledger [n]                  print the ledger
   ledger-update [n] < json    replace the top-level keys given in a JSON object
   note <n> < line             append one line to the ledger's notes
@@ -52,6 +52,8 @@ const USAGE = `usage: devflow-state <command>
   metric <n> <key> [--undo] < note
                               add one to interventions or filterFalsePositives in the ledger, with a note line;
                               --undo takes one back (never below 0)
+  metric <n> eval <passed>/<total> < note
+                              record the cycle's trigger eval result
 Issue writes go only to the branch's Issue (create excepted), and text with local paths, secrets, hidden
 characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.
 Ledger writes off an Issue branch (cleanup on main) take the Issue number; note and metric need its ledger
@@ -531,6 +533,15 @@ function refusal(op, text, title) {
   if (op === 'create') {
     if (!title || title.length > MAX_TITLE_CHARS) return no('state-create-shape', `refused: a new Issue needs a title of at most ${MAX_TITLE_CHARS} characters`)
     if (text.length > MAX_BODY_CHARS) return no('state-create-shape', `refused: a new Issue body is over ${MAX_BODY_CHARS} characters`)
+    // The same rule intent and check follow, so a new Issue can have its criteria checked later (Issue #27).
+    const c = criteria(text)
+    if (!c || !c.boxes.length) return no('state-create-shape', 'refused: a new Issue needs a "## 수용 기준" section with "- [ ]" criteria')
+    const twice = text.match(new RegExp(CRITERIA_HEADING.source, 'gm')).length > 1
+    if (!c.plain || twice) {
+      return no('state-create-shape', 'refused: write each criterion as "- [ ] …" at the start of a line under a single ' +
+        '"## 수용 기준", with no comments, code, HTML or nested items there' +
+        whyText(twice ? { rule: 'a second "## 수용 기준" heading' } : c.why))
+    }
   }
   if (op === 'intent') {
     // The state block belongs to state; a second "## 현재 상태" would also move where the next state write lands.
@@ -775,8 +786,11 @@ function post(ctx, op, n, text, title) {
   } else if (op === 'state') {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
-    if (!stateSpan(got.issue.body || '')) return { code: 1, out: `refused: Issue #${n} has no state block to replace`, guard: 'state-no-state-block' }
-    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], replaceState(got.issue.body, text))
+    // An Issue made on the web or before the template has no block; it gets one at the end, so the card can show it
+    // (Issue #27).
+    const body = got.issue.body || ''
+    const next = stateSpan(body) ? replaceState(body, text) : (body.trimEnd() ? body.trimEnd() + '\n\n' : '') + text.trimEnd() + '\n'
+    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], next)
   } else if (op === 'intent') {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
@@ -800,6 +814,18 @@ function post(ctx, op, n, text, title) {
     r = gh(['issue', 'comment', String(n), '-R', ctx.repo, '--body-file', '-'], text.trim() + '\n')
   } else if (op === 'create') {
     r = gh(['issue', 'create', '-R', ctx.repo, '--title', title, '--body-file', '-'], text)
+  } else if (op === 'close') {
+    // An Issue closes at ship once every criterion is checked; unfinished scope stays open (Issue #27).
+    const got = fetchIssue(ctx, n)
+    if (got.error) return { code: 1, out: got.error }
+    const body = got.issue.body || ''
+    const c = criteria(body)
+    if (c && !c.plain) return { code: 1, out: `refused: ${UNPLAIN}${whyText(c.why)}`, guard: 'state-criteria-unplain' }
+    const open = c ? c.boxes.findIndex(b => body[b.at] === ' ') : -1
+    if (open >= 0) {
+      return { code: 1, out: `refused: acceptance criterion ${open + 1} is not checked; check it with evidence first, or keep the Issue open`, guard: 'state-close-unchecked' }
+    }
+    r = gh(['issue', 'close', String(n), '-R', ctx.repo])
   } else {
     r = gh(['issue', op, String(n), '-R', ctx.repo])
   }
@@ -886,6 +912,26 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
 
 // Adds one to a manual metric and appends its note in one step, so an agent never rewrites the ledger by hand to count.
 const METRICS = new Set(['interventions', 'filterFalsePositives'])
+// The trigger eval's result for the cycle, {passed, total}, set under the lock like the counts (Issue #27).
+function metricEval(env, cwd, n, score, note) {
+  const line = String(note || '').trim().split(/\r?\n/)[0].trim()
+  const m = /^(\d+)\/(\d+)$/.exec(String(score || ''))
+  if (!m || !line || Number(m[2]) < 1 || Number(m[1]) > Number(m[2])) return { code: 2, out: 'usage: devflow-state metric <issue> eval <passed>/<total> < note' }
+  const ctx = repoContext(env, cwd)
+  const no = ledgerGate(ctx, n, 'metrics', { append: true })
+  if (no) return no
+  const passed = Number(m[1])
+  const total = Number(m[2])
+  const r = updateLedger(ctx.store, n, ledger => {
+    if (gone(ctx, n)) return { result: MISSING }
+    const metrics = { ...(ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}), eval: { passed, total } }
+    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `eval ${passed}/${total}: ${line}`]
+    return { ledger: { ...ledger, metrics, notes }, result: true }
+  })
+  if (r.ok && r.result === MISSING) return NO_LEDGER(n)
+  return r.ok ? { code: 0, out: `eval ${passed}/${total}` } : guarded(ctx, LOCKED(n, r.why), n)
+}
+
 // undo takes one back, with its reason in notes, for a count that turned out wrong (Issue #22); never below zero.
 function metric(env, cwd, n, key, note, { undo = false } = {}) {
   const line = String(note || '').trim().split(/\r?\n/)[0].trim()
@@ -1113,13 +1159,21 @@ function command(argv, stdin, env, cwd) {
       if (patch && typeof patch === 'object' && 'testsLocked' in patch) {
         return { code: 1, out: 'refused: testsLocked changes only through devflow-state tests <issue> lock|unlock' }
       }
+      // Queued posts are devflow-state's own; replacing them would drop public writes waiting for the user (Issue #27).
+      if (patch && typeof patch === 'object' && 'pendingPosts' in patch) {
+        return { code: 1, out: 'refused: pendingPosts changes only through devflow-state (pending, flush)' }
+      }
       // notes only grow: replacing them would drop another session's lines and the reasons tests were unlocked (Issue #20).
       const r = updateLedger(ctx.store, n, ledger => {
         const old = Array.isArray(ledger.notes) ? ledger.notes : []
         if ('notes' in patch && (!Array.isArray(patch.notes) || old.some((line, k) => patch.notes[k] !== line))) return { result: ZERO }
+        // A delegation still running comes out with running done, not by replacing the list (Issue #24, #27).
+        const live = v => (v && typeof v === 'object' ? Object.keys(v).length > 0 : Boolean(v))
+        if ('running' in patch && live(ledger.running)) return { result: MISSING }
         return { ledger: { ...ledger, ...patch } }
       })
       if (r.ok && r.result === ZERO) return { code: 1, out: 'refused: notes only grow; add a line with devflow-state note' }
+      if (r.ok && r.result === MISSING) return { code: 1, out: 'refused: running has a delegation in it; take each one out with devflow-state running <issue> done <label>' }
       return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n, r.why), n)
     }
     case 'note':
@@ -1145,6 +1199,9 @@ function command(argv, stdin, env, cwd) {
     case 'flush':
       return flush(env, cwd)
     case 'metric':
+      if (num(rest[0]) && rest[1] === 'eval') {
+        return rest.length === 3 ? metricEval(env, cwd, num(rest[0]), rest[2], input()) : { code: 2, out: 'usage: devflow-state metric <issue> eval <passed>/<total> < note' }
+      }
       if (!num(rest[0]) || rest.length > 3 || (rest[2] !== undefined && rest[2] !== '--undo')) {
         return { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives [--undo] < note' }
       }

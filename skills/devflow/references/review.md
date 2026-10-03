@@ -16,7 +16,7 @@ and verify and a narrowed re-review passed. `pr-review-workflow` runs the review
 ## Before integrating
 
 Ship measures, records and closes on the Issue branch before it integrates: worktree reflogs and old host records
-disappear later, and `devflow-state` writes only to the branch's Issue. Rules: [metrics](../../../docs/specs/metrics.md).
+disappear later, and `devflow-state` writes an Issue only from its branch. Rules: [metrics](../../../docs/specs/metrics.md).
 
 1. Read the cycle's guard blocks (`guard-events.jsonl` beside the ledger). Count each one that stopped a legitimate
    action, and any intervention not yet counted, with `metric` on the card's `Tool:` command.

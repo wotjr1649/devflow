@@ -700,11 +700,34 @@ function post(ctx, op, n, text, title) {
 const WRITE_OPS = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'create'])
 
 // A refusal carries a guard id; it is logged to the branch's Issue and dropped from the result.
-function guarded(ctx, r) {
+// Logged under the branch's Issue; off an Issue branch under n, and only when n's folder exists, so a refusal for a
+// mistyped number leaves no folder behind (Issue #12).
+function guarded(ctx, r, n) {
   if (!r.guard) return r
   if (ctx && ctx.issue) logGuard(ctx.root, ctx.issue, r.guard)
+  else if (ctx && n && fs.existsSync(path.join(ctx.root, '.work', 'devflow', `i${n}`))) logGuard(ctx.root, n, r.guard)
   return { code: r.code, out: r.out }
 }
+
+// Which Issue's ledger a session may write (Issue #12). On an Issue branch only that Issue's. On a named branch that is
+// no Issue branch (main, where cleanup runs after the Issue branch is gone) any, but an append only to a ledger that
+// exists, since a mistyped number would otherwise create one. On a detached HEAD none: it may be an Issue branch in the
+// middle of a rebase.
+function ledgerGate(ctx, n, what, { append }) {
+  if (!ctx) return { code: 1, out: `refused: ${what} go only to the branch's Issue #?` }
+  if (ctx.issue && n !== ctx.issue) {
+    return guarded(ctx, { code: 1, out: `refused: ${what} go only to the branch's Issue #${ctx.issue}`, guard: 'state-other-issue' })
+  }
+  if (!ctx.issue && !ctx.branch) {
+    return guarded(ctx, { code: 1, out: `refused: ${what} need a branch, not a detached HEAD`, guard: 'state-detached' }, n)
+  }
+  if (!ctx.issue && append && !fs.existsSync(ledgerPath(ctx.root, n))) return NO_LEDGER(n)
+  return null
+}
+const NO_LEDGER = n => ({ code: 1, out: `refused: no ledger for Issue #${n} here; check the number` })
+// Rechecked under the lock: a ledger removed after ledgerGate looked is not brought back holding one line.
+const MISSING = Symbol('missing ledger')
+const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.root, n))
 
 function write(env, cwd, op, n, text = '', title, opts = {}) {
   if (!WRITE_OPS.has(op)) return { code: 1, out: `refused: ${op} is not a devflow-state write` }
@@ -749,16 +772,17 @@ function metric(env, cwd, n, key, note) {
   const line = String(note || '').trim().split(/\r?\n/)[0].trim()
   if (!METRICS.has(key) || !line) return { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives < note' }
   const ctx = repoContext(env, cwd)
-  if (!ctx || !ctx.issue || n !== ctx.issue) {
-    return guarded(ctx, { code: 1, out: `refused: metrics go only to the branch's Issue #${(ctx && ctx.issue) ?? '?'}`, guard: 'state-other-issue' })
-  }
+  const no = ledgerGate(ctx, n, 'metrics', { append: true })
+  if (no) return no
   const r = updateLedger(ctx.root, n, ledger => {
+    if (gone(ctx, n)) return { result: MISSING }
     const metrics = { ...(ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}) }
     metrics[key] = (Number.isInteger(metrics[key]) ? metrics[key] : 0) + 1
     const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${key} +1: ${line}`]
     return { ledger: { ...ledger, metrics, notes }, result: metrics[key] }
   })
-  return r.ok ? { code: 0, out: `${key} ${r.result}` } : guarded(ctx, LOCKED(n, r.why))
+  if (r.ok && r.result === MISSING) return NO_LEDGER(n)
+  return r.ok ? { code: 0, out: `${key} ${r.result}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
 // Appends one line to notes. ledger-update replaces whole keys, so two sessions adding notes that way would drop one.
@@ -766,14 +790,15 @@ function note(env, cwd, n, text) {
   const line = String(text || '').trim().split(/\r?\n/)[0].trim()
   if (!line) return { code: 2, out: 'usage: devflow-state note <issue> < line' }
   const ctx = repoContext(env, cwd)
-  if (!ctx || !ctx.issue || n !== ctx.issue) {
-    return guarded(ctx, { code: 1, out: `refused: notes go only to the branch's Issue #${(ctx && ctx.issue) ?? '?'}`, guard: 'state-other-issue' })
-  }
+  const no = ledgerGate(ctx, n, 'notes', { append: true })
+  if (no) return no
   const r = updateLedger(ctx.root, n, ledger => {
+    if (gone(ctx, n)) return { result: MISSING }
     const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), line]
     return { ledger: { ...ledger, notes }, result: notes.length }
   })
-  return r.ok ? { code: 0, out: `notes ${r.result}` } : guarded(ctx, LOCKED(n, r.why))
+  if (r.ok && r.result === MISSING) return NO_LEDGER(n)
+  return r.ok ? { code: 0, out: `notes ${r.result}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
 // A flush claims the whole queue under the lock and posts outside it, removing each item by id once posted. Another
@@ -894,10 +919,12 @@ function command(argv, stdin, env, cwd) {
       const n = num(rest[0]) || (ctx && ctx.issue)
       if (!ctx || !n) return { code: 1, out: 'refused: no devflow Issue' }
       if (cmd === 'ledger') return { code: 0, out: JSON.stringify(readLedger(ctx.root, n), null, 2) }
+      const no = ledgerGate(ctx, n, 'ledger writes', { append: false })
+      if (no) return no
       // Top-level keys are replaced as sent; a note goes through note, which appends under the lock.
       const patch = JSON.parse(input())
       const r = updateLedger(ctx.root, n, ledger => ({ ledger: { ...ledger, ...patch } }))
-      return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n, r.why))
+      return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n, r.why), n)
     }
     case 'note':
       return num(rest[0]) ? note(env, cwd, num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state note <issue> < line' }

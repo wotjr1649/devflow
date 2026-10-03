@@ -27,7 +27,7 @@ function repo(ledger) {
   return root
 }
 
-function env(root, { gh = null, vars = {} } = {}) {
+function env(root, { gh = null, vars = {}, branch = BRANCH } = {}) {
   const calls = []
   return {
     calls,
@@ -37,7 +37,7 @@ function env(root, { gh = null, vars = {} } = {}) {
       const a = args.join(' ')
       if (cmd === 'git') {
         if (a === 'rev-parse --show-toplevel') return ok(root + '\n')
-        if (a === 'branch --show-current') return ok(BRANCH + '\n')
+        if (a === 'branch --show-current') return ok(branch + '\n')
         if (a === 'rev-parse --short HEAD') return ok('abc1234\n')
         if (a === 'remote get-url origin') return ok('https://github.com/o/r.git\n')
       }
@@ -136,6 +136,53 @@ test('note appends one line to the branch Issue ledger under the lock', () => {
   assert.deepEqual(ledgerOf(root).notes, ['a', 'second'])
   assert.equal(state.note(env(root), '.', 7, 'x').code, 1)
   assert.equal(state.note(env(root), '.', 1, '  ').code, 2)
+})
+
+// Issue #12: cleanup runs on main after the Issue branch is gone, and the ledger is where it is recorded.
+const ledgerCmd = (root, branch, argv, input = '') => state.main(argv, () => input, env(root, { branch }), '.')
+const issueDir = (root, n) => path.join(root, '.work', 'devflow', `i${n}`)
+
+test('on a named branch that is no Issue branch, note and metric append only to a ledger that exists (#12)', () => {
+  const root = repo({ notes: ['a'], stage: 'done' })
+  assert.deepEqual(ledgerCmd(root, 'main', ['note', '1'], 'cleanup: branch deleted'), { code: 0, out: 'notes 2' })
+  assert.equal(ledgerCmd(root, 'main', ['metric', '1', 'interventions'], 'x').code, 0)
+  assert.deepEqual(ledgerOf(root).notes, ['a', 'cleanup: branch deleted', 'interventions +1: x'])
+  assert.equal(ledgerOf(root).metrics.interventions, 1)
+  // A number with no ledger is refused without creating its folder, so nothing is logged for it either.
+  for (const argv of [['note', '7'], ['metric', '7', 'interventions']]) {
+    const r = ledgerCmd(root, 'main', argv, 'x')
+    assert.equal(r.code, 1)
+    assert.match(r.out, /no ledger for Issue #7/)
+  }
+  assert.equal(fs.existsSync(issueDir(root, 7)), false)
+  // ledger-update still creates a ledger there: start does that before the Issue branch exists.
+  assert.equal(ledgerCmd(root, 'main', ['ledger-update', '7'], '{"stage":"start"}').code, 0)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(issueDir(root, 7), 'ledger.json'), 'utf8')).stage, 'start')
+})
+
+test('on another Issue branch or a detached HEAD no ledger command writes that ledger, and each refusal is logged (#12)', () => {
+  const root = repo({ stage: 'build' })
+  fs.mkdirSync(issueDir(root, 7), { recursive: true })
+  fs.writeFileSync(path.join(issueDir(root, 7), 'ledger.json'), JSON.stringify({ stage: 'build', notes: [] }))
+  const before = fs.readFileSync(path.join(issueDir(root, 7), 'ledger.json'), 'utf8')
+  const cmds = [['note', '7'], ['metric', '7', 'interventions'], ['ledger-update', '7']]
+  const input = argv => (argv[0] === 'ledger-update' ? '{"x":1}' : 'x')
+  for (const argv of cmds) {
+    const r = ledgerCmd(root, BRANCH, argv, input(argv))
+    assert.equal(r.code, 1, argv.join(' '))
+    assert.match(r.out, /only to the branch's Issue #1/)
+  }
+  assert.deepEqual(guards(root), ['state-other-issue', 'state-other-issue', 'state-other-issue'])
+  // A detached HEAD may be an Issue branch in the middle of a rebase: no ledger is written, and the refusal is logged
+  // under the Issue named, whose folder exists.
+  for (const argv of cmds) {
+    const r = ledgerCmd(root, '', argv, input(argv))
+    assert.equal(r.code, 1, 'detached ' + argv.join(' '))
+    assert.match(r.out, /detached HEAD/)
+  }
+  assert.equal(fs.readFileSync(path.join(issueDir(root, 7), 'ledger.json'), 'utf8'), before)
+  const logged = fs.readFileSync(path.join(issueDir(root, 7), 'guard-events.jsonl'), 'utf8').trim().split('\n')
+  assert.deepEqual(logged.map(l => JSON.parse(l).guard), ['state-detached', 'state-detached', 'state-detached'])
 })
 
 test('a held lock refuses metric and note with a fixed guard id', () => {

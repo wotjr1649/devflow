@@ -135,7 +135,9 @@ BASE는 위임하기 전에 기록한다. `HEAD~1`로 대신하면 커밋이 여
 
 - 장부 쓰기는 짧은 잠금(`ledger.lock`) 아래에서 읽고 고쳐 임시 파일로 바꿔 쓴다. 잠금 안에서는 네트워크를 쓰지 않으므로
   10초 지난 잠금은 버리고, 2초 안에 잡지 못한 쓰기는 거부한다.
-- `ledger-update`는 보낸 최상위 키를 바꾸고, 덧붙이는 기록은 `note`와 `metric`으로 한다. 그래야 두 세션의 기록이 함께 남는다.
+- `ledger-update`는 보낸 최상위 키를 바꾸고, 덧붙이는 기록은 `note`·`metric`으로 한다(두 세션 기록이 함께 남게).
+  셋은 Issue 브랜치에선 자기 장부만, 다른 이름 브랜치(main 등)에선 번호의 장부를 쓴다. `note`·`metric`은
+  장부가 있어야 하며, detached HEAD(rebase 중일 수 있음)는 거부한다.
 - 쓰기(Issue와 장부)는 세션을 `sessions.json`에 남긴다(id 해시와 시각). 다른 세션이 30분 안에 쓰고 해제하지 않았으면
   재개 카드와 쓰기 출력이 경고한다. 거부하지 않고, 읽기는 세지 않는다.
 - 세션 id: Codex는 `CODEX_THREAD_ID`, Claude는 SessionStart 훅이 셸에 넘기는 `DEVFLOW_SESSION_ID`(없으면

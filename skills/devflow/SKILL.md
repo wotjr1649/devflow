@@ -27,7 +27,8 @@ keys of [작업 장부 키](../../docs/specs/documents.md#작업-장부-키). Th
 `decisions`, `blocked` and `running` whether unattended work continues, so keep them current.
 
 Add a line to the ledger's notes with `note`: `ledger-update` replaces whole keys, so two sessions adding notes through
-it would drop one. When you hand the Issue to another session, run `release <issue>` so that session is not warned
+it would drop one. After the Issue branch is gone (cleanup on main), `note` and `metric` still take the Issue's number,
+as long as its ledger exists. When you hand the Issue to another session, run `release <issue>` so that session is not warned
 about this one ([동시 세션](../../docs/specs/orchestration.md#동시-세션)).
 
 When the requirements or acceptance criteria change, show the user the new intent (the body above the state block) and,

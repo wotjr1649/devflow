@@ -261,6 +261,21 @@ test('a session started above the repository with a cwd that is gone is out of s
   assert.equal(report.skipped.outsideScope, 1)
 })
 
+test('the ledger is read from the main work tree first, even from a worktree holding an old copy (#14)', async () => {
+  const root = gitRepo()
+  fs.writeFileSync(path.join(root, '.devflow.json'), '{}')
+  const wt = path.join(path.dirname(root), 'wt14')
+  git(root, 200, 'worktree', 'add', '-q', '-b', 'fix/4-wt', wt)
+  const put = (r, interventions) => {
+    fs.mkdirSync(path.join(r, '.work', 'devflow', 'i4'), { recursive: true })
+    fs.writeFileSync(path.join(r, '.work', 'devflow', 'i4', 'ledger.json'), JSON.stringify({ metrics: { interventions } }))
+  }
+  put(root, 1)
+  put(wt, 5)
+  assert.equal((await measure(wt)).report.manual.interventions, 1)
+  assert.equal(path.resolve(metrics.context(wt).mainRoot), path.resolve(root))
+})
+
 test('codex rollouts without per-call records fall back to token_count and are flagged', async () => {
   const root = gitRepo()
   const home = tmp('dfm-x-')

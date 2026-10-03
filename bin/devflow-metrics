@@ -41,7 +41,6 @@ function git(cwd, ...args) {
 function context(cwd) {
   const root = git(cwd, 'rev-parse', '--show-toplevel')
   if (!root) return null
-  const common = git(root, 'rev-parse', '--path-format=absolute', '--git-common-dir')
   const worktrees = []
   for (const l of (git(root, 'worktree', 'list', '--porcelain') || '').split('\n')) {
     if (l.startsWith('worktree ')) worktrees.push({ path: path.resolve(l.slice(9)), branch: null, reflog: null })
@@ -51,7 +50,12 @@ function context(cwd) {
     const p = fs.existsSync(w.path) && git(w.path, 'rev-parse', '--path-format=absolute', '--git-path', 'logs/HEAD')
     w.reflog = p && fs.existsSync(p) ? path.resolve(p) : null
   }
-  return { root: path.resolve(root), mainRoot: common ? path.dirname(path.resolve(common)) : path.resolve(root), worktrees }
+  // The main work tree holds the Issue folder (Issue #14): the first worktree entry when it holds .devflow.json. With a
+  // separate git dir that entry is the git dir itself, and the parent of the common dir is no work tree either.
+  const first = worktrees[0] && worktrees[0].path
+  let mainRoot = path.resolve(root)
+  try { if (first && fs.lstatSync(path.join(first, '.devflow.json')).isFile()) mainRoot = first } catch {}
+  return { root: path.resolve(root), mainRoot, worktrees }
 }
 
 // The deepest work tree containing p, compared by path segments.
@@ -398,7 +402,8 @@ async function codex({ ctx, dir, issue, until }) {
 }
 
 function readLedger(ctx, issue) {
-  for (const root of [ctx.root, ctx.mainRoot]) {
+  // The main work tree first: a copy left in a worktree by an older devflow is read only when the main tree has none.
+  for (const root of [ctx.mainRoot, ctx.root]) {
     const p = path.join(root, '.work', 'devflow', `i${issue}`, 'ledger.json')
     // A ledger committed as a link could point anywhere; only a plain file is read.
     try { if (fs.lstatSync(p).isFile()) return JSON.parse(fs.readFileSync(p, 'utf8')) } catch {}

@@ -45,8 +45,10 @@ const USAGE = `usage: devflow-state <command>
   release <n>                 when handing the Issue to another session: stop warning it about this one
   pending | flush             queued posts; flush posts them once the ledger is interactive
   metric <n> <key> < note     add one to interventions or filterFalsePositives in the ledger, with a note line
-Writes go only to the branch's Issue (create excepted), and text with local paths, secrets, hidden
-characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.`
+Issue writes go only to the branch's Issue (create excepted), and text with local paths, secrets, hidden
+characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.
+Ledger writes off an Issue branch (cleanup on main) take the Issue number; note and metric need its ledger
+to exist. A detached HEAD writes no ledger.`
 // Checked before anything is posted. Only the rule name is ever printed, never the match.
 const LEAKS = [
   // Any separator may come before the path: key=/home/x, [/Users/x], path:/tmp/x.
@@ -725,7 +727,8 @@ function ledgerGate(ctx, n, what, { append }) {
   return null
 }
 const NO_LEDGER = n => ({ code: 1, out: `refused: no ledger for Issue #${n} here; check the number` })
-// Rechecked under the lock: a ledger removed after ledgerGate looked is not brought back holding one line.
+// Rechecked under the lock: a ledger removed after ledgerGate looked is not brought back holding one line. Its folder,
+// if removed in that window too, comes back empty: withLock creates it to hold the lock.
 const MISSING = Symbol('missing ledger')
 const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.root, n))
 

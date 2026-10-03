@@ -450,7 +450,9 @@ function card(env, cwd, { sessionId: hookSession } = {}) {
   const block = stateBlock(body)
   if (!block) return stop(`Issue #${ctx.issue} has no state block`)
   const linked = BRANCH_LINE.exec(block)
-  if (!linked || linked[1] !== ctx.branch) return stop(`Issue #${ctx.issue} state names another branch`)
+  // A new Issue's block names no branch until the first state post (Issue #25).
+  if (!linked || linked[1] === '없음') return stop(`Issue #${ctx.issue} state names no branch yet; post the state block with this branch (state ${ctx.issue})`)
+  if (linked[1] !== ctx.branch) return stop(`Issue #${ctx.issue} state names another branch`)
 
   let ledger
   try {

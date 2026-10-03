@@ -104,6 +104,13 @@ test('card skips non-writer, malformed and over-long checkpoints', () => {
   assert.match(out, /Latest checkpoint: u-good/)
 })
 
+test('card tells a new Issue with no branch yet to post its state from this branch (#25)', () => {
+  const body = `${block('없음')}\n`
+  const out = state.card(env(repo(), { data: issue({ body }) }), '.')
+  assert.match(out, /state names no branch yet; post the state block with this branch \(state 1\); no Issue state shown\./)
+  assert.doesNotMatch(out, /another branch/)
+})
+
 test('card refuses a state block linked to another branch', () => {
   const body = `${block('feat/2-other')}\n`
   const out = state.card(env(repo(), { data: issue({ body }) }), '.')

@@ -9,6 +9,10 @@ bounded path, in a design note on the architectural one.
   `docs/design/decisions/`.
 - On the architectural path, give the design to the `reviewer` with the design perspective from
   [perspectives](perspectives.md) before plan.
+- A design that moves a trust boundary - loosening a filter that guards public text, or taking paths, permissions or
+  write targets from repository files, git metadata or tool output - gets that review on any path, with the reviewer
+  told to break it; check each bypass it claims with the real renderer or command
+  ([리뷰](../../../docs/specs/orchestration.md#리뷰)).
 - Call `grilling` for decisions only the user can make; the rest is yours.
 - If the design turns out to touch one or two files with no interface change, move to the bounded path and add a `notes`
   line with the reason. Hidden complexity moves the other way.

@@ -822,9 +822,15 @@ test('markup inside a code span is plain only where cmark certainly reads the sp
     ['[x](a`) b`', '`<b>`'],
     ['[x](u "a', '`") <details> `.'],
     ['$a`$ <details> `b$'],
+    // An email autolink may take a backtick right after its "<" (security review, 2026-10-03).
+    ['run it <`@a.io> <details><summary>ok</summary>hidden `'],
+    ['a <0`@a.io> <!-- `', 'text a reader does not see', 'x --> `'],
+    ['<`@a.io> x `', '`<b>`'],
   ]
   for (const lines of refused) assert.ok(!plain(above(lines.join('\n'))), `above: ${JSON.stringify(lines)}`)
   assert.ok(!plain(crit(['- [ ] a `b', '  c` <x> `d`'])), 'a span across section lines')
+  assert.ok(!plain(crit(['- [ ] run it <`@a.io> <details><summary>ok</summary>hidden `'])), 'an email autolink on a box line')
+  assert.ok(plain(above('a < b and `c`')), 'a lone "<" before a span is no markup')
   assert.ok(!plain(crit(['- [ ] one', '  ```', '  x', '  ```'])), 'a fence continuing a box')
   assert.ok(!plain(crit(['- [ ] one', '```'])), 'a fence after a box')
 })

@@ -588,6 +588,9 @@ function withoutCodeSpans(line, state) {
   let out = head
   for (let i = 0; i < text.length;) {
     if (text[i] === '\\' && i + 1 < text.length && ASCII_PUNCT.test(text[i + 1])) { out += text.slice(i, i + 2); i += 2; continue }
+    // An autolink or tag outranks code spans and an email autolink may hold a backtick right after its "<", which the
+    // markup test does not see: past a "<" outside a span nothing more is stripped.
+    if (text[i] === '<') { state.open = true; return out + text.slice(i) }
     if (text[i] !== '`') { out += text[i++]; continue }
     let j = i
     while (text[j] === '`') j++

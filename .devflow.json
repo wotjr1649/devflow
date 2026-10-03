@@ -18,11 +18,11 @@
   ],
   "checks": {
     "**/*.md": "node bin/devflow-doctor",
-    "bin/**": "node --test tests/*.test.js",
-    "tests/**": "node --test tests/*.test.js",
-    "hooks/**": "node --test tests/*.test.js",
-    "agents/**": "node --test tests/*.test.js",
-    ".githooks/**": "node bin/devflow-doctor && node --test tests/*.test.js"
+    "bin/**": "node --test --test-timeout=120000 tests/*.test.js",
+    "tests/**": "node --test --test-timeout=120000 tests/*.test.js",
+    "hooks/**": "node --test --test-timeout=120000 tests/*.test.js",
+    "agents/**": "node --test --test-timeout=120000 tests/*.test.js",
+    ".githooks/**": "node bin/devflow-doctor && node --test --test-timeout=120000 tests/*.test.js"
   },
-  "verify": "node bin/devflow-doctor && node --test tests/*.test.js"
+  "verify": "node bin/devflow-doctor && node --test --test-timeout=120000 tests/*.test.js"
 }

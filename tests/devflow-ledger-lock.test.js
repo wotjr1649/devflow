@@ -58,20 +58,26 @@ const guards = root => {
   return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map(l => JSON.parse(l).guard) : []
 }
 
-test('concurrent ledger writes from several processes keep every change', async () => {
+// A child spawned for a concurrency test is waited on from the moment it starts, and gives up its own wait for the start
+// signal after a while, so neither a child that ends early nor a test that fails first leaves anything hanging (#15).
+const exitOf = kid => new Promise((resolve, reject) => { kid.once('exit', resolve); kid.once('error', reject) })
+const awaitStart = start => `const end = Date.now() + 30000; while (!fs.existsSync(${JSON.stringify(start)})) if (Date.now() > end) process.exit(9);`
+
+test('concurrent ledger writes from several processes keep every change', { timeout: 60000 }, async () => {
   const root = repo({ stage: 'build' })
   const start = path.join(root, 'start')
   const mod = JSON.stringify(path.resolve(__dirname, '../bin/devflow-state'))
   const kid = body => `const s = require(${mod}); const fs = require('fs'); const r = ${JSON.stringify(root)};` +
-    `while (!fs.existsSync(${JSON.stringify(start)})) {} for (let i = 0; i < 20; i++) { ${body} }`
+    `${awaitStart(start)} for (let i = 0; i < 20; i++) { ${body} }`
   const kids = [
     ...[0, 1, 2].map(k => kid(`if (!s.updateLedger(r, 1, l => ({ ledger: { ...l, ['k${k}_' + i]: i } }), { waitMs: 30000 }).ok) process.exit(3)`)),
     ...[0, 1, 2].map(k => kid(`if (!s.updateLedger(r, 1, l => ({ ledger: { ...l, notes: [...(l.notes || []), '${k}-' + i] } }), { waitMs: 30000 }).ok) process.exit(3)`)),
     ...[0, 1].map(() => kid(`if (!s.updateLedger(r, 1, l => ({ ledger: { ...l, count: (l.count || 0) + 1 } }), { waitMs: 30000 }).ok) process.exit(3)`)),
   ].map(script => spawn(process.execPath, ['-e', script], { stdio: 'ignore' }))
+  const exits = kids.map(exitOf)
   await new Promise(r => setTimeout(r, 300))
   fs.writeFileSync(start, '')
-  const codes = await Promise.all(kids.map(k => new Promise(r => k.on('exit', r))))
+  const codes = await Promise.all(exits)
   assert.deepEqual(codes, kids.map(() => 0))
   const l = ledgerOf(root)
   assert.equal(l.stage, 'build')
@@ -80,6 +86,26 @@ test('concurrent ledger writes from several processes keep every change', async 
   assert.equal(l.count, 40)
   assert.ok(!fs.existsSync(lockFile(root)), 'the lock is gone')
   assert.deepEqual(fs.readdirSync(dir(root)).filter(f => /\.tmp$/.test(f)), [], 'no temp file is left')
+})
+
+// Issue #15: a stale lock that cannot be moved aside (Windows refuses to rename a file another process holds open) must
+// not spin past the wait limit. A spin is synchronous, so no timer in this process could stop it: it runs in a child.
+test('a stale lock that cannot be moved aside still ends at the wait limit', () => {
+  const root = repo({ a: 1 })
+  fs.writeFileSync(lockFile(root), 'old-token')
+  const old = (Date.now() - 60000) / 1000
+  fs.utimesSync(lockFile(root), old, old)
+  const script = `const fs = require('fs'); const s = require(${JSON.stringify(path.resolve(__dirname, '../bin/devflow-state'))});` +
+    `const lock = ${JSON.stringify(lockFile(root))}; const rename = fs.renameSync;` +
+    `fs.renameSync = (a, b) => { if (a === lock) { const e = new Error('held'); e.code = 'EPERM'; throw e } return rename(a, b) };` +
+    `const t = Date.now(); const r = s.withLock(${JSON.stringify(root)}, 1, () => 'ran', { waitMs: 200 });` +
+    `process.stdout.write(JSON.stringify({ r, ms: Date.now() - t }))`
+  const run = require('child_process').spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 8000 })
+  assert.equal(run.error, undefined, 'withLock did not return within 8 seconds')
+  const { r, ms } = JSON.parse(run.stdout)
+  assert.deepEqual(r, { ok: false, why: 'busy' })
+  assert.ok(ms < 2000, `returned after ${ms} ms`)
+  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'old-token', 'the lock it could not move is left as it was')
 })
 
 test('a stale lock is moved aside and the write goes on; a fresh one is waited for, then refused', () => {

@@ -384,17 +384,21 @@ test('logGuard never throws and does not write through a linked folder or file',
   assert.equal(fs.readFileSync(target, 'utf8'), '')
 })
 
-test('concurrent appends from several processes keep every line whole', async () => {
+test('concurrent appends from several processes keep every line whole', { timeout: 60000 }, async () => {
   const root = repo()
   const start = path.join(root, 'start')
+  // Each child gives up waiting for the start signal after a while, and is waited on from the moment it starts, so
+  // neither a child that ends early nor a test that fails first leaves anything hanging (#15).
   const script = `const s = require(${JSON.stringify(path.resolve(__dirname, '../bin/devflow-state'))});` +
-    `const fs = require('fs'); while (!fs.existsSync(${JSON.stringify(start)})) {}` +
+    `const fs = require('fs'); const end = Date.now() + 30000;` +
+    `while (!fs.existsSync(${JSON.stringify(start)})) if (Date.now() > end) process.exit(9);` +
     `for (let i = 0; i < 200; i++) s.logGuard(${JSON.stringify(root)}, 1, 'state-leak')`
   const { spawn } = require('child_process')
   const kids = Array.from({ length: 6 }, () => spawn(process.execPath, ['-e', script], { stdio: 'ignore' }))
+  const exits = kids.map(k => new Promise((resolve, reject) => { k.once('exit', resolve); k.once('error', reject) }))
   await new Promise(r => setTimeout(r, 300))
   fs.writeFileSync(start, '')
-  await Promise.all(kids.map(k => new Promise(r => k.on('exit', r))))
+  assert.deepEqual(await Promise.all(exits), kids.map(() => 0))
   const raw = fs.readFileSync(guardLog(root), 'utf8').split('\n').filter(Boolean)
   assert.equal(raw.length, 1200)
   for (const l of raw) assert.equal(JSON.parse(l).guard, 'state-leak')

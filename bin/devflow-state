@@ -269,10 +269,9 @@ function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
         fs.closeSync(fd)
       }
     } catch {}
-    if (judged !== null) {
-      dropStale(lock, judged)
-      continue
-    }
+    // A stale lock moved aside is retried at once. One that cannot be moved (Windows refuses to rename a file another
+    // process holds open) is waited on like a held lock, so the wait limit still ends the loop (Issue #15).
+    if (judged !== null && dropStale(lock, judged)) continue
     if (Date.now() >= until) return { ok: false, why: 'busy' }
     sleep(10)
   }

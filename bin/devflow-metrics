@@ -222,7 +222,9 @@ async function claude({ ctx, dir, issue, until }) {
       // While a subagent isolated in its own worktree runs, the host labels the parent's records, and those of other
       // subagents, with that worktree's branch (Issue #29). Such a label on a record outside that worktree says nothing
       // about the record's own work tree, so its reflog decides.
-      if (!byWorktree(w) && SUBAGENT_WORKTREE.test(rec.gitBranch || '') && w.reflog) return isIssue(branchAt(w, t), issue)
+      // Only for a cwd that still exists there: a removed worktree nested in the main tree would otherwise borrow the main
+      // tree's branch; a real subagent's records count through the parent's span instead.
+      if (!byWorktree(w) && SUBAGENT_WORKTREE.test(rec.gitBranch || '') && w.reflog && present(rec.cwd, w)) return isIssue(branchAt(w, t), issue)
       if (!byWorktree(w)) return isIssue(rec.gitBranch, issue)
       return present(rec.cwd, w) && !!w.reflog && isIssue(branchAt(w, t), issue)
     }

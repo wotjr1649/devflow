@@ -100,6 +100,12 @@ test('a main-tree record labelled with a subagent worktree branch is judged by t
   assert.equal(c.main.calls, 1, 'at 150 the main tree was on feat/4-x; at 50 it was not')
   assert.equal(c.sub.calls, 2)
   assert.equal(c.sub.subagents, 1)
+  // Without the parent on the Issue branch, records from a removed worktree named like a subagent one do not borrow the
+  // main tree's branch: a `claude --worktree agent-x` session there stays outside.
+  const home2 = tmp('dfm-c-')
+  write(path.join(claudeFolder(home2, root), 's2.jsonl'), [cl.assistant(150, { id: 'x1', cwd: gone, branch: 'worktree-agent-a7fd0bd4831f57499' })])
+  const { c: c2 } = await measure(root, { claude: home2 })
+  assert.equal(c2.main.calls, 0)
 })
 
 test('claude counts the Issue branch once per response and leaves other branches and folders out', async () => {

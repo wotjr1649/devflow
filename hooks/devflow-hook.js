@@ -616,8 +616,11 @@ function lockedTests(root) {
   if (!Array.isArray(globs) || !globs.length || globs.some(g => typeof g !== 'string' || !g)) return []
   const t = guardTarget(root)
   if (!t) return []
-  const ledgerFile = path.relative(root, path.join(t.root, '.work', 'devflow', `i${t.issue}`, 'ledger.json')).split(path.sep).join('/')
+  const ledgerAbs = path.join(t.root, '.work', 'devflow', `i${t.issue}`, 'ledger.json')
+  const ledgerFile = path.relative(root, ledgerAbs).split(path.sep).join('/')
   const locked = [...globs, ...(ledgerFile.startsWith('..') ? [] : [ledgerFile])]
+  // From a linked worktree the ledger lies outside the root, where the path globs do not reach; edit tools check it here.
+  locked.ledger = ledgerAbs
   try {
     const ledger = state.readLedger(t.root, t.issue)
     return ledger && ledger.testsLocked ? locked : []
@@ -898,6 +901,10 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       // A hit the profile's own protected paths do not cover is the test lock's.
       const byLock = hit => tests.length > 0 && !protectionFor(root, cwd)([{ path: path.join(root, hit), deep: true }])
       if (EDIT_TOOLS.test(tool)) {
+        const same = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
+        if (tests.ledger && editedFiles(input.tool_input).some(f => same(path.resolve(cwd, nativePath(f)), path.resolve(tests.ledger)))) {
+          return testLocked(root, 'the Issue ledger')
+        }
         const hit = protectedEdit(root, cwd, input.tool_input, tests)
         if (!hit) return ''
         if (hit.path && byLock(hit.path)) return testLocked(root, hit.path)

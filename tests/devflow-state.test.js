@@ -378,6 +378,9 @@ test('tests lock records the commit, unlock needs a reason and leaves it in note
   assert.match(run('', 'lock').out, /"tests" .* list of path globs/)
   // Review: ledger-update cannot lift or move the lock, and uncommitted tests are not locked.
   fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
+  state.main(['note', '1'], () => 'a line', e, '.')
+  assert.match(state.main(['ledger-update', '1'], () => '{"notes":[]}', e, '.').out, /notes only grow/)
+  assert.equal(state.main(['ledger-update', '1'], () => JSON.stringify({ notes: [...ledger().notes, 'more'] }), e, '.').code, 0)
   const lifted = state.main(['ledger-update', '1'], () => '{"testsLocked":null}', e, '.')
   assert.equal(lifted.code, 1)
   assert.match(lifted.out, /testsLocked changes only through/)

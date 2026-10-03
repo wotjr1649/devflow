@@ -419,9 +419,18 @@ test('locked tests are protected on both hosts while the Issue ledger says so, a
   // Review: the ledger itself is locked, a broken ledger counts as locked, and a deep write is the lock's block.
   assert.equal(decision(hook.handle(pre(d, 'echo x > .work/devflow/i7/ledger.json'))), 'deny')
   assert.equal(decision(hook.handle(pre(d, 'rm -rf .'))), 'deny')
+  assert.match(JSON.parse(edit('Write', { file_path: ledgerFile })).hookSpecificOutput.permissionDecisionReason, /the Issue ledger is a test file, locked|locked/)
   fs.writeFileSync(ledgerFile, '{ broken')
   assert.equal(decision(edit('Edit', { file_path: file })), 'deny')
-  assert.deepEqual(guards(d, 7).slice(4), ['test-locked', 'test-locked', 'test-locked'])
+  assert.deepEqual(guards(d, 7).slice(4), ['test-locked', 'test-locked', 'test-locked', 'test-locked'])
+  // From a linked worktree the ledger lies in the main work tree, outside the root; edit tools still may not touch it.
+  fs.writeFileSync(ledgerFile, JSON.stringify({ stage: 'build', testsLocked: { at: 'abc1234' } }))
+  git(d, 'add', '.devflow.json')
+  const wt = path.join(path.dirname(d), path.basename(d) + '-wt')
+  git(d, 'worktree', 'add', '-q', '-b', 'fix/7-wt', wt)
+  const fromWt = hook.handle(event('PreToolUse', wt, { tool_name: 'Write', tool_input: { file_path: ledgerFile } }))
+  assert.equal(decision(fromWt), 'deny')
+  git(d, 'worktree', 'remove', '--force', wt)
   // A profile without tests globs turns the lock off, whatever the ledger says.
   fs.writeFileSync(path.join(d, '.devflow.json'), '{}')
   assert.equal(edit('Edit', { file_path: file }), '')

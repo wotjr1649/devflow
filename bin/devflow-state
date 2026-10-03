@@ -1111,7 +1111,13 @@ function command(argv, stdin, env, cwd) {
       if (patch && typeof patch === 'object' && 'testsLocked' in patch) {
         return { code: 1, out: 'refused: testsLocked changes only through devflow-state tests <issue> lock|unlock' }
       }
-      const r = updateLedger(ctx.store, n, ledger => ({ ledger: { ...ledger, ...patch } }))
+      // notes only grow: replacing them would drop another session's lines and the reasons tests were unlocked (Issue #20).
+      const r = updateLedger(ctx.store, n, ledger => {
+        const old = Array.isArray(ledger.notes) ? ledger.notes : []
+        if ('notes' in patch && (!Array.isArray(patch.notes) || old.some((line, k) => patch.notes[k] !== line))) return { result: ZERO }
+        return { ledger: { ...ledger, ...patch } }
+      })
+      if (r.ok && r.result === ZERO) return { code: 1, out: 'refused: notes only grow; add a line with devflow-state note' }
       return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n, r.why), n)
     }
     case 'note':

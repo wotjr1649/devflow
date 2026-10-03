@@ -164,7 +164,8 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 이름이 바뀐 시험 파일을 실패로 낸다. verify와 ship은 Issue 브랜치에서 doctor를 돌리므로 훅이 놓친 셸 편집이 거기서
 드러난다(main의 pre-push와 CI에는 장부가 없어 이 검사가 없다). 커밋하지 않은 시험이 있으면 잠그지 않는다. 시험 자체가
 틀렸으면 `tests <n> unlock`에 이유를 주어 풀고, 이유는 장부 notes에 남아 ship 체크포인트로 간다. `ledger-update`는
-`testsLocked`를 바꾸지 못하고, 읽을 수 없는 장부는 잠긴 것으로 본다. rebase한 뒤에는 풀고(이유: rebase) 다시 잠근다.
+`testsLocked`를 바꾸지 못하고 `notes`는 덧붙이기만 하며, 읽을 수 없는 장부는 잠긴 것으로 본다. 장부는 추적되지 않는
+로컬 파일이라 훅이 못 본 셸 명령으로 지우면 doctor의 이 검사도 사라진다. 훅과 이 검사는 가드레일이다. rebase한 뒤에는 풀고(이유: rebase) 다시 잠근다.
 적지 않으면 잠금 명령은 거부되고 훅과 doctor는 아무것도 하지 않는다.
 
 ## doctor 검사 항목

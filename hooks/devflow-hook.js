@@ -943,7 +943,7 @@ const timing = (phase, extra = '') => {
 // Hook input arrives on stdin through a pipe. A synchronous read of fd 0 sometimes never returned on macOS (Issue #37:
 // 3 of 80 runs on Node 22, with the machine itself running), before any deadline could act, and the same fast path
 // mishandles large piped input (nodejs/node#66341). The stream read runs on the event loop under its own limit; input
-// that has not finished arriving by then denies a tool call it describes and gives nothing for other events.
+// that has not finished arriving by then is denied unless what did arrive names another event: a guard fails closed.
 const STDIN_TIMEOUT_MS = 3000
 const INPUT_LATE = 'devflow: the hook input did not finish arriving within 3 seconds, so the tool call was blocked.'
 function readStdin() {
@@ -973,7 +973,7 @@ async function main(inProcess = false) {
   if (!complete) {
     // The analyzer and the logger exit non-zero, so the parent falls back to its own denial.
     if (inProcess) process.exit(1)
-    if (/"hook_event_name"\s*:\s*"PreToolUse"/.test(raw)) emit(deny(INPUT_LATE))
+    if (!/"hook_event_name"\s*:\s*"(?!PreToolUse")[A-Za-z]+"/.test(raw)) emit(deny(INPUT_LATE))
     process.exit(0)
   }
   let out

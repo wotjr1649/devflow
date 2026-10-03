@@ -940,13 +940,42 @@ const timing = (phase, extra = '') => {
   if (process.env.DEVFLOW_HOOK_TIMING) process.stderr.write(`devflow-timing ${phase} ${Math.round(performance.now() - started)}${extra}\n`)
 }
 
-function main(inProcess = false) {
+// Hook input arrives on stdin through a pipe. A synchronous read of fd 0 sometimes never returned on macOS (Issue #37:
+// 3 of 80 runs on Node 22, with the machine itself running), before any deadline could act, and the same fast path
+// mishandles large piped input (nodejs/node#66341). The stream read runs on the event loop under its own limit; input
+// that has not finished arriving by then denies a tool call it describes and gives nothing for other events.
+const STDIN_TIMEOUT_MS = 3000
+const INPUT_LATE = 'devflow: the hook input did not finish arriving within 3 seconds, so the tool call was blocked.'
+function readStdin() {
+  return new Promise(resolve => {
+    const chunks = []
+    let settled = false
+    const finish = complete => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({ raw: Buffer.concat(chunks).toString('utf8'), complete })
+    }
+    const timer = setTimeout(() => finish(false), STDIN_TIMEOUT_MS)
+    process.stdin.on('data', chunk => chunks.push(chunk))
+    process.stdin.on('end', () => finish(true))
+    process.stdin.on('error', () => finish(true))
+  })
+}
+
+// Output is written synchronously before exiting: the process exits on purpose while stdin may still be open.
+const emit = text => { if (text) fs.writeSync(1, text + '\n') }
+
+async function main(inProcess = false) {
   if (!inProcess) timing('loaded', ` uptime=${Math.round(process.uptime() * 1000)}`)
-  let raw = ''
-  try {
-    raw = fs.readFileSync(0, 'utf8')
-  } catch {}
-  if (!inProcess) timing('stdin', ` bytes=${raw.length}`)
+  const { raw, complete } = await readStdin()
+  if (!inProcess) timing('stdin', ` bytes=${raw.length} complete=${complete}`)
+  if (!complete) {
+    // The analyzer and the logger exit non-zero, so the parent falls back to its own denial.
+    if (inProcess) process.exit(1)
+    if (/"hook_event_name"\s*:\s*"PreToolUse"/.test(raw)) emit(deny(INPUT_LATE))
+    process.exit(0)
+  }
   let out
   let input
   try { input = JSON.parse(raw) } catch {}
@@ -970,8 +999,9 @@ function main(inProcess = false) {
       out = log.status === 0 && log.stdout.trim() ? log.stdout.trim() : deny(ANALYSIS_FAILURES[guard])
     } else out = r.stdout.trim()
   } else out = handle(raw)
-  if (out) process.stdout.write(out + '\n')
+  emit(out)
   timing('out')
+  process.exit(0)
 }
 
 module.exports = { handle, issueWrite, mcpIssueWrite, localPath, main }

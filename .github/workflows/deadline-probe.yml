@@ -22,3 +22,10 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: git config --global user.name ci && git config --global user.email ci@example.invalid
       - run: node .github/probe/deadline.cjs 20
+      # Under load, as in the CI failures: the whole suite runs its files in parallel beside the probe.
+      - run: git config core.hooksPath .githooks
+      - run: |
+          (node --test --test-timeout=120000 tests/*.test.js > /dev/null 2>&1 || true) &
+          node .github/probe/deadline.cjs 20
+          wait
+        shell: bash

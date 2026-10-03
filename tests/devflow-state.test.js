@@ -695,6 +695,11 @@ test('a pendingPosts that is not a list is refused, never thrown on or overwritt
   assert.equal(ghWrites(e).length, 0)
 })
 
+test('pending drop honours the claim time flush really writes, in milliseconds (#35)', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive', notes: [], pendingPosts: [{ id: 'p1', op: 'comment', issue: 1, claimed: { by: 'f', at: Date.now() } }] } })
+  assert.match(state.main(['pending', 'drop', '1', 'p1'], () => 'x', env(root), '.').out, /claimed by a flush/)
+})
+
 test('metric refuses another Issue, unknown metrics and an empty note', () => {
   const root = repo()
   assert.match(state.metric(env(root), '.', 7, 'interventions', 'x').out, /only to the branch's Issue #1/)

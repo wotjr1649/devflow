@@ -248,6 +248,12 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
 - 0.159는 응답마다 `token_usage_record`(`response_id`, `usage`, `thread_token_usage`)를 남기고, `usage`가
   `thread_token_usage` 증가분과 같다. 0.146에는 이 레코드가 없고 `token_count`만 있다. `input_tokens`는 캐시분을 포함한다.
   부모의 누적값에는 서브에이전트 사용량이 들어가지 않았다.
+- 쓰기 시점(원본 `rust-v0.160.0`의 `codex-rs/rollout/src/recorder.rs`, 2026-10-03): 레코드를 추가할 때마다 한 줄씩 쓰고
+  flush한다(BufWriter와 fsync는 없다). 레코드의 `timestamp`는 쓰는 순간의 시각이다. 그래서 측정 시각 이전 레코드는 이미
+  파일에 있다. 새 세션만 첫 persist 전까지 파일을 만들지 않고 레코드를 메모리에 둔다. 실제 세션(0.159.3, #5)에서도 턴
+  안에서 돈 측정 명령이 자기 응답의 `token_usage_record`까지 읽었다.
+- Windows에서 rollout 파일의 수정 시각은 생성 시각에 머문다(2026-10-03, 파일 5개, 마지막 레코드는 최대 1시간 40분 뒤).
+  원본은 새 파일을 열 때 수정 시각을 직접 설정한다. 수정 시각으로 기록이 새로 쓰였는지 판단할 수 없다.
 - 도구 호출은 `response_item`의 `custom_tool_call`(`exec`)로 남는다. `exec` 한 번이 여러 명령을 묶을 수 있다.
 - Windows에서 `codex exec -s read-only` 안의 git 명령은 저장소 소유자 검사(`safe.directory`)로 실패했다.
 

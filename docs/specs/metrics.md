@@ -21,10 +21,14 @@
     - 레코드의 `cwd`는 파일 순서상 직전 `turn_context.cwd`, 그 전이면 `session_meta.cwd`다.
     - 작업 트리가 다른 작업 트리 안에 있으면(`.claude/worktrees/…`) 가장 깊은 작업 트리의 reflog를 쓴다.
     - reflog가 없는 작업 트리의 레코드는 범위 밖 개수로 낸다.
+    - 레코드의 `cwd`가 지금 폴더로 있어야 한다. 없으면 범위 밖이고 `missingCwd`로 센다. 지운 worktree가 주 작업 트리
+      안에 있었으면 그 경로가 주 작업 트리로 판정돼 그 시각 주 작업 트리의 브랜치로 들어가기 때문이다(#7). 저장소보다
+      위 폴더에서 시작한 Claude 세션도 같다.
   - 알려진 차이: Claude는 세션의 worktree를 따르고 Codex는 레코드의 `cwd`를 따른다. 그래서 Issue worktree에 있는 세션이
     다른 브랜치의 주 작업 트리에서 명령을 돌린 레코드는 Claude에서만 들어간다.
 - 측정은 ship에서 통합하기 전에 Issue 브랜치에서 한다. 정리에서 worktree를 지우면 그 reflog도 사라지고, 호스트는 오래된
-  기록을 지우기 때문이다. 통합 뒤의 단계는 측정 밖이다.
+  기록을 지우기 때문이다. 통합 뒤의 단계는 측정 밖이다. 다시 재면 Issue 브랜치였던 worktree를 지운 뒤에는 값이 줄고,
+  지운 경로가 다시 생기면 그 레코드는 주 작업 트리로 판정된다.
 - 기록에 응답으로 남지 않는 호스트 내부 호출(세션 제목, compact 요약 등), 다른 기기의 기록, eval 실행은 들어가지 않는다.
 
 ## 자동 지표
@@ -77,7 +81,7 @@
 ## 출력
 
 명령은 지표 이름과 정수만 담은 JSON 하나를 출력한다. `until`은 센 범위의 끝(epoch 초)이다. 주지 않으면 측정한 시각이고,
-저장한 `until`을 `--until`로 주면 같은 값을 다시 얻는다. 모델 이름은 `^[a-z0-9.-]{1,64}$`에 맞을 때만 쓰고 나머지는 `other`로 묶는다.
+저장한 `until`을 `--until`로 주면 같은 값을 다시 얻는다. 그 사이 worktree나 레코드의 `cwd`가 지워지거나 다시 생기지 않았을 때다. 모델 이름은 `^[a-z0-9.-]{1,64}$`에 맞을 때만 쓰고 나머지는 `other`로 묶는다.
 
 ```json
 {
@@ -89,12 +93,12 @@
   "codex": {"main": {}, "sub": {}},
   "models": {"claude-opus-5-5": 0},
   "manual": {"interventions": 0, "filterFalsePositives": 0, "guardBlocks": 0, "counts": {"fix": 0, "promote": 0, "continue": 0}, "eval": {"passed": 0, "total": 0}},
-  "skipped": {"badLines": 0, "longLines": 0, "outsideScope": 0, "noReflog": 0, "fallbackSessions": 0}
+  "skipped": {"badLines": 0, "longLines": 0, "outsideScope": 0, "noReflog": 0, "fallbackSessions": 0, "missingCwd": 0}
 }
 ```
 
 `codex`의 블록은 `claude`와 키가 같다. `manual.guardBlocks`는 `until`까지의 차단 기록 수다. schema 1(#4까지)과는
-`guardBlocks`만 다르다. `manual.counts`는 장부 `counts`의 작업별 값을 더한 것이고, 장부에 없는 값은 0이다.
+`guardBlocks`만 다르다. `skipped.missingCwd`는 #7에서 더했다. `manual.counts`는 장부 `counts`의 작업별 값을 더한 것이고, 장부에 없는 값은 0이다.
 
 `--line`은 공개용 한 줄을 낸다. 두 호스트와 메인·서브를 더한 값이고, 순서는 고정이다.
 

@@ -56,6 +56,7 @@
     제자리 로드, 범위.
   - [Plugin evals](https://code.claude.com/docs/en/plugin-evals): 플러그인 있을 때와 없을 때의 비교,
     `tool_used: Skill` 판정.
+  - [Worktrees](https://code.claude.com/docs/en/worktrees): 서브에이전트 worktree 격리의 기준 브랜치와 정리(M3, #28).
   - [Subagents](https://code.claude.com/docs/en/sub-agents): 메인과 서브에이전트의 선택 기준,
     재개와 `SendMessage`, 도구 필터.
   - [Hooks](https://code.claude.com/docs/en/hooks): exit 2와 거부만 막고 다른 오류와 시간 초과는 통과, Stop의 block,

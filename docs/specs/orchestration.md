@@ -49,8 +49,9 @@ architectural 경로의 계획은 대화를 보지 못한 엔지니어가 계획
 컨텍스트, 보고)이 편집보다 비싸기 때문이다(#25). 작업별 리뷰는 build의 기계적 변경 규칙을 따른다. 무인 실행은 작업마다
 새 컨텍스트가 필요하므로([자율 실행](ledger.md#자율-실행)) 이 예외가 없다.
 
-M3에서는 메인이 결과를 하나씩 머지하고, 머지할 때마다 전체 검사를 돌린다. M3는 아직 실제 사이클에서 쓰인 적이 없다
-([ADR-0015](../design/decisions/ADR-0015-paper-features.md)).
+M3에서는 Claude의 Agent 호출마다 `isolation: "worktree"`를 주어 구현 에이전트를 띄운다. 에이전트 정의에 넣으면 M2 위임까지
+worktree로 바뀌므로 정의에는 넣지 않는다. 메인이 결과를 하나씩 머지하고, 머지할 때마다 전체 검사를 돌린다(절차는 build
+reference). 첫 실사용은 #28이다([ADR-0015](../design/decisions/ADR-0015-paper-features.md)).
 
 ## 메인이 맡는 일
 

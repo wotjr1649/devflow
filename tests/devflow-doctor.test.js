@@ -258,6 +258,26 @@ test('local-merge repositories need the pre-push gate', () => {
   assert.ok(has(d, /^FAIL git-hooks: no \.githooks\/pre-push$/))
 })
 
+test('an unreadable ledger fails without also claiming there is none (#28 task review)', () => {
+  const d = repo({ ...GOOD, '.devflow.json': '{ "tests": ["tests/**"] }\n', 'tests/a.test.js': 'ok\n' })
+  git(d, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'a')
+  git(d, 'switch', '-q', '-c', 'fix/5-x')
+  const ledger = path.join(d, '.work/devflow/i5/ledger.json')
+  fs.mkdirSync(path.dirname(ledger), { recursive: true })
+  fs.writeFileSync(ledger, '{ broken')
+  assert.ok(has(d, /^FAIL tests: the ledger of Issue #5 cannot be read/))
+  assert.ok(!has(d, /^WARN tests: Issue #5 has no ledger/))
+})
+
+test('an absolute core.hooksPath naming this repository\'s .githooks is the same gate (#28)', () => {
+  // Claude Code rewrote the shared core.hooksPath to the main checkout's absolute .githooks when it made subagent worktrees.
+  const d = repo({ ...GOOD, '.devflow.json': '{ "integration": "local-merge" }\n', '.githooks/pre-push': '#!/bin/sh\n' })
+  git(d, 'config', 'core.hooksPath', path.join(d, '.githooks'))
+  assert.ok(!has(d, /^FAIL git-hooks/), 'the absolute path to this .githooks passes')
+  git(d, 'config', 'core.hooksPath', path.join(path.dirname(d), 'elsewhere', '.githooks'))
+  assert.ok(has(d, /^FAIL git-hooks: core\.hooksPath is not \.githooks$/), 'another folder still fails')
+})
+
 test('a CLAUDE.local.md makes Claude Code skip AGENTS.md even when git ignores it', () => {
   const d = repo()
   fs.writeFileSync(path.join(d, 'CLAUDE.local.md'), 'local notes\n')

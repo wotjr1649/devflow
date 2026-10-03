@@ -27,8 +27,14 @@ A change to a `.devflow.json` `highRisk` path gets one `reviewer` pass with the 
 [perspectives](perspectives.md), whatever the run mode.
 
 In M2 and M3 each task also gets a narrow review before the next starts: the `reviewer` with `model: sonnet`, given
-that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it. In M3
-the main session merges one worktree's result at a time and runs the full checks after each merge.
+that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it.
+
+M3 (Claude only) launches the implementers in the background with the Agent tool's `isolation: "worktree"` on each call,
+never in the agent definition, which would put M2 in worktrees too. Those worktrees start from the remote default branch,
+so a brief whose BASE is not on it begins with `git merge --ff-only <BASE>` in its worktree, and every brief asks for a
+commit there. The main session merges one result at a time into the Issue branch (fast-forward, then cherry-pick), runs
+the full checks after each merge, and removes each worktree and its branch once merged. Creating these worktrees has
+rewritten the shared `core.hooksPath` to an absolute path; doctor accepts that as the same gate.
 
 The main session keeps decisions, Issue writes, integration and the ledger; a subagent gets one task through a brief
 in the shape of [위임 지시서](../../../docs/specs/orchestration.md#위임-지시서). Models and effort come from

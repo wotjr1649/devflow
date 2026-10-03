@@ -29,8 +29,9 @@ disappear later, and `devflow-state` writes an Issue only from its branch. Rules
    evals/trigger` shows added, deleted or renamed skills and any changed eval case, and `git diff -U0 <base>..HEAD --
    'skills/*/SKILL.md'` shows changed frontmatter lines. When it is due, ask the user to run it in their terminal, since
    it cannot authenticate inside a session. Either way the ship checkpoint says whether it ran and why.
-4. From the Issue's work tree, run `devflow-metrics <issue>` (next to the `Tool:` command) and save its output as
-   `artifacts/metrics/i<issue>.json` in the main work tree.
+4. Once every delegation has finished (the ledger's `running` is empty), run `devflow-metrics <issue>` (next to the
+   `Tool:` command) from the Issue's work tree and save its output as `artifacts/metrics/i<issue>.json` in the main work
+   tree: the host writes subagent records late, so a delegation still running adds records before the saved `until`.
 5. Post the ship checkpoint with the line from `devflow-metrics <issue> --line --until <the saved until>`, replace the
    state block with `단계: done` and `남음: push 확인, 로컬 브랜치 정리`, and close the Issue.
 6. Integrate. If the push is refused, switch back to the Issue branch, reopen the Issue and set the state back: a failed

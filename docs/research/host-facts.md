@@ -68,6 +68,11 @@
 - 지원하는 필드: `name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`, `memory`,
   `background`, `omitClaudeMd`, `isolation: worktree`, `color`
 - 무시하는 필드: `permissionMode`, `hooks`, `mcpServers`, `initialPrompt`
+- worktree 격리는 Agent 호출마다 `isolation: "worktree"`로도 준다. 격리 worktree는 `.claude/worktrees/` 아래 새 브랜치로,
+  기본은 원격 기본 브랜치에서 갈라지고(`worktree.baseRef: "head"` 설정이면 지금 HEAD), 바뀐 것이 없으면 지워지고 바뀐 것이
+  있으면 남는다([Subagents](https://code.claude.com/docs/en/sub-agents), [Worktrees](https://code.claude.com/docs/en/worktrees)).
+  이 저장소에서 서브에이전트 worktree를 만든 뒤 공용 `core.hooksPath`가 `.githooks`에서 메인 체크아웃의 절대 경로로
+  바뀌어 있었다(#28, 2026-10-03 관찰, 문서에는 없음).
 - `agents/review/x.md`처럼 하위 폴더에 두면 이름이 `<plugin>:review:x`가 된다.
 - 호출의 `subagent_type`과 실행 기록의 `agentType`도 `devflow:implementer`처럼 플러그인 이름이 붙는다. 에이전트 종류로
   거르는 다른 플러그인의 훅(예: ponytail의 `PONYTAIL_SUBAGENT_MATCHER`)도 이 이름을 본다(2026-10-01).

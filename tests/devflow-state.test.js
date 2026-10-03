@@ -657,6 +657,25 @@ test('modeChanged cannot be forged and the card shows only a well-formed one (#3
   assert.equal(state.main(['mode', '1', 'interactive'], () => 'back', env(plain), '.').code, 1)
 })
 
+test('ledger-update checks the values of the keys the router and the Stop hook read (#34)', () => {
+  const root = repo({ ledger: { stage: 'build', path: 'bounded', mode: 'interactive' } })
+  const up = patch => state.main(['ledger-update', '1'], () => JSON.stringify(patch), env(root), '.')
+  // Seen in another repository: the branch written where the lifecycle path belongs.
+  const branch = up({ path: 'fix/251-empty-reply-native-retry' })
+  assert.equal(branch.code, 1)
+  assert.match(branch.out, /path is the lifecycle path \(spike, bounded or architectural\), not a branch/)
+  assert.match(up({ stage: 'coding' }).out, /stage is one of discover, start/)
+  assert.match(up({ runMode: 'M5' }).out, /runMode starts with M0 to M4/)
+  assert.match(up({ task: { current: 1 } }).out, /task is \{current, total\}/)
+  assert.match(up({ task: { current: -1, total: 2 } }).out, /task is \{current, total\}/)
+  for (const ok of [{ path: 'architectural' }, { stage: 'done' }, { runMode: 'M2 for task 1, M1 otherwise' }, { task: { current: 3, total: 2 } }, { notes: [] }]) {
+    assert.equal(up(ok).code, 0, JSON.stringify(ok))
+  }
+  // A new ledger: mode is checked too.
+  const fresh = repo()
+  assert.match(state.main(['ledger-update', '1'], () => '{"mode":"auto"}', env(fresh), '.').out, /mode is interactive or autonomous/)
+})
+
 test('metric refuses another Issue, unknown metrics and an empty note', () => {
   const root = repo()
   assert.match(state.metric(env(root), '.', 7, 'interventions', 'x').out, /only to the branch's Issue #1/)

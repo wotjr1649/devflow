@@ -5,7 +5,8 @@
 
 ## 작업 장부 키
 
-`devflow-state ledger-update`와 키별 전용 명령으로 쓰고 재개 카드와 Stop 훅이 읽는다.
+`devflow-state ledger-update`와 키별 전용 명령으로 쓰고 재개 카드와 Stop 훅이 읽는다. `ledger-update`는 `stage`, `path`,
+`runMode`, `mode`, `task`의 값을 아래 정의대로 검사해 틀리면 거부한다(#34). 단계는 lifecycle의 11단계와 ship 뒤의 `done`이다.
 
 | 키 | 담는 것 |
 |---|---|

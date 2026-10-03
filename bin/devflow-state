@@ -1113,6 +1113,24 @@ function mode(env, cwd, n, value, reason) {
   return r.ok ? { code: 0, out: `mode ${value}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
+// The keys the router and the Stop hook decide by take only the values docs/specs/ledger.md defines (Issue #34): another
+// repository's agent wrote branch names into path. Other keys are taken as sent.
+const STAGES = ['discover', 'start', 'design', 'plan', 'ready', 'build', 'verify', 'review', 'ship', 'cleanup', 'learn', 'done']
+const count = v => Number.isInteger(v) && v >= 0
+function ledgerValueError(patch) {
+  if ('stage' in patch && !STAGES.includes(patch.stage)) return `stage is one of ${STAGES.join(', ')}; got ${JSON.stringify(patch.stage)}`
+  if ('path' in patch && !['spike', 'bounded', 'architectural'].includes(patch.path)) {
+    return `path is the lifecycle path (spike, bounded or architectural), not a branch; got ${JSON.stringify(patch.path)}`
+  }
+  if ('runMode' in patch && !(typeof patch.runMode === 'string' && /^M[0-4](?![0-9])/.test(patch.runMode))) {
+    return `runMode starts with M0 to M4 (docs/specs/orchestration.md, 실행 모드); got ${JSON.stringify(patch.runMode)}`
+  }
+  if ('task' in patch && !(patch.task && typeof patch.task === 'object' && count(patch.task.current) && count(patch.task.total))) {
+    return 'task is {current, total}, two whole numbers from 0'
+  }
+  return null
+}
+
 // Locks the project's test files for a fix once its reproduction test is written: the hook then refuses edits to them
 // and doctor reports any that changed since the commit recorded here (Issue #20). Unlocking takes a reason, kept in notes.
 const TESTS_USAGE = 'usage: devflow-state tests <issue> lock | tests <issue> unlock < reason'
@@ -1294,6 +1312,8 @@ function command(argv, stdin, env, cwd) {
         return { code: 1, out: 'refused: testsLocked changes only through devflow-state tests <issue> lock|unlock' }
       }
       // Queued posts are devflow-state's own; replacing them would drop public writes waiting for the user (Issue #27).
+      const wrong = patch && typeof patch === 'object' ? ledgerValueError(patch) : 'a ledger update is a JSON object'
+      if (wrong) return { code: 1, out: `refused: ${wrong}` }
       if (patch && typeof patch === 'object' && 'modeChanged' in patch) {
         return { code: 1, out: 'refused: modeChanged is written only by devflow-state mode' }
       }
@@ -1304,6 +1324,10 @@ function command(argv, stdin, env, cwd) {
       const r = updateLedger(ctx.store, n, ledger => {
         if ('mode' in patch && fs.existsSync(ledgerPath(ctx.store, n))) {
           return { result: { refused: 'refused: mode changes only through devflow-state mode <issue> autonomous|interactive < reason' } }
+        }
+        // A new ledger may set mode, to one of its two values (Issue #34).
+        if ('mode' in patch && !['interactive', 'autonomous'].includes(patch.mode)) {
+          return { result: { refused: `refused: mode is interactive or autonomous; got ${JSON.stringify(patch.mode)}` } }
         }
         const old = Array.isArray(ledger.notes) ? ledger.notes : []
         if ('notes' in patch && (!Array.isArray(patch.notes) || old.some((line, k) => patch.notes[k] !== line))) return { result: ZERO }

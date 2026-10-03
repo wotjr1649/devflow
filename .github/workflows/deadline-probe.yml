@@ -10,9 +10,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
         node: [22, 24]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -20,12 +19,16 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node }}
-      - run: git config --global user.name ci && git config --global user.email ci@example.invalid
-      - run: node .github/probe/deadline.cjs 20
-      # Under load, as in the CI failures: the whole suite runs its files in parallel beside the probe.
-      - run: git config core.hooksPath .githooks
+      - run: git config --global user.name ci && git config --global user.email ci@example.invalid && git config core.hooksPath .githooks
+      # A watchdog prints every gap over half a second between 100 ms ticks: a gap there means the whole machine stalled.
       - run: |
+          node -e "let p=Date.now();setInterval(()=>{const n=Date.now();if(n-p>500)console.log('gap',n-p,new Date(n).toISOString());p=n},100)" > gaps.log &
+          W=$!
+          echo "== alone"; node .github/probe/deadline.cjs 40
+          echo "== loaded"
           (node --test --test-timeout=120000 tests/*.test.js > /dev/null 2>&1 || true) &
-          node .github/probe/deadline.cjs 20
-          wait
+          node .github/probe/deadline.cjs 40
+          wait %2 2>/dev/null || true
+          kill $W
+          echo "== gaps"; cat gaps.log
         shell: bash

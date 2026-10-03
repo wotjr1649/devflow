@@ -941,10 +941,12 @@ const timing = (phase, extra = '') => {
 }
 
 function main(inProcess = false) {
+  if (!inProcess) timing('loaded', ` uptime=${Math.round(process.uptime() * 1000)}`)
   let raw = ''
   try {
     raw = fs.readFileSync(0, 'utf8')
   } catch {}
+  if (!inProcess) timing('stdin', ` bytes=${raw.length}`)
   let out
   let input
   try { input = JSON.parse(raw) } catch {}

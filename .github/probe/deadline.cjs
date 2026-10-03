@@ -15,13 +15,14 @@ const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash',
 const totals = []
 for (let i = 0; i < runs; i++) {
   const t = Date.now()
+  const at = new Date(t).toISOString()
   const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', hook], {
     cwd: d, input, encoding: 'utf8', timeout: 30000, env: { ...process.env, DEVFLOW_HOOK_TIMING: '1' },
   })
   const ms = Date.now() - t
   totals.push(ms)
   const phases = (r.stderr || '').split('\n').filter(l => l.startsWith('devflow-timing')).map(l => l.slice(15)).join(' | ')
-  console.log(`run ${i + 1}: total ${ms} ms, status ${r.status}, deny ${/"deny"/.test(r.stdout || '')} :: ${phases}`)
+  console.log(`run ${i + 1} @${at}: total ${ms} ms, status ${r.status}, deny ${/"deny"/.test(r.stdout || '')} :: ${phases}`)
 }
 totals.sort((a, b) => a - b)
 console.log(`min ${totals[0]} median ${totals[Math.floor(totals.length / 2)]} max ${totals[totals.length - 1]}`)

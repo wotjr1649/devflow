@@ -729,7 +729,10 @@ function findCriteria(body) {
 const criterionKey = s => s.replace(/\s+/g, ' ').trim()
 // Every task-list form GitHub renders as a checkbox, nested markers and quotes included. A list marker comes right
 // before the box; each repeat starts with a marker or ">", never with a space, so a long line matches in linear time.
-const CHECKED_TASK = /^([ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+|>[ \t]*)*(?:[-*+]|\d+[.)])[ \t]+)\[[xX]\]/gm
+const TASK = /^([ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+|>[ \t]*)*(?:[-*+]|\d+[.)])[ \t]+)/.source
+const CHECKED_TASK = new RegExp(TASK + /\[[xX]\]/.source, 'gm')
+// Any whitespace but a line break counts as unchecked, so close errs toward refusing (Issue #28).
+const OPEN_TASK = new RegExp(TASK + /\[[^\S\n]\]/.source, 'm')
 const UNPLAIN = 'the "## 수용 기준" section is not plain "- [ ]" lines (a comment, code, HTML, an entity, an invisible character, ' +
   'a nested or indented item, an odd line break, another heading like it above, or boxes read does not show); replace the ' +
   'intent with plain criteria first'
@@ -827,7 +830,7 @@ function post(ctx, op, n, text, title) {
     const c = criteria(body)
     if (c && !c.plain) return { code: 1, out: `refused: ${UNPLAIN}${whyText(c.why)}`, guard: 'state-criteria-unplain' }
     // Without a plain "## 수용 기준", a loose heading must not hide unchecked boxes.
-    if (!c && /^[ \t]*[-*+] \[ \]/m.test(body)) {
+    if (!c && OPEN_TASK.test(body)) {
       return { code: 1, out: 'refused: the Issue has unchecked boxes ("- [ ]", in code too) but no plain "## 수용 기준" section; put its criteria under that heading first', guard: 'state-close-unchecked' }
     }
     const open = c ? c.boxes.findIndex(b => body[b.at] === ' ') : -1

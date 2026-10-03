@@ -748,6 +748,24 @@ test('close refuses while an acceptance criterion is unchecked (#27)', () => {
   assert.equal(ghWrites(loose).length, 0)
 })
 
+test('close without a plain criteria section refuses every task-list form GitHub renders unchecked (#28)', () => {
+  const forms = ['1. [?] b', '1) [?] b', '> - [?] b', '> 1. [?] b', '> > - [?] b', '-  [?] b', '- \t[?] b', '  * [?] b', '>- [?] b', '- [x] a\n  12) [?] b']
+  const closed = c => form => {
+    const e = env(repo(), { data: issue({ body: `## 문제\nx\n\n### 수용 기준:\n${form.replace('?', c)}\n\n${block()}\n` }) })
+    return { r: state.write(e, '.', 'close', 1), writes: ghWrites(e).length }
+  }
+  for (const form of forms) {
+    const { r, writes } = closed(' ')(form)
+    assert.equal(r.code, 1, form)
+    assert.match(r.out, /^refused: the Issue has unchecked boxes/, form)
+    assert.equal(writes, 0, form)
+  }
+  for (const form of forms) {
+    for (const c of ['x', 'X']) assert.equal(closed(c)(form).r.code, 0, `${form} with ${c}`)
+  }
+  assert.equal(closed(' ')('1. b\n> - b\n- [y] b').r.code, 0, 'no boxes')
+})
+
 test('intent replaces the whole body when there is no state block, and skips an unchanged intent', () => {
   const e = env(repo(), { data: issue({ body: '## 문제\n손으로 쓴 Issue\n' }) })
   assert.equal(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one'])).code, 0)

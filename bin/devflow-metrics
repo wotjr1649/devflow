@@ -156,14 +156,16 @@ function firstCheckout(ctx, issue) {
 
 const mtimeOf = p => { try { return fs.lstatSync(p).mtimeMs } catch { return 0 } }
 // Whether a record's cwd is a folder now, inside work tree w: a worktree removed after the cycle leaves its path to the
-// enclosing work tree, whose reflog would claim its records. Each step from w down is a real folder; a link or junction
-// counts as absent, so record text never sends a lookup through a link (to a network share, say). Asked once per path.
+// enclosing work tree, whose reflog would claim its records. w's own path comes from git and may be reached through a
+// link; each step below it is a real folder, a link or junction counting as absent, so record text never sends a lookup
+// through a link (to a network share, say). Asked once per path.
 const presence = () => {
   const seen = new Map()
   return (p, w) => {
     if (!seen.has(p)) {
       let cur = path.resolve(w.path)
-      let ok = isDir(cur)
+      let ok = false
+      try { ok = fs.statSync(cur).isDirectory() } catch {}
       for (const part of path.relative(cur, path.resolve(p)).split(path.sep).filter(Boolean)) {
         if (!ok) break
         cur = path.join(cur, part)

@@ -144,8 +144,9 @@ PreToolUse 분석은 별도 프로세스에서 최대 5초로 제한하고, 기�
 초과·잘못된 JSON 구조는 읽을 수 없는 프로필로 처리한다. 이때 셸과 편집 도구 모두 `.devflow.json` 복구만 허용하며,
 일반 읽기는 허용한다. 읽는 동안 파일이 교체되거나 커져도 종류·동일 파일·읽기 크기 검사를 우회하지 못해야 한다.
 
-CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업 트리가 깨끗하고 push하는 커밋이 HEAD일 때만 `verify`를
-돌리고, 실패하면 push를 막는다. 이 관문이 통합 때의 검사 기록을 대신한다. 훅을 켜는 `git config core.hooksPath .githooks`는
+`local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업 트리가 깨끗하고 push하는 커밋이 HEAD일 때만 `verify`를
+돌리고, 실패하면 push를 막는다. 이 관문이 통합 때의 검사 기록을 대신한다. CI가 있어도 정보용이면(devflow 저장소의
+Linux·macOS 실행) 관문은 이 훅이다. 훅을 켜는 `git config core.hooksPath .githooks`는
 클론마다 하고(호스트 설정이 아닌 저장소 설정이지만 훅을 켜는 일이라 소유자 지시로 한다), 훅이 꺼진 클론에서는 통합
 커밋에 검사 줄을 쓴다.
 

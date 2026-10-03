@@ -1,0 +1,26 @@
+# Runs doctor and the tests on Linux and macOS for information; the integration gate is the local pre-push hook (ADR-0004).
+name: test
+# Any push: devflow pushes main, and an Issue branch only to see this run before integrating.
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      # doctor expects the tracked pre-push gate to be enabled, and the tests make commits in temporary repositories.
+      - run: git config core.hooksPath .githooks
+      - run: git config --global user.name ci && git config --global user.email ci@example.invalid
+      - run: node bin/devflow-doctor
+      - run: node --test --test-timeout=120000 tests/*.test.js

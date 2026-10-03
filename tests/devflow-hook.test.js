@@ -705,6 +705,14 @@ test('hook input that never finishes arriving is denied for a tool call within t
   assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, 'deny')
 })
 
+test('stalled input that has not yet named its event is denied, failing closed (#37 review)', async () => {
+  for (const partial of ['', '{"tool_name":"Bash","tool_input":{"command":"gh issue close 1"']) {
+    const r = await startHook(partial)
+    assert.equal(r.killed, false, JSON.stringify(partial))
+    assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, 'deny', JSON.stringify(partial))
+  }
+})
+
 test('stalled input for another event ends with no output (#37)', async () => {
   const r = await startHook('{"hook_event_name":"SessionStart","cwd":"x"')
   assert.equal(r.killed, false)

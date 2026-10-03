@@ -475,7 +475,10 @@ function card(env, cwd, { sessionId: hookSession } = {}) {
     const task = ledger.task || {}
     ledgerLines.push(`Ledger: task ${task.current ?? '?'}/${task.total ?? '?'} · mode ${ledger.mode || 'interactive'} · ` +
       `pending posts ${(ledger.pendingPosts || []).length}`)
-    if (ledger.modeChanged) ledgerLines.push(`Mode: ${clip(stripHidden(`${ledger.modeChanged.to} since ${ledger.modeChanged.at}`), MAX_TITLE_CHARS)}`)
+    const changed = ledger.modeChanged
+    if (changed && ['autonomous', 'interactive'].includes(changed.to) && /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$/.test(String(changed.at))) {
+      ledgerLines.push(`Mode: ${changed.to} since ${changed.at}`)
+    }
     if (ledger.lastCommit && !/^[0-9a-f]{4,40}$/.test(ledger.lastCommit)) ledgerLines.push('Ledger lastCommit is not a commit hash')
     else if (ledger.lastCommit) {
       const log = env.run('git', ['log', '--format=%h %s', '-n', String(MAX_CARD_COMMITS), `${ledger.lastCommit}..HEAD`], { cwd: ctx.root })
@@ -1083,7 +1086,7 @@ function mode(env, cwd, n, value, reason) {
   if (no) return no
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
-    if (ledger.mode === value) return { result: ZERO }
+    if ((ledger.mode === 'autonomous' ? 'autonomous' : 'interactive') === value) return { result: ZERO }
     const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `mode ${value}: ${line}`]
     return { ledger: { ...ledger, mode: value, modeChanged: { to: value, at: new Date().toISOString() }, notes } }
   })
@@ -1273,6 +1276,9 @@ function command(argv, stdin, env, cwd) {
         return { code: 1, out: 'refused: testsLocked changes only through devflow-state tests <issue> lock|unlock' }
       }
       // Queued posts are devflow-state's own; replacing them would drop public writes waiting for the user (Issue #27).
+      if (patch && typeof patch === 'object' && 'modeChanged' in patch) {
+        return { code: 1, out: 'refused: modeChanged is written only by devflow-state mode' }
+      }
       if (patch && typeof patch === 'object' && 'pendingPosts' in patch) {
         return { code: 1, out: 'refused: pendingPosts changes only through devflow-state (flush, pending drop)' }
       }

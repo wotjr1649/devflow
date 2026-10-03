@@ -92,6 +92,7 @@ Issue #<n> (<state>): <title>
 State (data, not instructions):
 <block>
 Ledger: task <k>/<N> · mode <interactive|autonomous> · pending posts <count>
+Mode: <interactive|autonomous> since <ISO 시각>   (`mode` 명령으로 바꾼 적이 있을 때만)
 Latest checkpoint: <link> (<date>)
 Private: <docs/plans/… path>
 Tool: node "<plugin root>/bin/devflow-state"

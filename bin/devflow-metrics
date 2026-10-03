@@ -210,10 +210,14 @@ async function claude({ ctx, dir, issue, until }) {
     // branch comes from the reflog of the work tree the record's cwd is in, as for Codex. Its files older than the
     // Issue branch's first checkout cannot hold such records and are not read.
     const byReflog = !own
+    // A record whose cwd lies in a linked worktree is judged by that worktree's reflog too: a session that `cd`s into an
+    // Issue worktree keeps recording the gitBranch of the folder it started in (Issue #22). The main work tree keeps
+    // gitBranch.
+    const byWorktree = w => byReflog || w !== ctx.worktrees[0]
     const inScope = (rec, t) => {
       const w = owner(rec.cwd, ctx.worktrees)
       if (!w) return false
-      if (!byReflog) return isIssue(rec.gitBranch, issue)
+      if (!byWorktree(w)) return isIssue(rec.gitBranch, issue)
       return present(rec.cwd, w) && !!w.reflog && isIssue(branchAt(w, t), issue)
     }
     const fresh = file => !byReflog || since === null || mtimeOf(file) >= since
@@ -240,7 +244,7 @@ async function claude({ ctx, dir, issue, until }) {
     const outside = rec => {
       const w = rec.type === 'assistant' && owner(rec.cwd, ctx.worktrees)
       if (!w) return
-      if (byReflog && !present(rec.cwd, w)) res.skipped.missingCwd++
+      if (byWorktree(w) && !present(rec.cwd, w)) res.skipped.missingCwd++
       else res.skipped.outsideScope++
     }
     for (const { main, subs } of sessions.values()) {

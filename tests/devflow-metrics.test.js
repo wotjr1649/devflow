@@ -262,6 +262,22 @@ test('a session started above the repository with a cwd that is gone is out of s
   assert.equal(report.skipped.outsideScope, 1)
 })
 
+test('a Claude session that works in a linked worktree is judged by that worktree, whatever gitBranch it records (#22)', async () => {
+  const root = gitRepo()
+  const wt = path.join(path.dirname(root), 'wt22')
+  git(root, 200, 'worktree', 'add', '-q', '-b', 'fix/4-wt', wt)
+  const home = tmp('dfm-c-')
+  // Started in the main work tree on main, then a `cd` into the Issue worktree: every record keeps gitBranch "main".
+  write(path.join(claudeFolder(home, root), 's.jsonl'), [
+    cl.assistant(300, { id: 'w1', cwd: wt, branch: 'main' }),
+    cl.assistant(310, { id: 'w2', cwd: path.join(wt, 'sub'), branch: 'main' }),
+    cl.assistant(320, { id: 'm1', cwd: root, branch: 'main' }),
+  ])
+  fs.mkdirSync(path.join(wt, 'sub'))
+  const { c } = await measure(root, { claude: home })
+  assert.equal(c.main.calls, 2, 'the worktree records count; the main tree record keeps its gitBranch verdict')
+})
+
 test('the ledger is read from the main work tree first, even from a worktree holding an old copy (#14)', async () => {
   const root = gitRepo()
   fs.writeFileSync(path.join(root, '.devflow.json'), '{}')

@@ -44,7 +44,9 @@ const USAGE = `usage: devflow-state <command>
   note <n> < line             append one line to the ledger's notes
   release <n>                 when handing the Issue to another session: stop warning it about this one
   pending | flush             queued posts; flush posts them once the ledger is interactive
-  metric <n> <key> < note     add one to interventions or filterFalsePositives in the ledger, with a note line
+  metric <n> <key> [--undo] < note
+                              add one to interventions or filterFalsePositives in the ledger, with a note line;
+                              --undo takes one back (never below 0)
 Issue writes go only to the branch's Issue (create excepted), and text with local paths, secrets, hidden
 characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.
 Ledger writes off an Issue branch (cleanup on main) take the Issue number; note and metric need its ledger
@@ -834,6 +836,7 @@ const NO_LEDGER = n => ({ code: 1, out: `refused: no ledger for Issue #${n} here
 // Rechecked under the lock: a ledger removed after ledgerGate looked is not brought back holding one line. Its folder,
 // if removed in that window too, comes back empty: withLock creates it to hold the lock.
 const MISSING = Symbol('missing ledger')
+const ZERO = Symbol('nothing to undo')
 const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.store, n))
 
 function write(env, cwd, op, n, text = '', title, opts = {}) {
@@ -876,20 +879,24 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
 
 // Adds one to a manual metric and appends its note in one step, so an agent never rewrites the ledger by hand to count.
 const METRICS = new Set(['interventions', 'filterFalsePositives'])
-function metric(env, cwd, n, key, note) {
+// undo takes one back, with its reason in notes, for a count that turned out wrong (Issue #22); never below zero.
+function metric(env, cwd, n, key, note, { undo = false } = {}) {
   const line = String(note || '').trim().split(/\r?\n/)[0].trim()
-  if (!METRICS.has(key) || !line) return { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives < note' }
+  if (!METRICS.has(key) || !line) return { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives [--undo] < note' }
   const ctx = repoContext(env, cwd)
   const no = ledgerGate(ctx, n, 'metrics', { append: true })
   if (no) return no
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
     const metrics = { ...(ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}) }
-    metrics[key] = (Number.isInteger(metrics[key]) ? metrics[key] : 0) + 1
-    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${key} +1: ${line}`]
+    const now = Number.isInteger(metrics[key]) ? metrics[key] : 0
+    if (undo && now <= 0) return { result: ZERO }
+    metrics[key] = now + (undo ? -1 : 1)
+    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${key} ${undo ? '-1' : '+1'}: ${line}`]
     return { ledger: { ...ledger, metrics, notes }, result: metrics[key] }
   })
   if (r.ok && r.result === MISSING) return NO_LEDGER(n)
+  if (r.ok && r.result === ZERO) return { code: 1, out: `refused: ${key} is already 0 for Issue #${n}` }
   return r.ok ? { code: 0, out: `${key} ${r.result}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
@@ -1054,7 +1061,10 @@ function command(argv, stdin, env, cwd) {
     case 'flush':
       return flush(env, cwd)
     case 'metric':
-      return num(rest[0]) ? metric(env, cwd, num(rest[0]), rest[1], input()) : { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives < note' }
+      if (!num(rest[0]) || rest.length > 3 || (rest[2] !== undefined && rest[2] !== '--undo')) {
+        return { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives [--undo] < note' }
+      }
+      return metric(env, cwd, num(rest[0]), rest[1], input(), { undo: rest[2] === '--undo' })
     default:
       return { code: 2, out: USAGE }
   }

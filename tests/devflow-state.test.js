@@ -359,6 +359,20 @@ test('metric adds one to a ledger metric and appends its note, keeping the other
   assert.equal(state.metric(env(root), '.', 1, 'filterFalsePositives', 'hook blocked a read').out, 'filterFalsePositives 3')
 })
 
+test('metric --undo takes one back with its reason, and never goes below zero (#22)', () => {
+  const root = repo()
+  const e = env(root)
+  assert.equal(state.main(['metric', '1', 'filterFalsePositives'], () => 'counted a reviewer remark', e, '.').code, 0)
+  const r = state.main(['metric', '1', 'filterFalsePositives', '--undo'], () => 'a reviewer agent is not a devflow device', e, '.')
+  assert.deepEqual(r, { code: 0, out: 'filterFalsePositives 0' })
+  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  assert.equal(ledger.metrics.filterFalsePositives, 0)
+  assert.equal(ledger.notes[ledger.notes.length - 1], 'filterFalsePositives -1: a reviewer agent is not a devflow device')
+  const zero = state.main(['metric', '1', 'filterFalsePositives', '--undo'], () => 'again', e, '.')
+  assert.equal(zero.code, 1)
+  assert.match(zero.out, /already 0/)
+})
+
 test('metric refuses another Issue, unknown metrics and an empty note', () => {
   const root = repo()
   assert.match(state.metric(env(root), '.', 7, 'interventions', 'x').out, /only to the branch's Issue #1/)

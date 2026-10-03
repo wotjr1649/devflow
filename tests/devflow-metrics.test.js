@@ -234,6 +234,18 @@ test('a cwd reached through a link inside the work tree is not followed and coun
   assert.equal(x.skipped.missingCwd, 1)
 })
 
+test('a cwd segment Win32 would trim (".. ") does not reach the parent folder: lstat takes it literally (#7 security review)', async t => {
+  if (!process.platform.startsWith('win')) return t.skip('Windows trims trailing dots and spaces only there')
+  const root = gitRepo()
+  // "<root>\.. \<repo>" names the repository itself once Windows trims ".. " to "..".
+  const cwd = path.join(root, '.. ', path.basename(root))
+  const home = tmp('dfm-x-')
+  rollout(home, 'a', [cx.meta(250, cwd), cx.turn(250, cwd), cx.usage(300, 'r1')])
+  const { x } = await measure(root, { codex: home })
+  assert.equal(x.main.calls, 0)
+  assert.equal(x.skipped.missingCwd, 1)
+})
+
 test('a session started above the repository with a cwd that is gone is out of scope, and so are the subagent spans it parents (#7)', async () => {
   const root = gitRepo()
   const other = path.join(root, '.claude', 'worktrees', 'i5')

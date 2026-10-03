@@ -42,8 +42,8 @@ codex plugin add devflow@devflow < /dev/null
 node bin/devflow-install-check --ref main ../devflow-deploy ~/.codex/plugins/cache/devflow/devflow/0.1.0
 ```
 
-Claude needs `/reload-plugins` when skills, agents or hook definitions change; each hook call starts a new `node`
-process that loads the hook script (`hooks/hooks.json`), so a script change applies at once.
+Claude picks up edits to the plugin with `/reload-plugins`; each hook call starts a new `node` process that loads the
+hook script (`hooks/hooks.json`), so a script change applies at once.
 Codex does not ask to trust the hooks again when only the hook scripts change; the trust is recorded per entry of
 `hooks/hooks.json`.
 

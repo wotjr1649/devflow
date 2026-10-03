@@ -86,6 +86,38 @@ test('contracts and decisions may live in other folders the profile names (#23)'
   assert.deepEqual(failures(repo(none)), [])
 })
 
+test('#23 review: folder values are normalised, instruction files take no exception, user homes stay caught', () => {
+  const { 'docs/specs/a.md': spec, 'docs/design/decisions/ADR-0001-b.md': adr, ...rest } = GOOD
+  const big = '가'.repeat(5200) + '\n'
+  // A trailing slash still names the folder, and its budget still applies.
+  const slash = { ...GOOD, '.devflow.json': '{ "specs": "docs/specs/" }\n', 'docs/specs/big.md': big }
+  assert.ok(has(repo(slash), /^FAIL docs: docs\/specs\/big\.md: ~\d+ tokens, budget 5000$/))
+  for (const v of ['"./docs/specs"', '"docs\\\\specs"', '"."']) {
+    assert.ok(has(repo({ ...rest, '.devflow.json': `{ "specs": ${v} }\n` }), /^FAIL profile: specs/), v)
+  }
+  assert.ok(has(repo({ ...GOOD, '.devflow.json': '{ "specs": "AGENTS.md" }\n' }), /^FAIL folders: missing AGENTS\.md \(not a folder\)|^FAIL folders: .*AGENTS\.md/))
+  // allowLocalPaths does not reach instruction files.
+  const sys = ['C', '\\Program Files\\Tool'].join(':')
+  const agents = { ...GOOD, 'AGENTS.md': GOOD['AGENTS.md'] + `- tool: ${sys}\n`, '.devflow.json': '{ "allowLocalPaths": ["**"] }\n' }
+  assert.ok(has(repo(agents), /^FAIL docs: AGENTS\.md:\d+: local absolute path$/))
+  // User homes without a trailing slash, and WSL forms, are caught in a listed file.
+  const listed = '{ "allowLocalPaths": ["src/*"] }\n'
+  for (const p of ['/home/alice', 'HOME=/Users/alice', '/mnt/c/Users/alice', ['\\\\wsl$', 'Ubuntu', 'home', 'alice'].join('\\')]) {
+    assert.ok(has(repo({ ...GOOD, '.devflow.json': listed, 'src/a.txt': `p = ${p}\n` }), /^FAIL docs: src\/a\.txt:1: local absolute path$/), p)
+  }
+})
+
+test('#23 review: working-tree CRLF is only a warning when git will store LF, and a tracked Agents.md is caught', () => {
+  // No normalising attribute and core.autocrlf=false: the CRLF edit would be committed as is.
+  const d = repo({ ...GOOD, '.gitattributes': '*.png binary\n' })
+  git(d, 'config', 'core.autocrlf', 'false')
+  fs.writeFileSync(path.join(d, 'docs/specs/a.md'), GOOD['docs/specs/a.md'].replace(/\n/g, '\r\n'))
+  assert.ok(has(d, /^FAIL docs: docs\/specs\/a\.md: CRLF line ending$/))
+  const { 'AGENTS.md': agents, ...rest } = GOOD
+  const e = repo({ ...rest, 'Agents.md': agents, '.devflow.json': '{ "agentsMd": "private" }\n' })
+  assert.ok(has(e, /^FAIL agents-md: .*private.*tracked/))
+})
+
 test('a repository that follows the standard is ok', () => {
   const lines = findings(repo())
   assert.deepEqual(lines.filter(l => /^(FAIL|WARN)/.test(l)), [])

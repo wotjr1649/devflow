@@ -27,11 +27,14 @@ const MAX_LINES_PER_RULE = 3
 const PRIVATE_NAME =/^\d{4}-\d{2}-\d{2}-i\d+-[a-z0-9-]+-(prompt|plan|handoff)\.md$/
 const LOCAL_PATH = /\b[A-Za-z]:[\\/]|(?:^|[\s'"`(=])\/[a-z]\/[^\s/]+\/|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//
 // What a file in allowLocalPaths may still not hold: a path under a user's home names that user (#23).
-const USER_PATH = /\b[A-Za-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+[^\\/\s"'`]+|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//i
+const USER_PATH = /\b[A-Za-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+[^\\/\s"'`]+|(?:^|[^\w.-])\/(?:home|Users)\/[^/\s"'`]+|\/mnt\/[a-z]\/Users\/[^/\s"'`]+|\\\\wsl\$\\[^\\\s]+\\home\\[^\\\s"'`]+/i
+// Instruction files an agent loads never take an allowLocalPaths exception.
+const INSTRUCTION = /(^|\/)(AGENTS|CLAUDE|CLAUDE\.local|SKILL)\.md$|^agents\/[^/]+\.md$/i
 const globToRegExp = g => new RegExp('^' + g.split('**').map(part => part.split('*').map(x => x.replace(/[.+^${}()|[\]\\?]/g, '\\$&')).join('[^/]*')).join('.*') + '$')
 const matchesGlob = (file, glob) => (path.posix.matchesGlob ? path.posix.matchesGlob(file, glob) : globToRegExp(glob).test(file))
 // A folder the profile names: relative, inside the repository, forward slashes.
-const insideFolder = v => typeof v === 'string' && v !== '' && !path.isAbsolute(v) && !/^[A-Za-z]:/.test(v) && !v.split(/[\\/]/).includes('..')
+const insideFolder = v => typeof v === 'string' && !/[\\:]/.test(v) && !v.startsWith('/') &&
+  v.replace(/\/+$/, '').split('/').every(part => part !== '' && part !== '.' && part !== '..')
 const EMPHASIS = /\b(MUST|CRITICAL|EXTREMELY|IMPORTANT|NEVER|ALWAYS)\b/g
 const READ_LIST = /\b(read (this |these |the following )?(files )?first|always read|before (every|each) (edit|change|task)[^.\n]*read)\b/i
 const DATED = /\b20\d\d-\d\d-\d\d\b|\b(in progress|work in progress|TODO)\b|진행 중/
@@ -82,8 +85,9 @@ function doctor(dir, { only } = {}) {
   if (profile.integration !== undefined && !INTEGRATIONS.includes(profile.integration)) {
     fail('profile', `integration is "${profile.integration}", not one of ${INTEGRATIONS.join(', ')}`)
   }
-  const specsDir = profile.specs === undefined ? 'docs/specs' : profile.specs
-  const decisionsDir = profile.decisions === undefined ? 'docs/design/decisions' : profile.decisions
+  const folderOf = (v, fallback) => (v === undefined ? fallback : typeof v === 'string' ? v.replace(/\/+$/, '') : v)
+  const specsDir = folderOf(profile.specs, 'docs/specs')
+  const decisionsDir = folderOf(profile.decisions, 'docs/design/decisions')
   for (const [key, v] of [['specs', specsDir], ['decisions', decisionsDir]]) {
     if (v !== false && !insideFolder(v)) fail('profile', `${key} must be a folder inside the repository, or false`)
   }
@@ -92,7 +96,8 @@ function doctor(dir, { only } = {}) {
   if (!Array.isArray(allowLocalPaths) || allowLocalPaths.some(g => typeof g !== 'string')) {
     fail('profile', 'allowLocalPaths is a list of path globs')
   }
-  const localPathAllowed = f => Array.isArray(allowLocalPaths) && allowLocalPaths.some(g => typeof g === 'string' && matchesGlob(f, g))
+  const localPathAllowed = f => !INSTRUCTION.test(f) && Array.isArray(allowLocalPaths) &&
+    allowLocalPaths.some(g => typeof g === 'string' && matchesGlob(f, g))
   const privatePaths = profile.private || PRIVATE
   const isPrivate = f => privatePaths.some(p => f === p.replace(/\/$/, '') || f.startsWith(p))
   // What .gitattributes says about each file: binary content is not text, and eol=crlf (*.cmd, *.bat) is meant to be CRLF.
@@ -100,14 +105,20 @@ function doctor(dir, { only } = {}) {
   const binary = new Set(eol.filter(([info]) => /attr\/-text/.test(info)).map(([, f]) => f))
   const crlf = new Set(eol.filter(([info]) => /attr\/.*eol=crlf/.test(info)).map(([, f]) => f))
   // Files git stores with LF: CRLF in the working tree is then a checkout setting (core.autocrlf), not the repository (#23).
-  const storedLf = new Set(eol.filter(([info]) => /\bi\/lf\b/.test(info)).map(([, f]) => f))
+  const autocrlf = /^(true|input)$/i.test((git(root, ['config', 'core.autocrlf']) || '').trim())
+  const normalises = info => /attr\/\S*(text|eol=lf)/.test(info) && !/attr\/-text/.test(info)
+  const storedLf = new Set(eol.filter(([info]) => /\bi\/lf\b/.test(info) && (autocrlf || normalises(info))).map(([, f]) => f))
 
   if (!only) {
     // Folders
-    const required = [...REQUIRED, ...(profile.agentsMd === 'private' ? [] : ['AGENTS.md']),
-      ...[specsDir, decisionsDir].filter(insideFolder)]
+    const required = [...REQUIRED, ...(profile.agentsMd === 'private' ? [] : ['AGENTS.md'])]
     for (const p of required) if (!fs.existsSync(at(p))) fail('folders', `missing ${p}`)
-    if (profile.agentsMd === 'private' && (git(root, ['ls-files', '--', 'AGENTS.md']) || '').trim()) {
+    for (const p of [specsDir, decisionsDir].filter(insideFolder)) {
+      let dirOk = false
+      try { dirOk = fs.statSync(at(p)).isDirectory() } catch {}
+      if (!dirOk) fail('folders', fs.existsSync(at(p)) ? `missing ${p} (not a folder)` : `missing ${p}`)
+    }
+    if (profile.agentsMd === 'private' && (git(root, ['ls-files', '--', ':(icase)AGENTS.md']) || '').trim()) {
       fail('agents-md', 'agentsMd is private, but AGENTS.md is tracked; untrack it and ignore it')
     }
 
@@ -174,7 +185,7 @@ function doctor(dir, { only } = {}) {
     const text = read(f)
     if (text.includes('\0')) continue
     if (text.includes('\r') && !crlf.has(f)) {
-      if (storedLf.has(f)) warn('docs', `${f}: CRLF in the working tree only; git stores LF, so check the file out again to match`)
+      if (storedLf.has(f)) warn('docs', `${f}: CRLF in the working tree only; git stores it with LF and normalises it on commit`)
       else fail('docs', `${f}: CRLF line ending`)
     }
     if (text.charCodeAt(0) === 0xfeff) fail('docs', `${f}: byte order mark`)

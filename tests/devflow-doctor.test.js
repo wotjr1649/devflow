@@ -70,6 +70,25 @@ test('a test changed since the lock fails the gate on the Issue branch, by commi
   assert.ok(has(repo({ ...GOOD, '.devflow.json': '{ "tests": "tests/**" }\n' }), /^FAIL profile: tests is a list of path globs$/))
 })
 
+test('an Issue branch with test globs and no ledger warns that the lock is unknown (#28)', () => {
+  const warning = 'WARN tests: Issue #5 has no ledger, so whether its tests are locked is unknown'
+  const d = repo({ ...GOOD, '.devflow.json': '{ "tests": ["tests/**"] }\n', 'tests/a.test.js': 'ok\n' })
+  git(d, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'a')
+  assert.ok(!doctor(d).lines.includes(warning), 'not an Issue branch')
+  git(d, 'switch', '-q', '-c', 'fix/5-x')
+  assert.ok(doctor(d).lines.includes(warning), 'no ledger')
+  assert.equal(doctor(d).failures, 0, 'a warning, not a failure')
+  const ledger = path.join(d, '.work/devflow/i5/ledger.json')
+  fs.mkdirSync(path.dirname(ledger), { recursive: true })
+  fs.writeFileSync(ledger, JSON.stringify({}))
+  assert.ok(!doctor(d).lines.includes(warning), 'unlocked ledger')
+  fs.rmSync(ledger)
+  const bare = repo({ ...GOOD })
+  git(bare, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'a')
+  git(bare, 'switch', '-q', '-c', 'fix/5-x')
+  assert.ok(!doctor(bare).lines.some(l => l.startsWith('WARN tests:')), 'no tests globs')
+})
+
 test('a profile that is not an object, and private paths that are not a list of prefixes, fail without a crash (#27)', () => {
   for (const body of ['null\n', '[]\n', '3\n']) {
     const lines = doctor(repo({ ...GOOD, '.devflow.json': body })).lines

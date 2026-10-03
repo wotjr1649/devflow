@@ -1,0 +1,77 @@
+#!/usr/bin/env node
+'use strict'
+// Compares installed copies of devflow with the files tracked at a ref (Issue #18; procedure in README.md, Install).
+// Reads only; prints counts and tracked paths, never file contents. Exit 0 when every copy matches, 1 when one differs,
+// 2 on bad input.
+const fs = require('fs')
+const path = require('path')
+const crypto = require('crypto')
+const { spawnSync } = require('child_process')
+// Windows looks for git.exe in the working folder before PATH; a cloned repository must not supply it.
+if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
+
+const USAGE = `usage: devflow-install-check [--ref <ref>] <installed folder>...
+  Compares every file tracked at <ref> (default HEAD) with the same path in each folder, by git object id.
+  Files the ref does not track are not compared; a link in a folder counts as different.`
+const SHOWN = 20
+
+function git(...args) {
+  // Hooks export GIT_DIR and friends; the repository is found from the working folder alone.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+  const r = spawnSync('git', args, { env, encoding: 'buffer', timeout: 30000, windowsHide: true, maxBuffer: 1 << 26 })
+  return r.status === 0 ? r.stdout : null
+}
+
+// git's object id of a file's bytes, so no blob is read back from the repository.
+const objectId = (bytes, algo) => crypto.createHash(algo).update(`blob ${bytes.length}\0`).update(bytes).digest('hex')
+
+function main(argv) {
+  let ref = 'HEAD'
+  const dirs = []
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--ref') {
+      if (i + 1 >= argv.length) return { code: 2, out: USAGE }
+      ref = argv[++i]
+    } else dirs.push(argv[i])
+  }
+  if (!dirs.length) return { code: 2, out: USAGE }
+  const format = git('rev-parse', '--show-object-format')
+  if (format === null) return { code: 2, out: 'devflow-install-check: not inside a git work tree' }
+  const algo = format.toString('utf8').trim() === 'sha256' ? 'sha256' : 'sha1'
+  const tree = git('ls-tree', '-r', '-z', '--', ref)
+  if (tree === null) return { code: 2, out: `devflow-install-check: no tree at ${ref}` }
+  // "<mode> <type> <id>\t<path>" records, NUL-separated; regular files only (links and submodules are not installed).
+  const files = []
+  for (const rec of tree.toString('utf8').split('\0').filter(Boolean)) {
+    const m = /^(100644|100755) blob ([0-9a-f]+)\t(.+)$/s.exec(rec)
+    if (m) files.push({ id: m[2], path: m[3] })
+  }
+  const lines = []
+  let differs = false
+  for (const dir of dirs) {
+    const different = []
+    const missing = []
+    for (const f of files) {
+      const p = path.join(dir, ...f.path.split('/'))
+      let st
+      try { st = fs.lstatSync(p) } catch { missing.push(f.path); continue }
+      if (!st.isFile() || objectId(fs.readFileSync(p), algo) !== f.id) different.push(f.path)
+    }
+    const same = files.length - different.length - missing.length
+    lines.push(`${dir}: same ${same}, different ${different.length}, missing ${missing.length}`)
+    for (const [label, list] of [['different', different], ['missing', missing]]) {
+      for (const p of list.slice(0, SHOWN)) lines.push(`  ${label}: ${p}`)
+      if (list.length > SHOWN) lines.push(`  ${label}: …and ${list.length - SHOWN} more`)
+    }
+    if (different.length || missing.length) differs = true
+  }
+  return { code: differs ? 1 : 0, out: lines.join('\n') }
+}
+
+if (require.main === module) {
+  const r = main(process.argv.slice(2))
+  ;(r.code === 2 ? process.stderr : process.stdout).write(r.out + '\n')
+  process.exitCode = r.code
+}
+
+module.exports = { main, objectId }

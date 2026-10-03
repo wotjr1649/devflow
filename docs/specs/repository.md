@@ -155,7 +155,7 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 ## doctor 검사 항목
 
 `bin/devflow-doctor [path]`가 읽기만 하고 검사한다. 실패(FAIL)가 있으면 exit 1이고, 경고(WARN)는 실패시키지 않는다.
-Issue 검사는 아직 없다.
+Issue 형식은 doctor가 검사하지 않고, `devflow-state`가 쓸 때 검사한다([ADR-0015](../design/decisions/ADR-0015-paper-features.md)).
 
 | 대상 | 검사 |
 |---|---|

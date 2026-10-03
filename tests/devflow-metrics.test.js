@@ -81,6 +81,27 @@ async function measure(root, { claude = tmp('dfm-c-'), codex = tmp('dfm-x-'), un
   return { c, x, report: metrics.report({ claude: c, codex: x, ledger: metrics.readLedger(ctx, 4), issue: 4, until, guardTimes }) }
 }
 
+test('a main-tree record labelled with a subagent worktree branch is judged by the main tree reflog (#29)', async () => {
+  const root = gitRepo()
+  const home = tmp('dfm-c-')
+  // While an isolated subagent runs, the host writes the parent's gitBranch as that subagent's worktree branch.
+  const label = { cwd: root, branch: 'worktree-agent-a7fd0bd4831f57499' }
+  write(path.join(claudeFolder(home, root), 's1.jsonl'), [
+    cl.assistant(50, { id: 'before', ...label }),
+    cl.assistant(150, { id: 'during', ...label }),
+  ])
+  // The worktree subagent's own records, in a worktree already removed, count through the parent's span.
+  const gone = path.join(root, '.claude', 'worktrees', 'agent-a7fd0bd4831f57499')
+  write(path.join(claudeFolder(home, root), 's1', 'subagents', 'agent-a7fd0bd4831f57499.jsonl'), [
+    cl.assistant(155, { id: 'w1', cwd: gone, branch: 'worktree-agent-a7fd0bd4831f57499' }),
+    cl.assistant(160, { id: 'w2', cwd: gone, branch: 'worktree-agent-a7fd0bd4831f57499' }),
+  ])
+  const { c } = await measure(root, { claude: home })
+  assert.equal(c.main.calls, 1, 'at 150 the main tree was on feat/4-x; at 50 it was not')
+  assert.equal(c.sub.calls, 2)
+  assert.equal(c.sub.subagents, 1)
+})
+
 test('claude counts the Issue branch once per response and leaves other branches and folders out', async () => {
   const root = gitRepo()
   const home = tmp('dfm-c-')

@@ -12,6 +12,8 @@ if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath
 const ISSUE_BRANCH = /^[^/]+\/(\d+)-/
 const MODEL_NAME = /^[a-z0-9.-]{1,64}$/
 const CHECKOUT = /^\S+ \S+ .*> (\d+) [+-]\d{4}\tcheckout: moving from (\S+) to (\S+)$/
+// The branch Claude Code gives a subagent it isolates in a worktree (.claude/worktrees/agent-<id>).
+const SUBAGENT_WORKTREE = /^worktree-agent-[A-Za-z0-9]+$/
 const SUB_GAP_MS = 10 * 60 * 1000
 const MAX_LINE = 64 * 1024 * 1024
 const RUN_TIMEOUT_MS = 10000
@@ -217,6 +219,10 @@ async function claude({ ctx, dir, issue, until }) {
     const inScope = (rec, t) => {
       const w = owner(rec.cwd, ctx.worktrees)
       if (!w) return false
+      // While a subagent isolated in its own worktree runs, the host labels the parent's records, and those of other
+      // subagents, with that worktree's branch (Issue #29). Such a label on a record outside that worktree says nothing
+      // about the record's own work tree, so its reflog decides.
+      if (!byWorktree(w) && SUBAGENT_WORKTREE.test(rec.gitBranch || '') && w.reflog) return isIssue(branchAt(w, t), issue)
       if (!byWorktree(w)) return isIssue(rec.gitBranch, issue)
       return present(rec.cwd, w) && !!w.reflog && isIssue(branchAt(w, t), issue)
     }

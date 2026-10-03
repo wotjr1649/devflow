@@ -49,7 +49,9 @@ const USAGE = `usage: devflow-state <command>
                               refuses edits to them and doctor reports any changed since; unlock keeps the reason
   release <n>                 when handing the Issue to another session: stop warning it about this one
   pending | flush             queued posts; flush posts them once the ledger is interactive
-  pending drop <id> < reason  take one queued post out, keeping the reason in notes
+  pending drop <n> <id> [--posted] < reason
+                              take one queued post out in an interactive turn, keeping the reason in notes;
+                              --posted for one a flush posted but could not remove
   metric <n> <key> [--undo] < note
                               add one to interventions or filterFalsePositives in the ledger, with a note line;
                               --undo takes one back (never below 0)
@@ -826,7 +828,7 @@ function post(ctx, op, n, text, title) {
     if (c && !c.plain) return { code: 1, out: `refused: ${UNPLAIN}${whyText(c.why)}`, guard: 'state-criteria-unplain' }
     // Without a plain "## 수용 기준", a loose heading must not hide unchecked boxes.
     if (!c && /^[ \t]*[-*+] \[ \]/m.test(body)) {
-      return { code: 1, out: 'refused: the Issue has unchecked boxes but no "## 수용 기준" section to read them from; fix the heading first', guard: 'state-close-unchecked' }
+      return { code: 1, out: 'refused: the Issue has unchecked boxes ("- [ ]", in code too) but no plain "## 수용 기준" section; put its criteria under that heading first', guard: 'state-close-unchecked' }
     }
     const open = c ? c.boxes.findIndex(b => body[b.at] === ' ') : -1
     if (open >= 0) {
@@ -941,24 +943,32 @@ function metricEval(env, cwd, n, score, note) {
 
 // Takes one queued post out, with the reason in notes: a post flush cannot make (a create or close the current rules
 // refuse) or one already posted would otherwise block or repeat (Issue #27).
-function pendingDrop(env, cwd, id, reason) {
+const DROP_USAGE = 'usage: devflow-state pending drop <issue> <id> [--posted] < reason'
+function pendingDrop(env, cwd, n, id, reason, { posted = false } = {}) {
   const line = String(reason || '').trim().split(/\r?\n/)[0].trim()
-  if (!id || !line) return { code: 2, out: 'usage: devflow-state pending drop <id> < reason' }
+  if (!n || !id || !line) return { code: 2, out: DROP_USAGE }
   const ctx = repoContext(env, cwd)
-  const n = ctx && ctx.issue
   const no = ledgerGate(ctx, n, 'queued posts', { append: true })
   if (no) return no
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
+    // The queue waits for the person, as flush does.
+    if (ledger.mode === 'autonomous') return { result: { refused: 'refused: queued posts are dropped in an interactive turn, once the person has seen them (set mode to interactive first)' } }
     const queued = Array.isArray(ledger.pendingPosts) ? ledger.pendingPosts : []
     const hit = queued.find(p => p && p.id === id)
     if (!hit) return { result: ZERO }
+    // A fresh claim means a flush may be posting it right now; only one flush reported as posted but unremoved goes.
+    const at = hit.claimed && Date.parse(hit.claimed.at)
+    if (!posted && Number.isFinite(at) && Date.now() - at < CLAIM_MS) {
+      return { result: { refused: `refused: ${id} is claimed by a flush that may still post it; if that flush reported it posted but not removed, add --posted` } }
+    }
     const pendingPosts = queued.filter(p => p !== hit)
     const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `dropped queued ${hit.op} (${id}): ${line}`]
     return { ledger: { ...ledger, pendingPosts, notes }, result: pendingPosts.length }
   })
   if (r.ok && r.result === MISSING) return NO_LEDGER(n)
   if (r.ok && r.result === ZERO) return { code: 1, out: `refused: no queued post ${id} for Issue #${n}` }
+  if (r.ok && r.result && r.result.refused) return { code: 1, out: r.result.refused }
   return r.ok ? { code: 0, out: `pending ${r.result}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
@@ -1105,7 +1115,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
     const r = write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true })
     out.push(r.out)
     if (r.code !== 0) {
-      out.push(`flush stopped at ${p.op} (${p.id}); fix the cause, or take it out: devflow-state pending drop ${p.id} < reason`)
+      out.push(`flush stopped at ${p.op} (${p.id}); fix the cause, or take it out: devflow-state pending drop ${p.issue} ${p.id} < reason`)
       failed = true
       break
     }
@@ -1122,7 +1132,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
       ledger: { ...l, pendingPosts: (l.pendingPosts || []).map(q =>
         (q.claimed && q.claimed.by === by && !(stuck && q.id === stuck.id) ? (({ claimed, ...rest }) => rest)(q) : q)) },
     }))
-    if (stuck) out.push(`posted ${stuck.op} (${stuck.id}) but could not remove it from the queue; remove it with devflow-state pending drop ${stuck.id} < reason before the next flush, or it posts again in ${CLAIM_MS / 60000} min`)
+    if (stuck) out.push(`posted ${stuck.op} (${stuck.id}) but could not remove it from the queue; remove it with devflow-state pending drop ${stuck.issue} ${stuck.id} --posted < reason before the next flush, or it posts again in ${CLAIM_MS / 60000} min`)
     if (!back.ok) out.push(`the queue stays claimed for ${CLAIM_MS / 60000} min`)
     const later = posts.length - posted - (failed ? 1 : 0)
     if (later > 0) out.push(`${later} later posts wait behind the ${failed ? 'failed' : 'unremoved'} one`)
@@ -1224,7 +1234,10 @@ function command(argv, stdin, env, cwd) {
       return releaseSessions(ctx.store, n, [me.hash]) ? { code: 0, out: `released this session from Issue #${n}` } : guarded(ctx, LOCKED(n))
     }
     case 'pending': {
-      if (rest[0] === 'drop') return rest.length === 2 ? pendingDrop(env, cwd, rest[1], input()) : { code: 2, out: 'usage: devflow-state pending drop <id> < reason' }
+      if (rest[0] === 'drop') {
+        const ok = num(rest[1]) && rest[2] && (rest.length === 3 || (rest.length === 4 && rest[3] === '--posted'))
+        return ok ? pendingDrop(env, cwd, num(rest[1]), rest[2], input(), { posted: rest[3] === '--posted' }) : { code: 2, out: DROP_USAGE }
+      }
       const ctx = repoContext(env, cwd)
       const posts = (ctx && ctx.issue && (readLedger(ctx.store, ctx.issue) || {}).pendingPosts) || []
       return { code: 0, out: posts.length ? JSON.stringify(posts, null, 2) : 'nothing pending' }

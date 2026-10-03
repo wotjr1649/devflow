@@ -410,15 +410,25 @@ test('metric eval records passed/total under the lock and keeps the other metric
   assert.equal(state.main(['metric', '1', 'eval', '1/2'], () => ' ', e, '.').code, 2, 'a note is required')
 })
 
-test('pending drop takes one queued post out with its reason (#27)', () => {
-  const root = repo({ ledger: { stage: 'build', notes: [], pendingPosts: [{ id: 'p1', op: 'close', issue: 1 }, { id: 'p2', op: 'comment', issue: 1 }] } })
+test('pending drop takes one queued post out with its reason, only in an interactive turn and never under a live flush (#27)', () => {
+  const fresh = { by: 'other', at: new Date().toISOString() }
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive', notes: [], pendingPosts: [
+    { id: 'p1', op: 'close', issue: 1 }, { id: 'p2', op: 'comment', issue: 1 }, { id: 'p3', op: 'comment', issue: 1, claimed: fresh }] } })
   const e = env(root)
-  assert.deepEqual(state.main(['pending', 'drop', 'p1'], () => 'criterion 2 is still open', e, '.'), { code: 0, out: 'pending 1' })
-  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  assert.deepEqual(ledger.pendingPosts.map(p => p.id), ['p2'])
-  assert.equal(ledger.notes[ledger.notes.length - 1], 'dropped queued close (p1): criterion 2 is still open')
-  assert.equal(state.main(['pending', 'drop', 'p9'], () => 'x', e, '.').code, 1)
-  assert.equal(state.main(['pending', 'drop', 'p2'], () => ' ', e, '.').code, 2, 'a reason is required')
+  const drop = (input, ...a) => state.main(['pending', 'drop', ...a], () => input, e, '.')
+  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  assert.deepEqual(drop('criterion 2 is still open', '1', 'p1'), { code: 0, out: 'pending 2' })
+  assert.deepEqual(ledger().pendingPosts.map(p => p.id), ['p2', 'p3'])
+  assert.equal(ledger().notes[ledger().notes.length - 1], 'dropped queued close (p1): criterion 2 is still open')
+  assert.equal(drop('x', '1', 'p9').code, 1)
+  assert.equal(drop(' ', '1', 'p2').code, 2, 'a reason is required')
+  assert.equal(drop('x', 'p2').code, 2, 'the Issue number comes first')
+  // A flush holding a fresh claim may still post it; only a post flush reported as posted but unremoved goes.
+  assert.match(drop('x', '1', 'p3').out, /claimed by a flush/)
+  assert.deepEqual(drop('flush said it posted', '1', 'p3', '--posted'), { code: 0, out: 'pending 1' })
+  // Unattended runs leave the queue to the person, as flush does.
+  fs.writeFileSync(path.join(root, '.work/devflow/i1/ledger.json'), JSON.stringify({ ...ledger(), mode: 'autonomous' }))
+  assert.match(drop('x', '1', 'p2').out, /interactive/)
 })
 
 test('ledger-update leaves pendingPosts to devflow-state and keeps running delegations (#27)', () => {

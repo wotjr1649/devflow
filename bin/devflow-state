@@ -914,7 +914,10 @@ function running(env, cwd, n, op, label) {
   if (no) return no
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
-    const now = Array.isArray(ledger.running) ? ledger.running : ledger.running ? [ledger.running] : []
+    // Older shapes become labels done can remove: {} is empty, an object lists its keys, other items their JSON text.
+    const v = ledger.running
+    const label = x => (typeof x === 'string' ? x : JSON.stringify(x))
+    const now = Array.isArray(v) ? v.map(label) : typeof v === 'string' ? (v ? [v] : []) : v && typeof v === 'object' ? Object.keys(v) : []
     if (op === 'done' && !now.includes(name)) return { result: ZERO }
     const next = op === 'add' ? (now.includes(name) ? now : [...now, name]) : now.filter(x => x !== name)
     return { ledger: { ...ledger, running: next }, result: next }
@@ -1008,7 +1011,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
 
 // Writes that count as this session's activity (Issue #10). After one succeeds, it is recorded and the other sessions
 // that wrote to the same Issue in the last 30 minutes are named; without an id of its own a session cannot tell.
-const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'ledger-update', 'metric', 'note', 'flush'])
+const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'ledger-update', 'metric', 'note', 'running', 'flush'])
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
   const r = command(argv, stdin, env, cwd)
   const me = sessionId(env.vars)

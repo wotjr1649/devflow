@@ -9,7 +9,7 @@ and verify and a narrowed re-review passed. `pr-review-workflow` runs the review
   and no verdict, because a reviewer told the answer confirms it. Name by path any input git ignores (private tests,
   verification output): the reviewer's Glob cannot find it.
 - A reviewer, verifier or implementer started in the background goes into the ledger's `running` with `running <issue>
-  add <label>` and comes out with `running <issue> done <label>` when its result arrives.
+  add <label>` and comes out with `running <issue> done <label>` when its result arrives or it fails or stops.
 - In M0 the main session rereads the diff against the criteria instead; the change was small enough to say in one
   sentence.
 - A change to a `.devflow.json` `highRisk` path also gets the security perspective from [perspectives](perspectives.md).

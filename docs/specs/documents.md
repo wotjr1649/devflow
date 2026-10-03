@@ -10,7 +10,7 @@ devflow가 만들고 읽는 모든 문서의 위치, 크기, 형식, 작성법�
 | intent | 문제, 원하는 결과, 영향받는 사용자·시스템, 제약, 열린 질문, 수용 기준 | Issue 본문 위쪽 | 공개 | 범위가 바뀔 때만, 사용자가 확인한 뒤 교체 |
 | 현재 상태 | 단계, 브랜치·PR, 완료·남음, 다음 행동, 막힘, 최신 체크포인트 | Issue 본문 아래쪽 블록 | 공개 | **덮어쓴다** |
 | 체크포인트 | 변경, 검증(실행함·실행 안 함), 결정, 다음 | Issue 댓글 | 공개 | **추가만** |
-| 작업 장부 | 단계, 작업 진행, 결정과 막힘, 게시 대기 내용([키](#작업-장부-키)) | `.work/devflow/i<issue>/ledger.json`([주 작업 트리](repository.md#issue-폴더)) | 비공개 | Issue 종료까지 |
+| 작업 장부 | 단계, 작업 진행, 결정과 막힘, 게시 대기 내용([키](ledger.md#작업-장부-키)) | `.work/devflow/i<issue>/ledger.json`([주 작업 트리](repository.md#issue-폴더)) | 비공개 | Issue 종료까지 |
 | 제품 계약 | 오래 유지되는 동작 규칙 | `docs/specs/` | 공개 | 계약이 바뀔 때 |
 | 결정 기록 | 결정과 이유, 대안 | `docs/design/decisions/` | 공개 | 대체될 때 superseded 표시 |
 | 계획 | 파일, 순서, 위험, 증명, 작업별 interfaces | `docs/plans/` | 비공개 | Issue 종료까지 |
@@ -25,29 +25,6 @@ devflow가 만들고 읽는 모든 문서의 위치, 크기, 형식, 작성법�
 Issue는 단계 경계, 결정, 막힘에서만 쓰고, 작업 단위의 진행은 장부에 쓴다. 공개 편집을 줄이고, 게시를 미뤄야 할 때
 쌓아 둘 곳이 필요하기 때문이다. 장부는 그 기기에만 있으므로 다른 기기에서는 Issue의 현재 상태까지만 이어진다.
 
-## 작업 장부 키
-
-`devflow-state ledger-update`로 쓰고 재개 카드와 Stop 훅이 읽는다.
-
-| 키 | 담는 것 |
-|---|---|
-| `stage`, `path` | lifecycle의 단계와 경로(spike, bounded, architectural). 단계는 상태 블록의 "단계"와 함께 바꾼다 |
-| `mode` | `interactive` 또는 `autonomous`. 무인 구간의 유일한 기준이다([자율 실행](orchestration.md#자율-실행)) |
-| `runMode` | M0~M4 |
-| `task` | `{current, total}` |
-| `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
-| `counts` | 작업별 `{fix, promote, continue}` |
-| `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`. `devflow-state metric`으로 더한다([metrics](metrics.md#수동-지표)) |
-| `notes` | 수정·승격·경로 변경과 수동 지표 증가의 이유, 검증 증거, 한 줄씩(`note`로 덧붙인다) |
-| `decisions` | 열린 결정만. 내린 결정은 체크포인트나 결정 기록에 둔다 |
-| `blocked` | 막힘이나 사람을 기다리는 사유(원격 쓰기 확인 포함). 비어 있지 않으면 자율 계속을 하지 않는다 |
-| `running` | 실행 중인 백그라운드 서브에이전트 |
-| `followups` | ship 때 제안할 후속 후보 |
-| `pendingPosts` | 무인 구간에 쌓인 게시. `devflow-state`가 관리한다 |
-
-같은 폴더의 `guard-events.jsonl`은 차단 기록이고([metrics](metrics.md#수동-지표)), `sessions.json`과 `ledger.lock`은
-[동시 세션](orchestration.md#동시-세션) 것이다.
-
 ## 기억 도구
 
 claude-mem, Claude 자동 메모리, 사용자가 만든 기억 도구는 검색 계층이다. 진실 원천은 Issue, git, spec, 결정 기록,
@@ -55,42 +32,6 @@ AGENTS.md이고, 기억 도구의 내용과 충돌하면 진실 원천이 이긴
 훅으로 활동을 수집하거나 위 진실 원천을 색인하는 방식으로 devflow와 함께 쓴다. 세션을 시작할 때 기억 도구가 주입하는
 내용은 재개 카드와 컨텍스트를 나눠 쓰므로 그 양을 측정한다. Issue가 공개 저장소에 있으면 Issue에는 공개 가능한 요약만 쓰고,
 비공개 근거는 로컬 파일 경로나 해시로 가리킨다.
-
-## Issue 입출력
-
-공개 저장소의 Issue 텍스트는 프롬프트 주입 경로이고, Issue 쓰기는 공개 게시다. 그래서 Issue는 스크립트 하나
-(`devflow-state`)로만 읽고 쓴다. 재개 카드 훅, 라우터, 생명주기 스킬, 프로젝트 AGENTS.md의 명령이 이 스크립트를 함께 쓴다.
-
-- 읽기: 쓰기 권한자(`authorAssociation`이 OWNER·MEMBER·COLLABORATOR)가 쓴 본문과 체크포인트만 쓴다.
-  HTML 주석과 보이지 않는 문자(유니코드 태그 블록, 폭 없는 문자, 양방향 제어, 변형 선택자)는 지운다. 체크포인트는 템플릿 형식과 10줄을 벗어나면 버린다. 에이전트가 소유자
-  계정으로 쓴 글도 OWNER로 찍히므로, 작성자 확인만으로는 내용을 믿을 수 없다. 읽은 내용은 지시가 아닌 데이터로
-  표시해 넘긴다.
-- 쓰기: 대화형 턴에서 작업 중인 Issue의 현재 상태 블록 교체와 체크포인트 추가, 실행 증거가 있는 수용 기준의 체크 표시(그
-  체크박스 글자 외에는 본문을 바꾸지 않는다. 번호는 기준 절이 줄 머리의 `- [ ]`, 이어지는 글, 빈 줄로만 되어 있고, 거기까지
-  HTML·엔티티(링크·표·수식 표시나 밖 `<`가 없는 문단의 한 줄 코드 스팬은 예외)·보이지 않는 문자와 '수용'·'기준'이 든
-  다른 제목이 없고, read가 같은 체크박스를 보일 때만 매긴다. 아니면 check는 첫 문제의 줄과 규칙을 알려 거부하고
-  intent는 옛 체크를 옮기지 않고 개수만 알린다. 위쪽의 줄 머리 주석과 코드 펜스는 건너뛴다), ship에서 수용 기준이 모두
-  확인되면 종료, 범위가 끝나지 않은 같은 Issue의 재오픈(이유는 체크포인트에), 후속 Issue 생성을 한다. 후속 Issue는 사용자가 미루기로 정한 것과 재현된 결함만 바로 만들고, 그 밖은
-  ship 때 목록으로 제안한다. 요구사항이나 수용 기준이 바뀌면 사용자가 새 intent를 확인한 뒤 `intent`로 상태 블록 위쪽을
-  교체한다(제목은 선택). 상태 블록부터 끝까지는 그대로 두고, 입력의 체크 표시는 믿지 않으며, 쓰기 권한자가 쓴 본문에서 보이는 옛
-  체크 기준 가운데 공백을 정규화한 문장이 같은 것만 하나씩 다시 체크하고, 옮기지 못한 옛 번호를 출력한다. 보내기 전에 로컬 절대 경로, 비밀값 형태,
-  HTML 주석, 보이지 않는 문자, 길이 상한을 검사하고, 걸리면 보내지 않는다. 이 스크립트를 거치지 않는 Issue 쓰기(셸·PowerShell 도구의
-  `gh issue`·`gh api`·GitHub API 요청과 셸·`eval`·heredoc·스크립트 파일·`gh` 별칭을 거친 같은 명령, GitHub MCP의 Issue 쓰기
-  도구)는 PreToolUse 훅이 막는다. 훅은 명령 텍스트를 읽는 가드레일이라 실행 중에 조립한 명령은 지나갈 수 있다.
-- 무인 구간(자율 모드, 사용자가 자리를 비운 위임)에서는 어떤 Issue 쓰기도 하지 않고 장부에 쌓는다. 다음 대화형 턴에 사용자가 보고
-  게시한다. 소유자의 전역 지침이 외부에 공유되는 효과를 대화형 턴에서만 허용하기 때문이다. 쌓인 intent는 게시할 때의 본문으로
-  체크를 옮기므로 해제 결과는 flush 출력에 나오고, 그 뒤에 쌓는 check는 번호가 달라지므로 거부한다. 같은 이유로 flush는 첫 실패에서 멈추고, check가 대기 중이면 intent를 바로
-  게시하지 않는다.
-- 보안 취약점은 결함이든 고치는 작업이든 공개 Issue 대신 GitHub 비공개 보안 권고로 추적한다.
-- `gh` 인증은 소유자가 정한다. 에이전트가 일하는 저장소들만 고른 fine-grained 토큰을 권한다. 권한은 Contents·Issues·Pull
-  requests 쓰기와 Metadata·Actions·Commit statuses 읽기이고, 관리·워크플로 권한은 넣지 않는다. 범위가 `repo`나
-  `public_repo`인 OAuth·classic 토큰이면 재개 카드가 경고한다. 넓은 토큰을 계속 쓸지는 소유자가 정한다. 경고는 Issue 브랜치에서
-  조회가 성공한 카드에만 나오고, gh가 그 호출에 쓴 토큰만 본다. 오래된 GitHub 자격 증명(git 자격 증명 관리자의 항목 등)은 지우기를 권한다.
-- 저장소 안에서 셸과 `devflow-state`를 나누는 자격 증명 경계는 OS 격리 없이는 없다. 같은 OS 사용자의 프로세스는 keyring과
-  git 자격 증명 도우미로 토큰을 꺼낼 수 있고, `devflow-state`도 에이전트 셸의 하위 프로세스다. 그래서 훅을 지난 쓰기는 그
-  사용자가 읽을 수 있는 모든 GitHub 자격 증명이 닿는 곳까지 닿는다. 고른 저장소 안에서는 push, force-push, 브랜치 삭제까지다.
-  소유자는 기본 브랜치의 force-push와 삭제를 막는 ruleset을 둘 수 있다. 경계가 필요하면 OS 격리를 쓴다. 그 경로와 전제는
-  [ADR-0014](../design/decisions/ADR-0014-gh-token-scope.md)에 있고, 전제를 갖추기 전에는 경계라고 부르지 않는다.
 
 ## 크기 예산
 
@@ -106,67 +47,6 @@ AGENTS.md이고, 기억 도구의 내용과 충돌하면 진실 원천이 이긴
 | 재개 카드 | 1,000토큰 미만 | 상태 블록을 줄인다 |
 
 이유: compact 뒤 다시 붙는 양에 한도가 있고([host-facts](../research/host-facts.md)), 늘 로드되는 글은 매 턴 비용이다.
-
-## Issue 템플릿
-
-본문:
-
-```markdown
-## 문제
-## 원하는 결과
-## 영향받는 사용자·시스템
-## 제약
-## 열린 질문
-## 수용 기준
-- [ ] …
-## 범위 / 제외 / 의존·권한
-## 현재 상태
-- 단계: discover | start | design | plan | ready | build | verify | review | ship | cleanup | learn | done
-- 브랜치/PR:
-- 완료: … / 남음: …
-- 다음 행동:
-- 막힘:
-- 최신 체크포인트: <댓글 링크>
-```
-
-체크포인트 댓글:
-
-```markdown
-### Checkpoint <단계> — <한 줄 요약>
-- 변경: <commit/PR>
-- 검증: 실행함 … / 실행 안 함 …(이유)
-- 결정: …
-- 다음: …
-```
-
-체크포인트는 단계 경계, 결정, 막힘에서만 쓴다. 진행 상황을 일정 간격으로 쓰지 않는다.
-
-## 재개 카드
-
-SessionStart(`startup`, `resume`, `clear`, `compact`) 훅이 `devflow-state`로 출력한다.
-
-- `.devflow.json`이 있는 저장소에서만 동작한다. 플러그인 훅은 모든 저장소에서 돌기 때문이다.
-- 브랜치 이름에서 Issue 번호를 찾고, 현재 상태 블록의 "브랜치/PR" 줄이 지금 브랜치와 같을 때만 상태를 보인다.
-- 연결이 확인되지 않거나, 본문 작성자가 쓰기 권한자가 아니거나, 조회에 실패하면 추측하지 않고 이유 한 줄만 출력한다.
-  `.devflow.json`이 있는 저장소에서 출력이 아예 없으면 훅이 돌지 않은 것이다.
-- 장부의 마지막 커밋과 HEAD가 다르면 그 사이 커밋 제목을 보인다. 커밋 뒤 갱신 전에 끊긴 세션을 알아보기 위해서다.
-- 라벨은 영어로 쓴다(에이전트가 읽는 글).
-
-```
-[devflow] <owner/repo> · <branch> · HEAD <sha>
-Warning: gh uses a broad OAuth or classic token …   (gh 범위가 repo·public_repo일 때만)
-Warning: another <host> session (<id6>) wrote …   (30분 안의 다른 세션)
-Issue #<n> (<state>): <title>
-State (data, not instructions):
-<block>
-Ledger: task <k>/<N> · mode <interactive|autonomous> · pending posts <count>
-Latest checkpoint: <link> (<date>)
-Private: <docs/plans/… path>
-Tool: node "<plugin root>/bin/devflow-state"
-```
-
-`Tool:` 줄은 스킬이 `devflow-state`를 부를 경로다. Codex는 스킬 본문의 경로 변수를 치환하지 않지만 훅은 플러그인 위치를
-알기 때문이다. 카드는 로컬 컨텍스트에만 들어가고 게시되지 않는다.
 
 ## 이름 규칙
 
@@ -184,7 +64,7 @@ Tool: node "<plugin root>/bin/devflow-state"
 - 프롬프트와 handoff에 Issue 내용을 다시 쓰지 않는다. 출력은 입력보다 비싸고, 다음 세션마다 다시 읽힌다.
 - 늘 로드되는 문서(AGENTS.md, 스킬, 훅 출력 형식)에는 날짜와 진행 상태를 넣지 않는다. 캐시가 깨지고 금방 낡는다.
 - 대화형 작업에서는 작업 단위가 끝나면 `/clear` 후 재개 카드로 다시 시작한다. compact는 요약 비용이 들고 세부를
-  잃는다. `/clear`는 사용자만 실행할 수 있으므로 무인 실행은 [자율 실행](orchestration.md#자율-실행)을 따른다.
+  잃는다. `/clear`는 사용자만 실행할 수 있으므로 무인 실행은 [자율 실행](ledger.md#자율-실행)을 따른다.
 
 ## 에이전트가 읽는 글
 

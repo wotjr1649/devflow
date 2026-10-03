@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict'
 // The one path for Issue reads and writes, the work ledger and the resume card.
-// Rules: docs/specs/documents.md (Issue I/O, size budgets, resume card).
+// Rules: docs/specs/issues.md (Issue I/O, resume card), docs/specs/ledger.md (the ledger), docs/specs/documents.md (size budgets).
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
@@ -436,7 +436,7 @@ function card(env, cwd, { sessionId: hookSession } = {}) {
   if (got.error) return stop(got.error)
   if (got.broad) {
     warning = `Warning: gh uses a broad OAuth or classic token (scopes: ${got.scopes}) that reaches every repository it can; ` +
-      'use a fine-grained token limited to the repositories agents work on (docs/specs/documents.md, Issue 입출력).'
+      'use a fine-grained token limited to the repositories agents work on (docs/specs/issues.md, Issue 입출력).'
   }
   const { body, checkpoint } = filtered(got.issue)
   if (body === null) return stop(`Issue #${ctx.issue} body author is not a writer`)

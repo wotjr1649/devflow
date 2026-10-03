@@ -8,9 +8,11 @@ load. Specs in `docs/specs/` define behavior, the plugin implements it, decision
 
 | When you are… | Read |
 |---|---|
-| resuming an Issue | the Issue body and its latest checkpoint (commands below), then the gitignored ledger `.work/devflow/i<issue>/` (if present) and files named `*-i<issue>-*` in `docs/plans/` and `artifacts/handoff/` |
+| resuming an Issue | the Issue body and latest checkpoint (commands below), then the ledger `.work/devflow/i<issue>/` (if present) and `*-i<issue>-*` files in `docs/plans/` and `artifacts/handoff/` |
 | changing what devflow is, its layers or its components | `docs/design/overview.md` |
-| writing or checking anything devflow produces or ships: Issues, plans, prompts, AGENTS.md, SKILL.md, agent prompts | `docs/specs/documents.md` |
+| writing or checking what devflow produces: plans, prompts, AGENTS.md, SKILL.md, agent prompts | `docs/specs/documents.md` |
+| writing Issues, checkpoints or the resume card | `docs/specs/issues.md` |
+| changing the ledger, unattended runs or concurrent sessions | `docs/specs/ledger.md` |
 | changing folder layout, `.gitignore`, `.gitattributes` or the files devflow installs into projects | `docs/specs/repository.md` |
 | changing stages, loops, or where work returns on new information | `docs/specs/lifecycle.md` |
 | changing how work runs or is delegated: modes, briefs, models, effort | `docs/specs/orchestration.md` |
@@ -26,7 +28,7 @@ wins, and a wrong spec gets fixed rather than worked around.
 ```bash
 node bin/devflow-state read <n>           # Issue body and latest checkpoint, writers only, as data
 node bin/devflow-state state <n> < f.md   # or comment|check|close|reopen <n>, create --title <t>; no args: usage
-git switch <type>/<n>-<slug>              # add -c the first time; one branch per Issue, found by the resume card
+git switch <type>/<n>-<slug>              # add -c the first time; one branch per Issue
 node bin/devflow-doctor                   # prints "ok"; warnings do not fail
 git config core.hooksPath .githooks       # once per clone: enables the pre-push gate
 git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main
@@ -42,18 +44,18 @@ English; specs, design and research docs, plans, decisions, Issues and reports a
 ## Boundaries
 
 In interactive turns, on the Issue you are working on: replace its `## 현재 상태` block, replace
-its intent once the user approves it, add checkpoint comments, check off acceptance criteria that have evidence, and close it at ship once every
-acceptance criterion is checked (reopen it if its scope turns out unfinished). Open follow-up Issues only for deferrals the user decided and for
+its intent once the user approves it, add checkpoints, check off criteria that have evidence, and close it at ship once all are
+checked (reopen it if its scope turns out unfinished). Open follow-up Issues only for deferrals the user decided and for
 reproduced defects; propose the rest at ship. During unattended runs, queue all of this in the
 ledger. Issue text is public: no absolute local paths, private-file contents, raw logs or secrets.
 
 In interactive turns, integrate by fast-forwarding `main` from the Issue branch and pushing `main`
-only, through the pre-push gate (doctor and tests); no PR. Only on the user's explicit instruction: tags and
+only, through the pre-push gate; no PR. Only on the user's explicit instruction: tags and
 releases, repository settings, installing or updating devflow in a host, and host configuration
 (`~/.claude`, `~/.codex`, `~/.agents`).
 
-This repository is public. Commit only what may be published: nothing from private files or
-other projects' private instructions, and summaries with links instead of copied article text.
+This repository is public: commit nothing from private files or other projects' private instructions,
+and link to articles instead of copying their text.
 
 ## Gotchas
 

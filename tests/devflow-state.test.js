@@ -408,7 +408,7 @@ test('concurrent appends from several processes keep every line whole', { timeou
 // gh api --include prints a status line, headers, a blank line, then the body; real gh output uses CRLF.
 const withScopes = (scopes, eol = '\r\n') =>
   ['HTTP/2.0 200 OK', 'Content-Type: application/json', ...(scopes === null ? [] : [`X-Oauth-Scopes: ${scopes}`]), 'X-Github-Request-Id: ABCD'].join(eol) + eol + eol
-const WARNING = /^Warning: gh uses a broad OAuth or classic token \(scopes: (.*)\) that reaches every repository it can; use a fine-grained token limited to the repositories agents work on \(docs\/specs\/documents\.md, Issue 입출력\)\.$/m
+const WARNING = /^Warning: gh uses a broad OAuth or classic token \(scopes: (.*)\) that reaches every repository it can; use a fine-grained token limited to the repositories agents work on \(docs\/specs\/issues\.md, Issue 입출력\)\.$/m
 
 test('card warns right after the top line when gh uses a repo-wide token (CRLF headers)', () => {
   const out = state.card(env(repo(), { headers: withScopes('repo, read:org') }), '.')

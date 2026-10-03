@@ -212,8 +212,8 @@ async function claude({ ctx, dir, issue, until }) {
     const byReflog = !own
     // A record whose cwd lies in a linked worktree is judged by that worktree's reflog too: a session that `cd`s into an
     // Issue worktree keeps recording the gitBranch of the folder it started in (Issue #22). The main work tree keeps
-    // gitBranch.
-    const byWorktree = w => byReflog || w !== ctx.worktrees[0]
+    // gitBranch, and so does a linked worktree without a reflog, whose records gitBranch counted before.
+    const byWorktree = w => byReflog || (w !== ctx.worktrees[0] && !!w.reflog)
     const inScope = (rec, t) => {
       const w = owner(rec.cwd, ctx.worktrees)
       if (!w) return false

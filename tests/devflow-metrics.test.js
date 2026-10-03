@@ -276,6 +276,12 @@ test('a Claude session that works in a linked worktree is judged by that worktre
   fs.mkdirSync(path.join(wt, 'sub'))
   const { c } = await measure(root, { claude: home })
   assert.equal(c.main.calls, 2, 'the worktree records count; the main tree record keeps its gitBranch verdict')
+  // A linked worktree without a reflog keeps the gitBranch verdict rather than dropping its records.
+  const home2 = tmp('dfm-c-')
+  fs.rmSync(path.join(root, '.git', 'worktrees', 'wt22', 'logs'), { recursive: true, force: true })
+  write(path.join(claudeFolder(home2, root), 's.jsonl'), [cl.assistant(300, { id: 'n1', cwd: wt, branch: 'fix/4-wt' })])
+  const { c: c2 } = await measure(root, { claude: home2 })
+  assert.equal(c2.main.calls, 1)
 })
 
 test('the ledger is read from the main work tree first, even from a worktree holding an old copy (#14)', async () => {

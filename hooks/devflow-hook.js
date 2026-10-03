@@ -576,7 +576,7 @@ function relativeTo(root, cwd, files, { keepRoot = false } = {}) {
 // its own repair. A target counts when it matches a protected glob, is the protected folder itself, or - for a
 // deep write - contains it or is a pattern that names it (rm -rf _ref, rm -rf ., rm -rf *). Windows and macOS file
 // systems ignore case, so _REF/x must match _ref/** there.
-function protectionFor(root, cwd) {
+function protectionFor(root, cwd, extra = []) {
   const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
   let globs
   try {
@@ -584,6 +584,7 @@ function protectionFor(root, cwd) {
     if (!profile || typeof profile !== 'object' || Array.isArray(profile)) throw new Error('invalid profile')
     globs = profile.protected === undefined ? [] : profile.protected
     if (!Array.isArray(globs) || globs.some(g => typeof g !== 'string')) throw new Error('invalid protected paths')
+    globs = [...globs, ...extra]
   } catch {
     return targets => relativeTo(root, cwd, targets.map(t => t.path), { keepRoot: true })
       .some(r => fold(r) !== '.devflow.json') ? PROFILE_UNREADABLE : null
@@ -602,12 +603,37 @@ function protectionFor(root, cwd) {
   }
 }
 
+// The .devflow.json "tests" globs while the Issue's ledger has them locked (Issue #20), else none. Only a profile that
+// lists tests pays for the git calls that find the Issue.
+function lockedTests(root, cwd, env) {
+  let globs
+  try {
+    globs = JSON.parse(smallFile(path.join(root, '.devflow.json'), MAX_SCRIPT_BYTES)).tests
+  } catch {
+    return []
+  }
+  if (!Array.isArray(globs) || !globs.length || globs.some(g => typeof g !== 'string' || !g)) return []
+  const ctx = state.repoContext(env, cwd)
+  if (!ctx || !ctx.issue) return []
+  let ledger = null
+  try {
+    ledger = state.readLedger(ctx.store, ctx.issue)
+  } catch {}
+  return ledger && ledger.testsLocked ? globs : []
+}
+const testFile = (globs, r) => {
+  const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
+  return globs.some(g => matchesGlob(fold(r), fold(g)) || fold(r) === fold(g).split(/[*?[{]/)[0].replace(/\/+$/, ''))
+}
+const testLocked = (root, r) => blocked(root, 'test-locked', `devflow: ${r} is a test file, locked for this fix. Fix the code, ` +
+  'not the test. If the test itself is wrong, say why and unlock it: devflow-state tests <issue> unlock < reason.')
+
 const PROTECTED = 'write to protected path '
 const PROFILE_UNREADABLE = 'unreadable profile'
 
 // Edit tools write files; an unreadable profile leaves only the profile itself editable, so it can be repaired.
-function protectedEdit(root, cwd, toolInput) {
-  const protect = protectionFor(root, cwd)
+function protectedEdit(root, cwd, toolInput, tests = []) {
+  const protect = protectionFor(root, cwd, tests)
   const files = editedFiles(toolInput)
   const hit = protect(files.map(p => ({ path: p, deep: false })))
   return hit === PROFILE_UNREADABLE ? { unreadable: true } : hit ? { path: hit } : null
@@ -868,18 +894,23 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       root = devflowRoot(cwd)
       if (!root) return ''
       const tool = String(input.tool_name || '')
+      const tests = lockedTests(root, cwd, env)
       if (EDIT_TOOLS.test(tool)) {
-        const hit = protectedEdit(root, cwd, input.tool_input)
+        const hit = protectedEdit(root, cwd, input.tool_input, tests)
         if (!hit) return ''
+        if (hit.path && tests.length && testFile(tests, hit.path)) return testLocked(root, hit.path)
         return hit.unreadable
           ? blocked(root, 'profile-unreadable', 'devflow: .devflow.json does not parse, so its protected paths are unknown; fix .devflow.json first.')
           : blocked(root, 'protected-path', `devflow: ${hit.path} is a protected path in .devflow.json; leave it as it is.`)
       }
       const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool)
-        : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect: protectionFor(root, cwd), deadline })
+        : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect: protectionFor(root, cwd, tests), deadline })
       if (!kind) return ''
       if (kind === PROTECTED + PROFILE_UNREADABLE) {
         return blocked(root, 'profile-unreadable', 'devflow: .devflow.json cannot be read, so its protected paths are unknown; fix .devflow.json first.')
+      }
+      if (kind.startsWith(PROTECTED) && tests.length && testFile(tests, kind.slice(PROTECTED.length))) {
+        return testLocked(root, kind.slice(PROTECTED.length))
       }
       if (kind.startsWith(PROTECTED)) {
         return blocked(root, 'protected-path', `devflow: ${kind.slice(PROTECTED.length)} is a protected path in .devflow.json; leave it as it is.`)

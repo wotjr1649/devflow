@@ -103,6 +103,8 @@ function doctor(dir, { only } = {}) {
   if (!Array.isArray(allowLocalPaths) || allowLocalPaths.some(g => typeof g !== 'string')) {
     fail('profile', 'allowLocalPaths is a list of path globs')
   }
+  const tests = profile.tests === undefined ? [] : profile.tests
+  if (!Array.isArray(tests) || tests.some(g => typeof g !== 'string' || !g)) fail('profile', 'tests is a list of path globs')
   const localPathAllowed = f => !INSTRUCTION.test(f) && Array.isArray(allowLocalPaths) &&
     allowLocalPaths.some(g => typeof g === 'string' && matchesGlob(f, g))
   const privatePaths = profile.private || PRIVATE
@@ -233,6 +235,29 @@ function doctor(dir, { only } = {}) {
         if (!PRIVATE_NAME.test(f)) warn('local-docs', `${dir}/${f}: name is not YYYY-MM-DD-i<issue>-<slug>-<prompt|plan|handoff>.md`)
         const size = dir === 'docs/prompts' && isFile(at(`${dir}/${f}`)) ? tokens(read(`${dir}/${f}`)) : 0
         if (size > PROMPT_BUDGET) warn('local-docs', `${dir}/${f}: ~${size} tokens, prompt budget ${PROMPT_BUDGET}`)
+      }
+    }
+  }
+
+  // Tests locked for a fix (Issue #20): any test file that differs from the locked commit, committed, edited or new, is
+  // reported here, which catches the shell edits the hook could not see.
+  if (!only && Array.isArray(tests) && tests.length) {
+    const state = require('./devflow-state')
+    const ctx = state.repoContext(state.realEnv, root)
+    let ledger = null
+    try {
+      ledger = ctx && ctx.issue ? state.readLedger(ctx.store, ctx.issue) : null
+    } catch {}
+    const since = ledger && ledger.testsLocked && String(ledger.testsLocked.at || '')
+    if (since && !/^[0-9a-f]{4,40}$/.test(since)) fail('tests', `the ledger's testsLocked.at "${since}" is not a commit`)
+    else if (since) {
+      const changed = git(root, ['diff', '--name-only', since, '--'])
+      if (changed === null) fail('tests', `the locked commit ${since} is not in this repository`)
+      else {
+        const untracked = (git(root, ['ls-files', '-o', '--exclude-standard']) || '').split('\n')
+        const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
+        const hits = [...new Set([...changed.split('\n'), ...untracked].filter(f => f && tests.some(g => matchesGlob(fold(f), fold(g)))))].sort()
+        for (const f of hits) fail('tests', `${f} changed while tests are locked (since ${since})`)
       }
     }
   }

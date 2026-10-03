@@ -41,6 +41,29 @@ const has = (d, re) => findings(d).some(l => re.test(l))
 // Issue #23: doctor on a repository other than devflow (the Clauduct pilot) could not reach ok.
 const failures = d => findings(d).filter(l => l.startsWith('FAIL'))
 
+test('a test changed since the lock fails the gate on the Issue branch, by commit, edit or new file (#20)', () => {
+  const d = repo({ ...GOOD, '.devflow.json': '{ "tests": ["tests/**"] }\n', 'tests/a.test.js': 'ok\n' })
+  git(d, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'a')
+  git(d, 'switch', '-q', '-c', 'fix/5-x')
+  const at = git(d, 'rev-parse', '--short', 'HEAD').stdout.trim()
+  const ledger = path.join(d, '.work/devflow/i5/ledger.json')
+  fs.mkdirSync(path.dirname(ledger), { recursive: true })
+  fs.writeFileSync(ledger, JSON.stringify({ testsLocked: { at } }))
+  assert.deepEqual(failures(d), [], 'nothing changed since the lock')
+  fs.writeFileSync(path.join(d, 'tests/a.test.js'), 'changed\n')
+  fs.writeFileSync(path.join(d, 'tests/b.test.js'), 'new\n')
+  fs.writeFileSync(path.join(d, 'src.js'), 'code\n')
+  assert.deepEqual(failures(d), [
+    `FAIL tests: tests/a.test.js changed while tests are locked (since ${at})`,
+    `FAIL tests: tests/b.test.js changed while tests are locked (since ${at})`])
+  git(d, 'add', '-A')
+  git(d, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'b')
+  assert.equal(failures(d).length, 2, 'a commit does not hide the change')
+  fs.writeFileSync(ledger, JSON.stringify({}))
+  assert.deepEqual(failures(d), [], 'unlocked')
+  assert.ok(has(repo({ ...GOOD, '.devflow.json': '{ "tests": "tests/**" }\n' }), /^FAIL profile: tests is a list of path globs$/))
+})
+
 test('a private AGENTS.md is not required, and must not be tracked (#23)', () => {
   const { 'AGENTS.md': agents, ...rest } = GOOD
   const profile = '{ "integration": "pr-ci", "agentsMd": "private" }\n'

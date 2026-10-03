@@ -397,6 +397,30 @@ let repoBefore = 0
 test.before(() => { repoBefore = repoCount() })
 test.after(() => assert.equal(repoCount(), repoBefore, 'the test suite wrote to the real guard log'))
 
+test('locked tests are protected on both hosts while the Issue ledger says so, and only then (#20)', () => {
+  const d = gitRepo('fix/7-x', { tests: ['tests/**'] })
+  const ledgerFile = path.join(d, '.work', 'devflow', 'i7', 'ledger.json')
+  fs.mkdirSync(path.dirname(ledgerFile), { recursive: true })
+  const lock = on => fs.writeFileSync(ledgerFile, JSON.stringify(on ? { stage: 'build', testsLocked: { at: 'abc1234' } } : { stage: 'build' }))
+  const edit = (tool, input) => hook.handle(event('PreToolUse', d, { tool_name: tool, tool_input: input }))
+  const file = path.join(d, 'tests', 'a.test.js')
+  const patch = '*** Begin Patch\n*** Update File: tests/a.test.js\n@@\n-x\n+y\n*** End Patch\n'
+  lock(false)
+  assert.equal(edit('Edit', { file_path: file }), '', 'unlocked: the reproduction test is written freely')
+  lock(true)
+  const reason = out => JSON.parse(out).hookSpecificOutput.permissionDecisionReason
+  assert.match(reason(edit('Edit', { file_path: file })), /tests\/a\.test\.js is a test file, locked/)
+  assert.equal(decision(edit('apply_patch', { command: patch })), 'deny')
+  assert.equal(decision(hook.handle(pre(d, 'rm tests/a.test.js'))), 'deny')
+  assert.equal(decision(hook.handle(pre(d, "sed -i 's/a/b/' tests/a.test.js"))), 'deny')
+  assert.equal(hook.handle(pre(d, 'cat tests/a.test.js')), '', 'reading stays open')
+  assert.equal(edit('Edit', { file_path: path.join(d, 'src', 'a.js') }), '', 'code stays open')
+  assert.deepEqual(guards(d, 7), ['test-locked', 'test-locked', 'test-locked', 'test-locked'])
+  // A profile without tests globs turns the lock off, whatever the ledger says.
+  fs.writeFileSync(path.join(d, '.devflow.json'), '{}')
+  assert.equal(edit('Edit', { file_path: file }), '')
+})
+
 test('a block on an Issue branch is logged by a fixed id and the decision is unchanged', () => {
   const d = gitRepo('feat/7-x')
   const plain = dir(true)

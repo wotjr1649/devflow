@@ -359,6 +359,25 @@ test('metric adds one to a ledger metric and appends its note, keeping the other
   assert.equal(state.metric(env(root), '.', 1, 'filterFalsePositives', 'hook blocked a read').out, 'filterFalsePositives 3')
 })
 
+test('tests lock records the commit, unlock needs a reason and leaves it in notes (#20)', () => {
+  const root = repo()
+  const e = env(root)
+  const run = (input, ...a) => state.main(['tests', '1', ...a], () => input, e, '.')
+  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  assert.match(run('', 'lock').out, /no "tests" globs in \.devflow\.json/, 'off unless the project lists its tests')
+  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
+  assert.deepEqual(run('', 'lock'), { code: 0, out: 'tests locked at abc1234' })
+  assert.deepEqual(ledger().testsLocked, { at: 'abc1234' })
+  assert.equal(run('  ', 'unlock').code, 2, 'unlock needs a reason')
+  assert.deepEqual(run('the test asserted the old message', 'unlock'), { code: 0, out: 'tests unlocked' })
+  assert.equal(ledger().testsLocked, undefined)
+  assert.equal(ledger().notes[ledger().notes.length - 1], 'tests unlocked: the test asserted the old message')
+  assert.equal(run('again', 'unlock').code, 1, 'nothing to unlock')
+  assert.equal(run('', 'freeze').code, 2)
+  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": "tests/**" }')
+  assert.match(run('', 'lock').out, /"tests" .* list of path globs/)
+})
+
 test('metric --undo takes one back with its reason, and never goes below zero (#22)', () => {
   const root = repo()
   const e = env(root)

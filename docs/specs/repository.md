@@ -158,6 +158,12 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
   사용자 홈 아래 경로는 실패이고(POSIX 홈은 웹 경로와 구별하려고 이름 뒤 `/`가 있을 때만), 지침 파일(AGENTS.md,
   SKILL.md, `.claude/rules`, 에이전트 정의)에는 적용하지 않는다.
 
+`tests`는 시험 파일의 glob 목록이다(#20). 적은 프로젝트만 수정 작업 중 시험을 잠글 수 있다. 재현 시험을 쓰고 커밋한 뒤
+`devflow-state tests <n> lock`이 장부에 그 커밋을 남기면, 훅이 이 glob을 `protected`처럼 다뤄 편집 도구와 알아보는
+셸 쓰기를 막고(차단 기록 `test-locked`), doctor는 Issue 브랜치에서 그 커밋 뒤로 바뀌거나 새로 생긴 시험 파일을 실패로
+낸다. 훅이 놓친 셸 편집은 관문에서 드러난다. 시험 자체가 틀렸으면 `tests <n> unlock`에 이유를 주어 풀고, 이유는 장부
+notes에 남는다. 적지 않으면 잠금 명령은 거부되고 훅과 doctor는 아무것도 하지 않는다.
+
 ## doctor 검사 항목
 
 `bin/devflow-doctor [path]`가 읽기만 하고 검사한다. 실패(FAIL)가 있으면 exit 1이고, 경고(WARN)는 실패시키지 않는다.
@@ -172,6 +178,7 @@ Issue 형식은 doctor가 검사하지 않고, `devflow-state`가 쓸 때 검사
 | git 훅 | `local-merge` 저장소에서 `core.hooksPath`가 `.githooks`를 가리키는지 |
 | 지침을 끄는 파일 | `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`가 저장소나 상위 폴더에 있는지. git이 무시하는 파일도 본다 |
 | 문서 | 줄바꿈(git이 LF로 저장하고 작업 트리만 CRLF면 경고), BOM, 보이지 않는 문자, 로컬 절대 경로(`allowLocalPaths`), 크기 예산, 상대 링크와 앵커 |
+| 잠긴 시험 | `tests`를 잠근 Issue 브랜치에서, 잠근 커밋 뒤로 바뀌거나 새로 생긴 시험 파일 |
 | 로컬 문서 | 크기 예산, 이름 규칙 |
 
 같은 스크립트를 스킬(분석), 훅(편집 직후 알림), CI나 git pre-push 훅(실패 처리)이 함께 쓴다.

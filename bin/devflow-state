@@ -946,6 +946,10 @@ function testsLock(env, cwd, n, op, reason) {
     } catch {}
     if (globs === undefined || (Array.isArray(globs) && !globs.length)) return { code: 1, out: 'refused: no "tests" globs in .devflow.json, so there is nothing to lock' }
     if (!Array.isArray(globs) || globs.some(g => typeof g !== 'string' || !g)) return { code: 1, out: 'refused: "tests" in .devflow.json must be a list of path globs' }
+    if (!ctx || !ctx.head) return { code: 1, out: 'refused: there is no commit to lock the tests at' }
+    // Lock after the reproduction test is committed: doctor compares the tests with the locked commit.
+    const dirty = env.run('git', ['status', '--porcelain', '--', ...globs.map(g => `:(glob)${g}`)], { cwd: ctx.root })
+    if (dirty.code === 0 && dirty.stdout.trim()) return { code: 1, out: 'refused: commit the test files first; uncommitted:\n' + dirty.stdout.trimEnd() }
   }
   const no = ledgerGate(ctx, n, 'test locks', { append: true })
   if (no) return no
@@ -1104,6 +1108,9 @@ function command(argv, stdin, env, cwd) {
       if (no) return no
       // Top-level keys are replaced as sent; a note goes through note, which appends under the lock.
       const patch = JSON.parse(input())
+      if (patch && typeof patch === 'object' && 'testsLocked' in patch) {
+        return { code: 1, out: 'refused: testsLocked changes only through devflow-state tests <issue> lock|unlock' }
+      }
       const r = updateLedger(ctx.store, n, ledger => ({ ledger: { ...ledger, ...patch } }))
       return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n, r.why), n)
     }

@@ -59,6 +59,12 @@ test('a test changed since the lock fails the gate on the Issue branch, by commi
   git(d, 'add', '-A')
   git(d, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'b')
   assert.equal(failures(d).length, 2, 'a commit does not hide the change')
+  // A test renamed out of the globs is still reported, by its old name.
+  git(d, 'mv', 'tests/a.test.js', 'lib.js')
+  git(d, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'c')
+  assert.ok(failures(d).includes(`FAIL tests: tests/a.test.js changed while tests are locked (since ${at})`))
+  fs.writeFileSync(ledger, '{ broken')
+  assert.ok(has(d, /^FAIL tests: the ledger of Issue #5 cannot be read/))
   fs.writeFileSync(ledger, JSON.stringify({}))
   assert.deepEqual(failures(d), [], 'unlocked')
   assert.ok(has(repo({ ...GOOD, '.devflow.json': '{ "tests": "tests/**" }\n' }), /^FAIL profile: tests is a list of path globs$/))

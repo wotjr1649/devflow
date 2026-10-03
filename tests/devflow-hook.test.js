@@ -416,6 +416,12 @@ test('locked tests are protected on both hosts while the Issue ledger says so, a
   assert.equal(hook.handle(pre(d, 'cat tests/a.test.js')), '', 'reading stays open')
   assert.equal(edit('Edit', { file_path: path.join(d, 'src', 'a.js') }), '', 'code stays open')
   assert.deepEqual(guards(d, 7), ['test-locked', 'test-locked', 'test-locked', 'test-locked'])
+  // Review: the ledger itself is locked, a broken ledger counts as locked, and a deep write is the lock's block.
+  assert.equal(decision(hook.handle(pre(d, 'echo x > .work/devflow/i7/ledger.json'))), 'deny')
+  assert.equal(decision(hook.handle(pre(d, 'rm -rf .'))), 'deny')
+  fs.writeFileSync(ledgerFile, '{ broken')
+  assert.equal(decision(edit('Edit', { file_path: file })), 'deny')
+  assert.deepEqual(guards(d, 7).slice(4), ['test-locked', 'test-locked', 'test-locked'])
   // A profile without tests globs turns the lock off, whatever the ledger says.
   fs.writeFileSync(path.join(d, '.devflow.json'), '{}')
   assert.equal(edit('Edit', { file_path: file }), '')

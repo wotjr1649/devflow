@@ -603,9 +603,10 @@ function protectionFor(root, cwd, extra = []) {
   }
 }
 
-// The .devflow.json "tests" globs while the Issue's ledger has them locked (Issue #20), else none. Only a profile that
-// lists tests pays for the git calls that find the Issue.
-function lockedTests(root, cwd, env) {
+// The .devflow.json "tests" globs, and the ledger itself, while the Issue's ledger has the tests locked (Issue #20), else
+// none. The Issue comes from git's files as for the guard log, without spawning git on every tool call. A ledger that
+// cannot be read counts as locked: breaking it must not lift the lock.
+function lockedTests(root) {
   let globs
   try {
     globs = JSON.parse(smallFile(path.join(root, '.devflow.json'), MAX_SCRIPT_BYTES)).tests
@@ -613,17 +614,16 @@ function lockedTests(root, cwd, env) {
     return []
   }
   if (!Array.isArray(globs) || !globs.length || globs.some(g => typeof g !== 'string' || !g)) return []
-  const ctx = state.repoContext(env, cwd)
-  if (!ctx || !ctx.issue) return []
-  let ledger = null
+  const t = guardTarget(root)
+  if (!t) return []
+  const ledgerFile = path.relative(root, path.join(t.root, '.work', 'devflow', `i${t.issue}`, 'ledger.json')).split(path.sep).join('/')
+  const locked = [...globs, ...(ledgerFile.startsWith('..') ? [] : [ledgerFile])]
   try {
-    ledger = state.readLedger(ctx.store, ctx.issue)
-  } catch {}
-  return ledger && ledger.testsLocked ? globs : []
-}
-const testFile = (globs, r) => {
-  const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
-  return globs.some(g => matchesGlob(fold(r), fold(g)) || fold(r) === fold(g).split(/[*?[{]/)[0].replace(/\/+$/, ''))
+    const ledger = state.readLedger(t.root, t.issue)
+    return ledger && ledger.testsLocked ? locked : []
+  } catch {
+    return locked
+  }
 }
 const testLocked = (root, r) => blocked(root, 'test-locked', `devflow: ${r} is a test file, locked for this fix. Fix the code, ` +
   'not the test. If the test itself is wrong, say why and unlock it: devflow-state tests <issue> unlock < reason.')
@@ -894,11 +894,13 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       root = devflowRoot(cwd)
       if (!root) return ''
       const tool = String(input.tool_name || '')
-      const tests = lockedTests(root, cwd, env)
+      const tests = lockedTests(root)
+      // A hit the profile's own protected paths do not cover is the test lock's.
+      const byLock = hit => tests.length > 0 && !protectionFor(root, cwd)([{ path: path.join(root, hit), deep: true }])
       if (EDIT_TOOLS.test(tool)) {
         const hit = protectedEdit(root, cwd, input.tool_input, tests)
         if (!hit) return ''
-        if (hit.path && tests.length && testFile(tests, hit.path)) return testLocked(root, hit.path)
+        if (hit.path && byLock(hit.path)) return testLocked(root, hit.path)
         return hit.unreadable
           ? blocked(root, 'profile-unreadable', 'devflow: .devflow.json does not parse, so its protected paths are unknown; fix .devflow.json first.')
           : blocked(root, 'protected-path', `devflow: ${hit.path} is a protected path in .devflow.json; leave it as it is.`)
@@ -909,7 +911,7 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       if (kind === PROTECTED + PROFILE_UNREADABLE) {
         return blocked(root, 'profile-unreadable', 'devflow: .devflow.json cannot be read, so its protected paths are unknown; fix .devflow.json first.')
       }
-      if (kind.startsWith(PROTECTED) && tests.length && testFile(tests, kind.slice(PROTECTED.length))) {
+      if (kind.startsWith(PROTECTED) && kind !== PROTECTED + PROFILE_UNREADABLE && byLock(kind.slice(PROTECTED.length))) {
         return testLocked(root, kind.slice(PROTECTED.length))
       }
       if (kind.startsWith(PROTECTED)) {

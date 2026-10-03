@@ -160,9 +160,12 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 
 `tests`는 시험 파일의 glob 목록이다(#20). 적은 프로젝트만 수정 작업 중 시험을 잠글 수 있다. 재현 시험을 쓰고 커밋한 뒤
 `devflow-state tests <n> lock`이 장부에 그 커밋을 남기면, 훅이 이 glob을 `protected`처럼 다뤄 편집 도구와 알아보는
-셸 쓰기를 막고(차단 기록 `test-locked`), doctor는 Issue 브랜치에서 그 커밋 뒤로 바뀌거나 새로 생긴 시험 파일을 실패로
-낸다. 훅이 놓친 셸 편집은 관문에서 드러난다. 시험 자체가 틀렸으면 `tests <n> unlock`에 이유를 주어 풀고, 이유는 장부
-notes에 남는다. 적지 않으면 잠금 명령은 거부되고 훅과 doctor는 아무것도 하지 않는다.
+셸 쓰기와 장부 파일 쓰기를 막고(차단 기록 `test-locked`), doctor는 Issue 브랜치에서 그 커밋 뒤로 바뀌거나 새로 생기거나
+이름이 바뀐 시험 파일을 실패로 낸다. verify와 ship은 Issue 브랜치에서 doctor를 돌리므로 훅이 놓친 셸 편집이 거기서
+드러난다(main의 pre-push와 CI에는 장부가 없어 이 검사가 없다). 커밋하지 않은 시험이 있으면 잠그지 않는다. 시험 자체가
+틀렸으면 `tests <n> unlock`에 이유를 주어 풀고, 이유는 장부 notes에 남아 ship 체크포인트로 간다. `ledger-update`는
+`testsLocked`를 바꾸지 못하고, 읽을 수 없는 장부는 잠긴 것으로 본다. rebase한 뒤에는 풀고(이유: rebase) 다시 잠근다.
+적지 않으면 잠금 명령은 거부되고 훅과 doctor는 아무것도 하지 않는다.
 
 ## doctor 검사 항목
 

@@ -247,11 +247,15 @@ function doctor(dir, { only } = {}) {
     let ledger = null
     try {
       ledger = ctx && ctx.issue ? state.readLedger(ctx.store, ctx.issue) : null
-    } catch {}
+    } catch {
+      fail('tests', `the ledger of Issue #${ctx.issue} cannot be read, so whether the tests are locked is unknown`)
+    }
     const since = ledger && ledger.testsLocked && String(ledger.testsLocked.at || '')
-    if (since && !/^[0-9a-f]{4,40}$/.test(since)) fail('tests', `the ledger's testsLocked.at "${since}" is not a commit`)
+    if (ledger && ledger.testsLocked && !since) fail('tests', 'the tests are locked at no commit')
+    else if (since && !/^[0-9a-f]{4,40}$/.test(since)) fail('tests', `the ledger's testsLocked.at "${since}" is not a commit`)
     else if (since) {
-      const changed = git(root, ['diff', '--name-only', since, '--'])
+      // --no-renames: a test moved out of the globs is listed by its old name too.
+      const changed = git(root, ['diff', '--name-only', '--no-renames', since, '--'])
       if (changed === null) fail('tests', `the locked commit ${since} is not in this repository`)
       else {
         const untracked = (git(root, ['ls-files', '-o', '--exclude-standard']) || '').split('\n')

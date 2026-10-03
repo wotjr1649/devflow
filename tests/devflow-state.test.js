@@ -376,6 +376,17 @@ test('tests lock records the commit, unlock needs a reason and leaves it in note
   assert.equal(run('', 'freeze').code, 2)
   fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": "tests/**" }')
   assert.match(run('', 'lock').out, /"tests" .* list of path globs/)
+  // Review: ledger-update cannot lift or move the lock, and uncommitted tests are not locked.
+  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
+  const lifted = state.main(['ledger-update', '1'], () => '{"testsLocked":null}', e, '.')
+  assert.equal(lifted.code, 1)
+  assert.match(lifted.out, /testsLocked changes only through/)
+  const dirty = env(root)
+  const real = dirty.run
+  dirty.run = (cmd, args, opts) => (cmd === 'git' && args[0] === 'status' ? ok(' M tests/a.test.js\n') : real(cmd, args, opts))
+  const refused = state.main(['tests', '1', 'lock'], () => '', dirty, '.')
+  assert.equal(refused.code, 1)
+  assert.match(refused.out, /commit the test files first/)
 })
 
 test('metric --undo takes one back with its reason, and never goes below zero (#22)', () => {

@@ -646,8 +646,11 @@ const PLAIN_LINE = /^(?:- \[[ xX]\](?:[ \t].*)?|[ \t]*| {0,5}(?![-*+>#|<~= \t]|`
 const ASCII_PUNCT = /[!-\/:-@\[-`{-~]/
 const TAKES_BACKTICKS = /[[\]$]|:\/\/|www\.|mailto:|xmpp:/i
 // A pipe takes backticks only in a table, and GitHub makes a table only of a paragraph with a delimiter row such as
-// "|---|---|" (Issue #33, checked with the markdown API): elsewhere a pipe in a code span stays in the span.
-const DELIMITER_ROW = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/
+// "|---|---|" (Issue #33, checked with the markdown API): elsewhere a pipe in a code span stays in the span. Tables
+// also form inside quotes and list items, so any line of only container marks, pipes, colons, dashes and whitespace
+// that holds a pipe and a dash counts as one; reading too many tables only refuses more.
+const MAYBE_DELIMITER = /^[\s>*+\-|:.)0-9]*$/
+const maybeDelimiter = text => MAYBE_DELIMITER.test(text) && text.includes('|') && text.includes('-')
 // A task box opening a list item, followed by a space: the task list takes it, and with the space after "]" no link can
 // start there, so its brackets are no mark.
 const TASK_BOX = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[ xX]\](?=[ \t]|$)/
@@ -704,7 +707,7 @@ function criteria(body) {
   for (let start = 0; start < ls.length;) {
     let end = start
     while (end < ls.length && !/^[ \t]*$/.test(ls[end].text)) end++
-    if (ls.slice(start, end).some((l, k) => k > 0 && l.text.includes('|') && DELIMITER_ROW.test(l.text))) {
+    if (ls.slice(start, end).some(l => maybeDelimiter(l.text))) {
       for (let k = start; k < end; k++) tableAt.add(k)
     }
     start = end + 1

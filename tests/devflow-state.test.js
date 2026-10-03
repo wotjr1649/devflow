@@ -935,6 +935,11 @@ test('a pipe marks a table only in a paragraph with a delimiter row (#33)', () =
   // In a real table a pipe splits the cell before spans pair, so a span there is still not trusted.
   const table = '## 문제\n| a | b |\n|---|---|\n| `x <y` | z |\n\n## 수용 기준\n- [ ] a\n'
   assert.match(created(table).out, /HTML or an entity outside a code span/)
+  // GitHub also makes tables inside quotes and list items, and with tabs or other whitespace in the row (review).
+  for (const t of ['> | `a|<b>` |\n> |---|---|', '- x\n  - | `a|<b>` |\n    |---|---|', '10. | `a|<b>` |\n    |---|---|',
+    '-\t| `a|<b>` |\n\t|---|---|', '| `a|<b>` |\n|---|---|\u000b']) {
+    assert.match(created(`## 문제\n${t}\n\n## 수용 기준\n- [ ] a\n`).out, /HTML or an entity outside a code span/, JSON.stringify(t))
+  }
 })
 
 test('close refuses while an acceptance criterion is unchecked (#27)', () => {

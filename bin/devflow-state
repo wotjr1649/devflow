@@ -933,7 +933,8 @@ const NO_LEDGER = n => ({ code: 1, out: `refused: no ledger for Issue #${n} here
 const MISSING = Symbol('missing ledger')
 // The queue is a list; any other value was written by hand and is left for a person to fix, not dropped (Issue #35).
 const NOT_A_LIST = "refused: the ledger's pendingPosts is not a list; a person fixes the ledger by hand"
-const notAList = ledger => ledger.pendingPosts !== undefined && ledger.pendingPosts !== null && !Array.isArray(ledger.pendingPosts)
+const notAList = ledger => ledger.pendingPosts !== undefined && ledger.pendingPosts !== null &&
+  (!Array.isArray(ledger.pendingPosts) || ledger.pendingPosts.some(p => !p || typeof p !== 'object'))
 const queueOf = ledger => (Array.isArray(ledger.pendingPosts) ? ledger.pendingPosts : [])
 const ZERO = Symbol('nothing to undo')
 const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.store, n))
@@ -1238,7 +1239,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
       break
     }
     posted++
-    if (!tryUpdate(l => ({ ledger: { ...l, pendingPosts: queueOf(l).filter(q => q.id !== p.id) } })).ok) {
+    if (!tryUpdate(l => (notAList(l) ? { result: 'notlist' } : { ledger: { ...l, pendingPosts: queueOf(l).filter(q => q.id !== p.id) } })).ok) {
       stuck = p
       break
     }
@@ -1246,7 +1247,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   if (failed || stuck) {
     // What was not posted goes back unclaimed for the next flush; an unremoved item keeps its claim, so no flush
     // posts it again before someone removes it.
-    const back = tryUpdate(l => ({
+    const back = tryUpdate(l => notAList(l) ? { result: 'notlist' } : ({
       ledger: { ...l, pendingPosts: queueOf(l).map(q =>
         (q.claimed && q.claimed.by === by && !(stuck && q.id === stuck.id) ? (({ claimed, ...rest }) => rest)(q) : q)) },
     }))
@@ -1372,7 +1373,9 @@ function command(argv, stdin, env, cwd) {
         return ok ? pendingDrop(env, cwd, num(rest[1]), rest[2], input(), { posted: rest[3] === '--posted' }) : { code: 2, out: DROP_USAGE }
       }
       const ctx = repoContext(env, cwd)
-      const posts = (ctx && ctx.issue && (readLedger(ctx.store, ctx.issue) || {}).pendingPosts) || []
+      const ledger = (ctx && ctx.issue && readLedger(ctx.store, ctx.issue)) || {}
+      if (notAList(ledger)) return { code: 1, out: NOT_A_LIST }
+      const posts = queueOf(ledger)
       return { code: 0, out: posts.length ? JSON.stringify(posts, null, 2) : 'nothing pending' }
     }
     case 'flush':

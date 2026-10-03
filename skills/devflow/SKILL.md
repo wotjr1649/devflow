@@ -44,8 +44,9 @@ automatically.
 ## Unattended work
 
 [자율 실행](../../docs/specs/ledger.md#자율-실행) says when the ledger's `mode` becomes `autonomous` and what
-waits while it is; set it there and nowhere else. When the user is back, set `mode` to `interactive`, show the queued
-posts with `pending`, and `flush` them once the user has read them.
+waits while it is. Set it with `mode <issue> autonomous < reason`, giving the reason on the first line of stdin;
+the command keeps the reason and change time. When the user is back, run `mode <issue> interactive < reason`, show
+the queued posts with `pending`, and `flush` them once the user has read them.
 
 ## Stage and path
 

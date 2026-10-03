@@ -5,12 +5,13 @@
 
 ## 작업 장부 키
 
-`devflow-state ledger-update`로 쓰고 재개 카드와 Stop 훅이 읽는다.
+`devflow-state ledger-update`와 키별 전용 명령으로 쓰고 재개 카드와 Stop 훅이 읽는다.
 
 | 키 | 담는 것 |
 |---|---|
 | `stage`, `path` | lifecycle의 단계와 경로(spike, bounded, architectural). 단계는 상태 블록의 "단계"와 함께 바꾼다 |
-| `mode` | `interactive` 또는 `autonomous`. 무인 구간의 유일한 기준이다([자율 실행](#자율-실행)) |
+| `mode` | `interactive` 또는 `autonomous`. 무인 구간의 유일한 기준이다. 새 장부는 `ledger-update`로 정할 수 있고, 기존 장부의 전환은 `devflow-state mode <n> autonomous\|interactive < 이유`로만 한다([자율 실행](#자율-실행)) |
+| `modeChanged` | 마지막 mode 전환의 `{to, at}`. `mode` 명령이 ISO 시각을 기록하고 재개 카드가 `Mode: <to> since <at>`로 보인다 |
 | `runMode` | M0~M4 |
 | `task` | `{current, total}` |
 | `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
@@ -30,9 +31,11 @@
 ## 자율 실행
 
 무인 구간은 장부의 `mode`가 `autonomous`일 때뿐이다(사용자 결정). 사용자가 자리를 비우거나 자율 실행을 지시할 때,
-또는 비대화형으로 띄우는 프롬프트가 그렇게 정할 때 라우터가 바꾸고, 사람이 돌아오면 `interactive`로 되돌린 뒤 게시 대기를
-보여 준다. bypass(Claude)나 yolo(Codex) 같은 승인 설정은 사람이 있는지를 말하지 않으므로 기준으로 쓰지 않는다. Stop 훅은
-이때만 계속을 요청하고, 장부만 읽는다.
+또는 비대화형으로 띄우는 프롬프트가 그렇게 정할 때 라우터가 `devflow-state mode <n> autonomous < 이유`로 바꾼다.
+사람이 돌아오면 `devflow-state mode <n> interactive < 이유`로 되돌린 뒤 게시 대기를 보여 준다. 이유는 stdin의 첫 줄로
+필수이고, 명령은 잠금 안에서 mode를 바꾸며 `mode <값>: <이유>`를 notes에 덧붙이고 `modeChanged`에 값과 시각을 남긴다.
+같은 값으로의 전환은 거부한다. bypass(Claude)나 yolo(Codex) 같은 승인 설정은 사람이 있는지를 말하지 않으므로 기준으로
+쓰지 않는다. Stop 훅은 이때만 계속을 요청하고, 장부만 읽는다.
 
 - 조건: 단계가 build나 verify이고 열린 작업이 있으며, `blocked`, 열린 `decisions`, `running`이 비어 있다
   ([작업 장부 키](#작업-장부-키)). 원격 쓰기 확인을 기다리는 것도 `blocked`에 적는다.

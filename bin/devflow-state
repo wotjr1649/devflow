@@ -42,6 +42,8 @@ const USAGE = `usage: devflow-state <command>
   ledger [n]                  print the ledger
   ledger-update [n] < json    replace the top-level keys given in a JSON object
   note <n> < line             append one line to the ledger's notes
+  mode <n> autonomous|interactive < reason
+                              change the ledger's mode, keeping the reason and time of the change
   running <n> add|done <label>
                               record a background delegation as it starts and ends; the Stop hook waits while any runs
   tests <n> lock | tests <n> unlock < reason
@@ -473,6 +475,7 @@ function card(env, cwd, { sessionId: hookSession } = {}) {
     const task = ledger.task || {}
     ledgerLines.push(`Ledger: task ${task.current ?? '?'}/${task.total ?? '?'} · mode ${ledger.mode || 'interactive'} · ` +
       `pending posts ${(ledger.pendingPosts || []).length}`)
+    if (ledger.modeChanged) ledgerLines.push(`Mode: ${clip(stripHidden(`${ledger.modeChanged.to} since ${ledger.modeChanged.at}`), MAX_TITLE_CHARS)}`)
     if (ledger.lastCommit && !/^[0-9a-f]{4,40}$/.test(ledger.lastCommit)) ledgerLines.push('Ledger lastCommit is not a commit hash')
     else if (ledger.lastCommit) {
       const log = env.run('git', ['log', '--format=%h %s', '-n', String(MAX_CARD_COMMITS), `${ledger.lastCommit}..HEAD`], { cwd: ctx.root })
@@ -1070,6 +1073,25 @@ function running(env, cwd, n, op, label) {
   return r.ok ? { code: 0, out: `running ${r.result.length}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
+// Mode changes keep their reason and time under the same lock as the mode the Issue write queue reads.
+const MODE_USAGE = 'usage: devflow-state mode <issue> autonomous|interactive < reason'
+function mode(env, cwd, n, value, reason) {
+  const line = String(reason || '').split(/\r?\n/)[0].trim()
+  if (!['autonomous', 'interactive'].includes(value) || !line) return { code: 2, out: MODE_USAGE }
+  const ctx = repoContext(env, cwd)
+  const no = ledgerGate(ctx, n, 'mode changes', { append: true })
+  if (no) return no
+  const r = updateLedger(ctx.store, n, ledger => {
+    if (gone(ctx, n)) return { result: MISSING }
+    if (ledger.mode === value) return { result: ZERO }
+    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `mode ${value}: ${line}`]
+    return { ledger: { ...ledger, mode: value, modeChanged: { to: value, at: new Date().toISOString() }, notes } }
+  })
+  if (r.ok && r.result === MISSING) return NO_LEDGER(n)
+  if (r.ok && r.result === ZERO) return { code: 1, out: `refused: mode is already ${value} for Issue #${n}` }
+  return r.ok ? { code: 0, out: `mode ${value}` } : guarded(ctx, LOCKED(n, r.why), n)
+}
+
 // Locks the project's test files for a fix once its reproduction test is written: the hook then refuses edits to them
 // and doctor reports any that changed since the commit recorded here (Issue #20). Unlocking takes a reason, kept in notes.
 const TESTS_USAGE = 'usage: devflow-state tests <issue> lock | tests <issue> unlock < reason'
@@ -1192,7 +1214,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
 
 // Writes that count as this session's activity (Issue #10). After one succeeds, it is recorded and the other sessions
 // that wrote to the same Issue in the last 30 minutes are named; without an id of its own a session cannot tell.
-const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'ledger-update', 'metric', 'note', 'running', 'tests', 'flush'])
+const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'ledger-update', 'metric', 'note', 'running', 'mode', 'tests', 'flush'])
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
   const r = command(argv, stdin, env, cwd)
   const me = sessionId(env.vars)
@@ -1256,6 +1278,9 @@ function command(argv, stdin, env, cwd) {
       }
       // notes only grow: replacing them would drop another session's lines and the reasons tests were unlocked (Issue #20).
       const r = updateLedger(ctx.store, n, ledger => {
+        if ('mode' in patch && fs.existsSync(ledgerPath(ctx.store, n))) {
+          return { result: { refused: 'refused: mode changes only through devflow-state mode <issue> autonomous|interactive < reason' } }
+        }
         const old = Array.isArray(ledger.notes) ? ledger.notes : []
         if ('notes' in patch && (!Array.isArray(patch.notes) || old.some((line, k) => patch.notes[k] !== line))) return { result: ZERO }
         // A delegation still running comes out with running done, not by replacing the list (Issue #24, #27).
@@ -1263,6 +1288,7 @@ function command(argv, stdin, env, cwd) {
         if ('running' in patch && live(ledger.running)) return { result: MISSING }
         return { ledger: { ...ledger, ...patch } }
       })
+      if (r.ok && r.result && r.result.refused) return { code: 1, out: r.result.refused }
       if (r.ok && r.result === ZERO) return { code: 1, out: 'refused: notes only grow; add a line with devflow-state note' }
       if (r.ok && r.result === MISSING) return { code: 1, out: 'refused: running has a delegation in it; take each one out with devflow-state running <issue> done <label> ' +
           '(an entry without a label goes with any add and done of one label)' }
@@ -1272,6 +1298,8 @@ function command(argv, stdin, env, cwd) {
       return num(rest[0]) ? note(env, cwd, num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state note <issue> < line' }
     case 'running':
       return num(rest[0]) && rest.length === 3 ? running(env, cwd, num(rest[0]), rest[1], rest[2]) : { code: 2, out: RUNNING_USAGE }
+    case 'mode':
+      return num(rest[0]) && rest.length === 2 ? mode(env, cwd, num(rest[0]), rest[1], input()) : { code: 2, out: MODE_USAGE }
     case 'tests':
       return num(rest[0]) && rest.length === 2 ? testsLock(env, cwd, num(rest[0]), rest[1], rest[1] === 'unlock' ? input() : '') : { code: 2, out: TESTS_USAGE }
     case 'release': {

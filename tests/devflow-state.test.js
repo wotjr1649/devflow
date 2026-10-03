@@ -491,6 +491,160 @@ test('running adds and removes one delegation under the lock and keeps the other
   }
 })
 
+test('mode changes under the ledger lock, keeping its reason and ISO time (#32)', t => {
+  const root = repo({ ledger: { mode: 'interactive', stage: 'build', notes: ['before'], pendingPosts: [{ id: 'p1' }] } })
+  const e = env(root)
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const ledger = () => JSON.parse(fs.readFileSync(file, 'utf8'))
+  // A concurrent note arriving as the lock is acquired must survive the mode change.
+  const write = fs.writeFileSync
+  t.mock.method(fs, 'writeFileSync', (p, ...args) => {
+    const result = write(p, ...args)
+    if (p === path.join(root, '.work/devflow/i1/ledger.lock')) {
+      write(file, JSON.stringify({ ...ledger(), notes: [...ledger().notes, 'concurrent'] }))
+    }
+    return result
+  })
+  const before = Date.now()
+  assert.deepEqual(state.main(['mode', '1', 'autonomous'], () => '  person is away  \nignored', e, '.'), { code: 0, out: 'mode autonomous' })
+  const changed = ledger()
+  assert.equal(changed.mode, 'autonomous')
+  assert.equal(changed.modeChanged.to, 'autonomous')
+  const at = Date.parse(changed.modeChanged.at)
+  assert.equal(new Date(at).toISOString(), changed.modeChanged.at)
+  assert.ok(at >= before && at <= Date.now())
+  assert.deepEqual(changed.notes, ['before', 'concurrent', 'mode autonomous: person is away'])
+  assert.equal(changed.stage, 'build')
+  assert.deepEqual(changed.pendingPosts, [{ id: 'p1' }])
+  assert.deepEqual(state.main(['mode', '1', 'interactive'], () => 'person returned', e, '.'), { code: 0, out: 'mode interactive' })
+  assert.equal(ledger().mode, 'interactive')
+  assert.equal(ledger().modeChanged.to, 'interactive')
+  assert.equal(ledger().notes.at(-1), 'mode interactive: person returned')
+  assert.equal(e.calls.some(c => c.cmd === 'gh'), false, 'mode changes are local')
+})
+
+test('mode refuses a repeated value and requires a value and the first reason line (#32)', () => {
+  const root = repo({ ledger: { mode: 'autonomous', notes: ['before'] } })
+  const e = env(root)
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const before = fs.readFileSync(file, 'utf8')
+  const same = state.main(['mode', '1', 'autonomous'], () => 'again', e, '.')
+  assert.equal(same.code, 1)
+  assert.match(same.out, /already.*autonomous/)
+  for (const [args, reason] of [
+    [['1', 'interactive'], ''], [['1', 'interactive'], '  '], [['1', 'interactive'], '\nsecond line'],
+    [['1', 'other'], 'reason'], [['1'], 'reason'], [[], 'reason'], [['x', 'interactive'], 'reason'],
+    [['0', 'interactive'], 'reason'], [['1', 'interactive', 'extra'], 'reason'],
+  ]) {
+    const r = state.main(['mode', ...args], () => reason, e, '.')
+    assert.equal(r.code, 2, JSON.stringify([args, reason]))
+    assert.match(r.out, /usage: devflow-state mode/)
+  }
+  assert.equal(fs.readFileSync(file, 'utf8'), before)
+})
+
+test('mode follows ledger scope, append and lock refusals (#32)', () => {
+  const root = repo({ ledger: { mode: 'interactive' } })
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const change = (e, n = '1') => state.main(['mode', n, 'autonomous'], () => 'person is away', e, '.')
+  const other = change(env(root), '7')
+  assert.equal(other.code, 1)
+  assert.match(other.out, /only to the branch's Issue #1/)
+  assert.equal(fs.existsSync(path.join(root, '.work/devflow/i7')), false)
+  assert.match(change(env(root, { branch: '' })).out, /detached HEAD/)
+  const empty = repo()
+  assert.match(change(env(empty, { branch: 'main' })).out, /no ledger for Issue #1/)
+  assert.equal(fs.existsSync(path.join(empty, '.work')), false)
+  const lock = path.join(root, '.work/devflow/i1/ledger.lock')
+  fs.writeFileSync(lock, 'other writer')
+  const busy = change(env(root))
+  assert.equal(busy.code, 1)
+  assert.match(busy.out, /another write holds the ledger/)
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { mode: 'interactive' })
+  fs.rmSync(lock)
+  fs.mkdirSync(lock)
+  const unsafe = change(env(root))
+  assert.equal(unsafe.code, 1)
+  assert.match(unsafe.out, /not a plain folder/)
+  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-other-issue', 'state-detached', 'state-ledger-locked', 'state-ledger-unsafe'])
+  fs.rmdirSync(lock)
+  assert.equal(change(env(root, { branch: 'main' })).code, 0, 'a named non-Issue branch may change an existing ledger')
+  assert.equal(change(env(empty)).code, 0, 'the Issue branch may start its own ledger, like running and tests')
+})
+
+test('mode rechecks a ledger removed after the gate, under the lock (#32)', t => {
+  const root = repo({ ledger: { mode: 'interactive' } })
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const write = fs.writeFileSync
+  t.mock.method(fs, 'writeFileSync', (p, ...args) => {
+    const result = write(p, ...args)
+    if (p === path.join(root, '.work/devflow/i1/ledger.lock')) fs.rmSync(file)
+    return result
+  })
+  const r = state.main(['mode', '1', 'autonomous'], () => 'person is away', env(root, { branch: 'main' }), '.')
+  assert.equal(r.code, 1)
+  assert.match(r.out, /no ledger for Issue #1/)
+  assert.equal(fs.existsSync(file), false)
+})
+
+test('ledger-update reserves mode for the command once a ledger exists, even an empty one (#32)', () => {
+  const root = repo()
+  const e = env(root)
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const update = patch => state.main(['ledger-update', '1'], () => JSON.stringify(patch), e, '.')
+  assert.equal(update({ mode: 'autonomous', stage: 'build' }).code, 0, 'new ledgers can set mode')
+  for (const old of [{ mode: 'autonomous', stage: 'build' }, { stage: 'build' }, {}]) {
+    fs.writeFileSync(file, JSON.stringify(old))
+    const before = fs.readFileSync(file, 'utf8')
+    for (const value of ['autonomous', 'interactive', null]) {
+      const r = update({ mode: value, stage: 'ship' })
+      assert.equal(r.code, 1)
+      assert.match(r.out, /mode.*devflow-state mode/)
+      assert.equal(fs.readFileSync(file, 'utf8'), before, 'the whole patch is refused')
+    }
+    assert.equal(update({ stage: 'verify' }).code, 0)
+  }
+})
+
+test('card shows the last mode change and stays under budget (#32)', () => {
+  const at = '2026-10-04T00:00:00.000Z'
+  const data = issue({ title: '제목'.repeat(200), body: block(BRANCH, Array(15).fill('- 설명: ' + '긴 내용'.repeat(100))) })
+  for (const value of ['autonomous', 'interactive']) {
+    const root = repo({ ledger: { mode: value, modeChanged: { to: value, at } } })
+    const out = state.card(env(root, { data, headers: withScopes('repo') }), '.')
+    assert.ok(out.split('\n').includes(`Mode: ${value} since ${at}`))
+    assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
+  }
+  assert.doesNotMatch(state.card(env(repo({ ledger: { mode: 'autonomous' } })), '.'), /Mode: .* since/)
+})
+
+test('the ledger spec and unattended skill describe the mode command (#32)', () => {
+  const spec = fs.readFileSync(path.join(__dirname, '../docs/specs/ledger.md'), 'utf8')
+  const skill = fs.readFileSync(path.join(__dirname, '../skills/devflow/SKILL.md'), 'utf8')
+  const row = spec.split('\n').find(line => line.startsWith('| `mode` |'))
+  assert.match(row, /devflow-state mode/)
+  const autonomous = spec.split('## 자율 실행')[1].split('## 동시 세션')[0]
+  assert.match(autonomous, /devflow-state mode <n> autonomous < 이유/)
+  assert.match(autonomous, /devflow-state mode <n> interactive < 이유/)
+  assert.match(autonomous, /stdin의 첫 줄/)
+  const unattended = skill.split('## Unattended work')[1].split('## Stage and path')[0]
+  assert.match(unattended, /mode <issue> autonomous < reason/)
+  assert.match(unattended, /mode <issue> interactive < reason/)
+  assert.match(unattended, /first line of stdin/)
+})
+
+test('mode is in usage and records successful session activity (#32)', () => {
+  assert.match(state.main([], () => '').out, /mode <n> autonomous\|interactive < reason/)
+  const root = repo({ ledger: { mode: 'interactive' } })
+  const e = env(root)
+  e.vars = { CODEX_THREAD_ID: 'mode-session' }
+  assert.equal(state.main(['mode', '1', 'autonomous'], () => 'person is away', e, '.').code, 0)
+  const sessions = state.readSessions(root, 1)
+  assert.deepEqual(Object.keys(sessions), [state.sessionId(e.vars).hash])
+  assert.equal(sessions[state.sessionId(e.vars).hash].host, 'codex')
+  assert.ok(Number.isFinite(sessions[state.sessionId(e.vars).hash].at))
+})
+
 test('metric refuses another Issue, unknown metrics and an empty note', () => {
   const root = repo()
   assert.match(state.metric(env(root), '.', 7, 'interventions', 'x').out, /only to the branch's Issue #1/)

@@ -24,7 +24,7 @@
 | `running` | 실행 중인 백그라운드 위임의 이름 목록. 띄울 때 `devflow-state running <n> add <이름>`, 결과가 오거나 실패·중단했으면 `done`으로 뺀다. 남은
 항목은 무인 계속을 막으므로, 새 세션은 장부를 보고 끝난 위임을 뺀다. `ledger-update`로 통째로 바꾸면 다른 위임이 빠져 Stop 훅이 그 위에서 계속하므로 쓰지 않는다(#24) |
 | `followups` | ship 때 제안할 후속 후보 |
-| `pendingPosts` | 무인 구간에 쌓인 게시. `devflow-state`가 관리하고 `ledger-update`는 거부한다. 올리면 안 되는 항목은 대화형 턴에서 `pending drop <n> <id>`에 이유를 주어 뺀다 |
+| `pendingPosts` | 무인 구간에 쌓인 게시. `devflow-state`가 관리하고 `ledger-update`는 거부한다. 올리면 안 되는 항목은 대화형 턴에서 `pending drop <n> <id>`에 이유를 주어 뺀다. 목록이 아니면(손으로 고친 장부) 쌓기와 flush를 거부하고 사람이 고친다(#35) |
 
 같은 폴더의 `guard-events.jsonl`은 차단 기록이고([metrics](metrics.md#수동-지표)), `sessions.json`과 `ledger.lock`은
 [동시 세션](#동시-세션) 것이다.

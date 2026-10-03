@@ -42,6 +42,8 @@ const USAGE = `usage: devflow-state <command>
   ledger [n]                  print the ledger
   ledger-update [n] < json    replace the top-level keys given in a JSON object
   note <n> < line             append one line to the ledger's notes
+  running <n> add|done <label>
+                              record a background delegation as it starts and ends; the Stop hook waits while any runs
   release <n>                 when handing the Issue to another session: stop warning it about this one
   pending | flush             queued posts; flush posts them once the ledger is interactive
   metric <n> <key> [--undo] < note
@@ -900,6 +902,28 @@ function metric(env, cwd, n, key, note, { undo = false } = {}) {
   return r.ok ? { code: 0, out: `${key} ${r.result}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
+// Adds or removes one background delegation in running, under the lock, keeping the others: ledger-update replaces the
+// whole key, so a session moving the task on would drop a delegation still running and the Stop hook would continue
+// over it (Issue #24).
+const RUNNING_USAGE = 'usage: devflow-state running <issue> add|done <label>'
+function running(env, cwd, n, op, label) {
+  const name = String(label || '').trim()
+  if (!['add', 'done'].includes(op) || !name || /[\r\n]/.test(name)) return { code: 2, out: RUNNING_USAGE }
+  const ctx = repoContext(env, cwd)
+  const no = ledgerGate(ctx, n, 'running', { append: true })
+  if (no) return no
+  const r = updateLedger(ctx.store, n, ledger => {
+    if (gone(ctx, n)) return { result: MISSING }
+    const now = Array.isArray(ledger.running) ? ledger.running : ledger.running ? [ledger.running] : []
+    if (op === 'done' && !now.includes(name)) return { result: ZERO }
+    const next = op === 'add' ? (now.includes(name) ? now : [...now, name]) : now.filter(x => x !== name)
+    return { ledger: { ...ledger, running: next }, result: next }
+  })
+  if (r.ok && r.result === MISSING) return NO_LEDGER(n)
+  if (r.ok && r.result === ZERO) return { code: 1, out: `refused: "${name}" is not running for Issue #${n}` }
+  return r.ok ? { code: 0, out: `running ${r.result.length}` } : guarded(ctx, LOCKED(n, r.why), n)
+}
+
 // Appends one line to notes. ledger-update replaces whole keys, so two sessions adding notes that way would drop one.
 function note(env, cwd, n, text) {
   const line = String(text || '').trim().split(/\r?\n/)[0].trim()
@@ -1044,6 +1068,8 @@ function command(argv, stdin, env, cwd) {
     }
     case 'note':
       return num(rest[0]) ? note(env, cwd, num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state note <issue> < line' }
+    case 'running':
+      return num(rest[0]) && rest.length === 3 ? running(env, cwd, num(rest[0]), rest[1], rest[2]) : { code: 2, out: RUNNING_USAGE }
     case 'release': {
       const n = num(rest[0])
       if (!n) return { code: 2, out: 'usage: devflow-state release <issue>' }
@@ -1081,4 +1107,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { mainTree, legacyOf, INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { running, mainTree, legacyOf, INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

@@ -13,6 +13,9 @@ when named). It gives no verdict; form your own.
 Report defects that change behaviour, break a requirement or a spec, or leak data. Style, naming and preferences are not
 findings here: a reviewer asked to find something finds something, and fixing every remark over-builds the change.
 
+Glob does not list files git ignores. Before reporting a file missing, open the path the brief gives with Read or
+Grep; the brief names ignored inputs by path for this reason.
+
 For each finding give the location, what triggers it, the impact, and the evidence from the diff or the files. Say
 what you could not check. Leave the files as they are; fixes belong to the implementer. End with one line:
 `FINDINGS <count>` or `NO_FINDINGS` - the latter covers what you read, not every possible defect.

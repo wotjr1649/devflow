@@ -24,7 +24,8 @@ filters what gets published (local paths, secrets, hidden characters, length) an
 Issue writes happen at stage boundaries, decisions and blockers: the state block (15 lines) and checkpoints in the
 template of [issues](../../docs/specs/issues.md#issue-템플릿). Progress inside a stage goes to the ledger, in the
 keys of [작업 장부 키](../../docs/specs/ledger.md#작업-장부-키). The Stop hook decides from `mode`, `stage`, `task`,
-`decisions`, `blocked` and `running` whether unattended work continues, so keep them current.
+`decisions`, `blocked` and `running` whether unattended work continues, so keep them current; `running` changes only
+through `running <issue> add|done <label>`.
 
 Add a line to the ledger's notes with `note`: `ledger-update` replaces whole keys, so two sessions adding notes through
 it would drop one. After the Issue branch is gone (cleanup on main), `note` and `metric` still take the Issue's number,

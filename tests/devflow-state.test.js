@@ -373,6 +373,27 @@ test('metric --undo takes one back with its reason, and never goes below zero (#
   assert.match(zero.out, /already 0/)
 })
 
+test('running adds and removes one delegation under the lock and keeps the others (#24)', () => {
+  const root = repo()
+  const e = env(root)
+  const run = (...a) => state.main(['running', '1', ...a], () => '', e, '.')
+  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  assert.deepEqual(run('add', 'implementer task 1'), { code: 0, out: 'running 1' })
+  assert.deepEqual(run('add', 'reviewer'), { code: 0, out: 'running 2' })
+  assert.deepEqual(run('add', 'reviewer'), { code: 0, out: 'running 2' }, 'the same label is listed once')
+  // Moving the task on with ledger-update leaves running alone unless it is sent.
+  assert.equal(state.main(['ledger-update', '1'], () => '{"task":{"current":2,"total":3}}', e, '.').code, 0)
+  assert.deepEqual(ledger().running, ['implementer task 1', 'reviewer'])
+  assert.deepEqual(run('done', 'implementer task 1'), { code: 0, out: 'running 1' })
+  assert.deepEqual(ledger().running, ['reviewer'])
+  assert.match(run('done', 'verifier').out, /not running/)
+  assert.equal(run('done', 'verifier').code, 1)
+  assert.equal(run('start', 'x').code, 2)
+  assert.equal(run('add', '  ').code, 2)
+  assert.equal(state.main(['running', '1', 'add'], () => '', e, '.').code, 2)
+  assert.match(state.main(['running', '7', 'add', 'x'], () => '', e, '.').out, /only to the branch's Issue #1/)
+})
+
 test('metric refuses another Issue, unknown metrics and an empty note', () => {
   const root = repo()
   assert.match(state.metric(env(root), '.', 7, 'interventions', 'x').out, /only to the branch's Issue #1/)

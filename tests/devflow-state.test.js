@@ -747,6 +747,19 @@ test('an unattended write is checked against the Issue as the queue will leave i
   assert.equal(state.write(e, '.', 'close', 1).code, 0, 'the queued check leaves every criterion checked')
   assert.deepEqual(queue().map(p => p.op), ['check', 'close'])
   assert.equal(ghWrites(e).length, 0)
+  // intent's order rule too: criteria below the state block.
+  const below = `## 문제\nx\n\n${block()}\n\n## 수용 기준\n- [ ] a\n`
+  const root2 = repo({ ledger: { stage: 'build', mode: 'autonomous' } })
+  const r2 = state.write(env(root2, { data: issue({ body: below }) }), '.', 'intent', 1, intentOf(['- [ ] a']))
+  assert.equal(r2.guard || guardLines(root2).map(l => l.guard)[0], 'state-intent-order')
+  // An Issue that cannot be read (offline) does not stop the run: the post queues unchecked and flush checks it.
+  const root3 = repo({ ledger: { stage: 'build', mode: 'autonomous' } })
+  const offline = env(root3, { gh: { code: 1, stdout: '', stderr: 'offline' } })
+  const r3 = state.write(offline, '.', 'close', 1)
+  assert.equal(r3.code, 0)
+  assert.match(r3.out, /not checked before queueing/)
+  // state needs no lookup at all.
+  assert.equal(state.write(offline, '.', 'state', 1, block()).code, 0)
 })
 
 test('close refuses while an acceptance criterion is unchecked (#27)', () => {

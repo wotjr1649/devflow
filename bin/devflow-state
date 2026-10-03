@@ -783,6 +783,8 @@ function replaceIntent(body, intent) {
 // The writes whose outcome depends on the Issue body. Posting checks them against the live body; queueing checks them
 // against the body as the queued posts before them will leave it (Issue #31).
 const BODY_OPS = new Set(['check', 'close', 'intent', 'state'])
+// state changes the body a later post meets but has no body rule of its own, so queueing it needs no lookup.
+const QUEUE_CHECKED = new Set(['check', 'close', 'intent'])
 function bodyRefusal(op, n, body, text) {
   if (op === 'check') {
     const done = checkCriteria(body, text.split(' ').map(Number))
@@ -924,8 +926,19 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
   if (why) return { code: 1, ...why }
   const owner = ctx.issue || n
   // Decided and queued under the ledger lock, so a queue another process changes in between is not overwritten.
+  let live = null
+  let unread = ''
   const decide = ledger => {
     const queued = ledger.pendingPosts || []
+    if (live && ledger.mode === 'autonomous' && !flushing) {
+      // A queued post that fails its own rule is skipped, as a person dropping it at flush would leave the body.
+      let body = live.body
+      for (const p of (Array.isArray(queued) ? queued : []).filter(p => p && p.issue === n && BODY_OPS.has(p.op) && typeof p.text === 'string')) {
+        if (!bodyRefusal(p.op, n, body, p.text)) body = nextBody(p.op, body, p.text, live.writer)
+      }
+      const no = bodyRefusal(op, n, body, text)
+      if (no) return { result: { ...no, out: `${no.out} (checked before queueing, with the queued posts applied)` } }
+    }
     // A queued check posted after this intent would land on the renumbered criteria.
     if (op === 'intent' && !flushing && ledger.mode !== 'autonomous' && queued.some(p => p.op === 'check' && p.issue === n)) {
       return { result: { code: 1, out: 'refused: a queued check waits for this Issue; flush the queue first', guard: 'state-intent-pending-check' } }
@@ -936,24 +949,20 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
       return { result: { code: 1, out: 'refused: a queued intent renumbers the criteria; check after it is posted', guard: 'state-check-after-intent' } }
     }
     const pendingPosts = [...queued, { id: token(), op, issue: n, title, text, at: new Date().toISOString() }]
-    return { ledger: { ...ledger, pendingPosts }, result: { code: 0, out: `queued ${op} for the next interactive turn (${pendingPosts.length} pending)` } }
+    return { ledger: { ...ledger, pendingPosts }, result: { code: 0, out: `queued ${op} for the next interactive turn (${pendingPosts.length} pending)${unread}` } }
   }
   // An interactive write only reads the ledger, so it needs no lock and a folder that cannot take one does not stop it.
   // Queueing is decided again under the lock. A new Issue from a branch without one has no ledger yet.
   const peek = owner && issueDirOk(ctx.store, owner) ? readLedger(ctx.store, owner) || {} : {}
   // A queued post whose body rule fails would only show at flush, after the unattended run reported it queued, and would
-  // hold every later post (Issue #31). Reading the Issue is not a write, so it runs now, outside the ledger lock.
-  if (owner && peek.mode === 'autonomous' && !flushing && BODY_OPS.has(op)) {
+  // hold every later post (Issue #31). The Issue is read now, outside the ledger lock; decide replays the queue on it under
+  // the lock. When it cannot be read (an offline run), the post queues unchecked and flush checks it, as before.
+  live = null
+  unread = ''
+  if (owner && peek.mode === 'autonomous' && !flushing && QUEUE_CHECKED.has(op)) {
     const got = fetchIssue(ctx, n)
-    if (got.error) return { code: 1, out: got.error }
-    const writer = WRITERS.has(got.issue.authorAssociation)
-    let body = got.issue.body || ''
-    for (const p of (Array.isArray(peek.pendingPosts) ? peek.pendingPosts : []).filter(p => p && p.issue === n && BODY_OPS.has(p.op))) {
-      if (bodyRefusal(p.op, n, body, p.text)) break // flush reports that one; later ones are judged from here
-      body = nextBody(p.op, body, p.text, writer)
-    }
-    const no = bodyRefusal(op, n, body, text)
-    if (no) return { ...no, out: `${no.out} (checked before queueing, with the queued posts applied)` }
+    if (got.error) unread = ` (not checked before queueing: ${got.error}; flush checks it)`
+    else live = { body: got.issue.body || '', writer: WRITERS.has(got.issue.authorAssociation) }
   }
   const queued = owner && peek.mode === 'autonomous' && !flushing ? updateLedger(ctx.store, owner, decide) : { ok: true, result: decide(peek).result }
   if (!queued.ok) return LOCKED(owner, queued.why)

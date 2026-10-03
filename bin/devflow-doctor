@@ -174,14 +174,22 @@ function doctor(dir, { only } = {}) {
 
     // Git hooks for repositories that integrate locally
     if (profile.integration === 'local-merge') {
-      // An absolute path to this repository's .githooks is the same gate: Claude Code rewrote the shared value that way when
-      // it made subagent worktrees (Issue #28), and a linked worktree's own .githooks counts too.
+      // An absolute path to an existing .githooks of this repository is the same gate: Claude Code rewrote the shared value
+      // to the main checkout's folder when it made subagent worktrees (Issue #28). From a linked worktree that folder counts
+      // only for a main tree git's records prove, and only while its pre-push is the one this checkout tracks, since git
+      // runs that file, not this checkout's copy.
       const hooksPath = (git(root, ['config', 'core.hooksPath']) || '').trim()
-      const common = (git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']) || '').trim()
-      const real = p => { try { return fs.realpathSync.native(p) } catch { return path.resolve(p) } }
-      const key = p => (process.platform === 'win32' ? real(p).toLowerCase() : real(p))
-      const gates = [path.join(root, '.githooks'), ...(common ? [path.join(path.dirname(common), '.githooks')] : [])].map(key)
-      if (hooksPath !== '.githooks' && !(path.isAbsolute(hooksPath) && gates.includes(key(hooksPath)))) fail('git-hooks', 'core.hooksPath is not .githooks')
+      const real = p => { try { return fs.realpathSync.native(p) } catch { return null } }
+      const key = p => p && (process.platform === 'win32' ? p.toLowerCase() : p)
+      const read = p => { try { return fs.readFileSync(p, 'utf8') } catch { return null } }
+      const main = require('./devflow-state').mainTree(require('./devflow-state').realEnv, root)
+      const here = real(path.join(root, '.githooks'))
+      const there = main ? real(path.join(main.path, '.githooks')) : null
+      const given = path.isAbsolute(hooksPath) ? real(hooksPath) : null
+      const samePrePush = dir => read(path.join(dir, 'pre-push')) !== null && read(path.join(dir, 'pre-push')) === read(at('.githooks/pre-push'))
+      const gate = hooksPath === '.githooks' ||
+        (given && ((here && key(given) === key(here)) || (there && key(given) === key(there) && samePrePush(given))))
+      if (!gate) fail('git-hooks', 'core.hooksPath is not .githooks')
       if (!fs.existsSync(at('.githooks/pre-push'))) fail('git-hooks', 'no .githooks/pre-push')
     }
   }

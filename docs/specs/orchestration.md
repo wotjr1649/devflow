@@ -179,9 +179,9 @@ Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이�
 
 | 장치 | Claude Code | Codex |
 |---|---|---|
-| 구현·리뷰 에이전트 | 플러그인 `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`, `isolation`) | 내장 explorer·worker, 띄울 때 모델·effort 지정 |
+| 구현·리뷰 에이전트 | 플러그인 `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`) | 내장 explorer·worker, 띄울 때 모델·effort 지정 |
 | 질문 후 재개 | `SendMessage` | 같은 에이전트에 후속 작업 |
-| 병렬 쓰기 (M3) | worktree 격리 | 사용하지 않음 |
+| 병렬 쓰기 (M3) | Agent 호출마다 `isolation: "worktree"` | 사용하지 않음 |
 | 대규모 변경 (M4) | 사용자가 실행하는 Workflow(devflow는 배포하지 않음) | 사용하지 않음 |
 | 재개 카드, Issue 쓰기 차단, 보호 경로, 자율 계속 | `hooks/hooks.json` | 같은 파일 |
 | 세션이 끝날 때 해제 | `hooks/claude-hooks.json` (매니페스트의 `hooks`) | 없음(해제 명령, 30분 만료) |

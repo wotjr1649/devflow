@@ -276,6 +276,10 @@ test('an absolute core.hooksPath naming this repository\'s .githooks is the same
   assert.ok(!has(d, /^FAIL git-hooks/), 'the absolute path to this .githooks passes')
   git(d, 'config', 'core.hooksPath', path.join(path.dirname(d), 'elsewhere', '.githooks'))
   assert.ok(has(d, /^FAIL git-hooks: core\.hooksPath is not \.githooks$/), 'another folder still fails')
+  // A folder that does not exist runs no hook, even if it is spelled like a gate.
+  fs.rmSync(path.join(d, '.githooks'), { recursive: true })
+  git(d, 'config', 'core.hooksPath', path.join(d, '.githooks'))
+  assert.ok(has(d, /^FAIL git-hooks: core\.hooksPath is not \.githooks$/), 'a missing folder fails')
 })
 
 test('a CLAUDE.local.md makes Claude Code skip AGENTS.md even when git ignores it', () => {

@@ -796,6 +796,59 @@ test('anything in the criteria GitHub may render differently is not plain (Issue
   assert.match(state.checkCriteria(twin, [1]).error, /not plain/, 'read finds the same boxes in another section')
 })
 
+test('markup inside a code span is plain only where cmark certainly reads the span (Issue #13)', () => {
+  const above = text => `## 문제\n${text}\n\n## 수용 기준\n- [ ] a\n`
+  const plain = body => !state.checkCriteria(body, [1]).error
+  // GitHub prints a code span's content as it is: these hold no HTML.
+  assert.ok(plain(above('`note <n>`과 `a &amp; b`를 쓴다')), 'spans above the criteria')
+  assert.ok(plain(above('x ``a ` <b>`` y')), 'a two-backtick span holding a backtick')
+  assert.ok(plain(crit(['- [ ] run `note <n>` on main', '  `until` continues the box', '- [ ] two'])), 'spans in the section')
+  // Where cmark could pair the backticks differently, or the markup sits outside any span, it stays refused.
+  const refused = [
+    ['a `b', 'c` <x> `d`'],
+    ['x \\`<b>` y'],
+    ['a | `<b>` |'],
+    ['| `a|<b>` |'],
+    ['``x `<b>` y'],
+    ['x <a title="`">`'],
+    ['`<b>` and <i>'],
+    // Links, titles, labels and autolinks take a backtick before any span is paired (design review, 2026-10-03).
+    ['[x](a`) <details> `.'],
+    ['[x](<`>) <details> `.'],
+    ['[x](u "`") <details> `.'],
+    ['[x][`] <details> [`]', '', '[`]: /u'],
+    ['see www.x.io/`a <details> `.'],
+    ['see https://x.io/`a <details> `.'],
+    ['[x](a`) b`', '`<b>`'],
+    ['[x](u "a', '`") <details> `.'],
+    ['$a`$ <details> `b$'],
+  ]
+  for (const lines of refused) assert.ok(!plain(above(lines.join('\n'))), `above: ${JSON.stringify(lines)}`)
+  assert.ok(!plain(crit(['- [ ] a `b', '  c` <x> `d`'])), 'a span across section lines')
+  assert.ok(!plain(crit(['- [ ] one', '  ```', '  x', '  ```'])), 'a fence continuing a box')
+  assert.ok(!plain(crit(['- [ ] one', '```'])), 'a fence after a box')
+})
+
+test('a refusal names the first line that is not plain and its rule, never its text (Issue #13)', () => {
+  const body = '## 문제\nfine\nhas <b>secret</b> here\n\n## 수용 기준\n- [ ] a\n'
+  const error = state.checkCriteria(body, [1]).error
+  assert.match(error, /not plain/)
+  assert.match(error, /first problem: line 3, HTML or an entity outside a code span/)
+  assert.doesNotMatch(error, /secret/)
+  const r = state.write(env(repo()), '.', 'intent', 1, body)
+  assert.equal(r.code, 1)
+  assert.match(r.out, /first problem: line 3, HTML or an entity outside a code span/)
+  assert.doesNotMatch(r.out, /secret/)
+  const section = state.checkCriteria(crit(['- [ ] one', '  - [ ] nested']), [1]).error
+  assert.match(section, /first problem: line \d+, a line GitHub may read as markup/)
+  // Refusals that come from no single line name their rule alone.
+  const hiddenBox = state.checkCriteria(crit(['- [x] closes `<!--` early', '- [ ] two']), [1]).error
+  assert.match(hiddenBox, /first problem: comments change the boxes read shows/)
+  assert.match(state.checkCriteria('## 문제\nx\ry\n\n## 수용 기준\n- [ ] a\n', [1]).error, /first problem: a line break other than LF/)
+  const twice = state.write(env(repo()), '.', 'intent', 1, '## 수용 기준\n- [ ] a\n\n## 수용 기준\n- [ ] b\n')
+  assert.match(twice.out, /first problem: a second "## 수용 기준" heading/)
+})
+
 test('a criteria heading hidden in a comment is skipped for check, carry and the report (Issue #9)', () => {
   const old = '## 문제\n<!--\n## 수용 기준\n- [ ] old\n-->\n## 수용 기준\n- [x] a\n- [x] b\n\n' + tail
   assert.equal(state.checkCriteria(old, [1]).body, old, 'number 1 is the checked "a", not the hidden "old"')

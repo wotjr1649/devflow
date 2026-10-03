@@ -489,9 +489,11 @@ function refusal(op, text, title) {
     if (STATE_HEADING.test(text)) return no('state-intent-shape', 'refused: the intent is the body above "## 현재 상태" and must not contain it')
     const c = criteria(text)
     if (!c || !c.boxes.length) return no('state-intent-shape', 'refused: the intent needs a "## 수용 기준" section with "- [ ]" criteria')
-    if (!c.plain || text.match(new RegExp(CRITERIA_HEADING.source, 'gm')).length > 1) {
+    const twice = text.match(new RegExp(CRITERIA_HEADING.source, 'gm')).length > 1
+    if (!c.plain || twice) {
       return no('state-intent-shape', 'refused: write each criterion as "- [ ] …" at the start of a line under a single ' +
-        '"## 수용 기준", with no comments, code, HTML or nested items there')
+        '"## 수용 기준", with no comments, code, HTML or nested items there' +
+        whyText(twice ? { rule: 'a second "## 수용 기준" heading' } : c.why))
     }
     if (text.length > MAX_BODY_CHARS) return no('state-intent-shape', `refused: the intent is over ${MAX_BODY_CHARS} characters`)
     if (title !== undefined && (!title || title.length > MAX_TITLE_CHARS)) return no('state-intent-shape', `refused: a title has 1 to ${MAX_TITLE_CHARS} characters`)
@@ -562,7 +564,48 @@ function bodyLines(body) {
 // A plain criteria section holds only boxes at the start of a line, text continuing them (up to five spaces in, not
 // starting a list, quote, heading, setext underline, table, code or HTML), plain text and blank lines.
 const BOX = /^- \[([ xX])\]/
-const PLAIN_LINE = /^(?:- \[[ xX]\](?:[ \t].*)?|[ \t]*| {0,5}(?![-*+>#|<`~= \t]|\d+[.)])\S.*)$/
+const PLAIN_LINE = /^(?:- \[[ xX]\](?:[ \t].*)?|[ \t]*| {0,5}(?![-*+>#|<~= \t]|`{3}|\d+[.)])\S.*)$/
+
+// Code spans cmark certainly reads as such, each replaced by a space, so the markup test skips what GitHub prints as it
+// is (Issue #13). Lines come in order with one state per paragraph: a backtick run with no closer on its line may pair
+// with a run on a later line, so from there on no line of that paragraph is stripped. A blank line ends the paragraph.
+// Other constructs take a backtick before spans are paired: link destinations, titles and labels (which may run over
+// lines), GFM autolinks and table cells, and GitHub math. From a line with any of their marks on, the paragraph is not
+// stripped either. Outside a span a backslash escapes ASCII punctuation, so an escaped backtick opens nothing; inside
+// one it is literal.
+const ASCII_PUNCT = /[!-\/:-@\[-`{-~]/
+const TAKES_BACKTICKS = /[[\]|$]|:\/\/|www\.|mailto:|xmpp:/i
+// A task box opening a list item, followed by a space: the task list takes it, and with the space after "]" no link can
+// start there, so its brackets are no mark.
+const TASK_BOX = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[ xX]\](?=[ \t]|$)/
+function withoutCodeSpans(line, state) {
+  if (/^[ \t]*$/.test(line)) { state.open = false; return line }
+  if (state.open) return line
+  const box = TASK_BOX.exec(line)
+  const head = box ? box[0] : ''
+  const text = line.slice(head.length)
+  if (TAKES_BACKTICKS.test(text)) { state.open = true; return line }
+  let out = head
+  for (let i = 0; i < text.length;) {
+    if (text[i] === '\\' && i + 1 < text.length && ASCII_PUNCT.test(text[i + 1])) { out += text.slice(i, i + 2); i += 2; continue }
+    if (text[i] !== '`') { out += text[i++]; continue }
+    let j = i
+    while (text[j] === '`') j++
+    // The closer is the next run of exactly the same length; each run is passed over whole.
+    let close = -1
+    for (let k = j; k < text.length;) {
+      if (text[k] !== '`') { k++; continue }
+      let m = k
+      while (text[m] === '`') m++
+      if (m - k === j - i) { close = k; break }
+      k = m
+    }
+    if (close < 0) { state.open = true; return out + text.slice(i) }
+    out += ' '
+    i = close + (j - i)
+  }
+  return out
+}
 
 // The acceptance criteria: the first "## 수용 기준" GitHub renders as that heading and its "- [ ]" boxes up to the next
 // "## " heading, each with where its check character is, whether it is checked, and its text as a key. Numbers and
@@ -576,14 +619,29 @@ function criteria(body) {
   // position, so the agent's view must hold the same boxes at the same places with the same text, or the numbers an
   // agent reads there would not be the numbers check uses.
   const read = findCriteria(body.replace(COMMENTS, c => c.replace(/[^\n]/g, ' ')))
-  const sure = (l, i) => l.skip ? i < h && !l.unsure
-    : !INVISIBLE.test(l.text) && !RAW_MARKUP.test(l.text) &&
-      (i < h ? !INDENTED_FENCE.test(l.text) && !likeCriteria(ls, i) : i === h || PLAIN_LINE.test(l.text))
-  const plain = !oddBreak(body) && ls.slice(0, h + 1 + section.length).every(sure) &&
-    !!read && read.boxes.length === boxes.length &&
+  // The first line that is not plain and the rule it breaks, so a refusal can say where to look (Issue #13).
+  let why = null
+  const fail = (l, rule) => { why = { line: body.slice(0, l.at).split('\n').length, rule }; return false }
+  const spans = { open: false }
+  const sure = (l, i) => {
+    if (l.skip) return (i < h && !l.unsure) || fail(l, i < h ? 'text after a comment closes on its line' : 'a comment or code fence')
+    const bare = withoutCodeSpans(l.text, spans)
+    if (INVISIBLE.test(l.text)) return fail(l, 'an invisible character')
+    if (RAW_MARKUP.test(bare)) return fail(l, 'HTML or an entity outside a code span')
+    if (i < h) {
+      if (INDENTED_FENCE.test(l.text)) return fail(l, 'an indented code fence')
+      return !likeCriteria(ls, i) || fail(l, 'another heading that mentions 수용 or 기준')
+    }
+    return i === h || PLAIN_LINE.test(l.text) || fail(l, 'a line GitHub may read as markup (a list, quote, heading, table, fence or HTML)')
+  }
+  if (oddBreak(body)) why = { rule: 'a line break other than LF' }
+  const same = !!read && read.boxes.length === boxes.length &&
     read.boxes.every((b, i) => b.at === boxes[i].at && b.checked === boxes[i].checked && b.text === boxes[i].text)
-  return { boxes, plain }
+  const plain = !why && ls.slice(0, h + 1 + section.length).every(sure) && same
+  if (!plain && !why) why = { rule: 'comments change the boxes read shows' }
+  return { boxes, plain, why }
 }
+const whyText = w => (w ? ` (first problem: ${w.line ? `line ${w.line}, ` : ''}${w.rule})` : '')
 
 function findCriteria(body) {
   const ls = bodyLines(body)
@@ -613,7 +671,7 @@ const UNPLAIN = 'the "## 수용 기준" section is not plain "- [ ]" lines (a co
 function checkCriteria(body, nums) {
   const c = criteria(body)
   if (!c) return { error: 'the Issue has no "## 수용 기준" section', guard: 'state-no-criteria' }
-  if (!c.plain) return { error: UNPLAIN, guard: 'state-criteria-unplain' }
+  if (!c.plain) return { error: UNPLAIN + whyText(c.why), guard: 'state-criteria-unplain' }
   const boxes = c.boxes.map(b => b.at)
   const bad = nums.filter(k => !(k >= 1 && k <= boxes.length))
   if (bad.length) return { error: `no acceptance criterion ${bad.join(', ')} (the Issue has ${boxes.length})`, guard: 'state-no-criterion' }

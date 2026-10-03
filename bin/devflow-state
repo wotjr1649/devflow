@@ -474,7 +474,7 @@ function card(env, cwd, { sessionId: hookSession } = {}) {
   else {
     const task = ledger.task || {}
     ledgerLines.push(`Ledger: task ${task.current ?? '?'}/${task.total ?? '?'} · mode ${ledger.mode || 'interactive'} · ` +
-      `pending posts ${(ledger.pendingPosts || []).length}`)
+      `pending posts ${notAList(ledger) ? '? (not a list)' : queueOf(ledger).length}`)
     const changed = ledger.modeChanged
     if (changed && ['autonomous', 'interactive'].includes(changed.to) && /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$/.test(String(changed.at))) {
       ledgerLines.push(`Mode: ${changed.to} since ${changed.at}`)
@@ -931,6 +931,10 @@ const NO_LEDGER = n => ({ code: 1, out: `refused: no ledger for Issue #${n} here
 // Rechecked under the lock: a ledger removed after ledgerGate looked is not brought back holding one line. Its folder,
 // if removed in that window too, comes back empty: withLock creates it to hold the lock.
 const MISSING = Symbol('missing ledger')
+// The queue is a list; any other value was written by hand and is left for a person to fix, not dropped (Issue #35).
+const NOT_A_LIST = "refused: the ledger's pendingPosts is not a list; a person fixes the ledger by hand"
+const notAList = ledger => ledger.pendingPosts !== undefined && ledger.pendingPosts !== null && !Array.isArray(ledger.pendingPosts)
+const queueOf = ledger => (Array.isArray(ledger.pendingPosts) ? ledger.pendingPosts : [])
 const ZERO = Symbol('nothing to undo')
 const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.store, n))
 
@@ -953,7 +957,7 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
   let live = null
   let unread = ''
   const decide = ledger => {
-    const queued = ledger.pendingPosts || []
+    const queued = queueOf(ledger)
     if (live && ledger.mode === 'autonomous' && !flushing) {
       // A queued post that fails its own rule is skipped, as a person dropping it at flush would leave the body.
       let body = live.body
@@ -968,6 +972,7 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
       return { result: { code: 1, out: 'refused: a queued check waits for this Issue; flush the queue first', guard: 'state-intent-pending-check' } }
     }
     if (ledger.mode !== 'autonomous' || flushing) return { result: null }
+    if (notAList(ledger)) return { result: { code: 1, out: NOT_A_LIST } }
     // Check numbers were read from the body before a queued intent renumbers it.
     if (op === 'check' && queued.some(p => p.op === 'intent' && p.issue === n)) {
       return { result: { code: 1, out: 'refused: a queued intent renumbers the criteria; check after it is posted', guard: 'state-check-after-intent' } }
@@ -1032,7 +1037,7 @@ function pendingDrop(env, cwd, n, id, reason, { posted = false } = {}) {
     const hit = queued.find(p => p && p.id === id)
     if (!hit) return { result: ZERO }
     // A fresh claim means a flush may be posting it right now; only one flush reported as posted but unremoved goes.
-    const at = hit.claimed && Date.parse(hit.claimed.at)
+    const at = hit.claimed && (typeof hit.claimed.at === 'number' ? hit.claimed.at : Date.parse(hit.claimed.at))
     if (!posted && Number.isFinite(at) && Date.now() - at < CLAIM_MS) {
       return { result: { refused: `refused: ${id} is claimed by a flush that may still post it; if that flush reported it posted but not removed, add --posted` } }
     }
@@ -1199,7 +1204,8 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   const claim = updateLedger(ctx.store, n, ledger => {
     // Queued posts wait for a person: an unattended run cannot flush its own queue.
     if (ledger.mode === 'autonomous') return { result: 'autonomous' }
-    const queued = ledger.pendingPosts || []
+    if (notAList(ledger)) return { result: 'notlist' }
+    const queued = queueOf(ledger)
     // A claim dated ahead of now is void: it would hold the queue for as long as the date says.
     if (queued.some(p => p.claimed && now - p.claimed.at < CLAIM_MS && p.claimed.at <= now + 60000)) return { result: 'busy' }
     const pendingPosts = queued.map(p => ({ ...p, id: p.id || token(), claimed: { by, at: now } }))
@@ -1208,6 +1214,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   if (!claim.ok) return guarded(ctx, LOCKED(n, claim.why))
   if (claim.result === 'autonomous') return guarded(ctx, { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn', guard: 'state-autonomous-flush' })
   if (claim.result === 'busy') return { code: 1, out: 'refused: another flush is posting this queue; try again later' }
+  if (claim.result === 'notlist') return { code: 1, out: NOT_A_LIST }
   const posts = claim.ledger ? claim.ledger.pendingPosts : []
   const out = []
   const tryUpdate = fn => {
@@ -1231,7 +1238,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
       break
     }
     posted++
-    if (!tryUpdate(l => ({ ledger: { ...l, pendingPosts: (l.pendingPosts || []).filter(q => q.id !== p.id) } })).ok) {
+    if (!tryUpdate(l => ({ ledger: { ...l, pendingPosts: queueOf(l).filter(q => q.id !== p.id) } })).ok) {
       stuck = p
       break
     }
@@ -1240,7 +1247,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
     // What was not posted goes back unclaimed for the next flush; an unremoved item keeps its claim, so no flush
     // posts it again before someone removes it.
     const back = tryUpdate(l => ({
-      ledger: { ...l, pendingPosts: (l.pendingPosts || []).map(q =>
+      ledger: { ...l, pendingPosts: queueOf(l).map(q =>
         (q.claimed && q.claimed.by === by && !(stuck && q.id === stuck.id) ? (({ claimed, ...rest }) => rest)(q) : q)) },
     }))
     if (stuck) out.push(`posted ${stuck.op} (${stuck.id}) but could not remove it from the queue; remove it with devflow-state pending drop ${stuck.issue} ${stuck.id} --posted < reason before the next flush, or it posts again in ${CLAIM_MS / 60000} min`)

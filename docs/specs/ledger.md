@@ -6,15 +6,15 @@
 ## 작업 장부 키
 
 `devflow-state ledger-update`와 키별 전용 명령으로 쓰고 재개 카드와 Stop 훅이 읽는다. `ledger-update`는 `stage`, `path`,
-`runMode`, `mode`, `task`의 값을 아래 정의대로 검사해 틀리면 거부한다(#34). 단계는 lifecycle의 11단계와 ship 뒤의 `done`이다.
+`runMode`, `mode`, `task`의 값을 아래 정의대로 검사해 틀리면 거부한다(#34). 이 키들은 `null`이나 빈 값으로 지울 수 없다. 단계는 lifecycle의 11단계와 ship 뒤의 `done`이다.
 
 | 키 | 담는 것 |
 |---|---|
 | `stage`, `path` | lifecycle의 단계와 경로(spike, bounded, architectural). 단계는 상태 블록의 "단계"와 함께 바꾼다 |
 | `mode` | `interactive` 또는 `autonomous`. 무인 구간의 유일한 기준이다. 새 장부는 `ledger-update`로 정할 수 있고, 기존 장부의 전환은 `devflow-state mode <n> autonomous\|interactive < 이유`로만 한다([자율 실행](#자율-실행)) |
 | `modeChanged` | 마지막 mode 전환의 `{to, at}`. `mode` 명령이 ISO 시각을 기록하고 재개 카드가 `Mode: <to> since <at>`로 보인다 |
-| `runMode` | M0~M4 |
-| `task` | `{current, total}` |
+| `runMode` | M0~M4로 시작한다(뒤에 설명을 붙여도 된다) |
+| `task` | `{current, total}`, 1 이상의 정수. 마지막 작업이 끝나면 current가 total을 넘을 수 있다 |
 | `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
 | `counts` | 작업별 `{fix, promote, continue}` |
 | `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`. 개수는 `devflow-state metric`으로 더하고, eval은 `metric <n> eval <통과>/<전체> < 메모`로 적는다([metrics](metrics.md#수동-지표)) |

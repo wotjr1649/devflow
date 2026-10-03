@@ -1116,7 +1116,7 @@ function mode(env, cwd, n, value, reason) {
 // The keys the router and the Stop hook decide by take only the values docs/specs/ledger.md defines (Issue #34): another
 // repository's agent wrote branch names into path. Other keys are taken as sent.
 const STAGES = ['discover', 'start', 'design', 'plan', 'ready', 'build', 'verify', 'review', 'ship', 'cleanup', 'learn', 'done']
-const count = v => Number.isInteger(v) && v >= 0
+const count = v => Number.isInteger(v) && v >= 1
 function ledgerValueError(patch) {
   if ('stage' in patch && !STAGES.includes(patch.stage)) return `stage is one of ${STAGES.join(', ')}; got ${JSON.stringify(patch.stage)}`
   if ('path' in patch && !['spike', 'bounded', 'architectural'].includes(patch.path)) {
@@ -1126,7 +1126,7 @@ function ledgerValueError(patch) {
     return `runMode starts with M0 to M4 (docs/specs/orchestration.md, 실행 모드); got ${JSON.stringify(patch.runMode)}`
   }
   if ('task' in patch && !(patch.task && typeof patch.task === 'object' && count(patch.task.current) && count(patch.task.total))) {
-    return 'task is {current, total}, two whole numbers from 0'
+    return 'task is {current, total}, two whole numbers from 1 (current may pass total once the last task is done)'
   }
   return null
 }
@@ -1312,7 +1312,7 @@ function command(argv, stdin, env, cwd) {
         return { code: 1, out: 'refused: testsLocked changes only through devflow-state tests <issue> lock|unlock' }
       }
       // Queued posts are devflow-state's own; replacing them would drop public writes waiting for the user (Issue #27).
-      const wrong = patch && typeof patch === 'object' ? ledgerValueError(patch) : 'a ledger update is a JSON object'
+      const wrong = patch && typeof patch === 'object' && !Array.isArray(patch) ? ledgerValueError(patch) : 'a ledger update is a JSON object of keys'
       if (wrong) return { code: 1, out: `refused: ${wrong}` }
       if (patch && typeof patch === 'object' && 'modeChanged' in patch) {
         return { code: 1, out: 'refused: modeChanged is written only by devflow-state mode' }

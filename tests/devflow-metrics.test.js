@@ -222,6 +222,18 @@ test('codex records of a nested worktree removed after the cycle stay out of sco
   assert.equal(after.skipped.outsideScope, before.skipped.outsideScope - 3)
 })
 
+test('a cwd reached through a link inside the work tree is not followed and counts as missingCwd (#7 security review)', async () => {
+  const root = gitRepo()
+  const outside = tmp('dfm-o-')
+  fs.mkdirSync(path.join(outside, 'sub'))
+  fs.symlinkSync(outside, path.join(root, 'linked'), 'junction')
+  const home = tmp('dfm-x-')
+  rollout(home, 'a', [cx.meta(250, path.join(root, 'linked', 'sub')), cx.turn(250, path.join(root, 'linked', 'sub')), cx.usage(300, 'r1')])
+  const { x } = await measure(root, { codex: home })
+  assert.equal(x.main.calls, 0)
+  assert.equal(x.skipped.missingCwd, 1)
+})
+
 test('a session started above the repository with a cwd that is gone is out of scope, and so are the subagent spans it parents (#7)', async () => {
   const root = gitRepo()
   const other = path.join(root, '.claude', 'worktrees', 'i5')

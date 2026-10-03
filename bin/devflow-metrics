@@ -155,12 +155,22 @@ function firstCheckout(ctx, issue) {
 }
 
 const mtimeOf = p => { try { return fs.lstatSync(p).mtimeMs } catch { return 0 } }
-// Whether a record's cwd is a folder now, asked once per path and only after owner() placed it in this repository. A
-// worktree removed after the cycle leaves its path to the enclosing work tree, whose reflog would claim its records.
+// Whether a record's cwd is a folder now, inside work tree w: a worktree removed after the cycle leaves its path to the
+// enclosing work tree, whose reflog would claim its records. Each step from w down is a real folder; a link or junction
+// counts as absent, so record text never sends a lookup through a link (to a network share, say). Asked once per path.
 const presence = () => {
   const seen = new Map()
-  return p => {
-    if (!seen.has(p)) { let ok = false; try { ok = fs.statSync(path.resolve(p)).isDirectory() } catch {} seen.set(p, ok) }
+  return (p, w) => {
+    if (!seen.has(p)) {
+      let cur = path.resolve(w.path)
+      let ok = isDir(cur)
+      for (const part of path.relative(cur, path.resolve(p)).split(path.sep).filter(Boolean)) {
+        if (!ok) break
+        cur = path.join(cur, part)
+        ok = isDir(cur)
+      }
+      seen.set(p, ok)
+    }
     return seen.get(p)
   }
 }
@@ -199,7 +209,7 @@ async function claude({ ctx, dir, issue, until }) {
       const w = owner(rec.cwd, ctx.worktrees)
       if (!w) return false
       if (!byReflog) return isIssue(rec.gitBranch, issue)
-      return present(rec.cwd) && !!w.reflog && isIssue(branchAt(w, t), issue)
+      return present(rec.cwd, w) && !!w.reflog && isIssue(branchAt(w, t), issue)
     }
     const fresh = file => !byReflog || since === null || mtimeOf(file) >= since
     const base = path.join(projects, f.name)
@@ -223,8 +233,9 @@ async function claude({ ctx, dir, issue, until }) {
       }
     }
     const outside = rec => {
-      if (rec.type !== 'assistant' || !owner(rec.cwd, ctx.worktrees)) return
-      if (byReflog && !present(rec.cwd)) res.skipped.missingCwd++
+      const w = rec.type === 'assistant' && owner(rec.cwd, ctx.worktrees)
+      if (!w) return
+      if (byReflog && !present(rec.cwd, w)) res.skipped.missingCwd++
       else res.skipped.outsideScope++
     }
     for (const { main, subs } of sessions.values()) {
@@ -326,7 +337,7 @@ async function codex({ ctx, dir, issue, until }) {
     const scope = t => {
       const w = owner(cwd, ctx.worktrees)
       if (!w) return null
-      if (!present(cwd)) return 'missing'
+      if (!present(cwd, w)) return 'missing'
       if (!w.reflog) return 'noReflog'
       return isIssue(branchAt(w, t), issue) ? 'in' : 'branch'
     }

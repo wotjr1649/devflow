@@ -393,7 +393,8 @@ test('running adds and removes one delegation under the lock and keeps the other
   assert.equal(state.main(['running', '1', 'add'], () => '', e, '.').code, 2)
   assert.match(state.main(['running', '7', 'add', 'x'], () => '', e, '.').out, /only to the branch's Issue #1/)
   // Older shapes become labels done can remove: {} is empty, an object lists its keys, other items their JSON text.
-  for (const [old, label] of [[{}, null], [{ implementer: 'task 2' }, 'implementer'], [[{ a: 1 }], '{"a":1}'], ['reviewer', 'reviewer']]) {
+  for (const [old, label] of [[{}, null], [{ implementer: 'task 2' }, 'implementer'], [[{ a: 1 }], '{"a":1}'], ['reviewer', 'reviewer'],
+    [[''], null], ['  ', null], [[' reviewer '], 'reviewer'], [{ '': 1 }, null], [true, 'true'], [null, null]]) {
     state.main(['ledger-update', '1'], () => JSON.stringify({ running: old }), e, '.')
     run('add', 'x')
     run('done', 'x')

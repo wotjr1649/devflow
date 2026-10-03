@@ -914,10 +914,12 @@ function running(env, cwd, n, op, label) {
   if (no) return no
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
-    // Older shapes become labels done can remove: {} is empty, an object lists its keys, other items their JSON text.
+    // Older shapes become labels done can remove: {} is empty, an object lists its keys, other values their trimmed text
+    // or JSON, and empty ones go.
     const v = ledger.running
-    const label = x => (typeof x === 'string' ? x : JSON.stringify(x))
-    const now = Array.isArray(v) ? v.map(label) : typeof v === 'string' ? (v ? [v] : []) : v && typeof v === 'object' ? Object.keys(v) : []
+    const items = Array.isArray(v) ? v : v && typeof v === 'object' ? Object.keys(v) : [v]
+    const label = x => (typeof x === 'string' ? x.trim() : x === null || x === undefined || x === false ? '' : JSON.stringify(x))
+    const now = [...new Set(items.map(label).filter(Boolean))]
     if (op === 'done' && !now.includes(name)) return { result: ZERO }
     const next = op === 'add' ? (now.includes(name) ? now : [...now, name]) : now.filter(x => x !== name)
     return { ledger: { ...ledger, running: next }, result: next }

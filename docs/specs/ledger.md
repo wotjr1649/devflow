@@ -64,7 +64,8 @@
 - 세션 id: Codex는 `CODEX_THREAD_ID`, Claude는 SessionStart 훅이 셸에 넘기는 `DEVFLOW_SESSION_ID`(없으면
   `CLAUDE_CODE_SESSION_ID`). 서브에이전트는 부모의 id다. 자기 id를 모르면 기록도 경고도 하지 않는다.
 - 넘길 때는 `release <n>`으로 이 세션을 뺀다. Claude는 SessionEnd 훅(`/clear` 포함)이 모든 Issue에서 빼고, Codex는 해제
-  명령이나 30분 만료에 맡긴다.
+  명령이나 30분 만료에 맡긴다. 그래서 다른 세션(다른 호스트, headless 실행)에 맡기는 지시서는 끝에 그 세션이
+  `release <n>`을 실행하게 한다. 빠뜨리면 끝난 세션에 대한 경고가 30분 동안 이어진다(#33).
 - flush는 대기열 전체를 claim하고 잠금 밖에서 게시한 뒤 항목마다 지운다. 다른 flush가 10분 안에 claim했으면 건너뛴다.
   게시 뒤 지우기 전에 끊기면 claim이 끝난 뒤 다시 게시될 수 있다.
 - Issue 쓰기는 잠그지 않는다. 다른 기기의 세션은 모르고, 한 호스트 안에서 띄운 다른 호스트(Codex 안의 Claude)는 바깥

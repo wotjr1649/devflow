@@ -928,6 +928,15 @@ test('an unattended write is checked against the Issue as the queue will leave i
   assert.equal(state.write(offline, '.', 'state', 1, block()).code, 0)
 })
 
+test('a pipe marks a table only in a paragraph with a delimiter row (#33)', () => {
+  const created = body => state.write(env(repo()), '.', 'create', undefined, body, 'title')
+  // GitHub renders this line as a task item with the code span intact (checked with the markdown API).
+  assert.equal(created('## 문제\nx\n\n## 수용 기준\n- [ ] `mode <n> a|b < reason` 명령\n- [ ] 다음\n').code, 0)
+  // In a real table a pipe splits the cell before spans pair, so a span there is still not trusted.
+  const table = '## 문제\n| a | b |\n|---|---|\n| `x <y` | z |\n\n## 수용 기준\n- [ ] a\n'
+  assert.match(created(table).out, /HTML or an entity outside a code span/)
+})
+
 test('close refuses while an acceptance criterion is unchecked (#27)', () => {
   const body = c => `## 문제\nx\n\n## 수용 기준\n- [x] a\n- [${c}] b\n\n${block()}\n`
   const open = env(repo(), { data: issue({ body: body(' ') }) })
@@ -1187,8 +1196,9 @@ test('markup inside a code span is plain only where cmark certainly reads the sp
   const refused = [
     ['a `b', 'c` <x> `d`'],
     ['x \\`<b>` y'],
-    ['a | `<b>` |'],
-    ['| `a|<b>` |'],
+    // A pipe splits cells before spans pair only in a table, which needs a delimiter row: GitHub puts <b> in a cell here.
+    ['a | `<b>` |', '|---|---|'],
+    ['| `a|<b>` |', '|---|---|'],
     ['``x `<b>` y'],
     ['x <a title="`">`'],
     ['`<b>` and <i>'],
@@ -1211,6 +1221,9 @@ test('markup inside a code span is plain only where cmark certainly reads the sp
   assert.ok(!plain(crit(['- [ ] a `b', '  c` <x> `d`'])), 'a span across section lines')
   assert.ok(!plain(crit(['- [ ] run it <`@a.io> <details><summary>ok</summary>hidden `'])), 'an email autolink on a box line')
   assert.ok(plain(above('a < b and `c`')), 'a lone "<" before a span is no markup')
+  // Without a delimiter row there is no table and the span stays a span (markdown API, #33).
+  assert.ok(plain(above('a | `<b>` |')), 'a pipe line that is no table')
+  assert.ok(plain(above('| `a|<b>` |')), 'a pipe inside a span on a line that is no table')
   assert.ok(!plain(crit(['- [ ] one', '  ```', '  x', '  ```'])), 'a fence continuing a box')
   assert.ok(!plain(crit(['- [ ] one', '```'])), 'a fence after a box')
 })

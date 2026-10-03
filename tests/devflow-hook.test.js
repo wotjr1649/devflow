@@ -672,13 +672,14 @@ test('the actual PreToolUse entry point denies analysis that runs past five seco
   const command = 'bash heavy.sh;'.repeat(15000) + 'gh issue close 1'
   const started = Date.now()
   const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
-    cwd: d, input: pre(d, command), encoding: 'utf8', timeout: 9000,
+    cwd: d, input: pre(d, command), encoding: 'utf8', timeout: 13000,
   })
   assert.equal(r.status, 0, 'the hook must finish before the host timeout')
   const out = JSON.parse(r.stdout)
   assert.equal(out.hookSpecificOutput.permissionDecision, 'deny')
   assert.match(out.hookSpecificOutput.permissionDecisionReason, /5.second.*deadline/i)
-  assert.ok(Date.now() - started < 8000)
+  // The budget is the host's PreToolUse timeout (15 s) less a margin, not a speed target: a slow runner took 9.07 s (#33).
+  assert.ok(Date.now() - started < 12000)
   assert.deepEqual(guards(d, 7), ['analysis-deadline'])
 })
 

@@ -644,7 +644,10 @@ const PLAIN_LINE = /^(?:- \[[ xX]\](?:[ \t].*)?|[ \t]*| {0,5}(?![-*+>#|<~= \t]|`
 // stripped either. Outside a span a backslash escapes ASCII punctuation, so an escaped backtick opens nothing; inside
 // one it is literal.
 const ASCII_PUNCT = /[!-\/:-@\[-`{-~]/
-const TAKES_BACKTICKS = /[[\]|$]|:\/\/|www\.|mailto:|xmpp:/i
+const TAKES_BACKTICKS = /[[\]$]|:\/\/|www\.|mailto:|xmpp:/i
+// A pipe takes backticks only in a table, and GitHub makes a table only of a paragraph with a delimiter row such as
+// "|---|---|" (Issue #33, checked with the markdown API): elsewhere a pipe in a code span stays in the span.
+const DELIMITER_ROW = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/
 // A task box opening a list item, followed by a space: the task list takes it, and with the space after "]" no link can
 // start there, so its brackets are no mark.
 const TASK_BOX = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[ xX]\](?=[ \t]|$)/
@@ -654,7 +657,7 @@ function withoutCodeSpans(line, state) {
   const box = TASK_BOX.exec(line)
   const head = box ? box[0] : ''
   const text = line.slice(head.length)
-  if (TAKES_BACKTICKS.test(text)) { state.open = true; return line }
+  if (TAKES_BACKTICKS.test(text) || (state.table && text.includes('|'))) { state.open = true; return line }
   let out = head
   for (let i = 0; i < text.length;) {
     if (text[i] === '\\' && i + 1 < text.length && ASCII_PUNCT.test(text[i + 1])) { out += text.slice(i, i + 2); i += 2; continue }
@@ -695,8 +698,19 @@ function criteria(body) {
   // The first line that is not plain and the rule it breaks, so a refusal can say where to look (Issue #13).
   let why = null
   const fail = (l, rule) => { why = { line: body.slice(0, l.at).split('\n').length, rule }; return false }
-  const spans = { open: false }
+  const spans = { open: false, table: false }
+  // The lines of every paragraph that holds a delimiter row with a pipe in it.
+  const tableAt = new Set()
+  for (let start = 0; start < ls.length;) {
+    let end = start
+    while (end < ls.length && !/^[ \t]*$/.test(ls[end].text)) end++
+    if (ls.slice(start, end).some((l, k) => k > 0 && l.text.includes('|') && DELIMITER_ROW.test(l.text))) {
+      for (let k = start; k < end; k++) tableAt.add(k)
+    }
+    start = end + 1
+  }
   const sure = (l, i) => {
+    spans.table = tableAt.has(i)
     if (l.skip) return (i < h && !l.unsure) || fail(l, i < h ? 'text after a comment closes on its line' : 'a comment or code fence')
     const bare = withoutCodeSpans(l.text, spans)
     if (INVISIBLE.test(l.text)) return fail(l, 'an invisible character')

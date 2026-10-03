@@ -933,6 +933,13 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
   return ''
 }
 
+// With DEVFLOW_HOOK_TIMING set, each phase of the PreToolUse path goes to stderr in milliseconds since the hook started,
+// to find where a slow platform spends the deadline (Issue #37).
+const started = performance.now()
+const timing = (phase, extra = '') => {
+  if (process.env.DEVFLOW_HOOK_TIMING) process.stderr.write(`devflow-timing ${phase} ${Math.round(performance.now() - started)}${extra}\n`)
+}
+
 function main(inProcess = false) {
   let raw = ''
   try {
@@ -946,19 +953,23 @@ function main(inProcess = false) {
   } else if (input?.hook_event_name === 'PreToolUse' && !inProcess) {
     // A timer in the analyzer cannot interrupt synchronous parsing or a blocked file read. Keep those in a child
     // with a deadline shorter than the host's: a killed or failed analyzer produces a denial, never an empty result.
+    timing('analyzer-start')
     const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main(true)', __filename], {
       input: raw, encoding: 'utf8', timeout: ANALYSIS_TIMEOUT_MS, windowsHide: true,
     })
+    timing('analyzer-done', ` error=${r.error?.code || ''} signal=${r.signal || ''} status=${r.status}`)
     const guard = r.error?.code === 'ETIMEDOUT' ? 'analysis-deadline' : r.status !== 0 ? 'hook-check-failed' : null
     if (guard) {
       // Logging reads repository metadata too. Bound it separately, so even a broken log path cannot delay denial.
       const log = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main(process.argv[2])', __filename, guard], {
         input: raw, encoding: 'utf8', timeout: 1000, windowsHide: true,
       })
+      timing('log-done', ` error=${log.error?.code || ''} status=${log.status}`)
       out = log.status === 0 && log.stdout.trim() ? log.stdout.trim() : deny(ANALYSIS_FAILURES[guard])
     } else out = r.stdout.trim()
   } else out = handle(raw)
   if (out) process.stdout.write(out + '\n')
+  timing('out')
 }
 
 module.exports = { handle, issueWrite, mcpIssueWrite, localPath, main }

@@ -28,12 +28,13 @@ AGENTS.md를 비공개로 운영하는 프로젝트는 AGENTS.md를 ignore에 �
 Issue 폴더(`.work/devflow/i<issue>/`: 장부, 차단 기록, 세션 기록, 잠금)는 주 작업 트리에 둔다(#14). worktree를 지워도
 남고, 어느 worktree의 세션이든 같은 장부와 잠금을 쓰게 하기 위해서다.
 
-- 주 작업 트리는 `git worktree list`의 첫 항목이고, 그곳에 `.devflow.json`이 있을 때만 그렇게 본다. separate git dir나
-  bare 배치에서는 첫 항목이 git 디렉터리라서 지금 작업 트리에 둔다.
+- 주 작업 트리는 git 기록으로 정한다. 지금 작업 트리가 연결된 worktree이고, 그 gitdir이 저장소 `.git/worktrees/` 바로
+  아래에 있으며, 거기의 되돌림 링크(`gitdir` 파일)가 이 worktree의 `.git`을 가리키면 그 `.git`의 부모가 주 작업 트리다.
+  그 밖(주 작업 트리 자신, separate git dir나 bare 배치, 확인되지 않는 worktree)은 지금 작업 트리에 둔다.
+  `devflow-state`, 훅, `devflow-metrics`가 같은 판정을 쓴다. 압축 파일에 든 `.git` 파일은 남의 저장소 `worktrees` 폴더에
+  쓸 수 없으므로, 이 판정으로 남의 저장소를 가리킬 수 없다. 훅은 파일 시스템에 묻기 전에 경로 문자열부터 확인한다.
 - Issue 브랜치가 아닌 worktree(M3 작업 worktree)는 장부 명령에서 주 작업 트리 브랜치의 Issue로 본다. Issue 쓰기는 그
   브랜치 자신의 Issue만 받는다.
-- 훅은 차단 기록을 주 작업 트리에 남기기 전에, git 기록으로 그 worktree가 그 저장소의 것임을 확인한다. gitdir이 저장소의
-  `.git/worktrees/` 바로 아래에 있고, 거기의 되돌림 링크가 그 worktree를 가리켜야 한다. 확인되지 않으면 예전처럼 기록한다.
 - worktree에만 옛 Issue 폴더가 있으면 재개 카드가 옮기라고 경고하고, 옮길 때까지 그 Issue의 장부와 Issue 쓰기를 거부한다.
 
 ## .gitignore 관리 블록

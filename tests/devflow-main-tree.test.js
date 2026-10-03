@@ -137,6 +137,39 @@ test('a separate git dir keeps the ledger where the work tree is', () => {
   assert.deepEqual(readJson(ledgerIn(wt, 3)).notes, ['separate git dir'])
 })
 
+test('a .git file that only claims a repository does not make it the store (#14 security review)', () => {
+  const { main: victim } = project('feat/7-x', 'fix/7-wt')
+  fs.mkdirSync(path.dirname(ledgerIn(victim, 7)), { recursive: true })
+  fs.writeFileSync(ledgerIn(victim, 7), '{"mode":"interactive"}')
+  // An extracted archive: its own gitdir, pointed at the victim's common dir, with a back link to itself.
+  const x = tmp()
+  fs.writeFileSync(path.join(x, '.devflow.json'), '{}')
+  fs.mkdirSync(path.join(x, 'wt'))
+  fs.writeFileSync(path.join(x, '.git'), 'gitdir: wt\n')
+  fs.writeFileSync(path.join(x, 'wt', 'commondir'), path.join(victim, '.git') + '\n')
+  fs.writeFileSync(path.join(x, 'wt', 'gitdir'), '../.git\n')
+  fs.writeFileSync(path.join(x, 'wt', 'HEAD'), 'ref: refs/heads/feat/7-y\n')
+  const ctx = state.repoContext(env('feat/7-y'), x)
+  assert.equal(ctx.linked, false)
+  assert.equal(path.resolve(ctx.store), x)
+  run(env('feat/7-y'), x, ['ledger-update', '7'], '{"mode":"autonomous","pendingPosts":[1]}')
+  assert.deepEqual(readJson(ledgerIn(victim, 7)), { mode: 'interactive' }, 'the victim ledger is untouched')
+  // Pointed at the victim's real worktree gitdir: git follows it, but the back link there names that worktree.
+  const y = tmp()
+  fs.writeFileSync(path.join(y, '.devflow.json'), '{}')
+  fs.writeFileSync(path.join(y, '.git'), `gitdir: ${path.join(victim, '.git', 'worktrees', 'wt')}\n`)
+  assert.equal(state.repoContext(env('fix/7-wt'), y).linked, false)
+  run(env('fix/7-wt'), y, ['ledger-update', '7'], '{"mode":"autonomous"}')
+  assert.deepEqual(readJson(ledgerIn(victim, 7)), { mode: 'interactive' }, 'still untouched')
+})
+
+test('the main tree stays the store while it has a commit without .devflow.json checked out', () => {
+  const { main, wt } = project('feat/14-x', 'fix/14-wt')
+  git(main, 'switch', '-q', '--orphan', 'bare-history')
+  fs.rmSync(path.join(main, '.devflow.json'), { force: true })
+  assert.equal(path.resolve(state.repoContext(env('fix/14-wt'), wt).store), main)
+})
+
 test('with a ledger in both trees the worktree copy is not warned about, and writes go to the main tree', () => {
   const { main, wt } = project('feat/14-x', 'fix/14-wt')
   for (const root of [main, wt]) {

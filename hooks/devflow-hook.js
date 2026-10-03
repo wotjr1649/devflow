@@ -791,7 +791,7 @@ function guardTarget(root) {
 }
 
 // The main work tree of linked worktree root, or null unless git's own records prove the worktree belongs to it
-// (Issue #14): the common dir is a real folder named .git whose parent holds .devflow.json, the worktree's gitdir sits
+// (Issue #14): the common dir is a real folder named .git, the worktree's gitdir sits
 // right under <common>/worktrees, and git's back link there names this worktree's .git. A .git file from an extracted
 // archive cannot write into another repository's worktrees folder, so it cannot send a log line there.
 function provenMain(root, own, common) {
@@ -799,13 +799,15 @@ function provenMain(root, own, common) {
     // Spellings only, never fs.realpath: a junction could lead the lookup to a network path past the hook timeout. A
     // worktree opened through subst or a junction fails the proof and is logged as before.
     const key = p => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
-    if (path.basename(common) !== '.git' || !fs.lstatSync(common).isDirectory()) return null
-    const mainRoot = path.dirname(common)
-    if (!fs.lstatSync(path.join(mainRoot, '.devflow.json')).isFile()) return null
+    // String tests first: once the gitdir is known to sit right under <common>/worktrees, the common dir is derived
+    // from that local gitdir, so no crafted commondir (a network share, say) reaches the file system.
+    if (isNetwork(common) || path.basename(common) !== '.git') return null
     if (key(path.dirname(own)) !== key(path.join(common, 'worktrees'))) return null
     const back = (smallFile(path.join(own, 'gitdir')) || '').trim()
     if (!back || isNetwork(back) || key(path.resolve(own, back)) !== key(path.join(root, '.git'))) return null
-    return mainRoot
+    // As devflow-state decides (docs/specs/repository.md, Issue 폴더): a .devflow.json is not asked of the main tree,
+    // which may have a commit without one checked out; git's back link already ties the two.
+    return fs.lstatSync(common).isDirectory() ? path.dirname(common) : null
   } catch {
     return null
   }

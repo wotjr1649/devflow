@@ -526,14 +526,36 @@ test('a .git file that only claims a repository does not log into it (#14)', () 
   assert.deepEqual(guards(victim, 7), [], 'a gitdir whose back link names another worktree')
 })
 
-test('a main work tree without .devflow.json is not where a worktree logs (#14)', () => {
+test('a crafted commondir on a network path is never opened (#14 security review)', () => {
+  const x = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-forged-')))
+  fs.writeFileSync(path.join(x, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const expected = hook.handle(pre(x, 'gh issue close 1'))
+  fs.mkdirSync(path.join(x, 'wt'))
+  fs.writeFileSync(path.join(x, '.git'), 'gitdir: wt\n')
+  const bs = String.fromCharCode(92)
+  fs.writeFileSync(path.join(x, 'wt', 'commondir'), [bs + bs + 'devflow-no-such-host', 'share', '.git'].join(bs) + '\n')
+  fs.writeFileSync(path.join(x, 'wt', 'gitdir'), '../.git\n')
+  fs.writeFileSync(path.join(x, 'wt', 'HEAD'), 'ref: refs/heads/feat/7-y\n')
+  // A name that does not resolve fails fast, so timing proves nothing: record every lookup of a network path instead.
+  const seen = []
+  const spy = name => { const real = fs[name]; fs[name] = (p, ...a) => { if (/^(\\\\|\/\/)/.test(String(p))) seen.push(name); return real(p, ...a) }; return () => { fs[name] = real } }
+  const undo = ['lstatSync', 'statSync', 'openSync', 'readFileSync', 'existsSync'].map(spy)
+  try {
+    assert.equal(hook.handle(pre(x, 'gh issue close 1')), expected)
+  } finally {
+    undo.forEach(u => u())
+  }
+  assert.deepEqual(seen, [], 'no network path was looked up')
+})
+
+test('a main work tree with a commit without .devflow.json checked out still takes the log, as devflow-state decides (#14)', () => {
   const d = gitRepo('feat/7-x')
   const wt = sibling()
   git(d, 'worktree', 'add', '-q', '-b', 'fix/7-wt', wt)
   fs.rmSync(path.join(d, '.devflow.json'))
   hook.handle(pre(wt, 'gh issue close 1'))
-  assert.deepEqual(guards(d, 7), [])
-  assert.deepEqual(guards(wt, 7), ['issue-write'])
+  assert.deepEqual(guards(d, 7), ['issue-write'])
+  assert.equal(fs.existsSync(path.join(wt, '.work')), false)
 })
 
 test('a separate git dir is no main work tree, even inside a devflow folder (#14)', () => {

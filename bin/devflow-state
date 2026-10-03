@@ -132,22 +132,26 @@ function repoContext(env, cwd) {
 
 const samePathKey = p => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
 const differs = (a, b) => samePathKey(a) !== samePathKey(b)
-// The main work tree: the first entry of `git worktree list`, taken only when it is a real folder holding .devflow.json.
-// With a separate git dir or a bare repository that entry is the git dir itself, and the work tree in hand is used.
+// The main work tree of the work tree at root, when root is a linked worktree git's own records tie to it: its git dir
+// sits right under <common>/worktrees, the common dir is a folder named .git, and git's back link in that git dir names
+// root/.git. A .git file from an extracted archive can point git at any repository, but cannot write into another
+// repository's worktrees folder, so it cannot make that repository the store. Otherwise null, and the work tree in
+// hand keeps the folder: the main tree itself, a separate git dir or bare layout, or a worktree git cannot vouch for.
 function mainTree(env, root, opts = {}) {
-  const r = env.run('git', ['worktree', 'list', '--porcelain'], { cwd: root, ...opts })
+  const r = env.run('git', ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'], { cwd: root, ...opts })
   if (r.code !== 0) return null
-  const entry = String(r.stdout).split(/\r?\n\r?\n/)[0].split(/\r?\n/)
-  const at = entry.find(l => l.startsWith('worktree '))
-  if (!at || entry.includes('bare')) return null
-  const p = path.resolve(at.slice(9))
-  try {
-    if (!fs.lstatSync(p).isDirectory() || !fs.lstatSync(path.join(p, '.devflow.json')).isFile()) return null
-  } catch {
-    return null
-  }
-  const b = entry.find(l => l.startsWith('branch refs/heads/'))
-  return { path: p, branch: b ? b.slice(18) : '' }
+  const [own, common] = String(r.stdout).split(/\r?\n/).filter(Boolean).map(p => path.resolve(p))
+  if (!own || !common) return null
+  const base = path.basename(common)
+  if ((process.platform === 'win32' ? base.toLowerCase() : base) !== '.git') return null
+  if (differs(path.dirname(own), path.join(common, 'worktrees'))) return null
+  let back = ''
+  try { back = fs.readFileSync(path.join(own, 'gitdir'), 'utf8').trim() } catch { return null }
+  if (!back || differs(path.resolve(own, back), path.join(root, '.git'))) return null
+  let head = ''
+  try { head = fs.readFileSync(path.join(common, 'HEAD'), 'utf8') } catch {}
+  const m = /^ref: refs\/heads\/(\S+)/.exec(head)
+  return { path: path.dirname(common), branch: m ? m[1] : '' }
 }
 
 // A ledger left in a linked worktree by an older devflow: nothing writes for that Issue until it is moved, since the

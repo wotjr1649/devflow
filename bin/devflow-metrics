@@ -50,12 +50,11 @@ function context(cwd) {
     const p = fs.existsSync(w.path) && git(w.path, 'rev-parse', '--path-format=absolute', '--git-path', 'logs/HEAD')
     w.reflog = p && fs.existsSync(p) ? path.resolve(p) : null
   }
-  // The main work tree holds the Issue folder (Issue #14): the first worktree entry when it holds .devflow.json. With a
-  // separate git dir that entry is the git dir itself, and the parent of the common dir is no work tree either.
-  const first = worktrees[0] && worktrees[0].path
-  let mainRoot = path.resolve(root)
-  try { if (first && fs.lstatSync(path.join(first, '.devflow.json')).isFile()) mainRoot = first } catch {}
-  return { root: path.resolve(root), mainRoot, worktrees }
+  // The Issue folder lives where devflow-state keeps it (docs/specs/repository.md, Issue 폴더): the main work tree of a
+  // worktree git's records vouch for, else this work tree. Same function, so the two never pick different ledgers.
+  const viaGit = { run: (cmd, args, opts = {}) => { const out = git(opts.cwd, ...args); return out === null ? { code: 1, stdout: '' } : { code: 0, stdout: out } } }
+  const main = require('./devflow-state').mainTree(viaGit, root)
+  return { root: path.resolve(root), mainRoot: main ? main.path : path.resolve(root), worktrees }
 }
 
 // The deepest work tree containing p, compared by path segments.

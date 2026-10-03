@@ -483,12 +483,72 @@ test('git metadata that is large, linked, special or on a network path is not re
   assert.equal(fs.existsSync(path.join(d2, '.work')), false)
 })
 
-test('a worktree outside the main work tree does not log to the main one (2026-10-02 security review)', () => {
+// Issue #14: the Issue folder lives in the main work tree, so a worktree anywhere logs there, once git's own records
+// prove it belongs to that repository (the 2026-10-02 security review kept outside worktrees out for want of a proof).
+const sibling = () => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-sib-'))) + '-wt'
+test('a worktree outside the main work tree, proven by git, logs to the main one (#14)', () => {
   const d = gitRepo('feat/7-x')
-  const wt = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-sib-'))) + '-wt'
-  git(d, 'worktree', 'add', '-q', '-b', 'task-2', wt)
-  assert.equal(decision(hook.handle(pre(wt, 'gh issue close 1'))), 'deny')
+  const task = sibling()
+  git(d, 'worktree', 'add', '-q', '-b', 'task-2', task)
+  assert.equal(decision(hook.handle(pre(task, 'gh issue close 1'))), 'deny')
+  assert.deepEqual(guards(d, 7), ['issue-write'], 'a task branch logs under the main tree Issue')
+  const own = sibling()
+  git(d, 'worktree', 'add', '-q', '-b', 'fix/7-wt', own)
+  hook.handle(pre(own, 'gh issue close 1'))
+  assert.deepEqual(guards(d, 7), ['issue-write', 'issue-write'], 'its own Issue branch logs there too')
+  assert.equal(fs.existsSync(path.join(own, '.work')), false)
+  const rel = sibling()
+  git(d, 'worktree', 'add', '-q', '--relative-paths', '-b', 'fix/7-rel', rel)
+  hook.handle(pre(rel, 'gh issue close 1'))
+  assert.deepEqual(guards(d, 7).length, 3, 'a worktree made with relative paths is proven too')
+})
+
+test('a .git file that only claims a repository does not log into it (#14)', () => {
+  const victim = gitRepo('feat/7-x')
+  // An extracted archive: its own gitdir, pointed at the victim's common dir, with a back link to itself.
+  const x = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-forged-')))
+  fs.writeFileSync(path.join(x, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  fs.mkdirSync(path.join(x, 'wt'))
+  fs.writeFileSync(path.join(x, '.git'), 'gitdir: wt\n')
+  fs.writeFileSync(path.join(x, 'wt', 'commondir'), path.join(victim, '.git') + '\n')
+  fs.writeFileSync(path.join(x, 'wt', 'gitdir'), '../.git\n')
+  fs.writeFileSync(path.join(x, 'wt', 'HEAD'), 'ref: refs/heads/feat/99-y\n')
+  assert.equal(decision(hook.handle(pre(x, 'gh issue close 1'))), 'deny')
+  assert.deepEqual(guards(victim, 99), [])
+  assert.deepEqual(guards(victim, 7), [])
+  // Pointed at a real worktree's gitdir in the victim: the back link there names that worktree, not this folder.
+  const real = sibling()
+  git(victim, 'worktree', 'add', '-q', '-b', 'fix/7-real', real)
+  const y = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-forged-')))
+  fs.writeFileSync(path.join(y, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  fs.writeFileSync(path.join(y, '.git'), `gitdir: ${path.join(victim, '.git', 'worktrees', path.basename(real))}\n`)
+  hook.handle(pre(y, 'gh issue close 1'))
+  assert.deepEqual(guards(victim, 7), [], 'a gitdir whose back link names another worktree')
+})
+
+test('a main work tree without .devflow.json is not where a worktree logs (#14)', () => {
+  const d = gitRepo('feat/7-x')
+  const wt = sibling()
+  git(d, 'worktree', 'add', '-q', '-b', 'fix/7-wt', wt)
+  fs.rmSync(path.join(d, '.devflow.json'))
+  hook.handle(pre(wt, 'gh issue close 1'))
   assert.deepEqual(guards(d, 7), [])
+  assert.deepEqual(guards(wt, 7), ['issue-write'])
+})
+
+test('a separate git dir is no main work tree, even inside a devflow folder (#14)', () => {
+  const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-sep-')))
+  fs.writeFileSync(path.join(base, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  git(base, 'init', '-q', '--separate-git-dir', path.join(base, 'gd'), 'main')
+  const main = path.join(base, 'main')
+  fs.writeFileSync(path.join(main, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  git(main, 'add', '.devflow.json')
+  git(main, 'commit', '-q', '-m', 'a')
+  const wt = sibling()
+  git(main, 'worktree', 'add', '-q', '-b', 'fix/7-wt', wt)
+  hook.handle(pre(wt, 'gh issue close 1'))
+  assert.deepEqual(guards(base, 7), [], 'not the folder above the git dir')
+  assert.deepEqual(guards(wt, 7), ['issue-write'], 'the worktree in hand, as before')
 })
 
 test('a folder link to a network path inside the gitdir is not followed (2026-10-02 re-review)', t => {
@@ -698,6 +758,30 @@ test('SessionEnd releases the session from every Issue folder and gives up fast 
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(s2, 'utf8'))), [other])
   assert.equal(Object.keys(JSON.parse(fs.readFileSync(s1, 'utf8'))).length, 2, 'a held lock is left alone; 30 minutes clear it')
   assert.equal(hook.handle(event('SessionEnd', dir(false), { session_id: SID }), noGit), '')
+})
+
+test('SessionEnd in a worktree releases the session from the main work tree folders; Stop leaves a worktree ledger alone (#14)', () => {
+  const d = gitRepo('feat/7-x')
+  const wt = sibling()
+  git(d, 'worktree', 'add', '-q', '-b', 'fix/7-wt', wt)
+  const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+  const realGit = { vars: {}, run: (cmd, args, opts = {}) => {
+    const r = spawnSync(cmd, args, { cwd: opts.cwd, encoding: 'utf8', env: cleanEnv, timeout: opts.timeout || 10000 })
+    return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' }
+  } }
+  const folder = path.join(d, '.work', 'devflow', 'i7')
+  fs.mkdirSync(folder, { recursive: true })
+  fs.writeFileSync(path.join(folder, 'sessions.json'), JSON.stringify({ [hashOf(SID)]: { host: 'claude', at: Date.now() } }))
+  assert.equal(hook.handle(event('SessionEnd', wt, { session_id: SID }), realGit), '')
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(folder, 'sessions.json'), 'utf8')), {})
+  // An autonomous ledger left in the worktree: Stop neither continues the work nor writes either ledger.
+  const old = path.join(wt, '.work', 'devflow', 'i7')
+  fs.mkdirSync(old, { recursive: true })
+  const ledger = JSON.stringify({ mode: 'autonomous', stage: 'build', task: { current: 1, total: 2 } })
+  fs.writeFileSync(path.join(old, 'ledger.json'), ledger)
+  assert.equal(hook.handle(event('Stop', wt, { stop_hook_active: false }), realGit), '')
+  assert.equal(fs.readFileSync(path.join(old, 'ledger.json'), 'utf8'), ledger)
+  assert.equal(fs.existsSync(path.join(folder, 'ledger.json')), false)
 })
 
 test('SessionEnd lives in a Claude-only hook file the Claude manifest names; hooks.json, which Codex reads, has none', () => {

@@ -630,12 +630,12 @@ function auditEdit(root, cwd, toolInput) {
 const MAX_CONTINUES = 2
 function continueWork(env, cwd) {
   const ctx = state.repoContext(env, cwd)
-  if (!ctx || !ctx.issue) return ''
+  if (!ctx || !ctx.issue || state.legacyOf(ctx, ctx.issue)) return ''
   // No ledger, no lock: the lock would create the Issue's folder in every repository branch the hook runs in.
-  if (!state.readLedger(ctx.root, ctx.issue)) return ''
+  if (!state.readLedger(ctx.store, ctx.issue)) return ''
   // Decided and counted under the ledger lock, so a write another session makes meanwhile is kept (Issue #10). A lock
   // that cannot be taken lets the session stop.
-  const r = state.updateLedger(ctx.root, ctx.issue, ledger => {
+  const r = state.updateLedger(ctx.store, ctx.issue, ledger => {
     // Unattended means the ledger says so: approval settings such as bypass or yolo say nothing about who is present.
     const task = ledger.task || {}
     const open = ['build', 'verify'].includes(ledger.stage) && task.current <= task.total
@@ -671,9 +671,12 @@ function shareSessionId(vars, cwd, sessionId) {
 
 // A session that ends stops counting as a recent writer of any Issue. One try per lock: SessionEnd has 1.5 s in all,
 // and an entry left behind expires in 30 minutes.
-function releaseEverywhere(cwd, sessionId) {
-  const root = devflowRoot(cwd)
-  if (!root || !SESSION_ID.test(String(sessionId || ''))) return
+function releaseEverywhere(cwd, sessionId, env = state.realEnv) {
+  const found = devflowRoot(cwd)
+  if (!found || !SESSION_ID.test(String(sessionId || ''))) return
+  // Issue folders live in the main work tree (Issue #14): one short git call finds it, else the folder in hand.
+  const main = state.mainTree(env, found, { timeout: 1000 })
+  const root = main ? main.path : found
   const hash = crypto.createHash('sha256').update(String(sessionId)).digest('hex').slice(0, 12)
   const base = path.join(root, '.work', 'devflow')
   // Real folders only: a .work that is a link (to a network share, say) is not listed.
@@ -769,7 +772,12 @@ function guardTarget(root) {
       common = commondir ? path.resolve(own, commondir.trim()) : own
     } else if (!st.isDirectory()) return null
     const issue = issueOf(headBranch(own))
-    if (issue) return { root, issue }
+    const proven = st.isFile() ? provenMain(root, own, common) : null
+    if (issue) return { root: proven || root, issue }
+    if (proven) {
+      const main = issueOf(headBranch(common))
+      return main ? { root: proven, issue: main } : null
+    }
     // Only a worktree nested in the main work tree (M3's) logs there, so a crafted commondir cannot place the log
     // outside the folders above this one.
     const mainRoot = path.dirname(common)
@@ -777,6 +785,27 @@ function guardTarget(root) {
     if (common === own || !key(root).startsWith(key(mainRoot))) return null
     const main = issueOf(headBranch(common))
     return main ? { root: mainRoot, issue: main } : null
+  } catch {
+    return null
+  }
+}
+
+// The main work tree of linked worktree root, or null unless git's own records prove the worktree belongs to it
+// (Issue #14): the common dir is a real folder named .git whose parent holds .devflow.json, the worktree's gitdir sits
+// right under <common>/worktrees, and git's back link there names this worktree's .git. A .git file from an extracted
+// archive cannot write into another repository's worktrees folder, so it cannot send a log line there.
+function provenMain(root, own, common) {
+  try {
+    // Spellings only, never fs.realpath: a junction could lead the lookup to a network path past the hook timeout. A
+    // worktree opened through subst or a junction fails the proof and is logged as before.
+    const key = p => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
+    if (path.basename(common) !== '.git' || !fs.lstatSync(common).isDirectory()) return null
+    const mainRoot = path.dirname(common)
+    if (!fs.lstatSync(path.join(mainRoot, '.devflow.json')).isFile()) return null
+    if (key(path.dirname(own)) !== key(path.join(common, 'worktrees'))) return null
+    const back = (smallFile(path.join(own, 'gitdir')) || '').trim()
+    if (!back || isNetwork(back) || key(path.resolve(own, back)) !== key(path.join(root, '.git'))) return null
+    return mainRoot
   } catch {
     return null
   }
@@ -812,7 +841,7 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
   }
   if (input.hook_event_name === 'SessionEnd') {
     try {
-      releaseEverywhere(cwd, input.session_id)
+      releaseEverywhere(cwd, input.session_id, env)
     } catch {}
     return '' // SessionEnd cannot block, and its output is dropped
   }

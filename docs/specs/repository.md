@@ -150,7 +150,12 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 커밋에 검사 줄을 쓴다.
 
 `integration` 값은 `pr-ci`, `local-merge`, `push-on-request` 중 하나다. AGENTS.md를 비공개로 운영하면
-`"agentsMd": "private"`을 적는다.
+`"agentsMd": "private"`을 적는다. 그러면 AGENTS.md는 필수 경로가 아니고, 추적되면 실패다. 다른 저장소에 맞추는 값(#23):
+
+- `specs`, `decisions`: 계약과 결정 기록 폴더. 기본은 `docs/specs`, `docs/design/decisions`이고, 다른 폴더를 적거나
+  그런 폴더를 두지 않으면 `false`를 적는다. spec 크기 예산은 `specs` 폴더를 따르고 `false`면 적용하지 않는다.
+- `allowLocalPaths`: 로컬 절대 경로를 담아도 되는 파일의 glob 목록(제품이 정당하게 담은 시스템 경로). 이 파일에서도
+  사용자 홈 아래 경로는 실패다.
 
 ## doctor 검사 항목
 
@@ -159,13 +164,13 @@ Issue 형식은 doctor가 검사하지 않고, `devflow-state`가 쓸 때 검사
 
 | 대상 | 검사 |
 |---|---|
-| 폴더 | 필수 경로 |
+| 폴더 | 필수 경로(`specs`, `decisions`, `agentsMd`를 따름) |
 | .gitignore | 관리 블록 내용, 비공개 경로가 추적되는지 |
 | .gitattributes | 기본 줄, `git ls-files --eol` 위반, 바이너리 표시 |
 | AGENTS.md | 길이, 필수 절, 링크 실존, "편집할 때마다 읽어라" 같은 고정 읽기 목록, 강조어 남용, 날짜·진행 상태 |
 | git 훅 | `local-merge` 저장소에서 `core.hooksPath`가 `.githooks`를 가리키는지 |
 | 지침을 끄는 파일 | `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`가 저장소나 상위 폴더에 있는지. git이 무시하는 파일도 본다 |
-| 문서 | 줄바꿈, BOM, 보이지 않는 문자, 로컬 절대 경로, 크기 예산, 상대 링크와 앵커 |
+| 문서 | 줄바꿈(git이 LF로 저장하고 작업 트리만 CRLF면 경고), BOM, 보이지 않는 문자, 로컬 절대 경로(`allowLocalPaths`), 크기 예산, 상대 링크와 앵커 |
 | 로컬 문서 | 크기 예산, 이름 규칙 |
 
 같은 스크립트를 스킬(분석), 훅(편집 직후 알림), CI나 git pre-push 훅(실패 처리)이 함께 쓴다.

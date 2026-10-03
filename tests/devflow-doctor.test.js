@@ -38,6 +38,54 @@ function repo(files = GOOD, { add = true } = {}) {
 const findings = d => doctor(d).lines.filter(l => !(l.startsWith('FAIL instructions') && !l.includes(path.basename(d))))
 const has = (d, re) => findings(d).some(l => re.test(l))
 
+// Issue #23: doctor on a repository other than devflow (the Clauduct pilot) could not reach ok.
+const failures = d => findings(d).filter(l => l.startsWith('FAIL'))
+
+test('a private AGENTS.md is not required, and must not be tracked (#23)', () => {
+  const { 'AGENTS.md': agents, ...rest } = GOOD
+  const profile = '{ "integration": "pr-ci", "agentsMd": "private" }\n'
+  assert.deepEqual(failures(repo({ ...rest, '.devflow.json': profile })), [])
+  assert.ok(has(repo({ ...rest }), /^FAIL folders: missing AGENTS\.md$/), 'still required without the setting')
+  assert.ok(has(repo({ ...GOOD, '.devflow.json': profile }), /^FAIL agents-md: .*private.*tracked/))
+})
+
+test('CRLF only in the working tree is a warning; CRLF git stores is a failure (#23)', () => {
+  const d = repo()
+  fs.writeFileSync(path.join(d, 'docs/specs/a.md'), GOOD['docs/specs/a.md'].replace(/\n/g, '\r\n'))
+  assert.deepEqual(failures(d), [])
+  assert.ok(has(d, /^WARN docs: docs\/specs\/a\.md: CRLF in the working tree only/))
+  const stored = repo({ ...GOOD, '.gitattributes': '', 'docs/specs/c.md': '# c\r\n' })
+  assert.ok(has(stored, /^FAIL docs: docs\/specs\/c\.md: CRLF line ending$/))
+})
+
+test('local paths: a file listed in allowLocalPaths may name system paths, never a user home (#23)', () => {
+  const sys = ['C', '\\Program Files\\Tool'].join(':')
+  const home = ['C', '\\Users\\someone\\x'].join(':')
+  const code = { ...GOOD, 'src/a.go': `const p = "${sys}"\n` }
+  assert.ok(has(repo(code), /^FAIL docs: src\/a\.go:1: local absolute path$/))
+  const allowed = { ...code, '.devflow.json': '{ "integration": "pr-ci", "allowLocalPaths": ["src/*.go"] }\n' }
+  assert.deepEqual(failures(repo(allowed)), [])
+  assert.ok(has(repo({ ...allowed, 'src/a.go': `const p = "${home}"\n` }), /^FAIL docs: src\/a\.go:1: local absolute path$/))
+  assert.ok(has(repo({ ...code, '.devflow.json': '{ "integration": "pr-ci", "allowLocalPaths": "src" }\n' }), /^FAIL profile: allowLocalPaths/))
+})
+
+test('contracts and decisions may live in other folders the profile names (#23)', () => {
+  const { 'docs/specs/a.md': spec, 'docs/design/decisions/ADR-0001-b.md': adr, ...rest } = GOOD
+  const moved = {
+    ...rest,
+    '.devflow.json': '{ "integration": "pr-ci", "specs": "docs/v2", "decisions": "docs/v2/decisions" }\n',
+    'docs/v2/a.md': '# a\n',
+    'docs/v2/decisions/ADR-0001-b.md': '# b\n',
+  }
+  assert.deepEqual(failures(repo(moved)), [])
+  assert.ok(has(repo({ ...moved, '.devflow.json': '{ "specs": "../outside" }\n' }), /^FAIL profile: specs/))
+  // The spec budget follows the folder the profile names.
+  assert.ok(has(repo({ ...moved, 'docs/v2/big.md': '가'.repeat(5200) + '\n' }), /^FAIL docs: docs\/v2\/big\.md: ~\d+ tokens, budget 5000$/))
+  // false: the project keeps no devflow-style contract or decision folder, so neither is required nor budgeted.
+  const none = { ...rest, '.devflow.json': '{ "integration": "pr-ci", "specs": false, "decisions": false }\n', 'docs/v2/big.md': '가'.repeat(5200) + '\n' }
+  assert.deepEqual(failures(repo(none)), [])
+})
+
 test('a repository that follows the standard is ok', () => {
   const lines = findings(repo())
   assert.deepEqual(lines.filter(l => /^(FAIL|WARN)/.test(l)), [])
@@ -157,5 +205,6 @@ test('files .gitattributes keeps as CRLF are not CRLF findings', () => {
   const d = repo({ ...GOOD, 'run.cmd': 'echo a\r\necho b\r\n', 'notes.md': 'a\r\n' })
   const lines = findings(d)
   assert.ok(!lines.some(l => l.includes('run.cmd')), 'eol=crlf files are meant to be CRLF')
-  assert.ok(lines.includes('FAIL docs: notes.md: CRLF line ending'))
+  // eol=lf stores notes.md with LF; the CRLF left in the working tree is a warning since #23.
+  assert.ok(lines.some(l => l.startsWith('WARN docs: notes.md: CRLF in the working tree only')))
 })

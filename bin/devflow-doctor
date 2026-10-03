@@ -14,15 +14,24 @@ const MANAGED_IGNORE = ['/docs/prompts/', '/docs/plans/', '/artifacts/', '/.work
   '/.claude/settings.local.json', 'CLAUDE.local.md']
 const ATTRIBUTES = ['* text=auto eol=lf', '*.cmd text eol=crlf', '*.bat text eol=crlf', '*.png binary', '*.zip binary']
 const PRIVATE = ['docs/prompts/', 'docs/plans/', 'artifacts/', '.work/', '_ref/']
-const REQUIRED = ['AGENTS.md', '.devflow.json', '.github/ISSUE_TEMPLATE/intent.md', 'docs/specs', 'docs/design/decisions']
+// AGENTS.md is required unless the profile says it is private; the contract and decision folders can be moved (#23).
+const REQUIRED = ['.devflow.json', '.github/ISSUE_TEMPLATE/intent.md']
 const AGENTS_SECTIONS = ['## Commands', '## Boundaries']
 const INSTRUCTION_SWITCHES = ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md']
-const BUDGETS = [[/^AGENTS\.md$/, 1000], [/^docs\/specs\/.+\.md$/, 5000], [/(^|\/)SKILL\.md$/, 5000]]
+const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// specs is the folder of devflow-style contracts, or null when the project keeps none (profile `"specs": false`).
+const budgets = specs => [[/^AGENTS\.md$/, 1000], ...(specs ? [[new RegExp(`^${escapeRe(specs)}/.+\\.md$`), 5000]] : []), [/(^|\/)SKILL\.md$/, 5000]]
 const PROMPT_BUDGET = 500
 const INTEGRATIONS = ['pr-ci', 'local-merge', 'push-on-request']
 const MAX_LINES_PER_RULE = 3
 const PRIVATE_NAME =/^\d{4}-\d{2}-\d{2}-i\d+-[a-z0-9-]+-(prompt|plan|handoff)\.md$/
 const LOCAL_PATH = /\b[A-Za-z]:[\\/]|(?:^|[\s'"`(=])\/[a-z]\/[^\s/]+\/|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//
+// What a file in allowLocalPaths may still not hold: a path under a user's home names that user (#23).
+const USER_PATH = /\b[A-Za-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+[^\\/\s"'`]+|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//i
+const globToRegExp = g => new RegExp('^' + g.split('**').map(part => part.split('*').map(x => x.replace(/[.+^${}()|[\]\\?]/g, '\\$&')).join('[^/]*')).join('.*') + '$')
+const matchesGlob = (file, glob) => (path.posix.matchesGlob ? path.posix.matchesGlob(file, glob) : globToRegExp(glob).test(file))
+// A folder the profile names: relative, inside the repository, forward slashes.
+const insideFolder = v => typeof v === 'string' && v !== '' && !path.isAbsolute(v) && !/^[A-Za-z]:/.test(v) && !v.split(/[\\/]/).includes('..')
 const EMPHASIS = /\b(MUST|CRITICAL|EXTREMELY|IMPORTANT|NEVER|ALWAYS)\b/g
 const READ_LIST = /\b(read (this |these |the following )?(files )?first|always read|before (every|each) (edit|change|task)[^.\n]*read)\b/i
 const DATED = /\b20\d\d-\d\d-\d\d\b|\b(in progress|work in progress|TODO)\b|진행 중/
@@ -73,16 +82,34 @@ function doctor(dir, { only } = {}) {
   if (profile.integration !== undefined && !INTEGRATIONS.includes(profile.integration)) {
     fail('profile', `integration is "${profile.integration}", not one of ${INTEGRATIONS.join(', ')}`)
   }
+  const specsDir = profile.specs === undefined ? 'docs/specs' : profile.specs
+  const decisionsDir = profile.decisions === undefined ? 'docs/design/decisions' : profile.decisions
+  for (const [key, v] of [['specs', specsDir], ['decisions', decisionsDir]]) {
+    if (v !== false && !insideFolder(v)) fail('profile', `${key} must be a folder inside the repository, or false`)
+  }
+  if (profile.agentsMd !== undefined && profile.agentsMd !== 'private') fail('profile', 'agentsMd is "private" or absent')
+  const allowLocalPaths = profile.allowLocalPaths === undefined ? [] : profile.allowLocalPaths
+  if (!Array.isArray(allowLocalPaths) || allowLocalPaths.some(g => typeof g !== 'string')) {
+    fail('profile', 'allowLocalPaths is a list of path globs')
+  }
+  const localPathAllowed = f => Array.isArray(allowLocalPaths) && allowLocalPaths.some(g => typeof g === 'string' && matchesGlob(f, g))
   const privatePaths = profile.private || PRIVATE
   const isPrivate = f => privatePaths.some(p => f === p.replace(/\/$/, '') || f.startsWith(p))
   // What .gitattributes says about each file: binary content is not text, and eol=crlf (*.cmd, *.bat) is meant to be CRLF.
   const eol = (git(root, ['ls-files', '--eol', ...(only ? ['--', ...files] : [])]) || '').split('\n').filter(Boolean).map(l => l.split('\t'))
   const binary = new Set(eol.filter(([info]) => /attr\/-text/.test(info)).map(([, f]) => f))
   const crlf = new Set(eol.filter(([info]) => /attr\/.*eol=crlf/.test(info)).map(([, f]) => f))
+  // Files git stores with LF: CRLF in the working tree is then a checkout setting (core.autocrlf), not the repository (#23).
+  const storedLf = new Set(eol.filter(([info]) => /\bi\/lf\b/.test(info)).map(([, f]) => f))
 
   if (!only) {
     // Folders
-    for (const p of REQUIRED) if (!fs.existsSync(at(p))) fail('folders', `missing ${p}`)
+    const required = [...REQUIRED, ...(profile.agentsMd === 'private' ? [] : ['AGENTS.md']),
+      ...[specsDir, decisionsDir].filter(insideFolder)]
+    for (const p of required) if (!fs.existsSync(at(p))) fail('folders', `missing ${p}`)
+    if (profile.agentsMd === 'private' && (git(root, ['ls-files', '--', 'AGENTS.md']) || '').trim()) {
+      fail('agents-md', 'agentsMd is private, but AGENTS.md is tracked; untrack it and ignore it')
+    }
 
     // .gitignore managed block and private paths
     const ignore = fs.existsSync(at('.gitignore')) ? read('.gitignore').split(/\r?\n/) : []
@@ -146,15 +173,18 @@ function doctor(dir, { only } = {}) {
     if (f === 'LICENSE' || /\.(png|jpe?g|gif|ico|zip|gz)$/.test(f) || binary.has(f) || isPrivate(f)) continue
     const text = read(f)
     if (text.includes('\0')) continue
-    if (text.includes('\r') && !crlf.has(f)) fail('docs', `${f}: CRLF line ending`)
+    if (text.includes('\r') && !crlf.has(f)) {
+      if (storedLf.has(f)) warn('docs', `${f}: CRLF in the working tree only; git stores LF, so check the file out again to match`)
+      else fail('docs', `${f}: CRLF line ending`)
+    }
     if (text.charCodeAt(0) === 0xfeff) fail('docs', `${f}: byte order mark`)
-    for (const [rule, re] of [['invisible character', INVISIBLE], ['local absolute path', LOCAL_PATH]]) {
+    for (const [rule, re] of [['invisible character', INVISIBLE], ['local absolute path', localPathAllowed(f) ? USER_PATH : LOCAL_PATH]]) {
       const hits = text.split('\n').flatMap((line, i) => (re.test(line) ? [i + 1] : []))
       // A file that repeats a finding on many lines gets three of them and a count, so one file cannot bury the rest.
       for (const n of hits.slice(0, MAX_LINES_PER_RULE)) fail('docs', `${f}:${n}: ${rule}`)
       if (hits.length > MAX_LINES_PER_RULE) fail('docs', `${f}: ${rule} on ${hits.length - MAX_LINES_PER_RULE} more lines`)
     }
-    for (const [re, max] of BUDGETS) if (re.test(f) && tokens(text) > max) fail('docs', `${f}: ~${tokens(text)} tokens, budget ${max}`)
+    for (const [re, max] of budgets(insideFolder(specsDir) ? specsDir : null)) if (re.test(f) && tokens(text) > max) fail('docs', `${f}: ~${tokens(text)} tokens, budget ${max}`)
     if (!f.endsWith('.md')) continue
     for (const m of text.replace(/```[\s\S]*?```/g, '').matchAll(/\]\(([^)\s]+)\)/g)) {
       if (/^[a-z]+:/i.test(m[1])) continue

@@ -102,8 +102,27 @@ test('#23 review: folder values are normalised, instruction files take no except
   assert.ok(has(repo(agents), /^FAIL docs: AGENTS\.md:\d+: local absolute path$/))
   // User homes without a trailing slash, and WSL forms, are caught in a listed file.
   const listed = '{ "allowLocalPaths": ["src/*"] }\n'
-  for (const p of ['/home/alice', 'HOME=/Users/alice', '/mnt/c/Users/alice', ['\\\\wsl$', 'Ubuntu', 'home', 'alice'].join('\\')]) {
+  const sl = (...parts) => parts.join('/')
+  for (const p of [sl('', 'home', 'alice'), 'HOME=' + sl('', 'Users', 'alice'), sl('', 'mnt', 'c', 'Users', 'alice'), ['\\\\wsl$', 'Ubuntu', 'home', 'alice'].join('\\')]) {
     assert.ok(has(repo({ ...GOOD, '.devflow.json': listed, 'src/a.txt': `p = ${p}\n` }), /^FAIL docs: src\/a\.txt:1: local absolute path$/), p)
+  }
+})
+
+test('#23 re-review: budget case, agent folders, and user homes in unlisted files', () => {
+  const big = '가'.repeat(5200) + '\n'
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    const caseOff = { ...GOOD, '.devflow.json': '{ "specs": "Docs/Specs" }\n', 'docs/specs/big.md': big }
+    assert.ok(has(repo(caseOff), /^FAIL docs: docs\/specs\/big\.md: ~\d+ tokens, budget 5000$/), 'a case-folded folder keeps its budget')
+  }
+  const sys = ['C', '\\Program Files\\Tool'].join(':')
+  for (const f of ['.claude/agents/x.md', '.codex/agents/x.toml', 'plugin/agents/y.md']) {
+    const d = repo({ ...GOOD, '.devflow.json': '{ "allowLocalPaths": ["**"] }\n', [f]: `p = ${sys}\n` })
+    assert.ok(has(d, new RegExp(`^FAIL docs: ${f.replace(/\./g, '\\.')}:1: local absolute path$`)), f)
+  }
+  const bs = '\\'
+  const sl = (...parts) => parts.join('/')
+  for (const p of [sl('', 'home', 'alice'), sl('', 'mnt', 'c', 'Users', 'alice'), [bs + bs + 'wsl.localhost', 'Ubuntu', 'home', 'alice'].join(bs)]) {
+    assert.ok(has(repo({ ...GOOD, 'docs/b.md': `p = ${p}\n` }), /^FAIL docs: docs\/b\.md:1: local absolute path$/), p)
   }
 })
 

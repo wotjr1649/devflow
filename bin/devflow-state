@@ -51,7 +51,7 @@ Ledger writes off an Issue branch (cleanup on main) take the Issue number; note 
 to exist. A detached HEAD writes no ledger.`
 // Checked before anything is posted. Only the rule name is ever printed, never the match.
 const LEAKS = [
-  // Any separator may come before the path: key=/home/x, [/Users/x], path:/tmp/x.
+  // Any separator may come before the path: an equals sign, a bracket or a colon.
   ['local absolute path', /(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\[\w.-]+\\|\/(?:Users|home)\/[^/\s]+|(?<![\w.~-])\/(?:tmp|mnt|root|[a-z])\//],
   ['GitHub token', /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{30,})/],
   ['API key', /\b(?:sk-[\w-]{20,}|AIza[\w-]{35}|xox[abprs]-[\w-]{10,})/],

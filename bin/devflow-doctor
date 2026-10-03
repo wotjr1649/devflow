@@ -20,16 +20,19 @@ const AGENTS_SECTIONS = ['## Commands', '## Boundaries']
 const INSTRUCTION_SWITCHES = ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md']
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // specs is the folder of devflow-style contracts, or null when the project keeps none (profile `"specs": false`).
-const budgets = specs => [[/^AGENTS\.md$/, 1000], ...(specs ? [[new RegExp(`^${escapeRe(specs)}/.+\\.md$`), 5000]] : []), [/(^|\/)SKILL\.md$/, 5000]]
+const FOLDS_CASE = process.platform === 'win32' || process.platform === 'darwin'
+const budgets = specs => [[/^AGENTS\.md$/, 1000], ...(specs ? [[new RegExp(`^${escapeRe(specs)}/.+\\.md$`, FOLDS_CASE ? 'i' : ''), 5000]] : []), [/(^|\/)SKILL\.md$/, 5000]]
 const PROMPT_BUDGET = 500
 const INTEGRATIONS = ['pr-ci', 'local-merge', 'push-on-request']
 const MAX_LINES_PER_RULE = 3
 const PRIVATE_NAME =/^\d{4}-\d{2}-\d{2}-i\d+-[a-z0-9-]+-(prompt|plan|handoff)\.md$/
 const LOCAL_PATH = /\b[A-Za-z]:[\\/]|(?:^|[\s'"`(=])\/[a-z]\/[^\s/]+\/|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//
 // What a file in allowLocalPaths may still not hold: a path under a user's home names that user (#23).
-const USER_PATH = /\b[A-Za-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+[^\\/\s"'`]+|(?:^|[^\w.-])\/(?:home|Users)\/[^/\s"'`]+|\/mnt\/[a-z]\/Users\/[^/\s"'`]+|\\\\wsl\$\\[^\\\s]+\\home\\[^\\\s"'`]+/i
+const USER_PATH = /\b[A-Za-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+[^\\/\s"'`]+|(?:^|[^\w.-])\/(?:home|Users)\/[^/\s"'`]+|\/mnt\/[a-z]\/Users\/[^/\s"'`]+|\\\\wsl(?:\$|\.localhost)\\[^\\\s]+\\home\\[^\\\s"'`]+/i
+// Outside allowLocalPaths both apply, so the default is never weaker than the exception.
+const ANY_LOCAL_PATH = { test: line => LOCAL_PATH.test(line) || USER_PATH.test(line) }
 // Instruction files an agent loads never take an allowLocalPaths exception.
-const INSTRUCTION = /(^|\/)(AGENTS|CLAUDE|CLAUDE\.local|SKILL)\.md$|^agents\/[^/]+\.md$/i
+const INSTRUCTION = /(^|\/)(AGENTS|CLAUDE|CLAUDE\.local|SKILL)\.md$|(^|\/)agents\/[^/]+\.(md|toml)$/i
 const globToRegExp = g => new RegExp('^' + g.split('**').map(part => part.split('*').map(x => x.replace(/[.+^${}()|[\]\\?]/g, '\\$&')).join('[^/]*')).join('.*') + '$')
 const matchesGlob = (file, glob) => (path.posix.matchesGlob ? path.posix.matchesGlob(file, glob) : globToRegExp(glob).test(file))
 // A folder the profile names: relative, inside the repository, forward slashes.
@@ -189,7 +192,7 @@ function doctor(dir, { only } = {}) {
       else fail('docs', `${f}: CRLF line ending`)
     }
     if (text.charCodeAt(0) === 0xfeff) fail('docs', `${f}: byte order mark`)
-    for (const [rule, re] of [['invisible character', INVISIBLE], ['local absolute path', localPathAllowed(f) ? USER_PATH : LOCAL_PATH]]) {
+    for (const [rule, re] of [['invisible character', INVISIBLE], ['local absolute path', localPathAllowed(f) ? USER_PATH : ANY_LOCAL_PATH]]) {
       const hits = text.split('\n').flatMap((line, i) => (re.test(line) ? [i + 1] : []))
       // A file that repeats a finding on many lines gets three of them and a count, so one file cannot bury the rest.
       for (const n of hits.slice(0, MAX_LINES_PER_RULE)) fail('docs', `${f}:${n}: ${rule}`)

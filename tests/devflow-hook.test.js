@@ -683,6 +683,34 @@ test('the actual PreToolUse entry point denies analysis that runs past five seco
   assert.deepEqual(guards(d, 7), ['analysis-deadline'])
 })
 
+// The hook's stdin read once never returned on macOS and ran before every deadline (Issue #37): input that does not
+// finish arriving must not hold the hook past the host's timeout.
+function startHook(partial) {
+  const { spawn } = require('child_process')
+  const child = spawn(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], { stdio: ['pipe', 'pipe', 'ignore'] })
+  child.stdin.write(partial)
+  const started = Date.now()
+  return new Promise(resolve => {
+    let out = ''
+    child.stdout.on('data', d => { out += d })
+    const kill = setTimeout(() => { child.kill('SIGKILL'); resolve({ out, ms: Date.now() - started, killed: true }) }, 9000)
+    child.on('close', () => { clearTimeout(kill); resolve({ out, ms: Date.now() - started, killed: false }) })
+  })
+}
+
+test('hook input that never finishes arriving is denied for a tool call within the input limit (#37)', async () => {
+  const r = await startHook('{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"gh issue close 1"')
+  assert.equal(r.killed, false, 'the hook ends on its own')
+  assert.ok(r.ms < 6000, `took ${r.ms} ms`)
+  assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, 'deny')
+})
+
+test('stalled input for another event ends with no output (#37)', async () => {
+  const r = await startHook('{"hook_event_name":"SessionStart","cwd":"x"')
+  assert.equal(r.killed, false)
+  assert.equal(r.out, '')
+})
+
 test('a FIFO profile cannot hold the hook open', { skip: process.platform === 'win32' }, () => {
   const d = dir(true)
   const profile = path.join(d, '.devflow.json')

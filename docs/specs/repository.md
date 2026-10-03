@@ -166,7 +166,6 @@ Issue 검사는 아직 없다.
 | git 훅 | `local-merge` 저장소에서 `core.hooksPath`가 `.githooks`를 가리키는지 |
 | 지침을 끄는 파일 | `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`가 저장소나 상위 폴더에 있는지. git이 무시하는 파일도 본다 |
 | 문서 | 줄바꿈, BOM, 보이지 않는 문자, 로컬 절대 경로, 크기 예산, 상대 링크와 앵커 |
-| Issue (다음 판) | 본문 절, 현재 상태 블록 길이 (`gh` 조회) |
 | 로컬 문서 | 크기 예산, 이름 규칙 |
 
 같은 스크립트를 스킬(분석), 훅(편집 직후 알림), CI나 git pre-push 훅(실패 처리)이 함께 쓴다.

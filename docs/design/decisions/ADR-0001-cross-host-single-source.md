@@ -12,7 +12,7 @@
 
 - 이 저장소 하나가 두 호스트용 플러그인의 단일 원본이다.
 - 스킬은 공유한다. 호스트 전용 부분은 나란히 둔다. Claude는 `agents/`와 `workflows/`, Codex는 스킬별
-  `agents/openai.yaml`(표시와 호출 정책)이다.
+  `agents/openai.yaml`(표시와 호출 정책)이다. `workflows/`는 배포하지 않기로 했다([ADR-0015](ADR-0015-paper-features.md)).
 - 훅은 Node로 작성한 `hooks/hooks.json` 하나를 두 호스트가 함께 쓴다. Codex는 셸을 `Bash`, `apply_patch`를
   `Edit`·`Write`로 매칭하고, 차단 출력(`permissionDecision: deny`) 형식도 같다.
 

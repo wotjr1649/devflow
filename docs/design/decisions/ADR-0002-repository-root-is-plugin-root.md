@@ -14,7 +14,7 @@
 
 - `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`(소스 `./`)
 - `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`
-- `skills/`, `agents/`, `hooks/`, `bin/`, `workflows/`, `evals/` (`workflows/`는 M4를 넣을 때 만든다. Issue #1 범위 밖)
+- `skills/`, `agents/`, `hooks/`, `bin/`, `workflows/`, `evals/` (`workflows/`는 M4를 넣을 때 만든다. Issue #1 범위 밖. [ADR-0015](ADR-0015-paper-features.md)에서 배포하지 않기로 했다)
 
 ## 결과
 

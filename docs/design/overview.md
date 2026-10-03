@@ -25,8 +25,8 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 | 전역 지침 | 안전·권한 | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | 안내 |
 | 프로젝트 AGENTS.md | 사실·명령·문서 지도·경계 | CLAUDE.md가 없으면 직접 로드 | 로드 | 안내 |
 | 스킬 | 절차 | 플러그인 `skills/` | 같은 폴더 | 안내 |
-| 에이전트 | 격리된 작업, 도구 제한 | 플러그인 `agents/` | 내장 explorer·worker | 도구 제한은 강제 |
-| 훅 | 행동 시점 게이트 | `hooks/hooks.json`, `hooks/claude-hooks.json` | `hooks/hooks.json` | 가드레일 (오류·시간 초과면 통과) |
+| 에이전트 | 격리된 작업, 도구 제한 | 플러그인 `agents/` | 내장 explorer·worker | 도구 제한은 Claude만 강제. Codex는 read-only 지정이 적용되지 않아 지시로 지킨다 |
+| 훅 | 행동 시점 게이트 | `hooks/hooks.json`, `hooks/claude-hooks.json` | `hooks/hooks.json` | 가드레일. 호스트는 훅의 오류·시간 초과를 통과시키므로 devflow의 PreToolUse는 분석이 길어지면 스스로 거부한다 |
 | 스크립트 | 검사·분석 | `bin/` | 스킬이 경로로 실행 | 결정적 |
 | git hook·CI | 최종 관문 | 공통 | 공통 | 결정적 |
 | eval | 스킬 호출의 회귀 | `claude plugin eval`, skill-creator | 같은 프롬프트 세트 | 측정 |
@@ -42,7 +42,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 단계, 반복, 되돌아가기: [lifecycle](../specs/lifecycle.md). 실행 방식: [orchestration](../specs/orchestration.md).
 문서 형식과 예산: [documents](../specs/documents.md).
 
-## 구성 (계획)
+## 구성
 
 - **스킬 7개**
   - `devflow`: 라우터. 담당 스킬이 없는 단계와 표준 적용은 references로 둔다.
@@ -51,9 +51,10 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
   - 근거: [ADR-0010](decisions/ADR-0010-single-router-skill.md), [ADR-0009](decisions/ADR-0009-auto-invoked-support-skills.md)
 - **Claude 에이전트**: 도구와 effort로 나눈 정의 6개(explorer, verifier, diagnostician, reviewer, implementer,
   implementer-deep). 역할의 관점은 지시서가 정한다. 모델, effort, 승격: [orchestration](../specs/orchestration.md#모델과-effort)
-- **Claude Workflows**: 대규모 기계적 변경과 감사(M4)
+- **Claude Workflows**: devflow는 배포하지 않는다. 대규모 기계적 변경과 감사(M4)는 사용자가 Workflow를 직접 실행한다
+  ([ADR-0015](decisions/ADR-0015-paper-features.md))
 - **훅**: 재개 카드(SessionStart), Issue 쓰기 차단과 보호 경로 차단(PreToolUse), 자율 모드 전용 계속(Stop),
-  지침 파일 편집 시 감사, 공개 전 관문(git pre-push)
+  지침 파일 편집 시 감사, 세션이 끝날 때 해제(SessionEnd, Claude만), 공개 전 관문(git pre-push)
 - **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드), `devflow-doctor`(구조·문서 감사),
   `devflow-metrics`(세션 기록에서 사이클 지표, 읽기 전용).
   리뷰에 넘기는 BASE..HEAD diff 파일(`review-package`)은 스크립트 없이 라우터의 review reference가 `git diff`로 만든다

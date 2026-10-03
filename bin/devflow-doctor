@@ -115,7 +115,8 @@ function doctor(dir, { only } = {}) {
     allowLocalPaths.some(g => typeof g === 'string' && matchesGlob(f, g))
   // The profile's list replaces the default one. Each entry is a prefix inside the repository, as git lists paths: an
   // empty, absolute, "./" or ".." entry matches nothing or everything and would switch the leak check off unseen (#27).
-  const prefixOk = p => typeof p === 'string' && p !== '' && !/^(\/|\.\/|\.\.?$)|\\|(^|\/)\.\.(\/|$)/.test(p)
+  const prefixOk = p => typeof p === 'string' && p !== '' && p === p.trim() && !/[\\:]/.test(p) && !p.startsWith('/') &&
+    p.replace(/\/$/, '').split('/').every(part => part !== '' && part !== '.' && part !== '..')
   let privatePaths = PRIVATE
   if (profile.private !== undefined) {
     if (!Array.isArray(profile.private) || !profile.private.every(prefixOk)) fail('profile', 'private is a list of path prefixes inside the repository')

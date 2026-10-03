@@ -75,7 +75,7 @@ test('a profile that is not an object, and private paths that are not a list of 
     const lines = doctor(repo({ ...GOOD, '.devflow.json': body })).lines
     assert.ok(lines.includes('FAIL profile: .devflow.json is not a JSON object'), body)
   }
-  for (const p of ['"docs/"', '[1]', '[""]', '["./"]', '["/abs/"]', '["../up/"]', '["a\\\\b/"]']) {
+  for (const p of ['"docs/"', '[1]', '[""]', '["./"]', '["/abs/"]', '["../up/"]', '["a\\\\b/"]', `["${['C', '/x/'].join(':')}"]`, '[" docs/"]', '["a/./b/"]', '["a//b/"]']) {
     assert.ok(has(repo({ ...GOOD, '.devflow.json': `{ "private": ${p} }\n` }), /^FAIL profile: private is a list of path prefixes inside the repository$/), p)
   }
   assert.ok(has(repo({ ...GOOD, '.devflow.json': '{ "private": [] }\n' }), /^WARN profile: private is empty, so no tracked path is checked as private$/))

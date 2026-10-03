@@ -410,6 +410,17 @@ test('metric eval records passed/total under the lock and keeps the other metric
   assert.equal(state.main(['metric', '1', 'eval', '1/2'], () => ' ', e, '.').code, 2, 'a note is required')
 })
 
+test('pending drop takes one queued post out with its reason (#27)', () => {
+  const root = repo({ ledger: { stage: 'build', notes: [], pendingPosts: [{ id: 'p1', op: 'close', issue: 1 }, { id: 'p2', op: 'comment', issue: 1 }] } })
+  const e = env(root)
+  assert.deepEqual(state.main(['pending', 'drop', 'p1'], () => 'criterion 2 is still open', e, '.'), { code: 0, out: 'pending 1' })
+  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  assert.deepEqual(ledger.pendingPosts.map(p => p.id), ['p2'])
+  assert.equal(ledger.notes[ledger.notes.length - 1], 'dropped queued close (p1): criterion 2 is still open')
+  assert.equal(state.main(['pending', 'drop', 'p9'], () => 'x', e, '.').code, 1)
+  assert.equal(state.main(['pending', 'drop', 'p2'], () => ' ', e, '.').code, 2, 'a reason is required')
+})
+
 test('ledger-update leaves pendingPosts to devflow-state and keeps running delegations (#27)', () => {
   const root = repo({ ledger: { stage: 'build', running: ['reviewer'], pendingPosts: [{ id: 'p1' }] } })
   const e = env(root)
@@ -709,6 +720,7 @@ test('state adds the block to an Issue that has none, and create needs plain cri
   assert.match(created('## 문제\nx\n').out, /needs a "## 수용 기준" section/)
   assert.match(created('## 문제\nx\n\n## 수용 기준\n\n- [ ] a\n  - [ ] nested\n').out, /each criterion/)
   assert.equal(created(`## 문제\nx\n\n## 수용 기준\n- [ ] a\n\n${block('없음')}\n`).code, 0, 'a new Issue may name no branch yet')
+  assert.match(created('## 문제\nx\n\n## 수용 기준\n- [x] a\n').out, /starts with every criterion unchecked/)
 })
 
 test('close refuses while an acceptance criterion is unchecked (#27)', () => {
@@ -720,6 +732,10 @@ test('close refuses while an acceptance criterion is unchecked (#27)', () => {
   assert.equal(ghWrites(open).length, 0)
   const done = env(repo(), { data: issue({ body: body('x') }) })
   assert.equal(state.write(done, '.', 'close', 1).code, 0)
+  // A heading that is not exactly "## 수용 기준" does not hide unchecked boxes.
+  const loose = env(repo(), { data: issue({ body: `## 문제\nx\n\n### 수용 기준:\n- [ ] b\n\n${block()}\n` }) })
+  assert.match(state.write(loose, '.', 'close', 1).out, /unchecked boxes/)
+  assert.equal(ghWrites(loose).length, 0)
 })
 
 test('intent replaces the whole body when there is no state block, and skips an unchanged intent', () => {

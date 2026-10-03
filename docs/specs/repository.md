@@ -150,8 +150,8 @@ CI 없는 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업
 커밋에 검사 줄을 쓴다.
 
 `integration` 값은 `pr-ci`, `local-merge`, `push-on-request` 중 하나다. AGENTS.md를 비공개로 운영하면
-`"agentsMd": "private"`을 적는다. `private`는 기본 목록을 대신하는 경로 접두어 목록(저장소 안, `/`로 구분)이고, 비우면
-doctor가 경고한다. 그러면 AGENTS.md는 필수 경로가 아니고, 추적되면 실패다. 다른 저장소에 맞추는 값(#23):
+`"agentsMd": "private"`을 적는다. 그러면 AGENTS.md는 필수 경로가 아니고, 추적되면 실패다. `private`는 기본 목록을 대신하는
+경로 접두어 목록(저장소 안, `/`로 구분)이고, 비우면 doctor가 경고한다. 다른 저장소에 맞추는 값(#23):
 
 - `specs`, `decisions`: 계약과 결정 기록 폴더. 기본은 `docs/specs`, `docs/design/decisions`이고, 다른 폴더(저장소 안,
   `/`로 구분, `.`·`..` 없음)를 적거나 그런 폴더를 두지 않으면 `false`를 적는다. spec 크기 예산은 `specs` 폴더를 따르고 `false`면 적용하지 않는다.

@@ -33,7 +33,8 @@ git worktree add --detach ../devflow-deploy main
 - Codex: `codex plugin marketplace add <path to devflow-deploy>`, then `codex plugin add devflow@devflow`. Codex copies
   the plugin into `~/.codex/plugins/cache/devflow/devflow/<version>/`; start a new session and trust its hooks.
 
-Update to the current `main`, then check that both copies match it:
+Update to the current `main`, then check that every file `main` tracks is the same in both copies (files left over in a
+copy, such as a skill `main` removed, are not checked):
 
 ```bash
 git -C ../devflow-deploy checkout --detach main
@@ -41,7 +42,8 @@ codex plugin add devflow@devflow < /dev/null
 node bin/devflow-install-check --ref main ../devflow-deploy ~/.codex/plugins/cache/devflow/devflow/0.1.0
 ```
 
-Claude needs `/reload-plugins` when skills, agents or hook definitions change; hook scripts are read on every call.
+Claude needs `/reload-plugins` when skills, agents or hook definitions change; each hook call starts a new `node`
+process that loads the hook script (`hooks/hooks.json`), so a script change applies at once.
 Codex does not ask to trust the hooks again when only the hook scripts change; the trust is recorded per entry of
 `hooks/hooks.json`.
 

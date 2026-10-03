@@ -198,7 +198,8 @@ Claude Code 2.1.286, codex-cli 0.159.1이다. "(관찰 날짜)"가 붙은 항목
   `codex plugin marketplace add <root>`로 등록해야 한다(2026-10-01).
 - 플러그인에 넣을 수 있는 것은 스킬, MCP 서버, 브라우저 확장, 훅이다. 문서에 에이전트 항목은 없다.
 - CLI에서는 `/plugins`로 설치하고, 새 세션을 시작해야 반영된다. 셸에서는 `codex plugin add <plugin>@<marketplace>`로도
-  설치된다(0.159.3). worktree를 마켓플레이스로 등록하면 캐시의 `.git`은 그 worktree의 gitdir을 가리키는 파일이다.
+  설치된다(0.159.3). 이미 설치된 플러그인도 `codex plugin add devflow@devflow < /dev/null`로 다시 설치하면 캐시가 배포
+  worktree와 같아진다(2026-10-03, 0.160.0, 다섯 번). worktree를 마켓플레이스로 등록하면 캐시의 `.git`은 그 worktree의 gitdir을 가리키는 파일이다.
 - 훅 신뢰는 `config.toml`의 `[hooks.state."<plugin>@<marketplace>:<훅 파일>:<이벤트>:<i>:<j>"]`에 `trusted_hash`로
   남는다. 관찰(2026-10-01): `hooks.json` 항목은 그대로 두고 훅이 실행하는 스크립트만 바꿔 다시 설치하자, 다시 묻지
   않고 새 스크립트가 실행됐다. 신뢰는 명령 줄에 묶이고 그 명령이 부르는 파일 내용에는 묶이지 않는다.

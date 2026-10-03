@@ -25,6 +25,21 @@ function git(...args) {
 // git's object id of a file's bytes, so no blob is read back from the repository.
 const objectId = (bytes, algo) => crypto.createHash(algo).update(`blob ${bytes.length}\0`).update(bytes).digest('hex')
 
+// A tracked path git itself would refuse to check out (a ".." or "." part, a backslash, a drive or root, a control
+// character) could point outside the folder; such paths are counted, never looked up or printed.
+const unsafePath = p => /[\x00-\x1f\x7f\\:]/.test(p) || p.startsWith('/') || p.split('/').some(part => part === '..' || part === '.' || part === '')
+
+// Every folder from dir down to the file must be a real folder: a link or junction on the way is not followed.
+const realFolders = (dir, parts, seen) => {
+  let cur = dir
+  for (const part of parts) {
+    cur = path.join(cur, part)
+    if (!seen.has(cur)) { let ok = false; try { ok = fs.lstatSync(cur).isDirectory() } catch {} seen.set(cur, ok) }
+    if (!seen.get(cur)) return false
+  }
+  return true
+}
+
 function main(argv) {
   let ref = 'HEAD'
   const dirs = []
@@ -38,24 +53,34 @@ function main(argv) {
   const format = git('rev-parse', '--show-object-format')
   if (format === null) return { code: 2, out: 'devflow-install-check: not inside a git work tree' }
   const algo = format.toString('utf8').trim() === 'sha256' ? 'sha256' : 'sha1'
-  const tree = git('ls-tree', '-r', '-z', '--', ref)
+  const tree = git('ls-tree', '-r', '-l', '-z', '--', ref)
   if (tree === null) return { code: 2, out: `devflow-install-check: no tree at ${ref}` }
-  // "<mode> <type> <id>\t<path>" records, NUL-separated; regular files only (links and submodules are not installed).
+  // "<mode> <type> <id> <size>\t<path>" records, NUL-separated; regular files only (links and submodules are not
+  // installed).
   const files = []
+  let unsafe = 0
   for (const rec of tree.toString('utf8').split('\0').filter(Boolean)) {
-    const m = /^(100644|100755) blob ([0-9a-f]+)\t(.+)$/s.exec(rec)
-    if (m) files.push({ id: m[2], path: m[3] })
+    const m = /^(100644|100755) blob ([0-9a-f]+) +(\d+)\t(.+)$/s.exec(rec)
+    if (!m) continue
+    if (unsafePath(m[4])) { unsafe++; continue }
+    files.push({ id: m[2], size: Number(m[3]), path: m[4] })
   }
   const lines = []
   let differs = false
+  if (unsafe) { lines.push(`${unsafe} tracked path(s) git would refuse were not compared`); differs = true }
   for (const dir of dirs) {
     const different = []
     const missing = []
+    const seen = new Map()
     for (const f of files) {
-      const p = path.join(dir, ...f.path.split('/'))
+      const parts = f.path.split('/')
+      const p = path.join(dir, ...parts)
       let st
       try { st = fs.lstatSync(p) } catch { missing.push(f.path); continue }
-      if (!st.isFile() || objectId(fs.readFileSync(p), algo) !== f.id) different.push(f.path)
+      // The size first, so a file far from the blob is not read whole; a read that fails counts as different.
+      let same = st.isFile() && st.size === f.size && realFolders(dir, parts.slice(0, -1), seen)
+      if (same) { try { same = objectId(fs.readFileSync(p), algo) === f.id } catch { same = false } }
+      if (!same) different.push(f.path)
     }
     const same = files.length - different.length - missing.length
     lines.push(`${dir}: same ${same}, different ${different.length}, missing ${missing.length}`)
@@ -74,4 +99,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { main, objectId }
+module.exports = { main, objectId, unsafePath }

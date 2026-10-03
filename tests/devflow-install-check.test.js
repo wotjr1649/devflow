@@ -52,6 +52,37 @@ test('an installed copy equal to the ref passes; a changed, missing or linked fi
   assert.match(check(root, linked).stdout, /different: a\.txt/)
 })
 
+test('a folder link on the way is not followed, and an unreadable file is counted, not thrown (#18 review)', () => {
+  const root = repo()
+  const elsewhere = tmpdir('dfic-else-')
+  put(elsewhere, 'b.txt', 'beta\n')
+  const viaLink = tmpdir('dfic-via-')
+  put(viaLink, 'a.txt', 'alpha\n')
+  fs.symlinkSync(elsewhere, path.join(viaLink, 'sub'), 'junction')
+  const r = check(root, viaLink)
+  assert.equal(r.status, 1)
+  assert.match(r.stdout, /different: sub\/b\.txt/)
+  // A folder where a file should be cannot be read as one: it is different, and the command still ends cleanly.
+  const odd = tmpdir('dfic-odd-')
+  put(odd, 'a.txt', 'alpha\n')
+  fs.mkdirSync(path.join(odd, 'sub', 'b.txt'), { recursive: true })
+  const o = check(root, odd)
+  assert.equal(o.status, 1)
+  assert.match(o.stdout, /different: sub\/b\.txt/)
+  assert.equal(o.stderr, '')
+})
+
+test('a tree path git would refuse is not looked up outside the folder (#18 review)', () => {
+  const root = repo()
+  const r = spawnSync(process.execPath, ['-e', `
+    const m = require(${JSON.stringify(BIN)});
+    const outside = m.unsafePath;
+    for (const p of ['../x', 'a/../../x', 'a\\\\b', 'a\\nb', '/abs', ['C', '/x'].join(':'), 'a/./b']) if (!outside(p)) { console.log('accepted ' + JSON.stringify(p)); process.exit(1) }
+    for (const p of ['a.txt', 'sub/b.txt', 'docs/specs/x.md']) if (outside(p)) { console.log('refused ' + p); process.exit(1) }
+  `], { cwd: root, encoding: 'utf8' })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+})
+
 test('--ref compares with another commit, and bad input is refused', () => {
   const root = repo()
   const first = git(root, 'rev-parse', 'HEAD')

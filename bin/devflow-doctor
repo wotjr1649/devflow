@@ -26,12 +26,12 @@ const PROMPT_BUDGET = 500
 const INTEGRATIONS = ['pr-ci', 'local-merge', 'push-on-request']
 const MAX_LINES_PER_RULE = 3
 const PRIVATE_NAME =/^\d{4}-\d{2}-\d{2}-i\d+-[a-z0-9-]+-(prompt|plan|handoff)\.md$/
-const LOCAL_PATH = /\b[A-Za-z]:[\\/]|(?:^|[\s'"`(=])\/[a-z]\/[^\s/]+\/|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//
+const LOCAL_PATH = /\b[A-Za-z]:[\\/]|(?:^|[\s'"`(=])\/[a-z]\/[^\s/]+\/|(?:^|[^\w.-])\/(?:home|Users)\/[^/\s]+\//
 // What a file in allowLocalPaths may still not hold: a path under a user's home names that user (#23).
 // Windows and WSL forms ignore case. POSIX homes need the slash after the name, as LOCAL_PATH does: a bare /home/x or
 // /users/x is as often a web route as a home folder.
 const WINDOWS_HOME = /\b[A-Za-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+[^\\/\s"'`]+|\/mnt\/[a-z]\/Users\/[^/\s"'`]+|[\\/]{2}wsl(?:\$|\.localhost)[\\/][^\\/\s]+[\\/]home[\\/][^\\/\s"'`]+/i
-const POSIX_HOME = /\/home\/[^/\s]+\/|\/Users\/[^/\s]+\//
+const POSIX_HOME = /(?:^|[^\w.-])\/(?:home|Users)\/[^/\s]+\//
 const USER_PATH = { test: line => WINDOWS_HOME.test(line) || POSIX_HOME.test(line) }
 // Outside allowLocalPaths both apply, so the default is never weaker than the exception.
 const ANY_LOCAL_PATH = { test: line => LOCAL_PATH.test(line) || USER_PATH.test(line) }

@@ -132,6 +132,10 @@ test('#23 re-review: web routes are not user homes', () => {
   const routes = 'GET `/users/{id}` and `router.get(\'/users/:id\')` and `fetch("/home/feed")`\n'
   assert.deepEqual(failures(repo({ ...GOOD, 'docs/api.md': routes })), [])
   assert.deepEqual(failures(repo({ ...GOOD, '.devflow.json': '{ "allowLocalPaths": ["docs/*"] }\n', 'docs/api.md': routes })), [])
+  // Nor is a folder named home or Users in the middle of a relative path.
+  const rel = "import Nav from './pages/home/components/Nav'\nimport Row from './components/Users/List/Row'\n"
+  assert.deepEqual(failures(repo({ ...GOOD, 'src/a.ts': rel })), [])
+  assert.deepEqual(failures(repo({ ...GOOD, '.devflow.json': '{ "allowLocalPaths": ["src/*"] }\n', 'src/a.ts': rel })), [])
 })
 
 test('#23 review: working-tree CRLF is only a warning when git will store LF, and a tracked Agents.md is caught', () => {

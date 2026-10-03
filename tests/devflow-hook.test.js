@@ -4,11 +4,12 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const tmpdir = require('./tmpdir')
 const { execFileSync, spawnSync } = require('child_process')
 const hook = require('../hooks/devflow-hook')
 
 function dir(devflow) {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-hook-'))
+  const d = tmpdir('devflow-hook-')
   if (devflow) fs.writeFileSync(path.join(d, '.devflow.json'), '{}')
   fs.mkdirSync(path.join(d, 'sub'))
   return d
@@ -241,7 +242,7 @@ test('PreToolUse blocks edits to protected paths and nothing else', () => {
 })
 
 test('PostToolUse reports doctor findings for an edited instruction file', () => {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-audit-'))
+  const d = tmpdir('devflow-audit-')
   spawnSync('git', ['-C', d, 'init', '-q'])
   fs.writeFileSync(path.join(d, '.devflow.json'), '{}')
   fs.writeFileSync(path.join(d, 'AGENTS.md'), '# demo\n\n## Commands\n- test\n')
@@ -373,7 +374,7 @@ const git = (cwd, ...args) => {
   assert.equal(r.status, 0, r.stderr)
 }
 function gitRepo(branch, profile = { protected: ['_ref/**'] }) {
-  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-hookgit-')))
+  const d = fs.realpathSync.native(tmpdir('devflow-hookgit-'))
   fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify(profile))
   git(d, 'init', '-q')
   git(d, 'add', '.devflow.json')
@@ -461,7 +462,7 @@ test('git metadata that is large, linked, special or on a network path is not re
     return d
   }
   // A HEAD far larger than any real one.
-  const big = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-big-'))
+  const big = tmpdir('devflow-big-')
   fs.writeFileSync(path.join(big, 'HEAD'), 'ref: refs/heads/feat/7-x\n' + 'x'.repeat(64 * 1024))
   const d1 = make(big)
   assert.equal(hook.handle(pre(d1, 'gh issue close 1')), expected)
@@ -475,7 +476,7 @@ test('git metadata that is large, linked, special or on a network path is not re
     assert.ok(Date.now() - started < 5000, unc)
   }
   // A HEAD that is a link is not followed.
-  const linked = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-lnk-'))
+  const linked = tmpdir('devflow-lnk-')
   fs.writeFileSync(path.join(big, 'small-head'), 'ref: refs/heads/feat/7-x\n')
   try { fs.symlinkSync(path.join(big, 'small-head'), path.join(linked, 'HEAD')) } catch { return t.skip('file symlinks need privileges here') }
   const d2 = make(linked)
@@ -485,7 +486,7 @@ test('git metadata that is large, linked, special or on a network path is not re
 
 // Issue #14: the Issue folder lives in the main work tree, so a worktree anywhere logs there, once git's own records
 // prove it belongs to that repository (the 2026-10-02 security review kept outside worktrees out for want of a proof).
-const sibling = () => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-sib-'))) + '-wt'
+const sibling = () => fs.realpathSync.native(tmpdir('devflow-sib-')) + '-wt'
 test('a worktree outside the main work tree, proven by git, logs to the main one (#14)', () => {
   const d = gitRepo('feat/7-x')
   const task = sibling()
@@ -506,7 +507,7 @@ test('a worktree outside the main work tree, proven by git, logs to the main one
 test('a .git file that only claims a repository does not log into it (#14)', () => {
   const victim = gitRepo('feat/7-x')
   // An extracted archive: its own gitdir, pointed at the victim's common dir, with a back link to itself.
-  const x = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-forged-')))
+  const x = fs.realpathSync.native(tmpdir('devflow-forged-'))
   fs.writeFileSync(path.join(x, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
   fs.mkdirSync(path.join(x, 'wt'))
   fs.writeFileSync(path.join(x, '.git'), 'gitdir: wt\n')
@@ -519,7 +520,7 @@ test('a .git file that only claims a repository does not log into it (#14)', () 
   // Pointed at a real worktree's gitdir in the victim: the back link there names that worktree, not this folder.
   const real = sibling()
   git(victim, 'worktree', 'add', '-q', '-b', 'fix/7-real', real)
-  const y = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-forged-')))
+  const y = fs.realpathSync.native(tmpdir('devflow-forged-'))
   fs.writeFileSync(path.join(y, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
   fs.writeFileSync(path.join(y, '.git'), `gitdir: ${path.join(victim, '.git', 'worktrees', path.basename(real))}\n`)
   hook.handle(pre(y, 'gh issue close 1'))
@@ -527,7 +528,7 @@ test('a .git file that only claims a repository does not log into it (#14)', () 
 })
 
 test('a crafted commondir on a network path is never opened (#14 security review)', () => {
-  const x = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-forged-')))
+  const x = fs.realpathSync.native(tmpdir('devflow-forged-'))
   fs.writeFileSync(path.join(x, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
   const expected = hook.handle(pre(x, 'gh issue close 1'))
   fs.mkdirSync(path.join(x, 'wt'))
@@ -559,7 +560,7 @@ test('a main work tree with a commit without .devflow.json checked out still tak
 })
 
 test('a separate git dir is no main work tree, even inside a devflow folder (#14)', () => {
-  const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-sep-')))
+  const base = fs.realpathSync.native(tmpdir('devflow-sep-'))
   fs.writeFileSync(path.join(base, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
   git(base, 'init', '-q', '--separate-git-dir', path.join(base, 'gd'), 'main')
   const main = path.join(base, 'main')
@@ -751,7 +752,7 @@ const SID = '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0'
 const noGit = { run: () => ({ code: 1, stdout: '', stderr: '' }) }
 
 test('SessionStart writes the session id to CLAUDE_ENV_FILE only in a devflow repository, for a well-formed id, outside Codex', () => {
-  const envFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-envfile-')), 'env.sh')
+  const envFile = path.join(tmpdir('devflow-envfile-'), 'env.sh')
   const start = (cwd, sid, vars) => hook.handle(event('SessionStart', cwd, { source: 'startup', session_id: sid }), { ...noGit, vars })
   start(dir(true), SID, { CLAUDE_ENV_FILE: envFile })
   assert.equal(fs.readFileSync(envFile, 'utf8'), `export DEVFLOW_SESSION_ID="${SID}"\n`)
@@ -835,7 +836,7 @@ test('SessionStart passes the session id to the card, so its own writes are not 
 
 test('SessionEnd leaves a sessions file behind a linked Issue folder alone (2026-10-03 security review)', () => {
   const root = dir(true)
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-out-'))
+  const outside = tmpdir('devflow-out-')
   const body = JSON.stringify({ [hashOf(SID)]: { host: 'claude', at: Date.now() } })
   fs.writeFileSync(path.join(outside, 'sessions.json'), body)
   fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })

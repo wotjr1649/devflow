@@ -6,6 +6,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const tmpdir = require('./tmpdir')
 const { spawn } = require('child_process')
 const state = require('../bin/devflow-state')
 
@@ -18,7 +19,7 @@ const issue = () => ({
 })
 
 function repo(ledger) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-lock-'))
+  const root = tmpdir('devflow-lock-')
   fs.writeFileSync(path.join(root, '.devflow.json'), '{}')
   if (ledger) {
     fs.mkdirSync(path.join(root, '.work/devflow/i1'), { recursive: true })
@@ -142,7 +143,7 @@ test('nothing is written when fn returns no ledger, and the result comes back', 
 
 test('no lock, temp file or ledger is written through a linked Issue folder', () => {
   const root = repo()
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-out-'))
+  const outside = tmpdir('devflow-out-')
   fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
   fs.symlinkSync(outside, dir(root), 'junction')
   assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, a: 1 } })), { ok: false, why: 'unsafe' })
@@ -343,7 +344,7 @@ test('a post whose removal cannot take the lock stops the flush and says so', ()
 
 test('interactive writes go on through a linked Issue folder, whose ledger is not read', () => {
   const root = repo()
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-out-'))
+  const outside = tmpdir('devflow-out-')
   fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
   fs.symlinkSync(outside, dir(root), 'junction')
   fs.writeFileSync(path.join(outside, 'ledger.json'), JSON.stringify({ mode: 'autonomous' }))

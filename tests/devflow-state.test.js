@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const tmpdir = require('./tmpdir')
 const state = require('../bin/devflow-state')
 
 const BRANCH = 'feat/1-x'
@@ -31,7 +32,7 @@ function issue(over = {}) {
 }
 
 function repo({ ledger, devflow = true } = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-state-'))
+  const root = tmpdir('devflow-state-')
   if (devflow) fs.writeFileSync(path.join(root, '.devflow.json'), '{}')
   if (ledger) {
     fs.mkdirSync(path.join(root, '.work/devflow/i1'), { recursive: true })
@@ -288,7 +289,7 @@ test('write and flush refuse gh issue commands devflow-state does not offer (202
 })
 
 test('git and gh are not taken from the working folder on Windows (2026-10-01 final review)', { skip: process.platform !== 'win32' || !process.env.SystemRoot }, () => {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-exe-'))
+  const d = tmpdir('devflow-exe-')
   fs.copyFileSync(path.join(process.env.SystemRoot, 'System32', 'whoami.exe'), path.join(d, 'git.exe'))
   const childEnv = { ...process.env }
   for (const k of Object.keys(childEnv)) if (/^NoDefaultCurrentDirectoryInExePath$/i.test(k)) delete childEnv[k]
@@ -369,7 +370,7 @@ test('metric refuses another Issue, unknown metrics and an empty note', () => {
 
 test('logGuard never throws and does not write through a linked folder or file', t => {
   const root = repo()
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-out-'))
+  const outside = tmpdir('devflow-out-')
   fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
   fs.symlinkSync(outside, path.join(root, '.work', 'devflow', 'i1'), 'junction')
   state.logGuard(root, 1, 'state-leak')

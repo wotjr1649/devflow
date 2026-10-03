@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const tmpdir = require('./tmpdir')
 const { spawnSync } = require('child_process')
 const { doctor } = require('../bin/devflow-doctor')
 
@@ -23,7 +24,7 @@ const GOOD = {
 const git = (d, ...args) => spawnSync('git', ['-C', d, '-c', 'core.autocrlf=false', ...args], { encoding: 'utf8' })
 
 function repo(files = GOOD, { add = true } = {}) {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-doctor-'))
+  const d = tmpdir('devflow-doctor-')
   git(d, 'init', '-q')
   for (const [f, body] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true })
@@ -110,7 +111,7 @@ test('private working documents follow the naming the card looks for', () => {
 })
 
 test('a folder outside git is reported, not crashed on', () => {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-doctor-nogit-'))
+  const d = tmpdir('devflow-doctor-nogit-')
   assert.match(doctor(d).lines[0], /^FAIL repository: .* is not a git work tree$/)
 })
 

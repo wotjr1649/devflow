@@ -6,6 +6,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const tmpdir = require('./tmpdir')
 const { spawnSync } = require('child_process')
 const state = require('../bin/devflow-state')
 
@@ -17,7 +18,7 @@ const git = (cwd, ...args) => {
   assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`)
   return r.stdout.trim()
 }
-const tmp = () => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'dfmt-')))
+const tmp = () => fs.realpathSync.native(tmpdir('dfmt-'))
 const ok = stdout => ({ code: 0, stdout, stderr: '' })
 
 // A devflow project whose main work tree is on mainBranch, with a worktree beside it on wtBranch.

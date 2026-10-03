@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const tmpdir = require('./tmpdir')
 const { spawnSync } = require('child_process')
 const metrics = require('../bin/devflow-metrics')
 
@@ -26,7 +27,7 @@ function git(cwd, at, ...args) {
   return r.stdout.trim()
 }
 
-const tmp = name => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), name)))
+const tmp = name => fs.realpathSync.native(tmpdir(name))
 
 // A repository on main at T0 that switches to feat/4-x at T0+100.
 function gitRepo() {

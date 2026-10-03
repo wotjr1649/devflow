@@ -780,6 +780,46 @@ function replaceIntent(body, intent) {
   return intent.trimEnd() + '\n' + (span ? '\n' + body.slice(span[0]) : '')
 }
 
+// The writes whose outcome depends on the Issue body. Posting checks them against the live body; queueing checks them
+// against the body as the queued posts before them will leave it (Issue #31).
+const BODY_OPS = new Set(['check', 'close', 'intent', 'state'])
+function bodyRefusal(op, n, body, text) {
+  if (op === 'check') {
+    const done = checkCriteria(body, text.split(' ').map(Number))
+    return done.error ? { code: 1, out: `refused: ${done.error}`, guard: done.guard } : null
+  }
+  if (op === 'intent') {
+    const span = stateSpan(body)
+    // Criteria below the state block would survive the replacement with their checks; refuse rather than leave two.
+    if (span && bodyLines(body).some(l => !l.skip && l.at >= span[0] && CRITERIA_HEADING.test(l.text))) {
+      return { code: 1, out: `refused: Issue #${n} has "## 수용 기준" below its state block; move it above first`, guard: 'state-intent-order' }
+    }
+    return null
+  }
+  if (op === 'close') {
+    // An Issue closes at ship once every criterion is checked; unfinished scope stays open (Issue #27).
+    const c = criteria(body)
+    if (c && !c.plain) return { code: 1, out: `refused: ${UNPLAIN}${whyText(c.why)}`, guard: 'state-criteria-unplain' }
+    // Without a plain "## 수용 기준", a loose heading must not hide unchecked boxes.
+    if (!c && OPEN_TASK.test(body)) {
+      return { code: 1, out: 'refused: the Issue has unchecked boxes ("- [ ]", in code too) but no plain "## 수용 기준" section; put its criteria under that heading first', guard: 'state-close-unchecked' }
+    }
+    const open = c ? c.boxes.findIndex(b => body[b.at] === ' ') : -1
+    if (open >= 0) {
+      return { code: 1, out: `refused: acceptance criterion ${open + 1} is not checked; check it with evidence first, or keep the Issue open`, guard: 'state-close-unchecked' }
+    }
+  }
+  return null
+}
+function nextBody(op, body, text, writer) {
+  if (op === 'check') return checkCriteria(body, text.split(' ').map(Number)).body || body
+  // An Issue made on the web or before the template has no block; it gets one at the end, so the card can show it
+  // (Issue #27).
+  if (op === 'state') return stateSpan(body) ? replaceState(body, text) : (body.trimEnd() ? body.trimEnd() + '\n\n' : '') + text.trimEnd() + '\n'
+  if (op === 'intent') return replaceIntent(body, carryChecks(body, text, writer).body)
+  return body
+}
+
 function post(ctx, op, n, text, title) {
   const gh = (args, input) => ctx.env.run('gh', args, { cwd: ctx.root, input })
   let r
@@ -787,27 +827,21 @@ function post(ctx, op, n, text, title) {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
     const body = got.issue.body || ''
-    const done = checkCriteria(body, text.split(' ').map(Number))
-    if (done.error) return { code: 1, out: `refused: ${done.error}`, guard: done.guard }
-    if (done.body === body) return { code: 0, out: `#${n}: already checked` }
-    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], done.body)
+    const no = bodyRefusal('check', n, body, text)
+    if (no) return no
+    const next = nextBody('check', body, text)
+    if (next === body) return { code: 0, out: `#${n}: already checked` }
+    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], next)
   } else if (op === 'state') {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
-    // An Issue made on the web or before the template has no block; it gets one at the end, so the card can show it
-    // (Issue #27).
-    const body = got.issue.body || ''
-    const next = stateSpan(body) ? replaceState(body, text) : (body.trimEnd() ? body.trimEnd() + '\n\n' : '') + text.trimEnd() + '\n'
-    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], next)
+    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], nextBody('state', got.issue.body || '', text))
   } else if (op === 'intent') {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
     const old = got.issue.body || ''
-    const span = stateSpan(old)
-    // Criteria below the state block would survive the replacement with their checks; refuse rather than leave two.
-    if (span && bodyLines(old).some(l => !l.skip && l.at >= span[0] && CRITERIA_HEADING.test(l.text))) {
-      return { code: 1, out: `refused: Issue #${n} has "## 수용 기준" below its state block; move it above first`, guard: 'state-intent-order' }
-    }
+    const no = bodyRefusal('intent', n, old, text)
+    if (no) return no
     const carried = carryChecks(old, text, WRITERS.has(got.issue.authorAssociation))
     const body = replaceIntent(old, carried.body)
     const lf = s => s.replace(/\r\n/g, '\n')
@@ -823,20 +857,10 @@ function post(ctx, op, n, text, title) {
   } else if (op === 'create') {
     r = gh(['issue', 'create', '-R', ctx.repo, '--title', title, '--body-file', '-'], text)
   } else if (op === 'close') {
-    // An Issue closes at ship once every criterion is checked; unfinished scope stays open (Issue #27).
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
-    const body = got.issue.body || ''
-    const c = criteria(body)
-    if (c && !c.plain) return { code: 1, out: `refused: ${UNPLAIN}${whyText(c.why)}`, guard: 'state-criteria-unplain' }
-    // Without a plain "## 수용 기준", a loose heading must not hide unchecked boxes.
-    if (!c && OPEN_TASK.test(body)) {
-      return { code: 1, out: 'refused: the Issue has unchecked boxes ("- [ ]", in code too) but no plain "## 수용 기준" section; put its criteria under that heading first', guard: 'state-close-unchecked' }
-    }
-    const open = c ? c.boxes.findIndex(b => body[b.at] === ' ') : -1
-    if (open >= 0) {
-      return { code: 1, out: `refused: acceptance criterion ${open + 1} is not checked; check it with evidence first, or keep the Issue open`, guard: 'state-close-unchecked' }
-    }
+    const no = bodyRefusal('close', n, got.issue.body || '', text)
+    if (no) return no
     r = gh(['issue', 'close', String(n), '-R', ctx.repo])
   } else {
     r = gh(['issue', op, String(n), '-R', ctx.repo])
@@ -917,6 +941,20 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
   // An interactive write only reads the ledger, so it needs no lock and a folder that cannot take one does not stop it.
   // Queueing is decided again under the lock. A new Issue from a branch without one has no ledger yet.
   const peek = owner && issueDirOk(ctx.store, owner) ? readLedger(ctx.store, owner) || {} : {}
+  // A queued post whose body rule fails would only show at flush, after the unattended run reported it queued, and would
+  // hold every later post (Issue #31). Reading the Issue is not a write, so it runs now, outside the ledger lock.
+  if (owner && peek.mode === 'autonomous' && !flushing && BODY_OPS.has(op)) {
+    const got = fetchIssue(ctx, n)
+    if (got.error) return { code: 1, out: got.error }
+    const writer = WRITERS.has(got.issue.authorAssociation)
+    let body = got.issue.body || ''
+    for (const p of (Array.isArray(peek.pendingPosts) ? peek.pendingPosts : []).filter(p => p && p.issue === n && BODY_OPS.has(p.op))) {
+      if (bodyRefusal(p.op, n, body, p.text)) break // flush reports that one; later ones are judged from here
+      body = nextBody(p.op, body, p.text, writer)
+    }
+    const no = bodyRefusal(op, n, body, text)
+    if (no) return { ...no, out: `${no.out} (checked before queueing, with the queued posts applied)` }
+  }
   const queued = owner && peek.mode === 'autonomous' && !flushing ? updateLedger(ctx.store, owner, decide) : { ok: true, result: decide(peek).result }
   if (!queued.ok) return LOCKED(owner, queued.why)
   return queued.result || post(ctx, op, n, text, title)

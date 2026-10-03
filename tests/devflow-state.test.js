@@ -733,6 +733,22 @@ test('state adds the block to an Issue that has none, and create needs plain cri
   assert.match(created('## 문제\nx\n\n## 수용 기준\n- [x] a\n').out, /starts with every criterion unchecked/)
 })
 
+test('an unattended write is checked against the Issue as the queue will leave it, before it is queued (#31)', () => {
+  const body = `## 문제\nx\n\n## 수용 기준\n- [x] a\n- [ ] b\n\n${block()}\n`
+  const root = repo({ ledger: { stage: 'build', mode: 'autonomous' } })
+  const e = env(root, { data: issue({ body }) })
+  const queue = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8')).pendingPosts || []
+  const early = state.write(e, '.', 'close', 1)
+  assert.equal(early.code, 1)
+  assert.match(early.out, /criterion 2 is not checked.*before queueing/)
+  assert.equal(queue().length, 0, 'nothing queued that flush would refuse')
+  assert.match(state.write(e, '.', 'check', 1, '3').out, /no acceptance criterion 3/)
+  assert.equal(state.write(e, '.', 'check', 1, '2').code, 0)
+  assert.equal(state.write(e, '.', 'close', 1).code, 0, 'the queued check leaves every criterion checked')
+  assert.deepEqual(queue().map(p => p.op), ['check', 'close'])
+  assert.equal(ghWrites(e).length, 0)
+})
+
 test('close refuses while an acceptance criterion is unchecked (#27)', () => {
   const body = c => `## 문제\nx\n\n## 수용 기준\n- [x] a\n- [${c}] b\n\n${block()}\n`
   const open = env(repo(), { data: issue({ body: body(' ') }) })
@@ -792,7 +808,8 @@ test('intent refuses an old body whose criteria sit below the state block', () =
 
 test('a check queued after a queued intent is refused; one queued before it is kept', () => {
   const root = repo({ ledger: { mode: 'autonomous' } })
-  const e = env(root)
+  // Criteria to check: since #31 a check is judged against the body before it is queued.
+  const e = env(root, { data: issue({ body: oldBody(['- [ ] one']) }) })
   assert.match(state.write(e, '.', 'check', 1, '1').out, /queued check/)
   assert.match(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one'])).out, /queued intent/)
   const r = state.write(e, '.', 'check', 1, '1')
@@ -804,9 +821,12 @@ test('a check queued after a queued intent is refused; one queued before it is k
 
 test('flush stops at the first failed post and keeps it and every later post in order (2026-10-02 final review)', () => {
   const root = repo({ ledger: { mode: 'autonomous' } })
+  // Queued against four criteria; by flush time a person cut the Issue to three, so the check fails then (#31 moved the
+  // queue-time case to queueing itself).
+  const queuedAgainst = env(root, { data: issue({ body: oldBody(['- [ ] one', '- [ ] two', '- [ ] three', '- [ ] four']) }) })
+  assert.equal(state.write(queuedAgainst, '.', 'check', 1, '4').code, 0)
+  assert.equal(state.write(queuedAgainst, '.', 'intent', 1, intentOf(['- [ ] one', '- [ ] two', '- [ ] three', '- [ ] four'])).code, 0)
   const e = env(root, { data: issue({ body: oldBody(['- [ ] one', '- [ ] two', '- [ ] three']) }) })
-  state.write(e, '.', 'check', 1, '4')
-  state.write(e, '.', 'intent', 1, intentOf(['- [ ] one', '- [ ] two', '- [ ] three', '- [ ] four']))
   const file = path.join(root, '.work/devflow/i1/ledger.json')
   fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), mode: 'interactive' }))
   const r = state.flush(e, '.')

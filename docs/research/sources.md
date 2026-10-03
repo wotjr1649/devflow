@@ -69,14 +69,14 @@
   - 내장 [agents-md 플러그인](https://github.com/anthropics/claude-code/tree/main/mods/agents-md) (2282079, 2026-09-30):
     AGENTS.md를 컨텍스트마다 다시 찾는 방식, compact 뒤 재계산.
 - Codex
-  - [Skills](https://developers.openai.com/codex/skills): 위치, 묵시적 호출, `agents/openai.yaml`, 목록 예산.
-  - [Plugins](https://developers.openai.com/codex/plugins),
+  - [Skills](https://learn.chatgpt.com/docs/build-skills): 위치, 묵시적 호출, `agents/openai.yaml`, 목록 예산.
+  - [Plugins](https://learn.chatgpt.com/docs/plugins),
     [Hooks](https://learn.chatgpt.com/docs/hooks) (옛 주소에서 옮겨 감): 플러그인 훅, 도구 매칭, SessionStart 매처,
     Stop 입출력, 경로 변수.
   - [Build plugins](https://developers.openai.com/plugins/build/plugins): 로컬 소스 마켓플레이스 형식, 설치 캐시 위치.
   - [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) (옛 주소에서 옮겨 감): 내장·커스텀
     에이전트, 띄울 때 지정한 모델과 effort가 기본값보다 우선.
-  - [AGENTS.md](https://developers.openai.com/codex/guides/agents-md): 탐색 순서, 크기 한도.
+  - [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md): 탐색 순서, 크기 한도.
   - [Multi-agent (Responses API)](https://developers.openai.com/api/docs/guides/responses-multi-agent):
     spawn·message·follow-up·wait 기본 기능.
 
@@ -97,7 +97,7 @@
   리뷰 결함을 줄였지만, 1~2개 파일 변경과 버그 수정에서는 이득이 없었다. 선택적으로 쓰라는 결론.
 - [Invariants, not frameworks](https://ranjankumar.in/spec-driven-development-invariants-not-frameworks): 상태는
   디스크에, 작업 단위로 맥락을 묶음, 위치 추적, 단계마다 새 맥락. 쟁점은 절차 규모 조절.
-- [DORA 2025](https://dora.dev/dora-report-2025/): AI는 조직의 강점과 약점을 키우고, 처리량과 함께 불안정성도 올린다.
+- [DORA 2025](https://dora.dev/research/2025/dora-report/): AI는 조직의 강점과 약점을 키우고, 처리량과 함께 불안정성도 올린다.
 - [METR](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/): 체감 생산성과 측정 생산성이
   다르다. 효과는 측정으로 판단한다.
 

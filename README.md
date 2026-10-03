@@ -49,4 +49,5 @@ Codex does not ask to trust the hooks again when only the hook scripts change; t
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE) and [SOURCES.md](SOURCES.md).
+Apache-2.0. Third-party parts listed in [SOURCES.md](SOURCES.md) keep their own licenses, whose texts are in
+[LICENSES/](LICENSES/). See [LICENSE](LICENSE) and [NOTICE](NOTICE).

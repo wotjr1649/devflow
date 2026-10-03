@@ -27,3 +27,5 @@
 ## 변경
 
 - 2026-10-01: 통합 시점을 사용자 지시(`push-on-request`)에서 전역 에이전트 계약의 상시 허가로 바꿨다(사용자 결정). `main` 직접 push와 PR 미사용은 그대로다.
+- 2026-10-03: 소유자 스킬 중 `grilling`과 `writing-for-agents`가 mattpocock/skills(MIT)에서 나온 부분을 담고 있음이
+  드러났다. 그 부분은 MIT로 남고 원문은 `LICENSES/`에 둔다. Apache-2.0은 소유자가 바꾼 부분에만 적용된다(#26).

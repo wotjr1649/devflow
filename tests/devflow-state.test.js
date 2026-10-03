@@ -700,6 +700,29 @@ test('pending drop honours the claim time flush really writes, in milliseconds (
   assert.match(state.main(['pending', 'drop', '1', 'p1'], () => 'x', env(root), '.').out, /claimed by a flush/)
 })
 
+test('a queue with a non-object item is not a list either, and pending says so (#35 review)', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'autonomous', pendingPosts: [null] } })
+  const e = env(root)
+  assert.match(state.write(e, '.', 'comment', 1, checkpoint('x')).out, /pendingPosts is not a list/)
+  const listed = state.main(['pending'], () => '', e, '.')
+  assert.equal(listed.code, 1)
+  assert.match(listed.out, /pendingPosts is not a list/)
+})
+
+test('flush does not write over a queue a person broke while it was posting (#35 review)', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: [{ id: 'p1', op: 'comment', issue: 1, text: checkpoint('x') }] } })
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  // While the post is out, the ledger's queue is hand-edited into something that is not a list.
+  const e = env(root)
+  const run = e.run
+  e.run = (cmd, args, opts) => {
+    if (cmd === 'gh' && args[0] === 'issue') fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), pendingPosts: 'hand edited' }))
+    return run(cmd, args, opts)
+  }
+  state.flush(e, '.')
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).pendingPosts, 'hand edited')
+})
+
 test('metric refuses another Issue, unknown metrics and an empty note', () => {
   const root = repo()
   assert.match(state.metric(env(root), '.', 7, 'interventions', 'x').out, /only to the branch's Issue #1/)

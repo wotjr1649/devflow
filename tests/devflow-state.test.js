@@ -679,6 +679,22 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
   assert.match(state.main(['ledger-update', '1'], () => '{"mode":"auto"}', env(fresh), '.').out, /mode is interactive or autonomous/)
 })
 
+test('a pendingPosts that is not a list is refused, never thrown on or overwritten (#35)', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'autonomous', pendingPosts: { broken: true } } })
+  const e = env(root)
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const queued = state.write(e, '.', 'comment', 1, checkpoint('x'))
+  assert.equal(queued.code, 1)
+  assert.match(queued.out, /pendingPosts is not a list/)
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).pendingPosts, { broken: true }, 'the unknown queue is left for a person')
+  fs.writeFileSync(file, JSON.stringify({ stage: 'build', mode: 'interactive', pendingPosts: { broken: true } }))
+  const flushed = state.flush(e, '.')
+  assert.equal(flushed.code, 1)
+  assert.match(flushed.out, /pendingPosts is not a list/)
+  assert.match(state.card(e, '.'), /pending posts \? \(not a list\)/)
+  assert.equal(ghWrites(e).length, 0)
+})
+
 test('metric refuses another Issue, unknown metrics and an empty note', () => {
   const root = repo()
   assert.match(state.metric(env(root), '.', 7, 'interventions', 'x').out, /only to the branch's Issue #1/)

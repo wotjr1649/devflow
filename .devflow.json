@@ -11,6 +11,9 @@
   "protected": [
     "_ref/**"
   ],
+  "tests": [
+    "tests/**"
+  ],
   "highRisk": [
     "bin/**",
     "hooks/**",

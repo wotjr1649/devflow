@@ -64,6 +64,11 @@
 - 플러그인 루트의 `CLAUDE.md`는 로드되지 않는다. 검증은 `claude plugin validate <dir>`로 한다.
 - `claude --plugin-dir . plugin list --json`은 모델을 부르지 않고 `devflow@inline`(범위 `session`)으로 로드를 보여 준다(2026-10-01).
 
+**훅 실행 환경(관찰)**
+- macOS GitHub 실행기의 Node 22에서 훅이 `fs.readFileSync(0)`으로 210KB 입력을 읽다가 80회 중 3회 끝나지 않았다(기계 정지 없음,
+  #37). 같은 빠른 경로의 큰 파이프 입력 결함이 Node에 보고되어 있다([nodejs/node#66341](https://github.com/nodejs/node/issues/66341)).
+  훅은 스트림으로 읽는다.
+
 **플러그인 에이전트**
 - 지원하는 필드: `name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`, `memory`,
   `background`, `omitClaudeMd`, `isolation: worktree`, `color`

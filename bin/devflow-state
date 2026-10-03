@@ -648,9 +648,10 @@ const TAKES_BACKTICKS = /[[\]$]|:\/\/|www\.|mailto:|xmpp:/i
 // A pipe takes backticks only in a table, and GitHub makes a table only of a paragraph with a delimiter row such as
 // "|---|---|" (Issue #33, checked with the markdown API): elsewhere a pipe in a code span stays in the span. Tables
 // also form inside quotes and list items, so any line of only container marks, pipes, colons, dashes and whitespace
-// that holds a pipe and a dash counts as one; reading too many tables only refuses more.
+// that holds a dash counts as one, with or without a pipe (":-:" alone makes a one-column table, markdown API);
+// reading too many tables only refuses more.
 const MAYBE_DELIMITER = /^[\s>*+\-|:.)0-9]*$/
-const maybeDelimiter = text => MAYBE_DELIMITER.test(text) && text.includes('|') && text.includes('-')
+const maybeDelimiter = text => MAYBE_DELIMITER.test(text) && text.includes('-')
 // A task box opening a list item, followed by a space: the task list takes it, and with the space after "]" no link can
 // start there, so its brackets are no mark.
 const TASK_BOX = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[ xX]\](?=[ \t]|$)/

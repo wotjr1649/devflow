@@ -937,7 +937,9 @@ test('a pipe marks a table only in a paragraph with a delimiter row (#33)', () =
   assert.match(created(table).out, /HTML or an entity outside a code span/)
   // GitHub also makes tables inside quotes and list items, and with tabs or other whitespace in the row (review).
   for (const t of ['> | `a|<b>` |\n> |---|---|', '- x\n  - | `a|<b>` |\n    |---|---|', '10. | `a|<b>` |\n    |---|---|',
-    '-\t| `a|<b>` |\n\t|---|---|', '| `a|<b>` |\n|---|---|\u000b']) {
+    '-\t| `a|<b>` |\n\t|---|---|', '| `a|<b>` |\n|---|---|\u000b',
+    // A delimiter row needs no pipe: ":-:" under one header cell makes a table too (re-review, markdown API).
+    'h\n:-:\n`<b>|`', 'h\n-:\n`<b>|`', '| h |\n:---\n`<b>|`']) {
     assert.match(created(`## 문제\n${t}\n\n## 수용 기준\n- [ ] a\n`).out, /HTML or an entity outside a code span/, JSON.stringify(t))
   }
 })

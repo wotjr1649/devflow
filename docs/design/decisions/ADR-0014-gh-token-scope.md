@@ -22,7 +22,7 @@
   저장소와 조직 저장소의 gh 작업을 막고 90일마다 갱신해야 하기 때문이다. 토큰 값이 저장소, Issue, 작업 파일, 세션 기록에 없음은
   확인했다.
 - 재개 카드는 gh 응답 헤더 `X-Oauth-Scopes`에 `repo`나 `public_repo`가 있으면 경고한다.
-- 경계가 없는 이유와 남는 위험은 [documents](../../specs/issues.md#issue-입출력)에 두고, OS 격리 경로와 전제는 아래
+- 경계가 없는 이유와 남는 위험은 [issues](../../specs/issues.md#issue-입출력)에 두고, OS 격리 경로와 전제는 아래
   "OS 격리를 쓸 때"에 둔다.
 
 ## 결과

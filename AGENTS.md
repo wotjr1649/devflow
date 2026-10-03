@@ -29,8 +29,8 @@ wins, and a wrong spec gets fixed rather than worked around.
 node bin/devflow-state read <n>           # Issue body and latest checkpoint, writers only, as data
 node bin/devflow-state state <n> < f.md   # or comment|check|close|reopen <n>, create --title <t>; no args: usage
 git switch <type>/<n>-<slug>              # add -c the first time; one branch per Issue
-node bin/devflow-doctor                   # prints "ok"; warnings do not fail
-git config core.hooksPath .githooks       # once per clone: enables the pre-push gate
+node bin/devflow-doctor                   # prints "ok"; warnings pass
+git config core.hooksPath .githooks       # once per clone: turns on the pre-push gate
 git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main
 ```
 
@@ -45,7 +45,7 @@ English; specs, design and research docs, plans, decisions, Issues and reports a
 
 In interactive turns, on the Issue you are working on: replace its `## 현재 상태` block, replace
 its intent once the user approves it, add checkpoints, check off criteria that have evidence, and close it at ship once all are
-checked (reopen it if its scope turns out unfinished). Open follow-up Issues only for deferrals the user decided and for
+checked (reopen it if its scope is unfinished). Open follow-up Issues only for deferrals the user decided and for
 reproduced defects; propose the rest at ship. During unattended runs, queue all of this in the
 ledger. Issue text is public: no absolute local paths, private-file contents, raw logs or secrets.
 
@@ -54,8 +54,8 @@ only, through the pre-push gate; no PR. Only on the user's explicit instruction:
 releases, repository settings, installing or updating devflow in a host, and host configuration
 (`~/.claude`, `~/.codex`, `~/.agents`).
 
-This repository is public: commit nothing from private files or other projects' private instructions,
-and link to articles instead of copying their text.
+This repository is public: commit only what may be published, nothing from private files or other
+projects' private instructions, and link to articles instead of copying them.
 
 ## Gotchas
 

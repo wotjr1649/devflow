@@ -119,9 +119,44 @@ function repoContext(env, cwd) {
   const git = (...args) => env.run('git', args, { cwd: root }).stdout.trim()
   const branch = git('branch', '--show-current')
   const origin = /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?$/.exec(git('remote', 'get-url', 'origin'))
-  const issue = /^[^/]+\/(\d+)-/.exec(branch)
-  return { env, root, branch, head: git('rev-parse', '--short', 'HEAD'), repo: origin && origin[1], issue: issue && Number(issue[1]) }
+  const issueOf = b => { const m = /^[^/]+\/(\d+)-/.exec(b || ''); return m ? Number(m[1]) : null }
+  // The Issue folder lives in the main work tree, whichever worktree this is (Issue #14). A linked worktree on a branch
+  // that is no Issue branch works for the main tree's Issue, as the hook decides.
+  const main = mainTree(env, root)
+  const linked = !!main && differs(main.path, root)
+  const issue = issueOf(branch) || (linked && branch ? issueOf(main.branch) : null)
+  // Issue writes stay with the branch's own Issue (branchIssue): a subagent in an M3 worktree posts nothing.
+  return { env, root, store: linked ? main.path : root, linked, branch, head: git('rev-parse', '--short', 'HEAD'), repo: origin && origin[1],
+    issue, branchIssue: issueOf(branch) }
 }
+
+const samePathKey = p => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
+const differs = (a, b) => samePathKey(a) !== samePathKey(b)
+// The main work tree: the first entry of `git worktree list`, taken only when it is a real folder holding .devflow.json.
+// With a separate git dir or a bare repository that entry is the git dir itself, and the work tree in hand is used.
+function mainTree(env, root, opts = {}) {
+  const r = env.run('git', ['worktree', 'list', '--porcelain'], { cwd: root, ...opts })
+  if (r.code !== 0) return null
+  const entry = String(r.stdout).split(/\r?\n\r?\n/)[0].split(/\r?\n/)
+  const at = entry.find(l => l.startsWith('worktree '))
+  if (!at || entry.includes('bare')) return null
+  const p = path.resolve(at.slice(9))
+  try {
+    if (!fs.lstatSync(p).isDirectory() || !fs.lstatSync(path.join(p, '.devflow.json')).isFile()) return null
+  } catch {
+    return null
+  }
+  const b = entry.find(l => l.startsWith('branch refs/heads/'))
+  return { path: p, branch: b ? b.slice(18) : '' }
+}
+
+// A ledger left in a linked worktree by an older devflow: nothing writes for that Issue until it is moved, since the
+// two copies would part, and the mode the write queue reads would come from the wrong one.
+const legacyText = n => `Issue #${n}'s ledger is in this worktree (.work/devflow/i${n}); move it into the main work tree's ` +
+  `.work/devflow/, merging the files if the main tree already has i${n}`
+const legacyOf = (ctx, n) => !!ctx && ctx.linked && !!n && fs.existsSync(ledgerPath(ctx.root, n)) &&
+  !fs.existsSync(ledgerPath(ctx.store, n))
+const LEGACY = n => ({ code: 1, out: `refused: ${legacyText(n)}` })
 
 // Only scope names survive: lowercase letters, "_" and one ":" per element, so no free text reaches an output.
 // Broadness is judged on every element; only the displayed list is clipped.
@@ -386,12 +421,13 @@ function card(env, cwd, { sessionId: hookSession } = {}) {
   const toolLine = `Tool: node "${__filename.split(path.sep).join('/')}"`
   let warning = null
   let others = []
-  const warnings = () => [...(warning ? [warning] : []), ...others]
+  const legacy = legacyOf(ctx, ctx.issue) ? `Warning: ${legacyText(ctx.issue)}` : null
+  const warnings = () => [...(legacy ? [legacy] : []), ...(warning ? [warning] : []), ...others]
   const stop = reason => [top, ...warnings(), `${reason}; no Issue state shown.`, toolLine].join('\n')
   if (!ctx.repo) return stop('No GitHub origin')
   if (!ctx.issue) return stop('Branch name has no Issue number (<type>/<issue>-<slug>)')
   const own = [hookSession && hashId(hookSession), (sessionId(env.vars) || {}).hash].filter(Boolean)
-  others = own.length ? sessionWarnings(ctx.root, ctx.issue, own) : []
+  others = own.length ? sessionWarnings(ctx.store, ctx.issue, own) : []
   const got = fetchIssue(ctx, ctx.issue, { include: true })
   if (got.error) return stop(got.error)
   if (got.broad) {
@@ -407,7 +443,7 @@ function card(env, cwd, { sessionId: hookSession } = {}) {
 
   let ledger
   try {
-    ledger = readLedger(ctx.root, ctx.issue)
+    ledger = readLedger(ctx.store, ctx.issue)
   } catch {
     ledger = { unreadable: true }
   }
@@ -766,8 +802,8 @@ const WRITE_OPS = new Set(['state', 'intent', 'comment', 'check', 'close', 'reop
 // mistyped number leaves no folder behind (Issue #12).
 function guarded(ctx, r, n) {
   if (!r.guard) return r
-  if (ctx && ctx.issue) logGuard(ctx.root, ctx.issue, r.guard)
-  else if (ctx && n && fs.existsSync(path.join(ctx.root, '.work', 'devflow', `i${n}`))) logGuard(ctx.root, n, r.guard)
+  if (ctx && ctx.issue) logGuard(ctx.store, ctx.issue, r.guard)
+  else if (ctx && n && fs.existsSync(path.join(ctx.store, '.work', 'devflow', `i${n}`))) logGuard(ctx.store, n, r.guard)
   return { code: r.code, out: r.out }
 }
 
@@ -777,20 +813,24 @@ function guarded(ctx, r, n) {
 // middle of a rebase.
 function ledgerGate(ctx, n, what, { append }) {
   if (!ctx) return { code: 1, out: `refused: ${what} go only to the branch's Issue #?` }
+  if (legacyOf(ctx, n)) return LEGACY(n)
   if (ctx.issue && n !== ctx.issue) {
     return guarded(ctx, { code: 1, out: `refused: ${what} go only to the branch's Issue #${ctx.issue}`, guard: 'state-other-issue' })
+  }
+  if (!ctx.issue && ctx.linked) {
+    return guarded(ctx, { code: 1, out: `refused: ${what} from a worktree need an Issue branch here or in the main work tree`, guard: 'state-other-issue' }, n)
   }
   if (!ctx.issue && !ctx.branch) {
     return guarded(ctx, { code: 1, out: `refused: ${what} need a branch, not a detached HEAD`, guard: 'state-detached' }, n)
   }
-  if (!ctx.issue && append && !fs.existsSync(ledgerPath(ctx.root, n))) return NO_LEDGER(n)
+  if (!ctx.issue && append && !fs.existsSync(ledgerPath(ctx.store, n))) return NO_LEDGER(n)
   return null
 }
 const NO_LEDGER = n => ({ code: 1, out: `refused: no ledger for Issue #${n} here; check the number` })
 // Rechecked under the lock: a ledger removed after ledgerGate looked is not brought back holding one line. Its folder,
 // if removed in that window too, comes back empty: withLock creates it to hold the lock.
 const MISSING = Symbol('missing ledger')
-const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.root, n))
+const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.store, n))
 
 function write(env, cwd, op, n, text = '', title, opts = {}) {
   if (!WRITE_OPS.has(op)) return { code: 1, out: `refused: ${op} is not a devflow-state write` }
@@ -800,9 +840,10 @@ function write(env, cwd, op, n, text = '', title, opts = {}) {
 
 function attempt(ctx, op, n, text, title, { flushing = false }) {
   if (!ctx || !ctx.repo) return { code: 1, out: 'refused: not a devflow repository with a GitHub origin' }
-  if (op !== 'create' && n !== ctx.issue) {
-    return { code: 1, out: `refused: writes go only to the branch's Issue #${ctx.issue ?? '?'}`, guard: 'state-other-issue' }
+  if (op !== 'create' && n !== ctx.branchIssue) {
+    return { code: 1, out: `refused: writes go only to the branch's Issue #${ctx.branchIssue ?? '?'}`, guard: 'state-other-issue' }
   }
+  if (op !== 'create' && legacyOf(ctx, n)) return LEGACY(n)
   const why = refusal(op, text, title)
   if (why) return { code: 1, ...why }
   const owner = ctx.issue || n
@@ -823,8 +864,8 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
   }
   // An interactive write only reads the ledger, so it needs no lock and a folder that cannot take one does not stop it.
   // Queueing is decided again under the lock. A new Issue from a branch without one has no ledger yet.
-  const peek = owner && issueDirOk(ctx.root, owner) ? readLedger(ctx.root, owner) || {} : {}
-  const queued = owner && peek.mode === 'autonomous' && !flushing ? updateLedger(ctx.root, owner, decide) : { ok: true, result: decide(peek).result }
+  const peek = owner && issueDirOk(ctx.store, owner) ? readLedger(ctx.store, owner) || {} : {}
+  const queued = owner && peek.mode === 'autonomous' && !flushing ? updateLedger(ctx.store, owner, decide) : { ok: true, result: decide(peek).result }
   if (!queued.ok) return LOCKED(owner, queued.why)
   return queued.result || post(ctx, op, n, text, title)
 }
@@ -837,7 +878,7 @@ function metric(env, cwd, n, key, note) {
   const ctx = repoContext(env, cwd)
   const no = ledgerGate(ctx, n, 'metrics', { append: true })
   if (no) return no
-  const r = updateLedger(ctx.root, n, ledger => {
+  const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
     const metrics = { ...(ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}) }
     metrics[key] = (Number.isInteger(metrics[key]) ? metrics[key] : 0) + 1
@@ -855,7 +896,7 @@ function note(env, cwd, n, text) {
   const ctx = repoContext(env, cwd)
   const no = ledgerGate(ctx, n, 'notes', { append: true })
   if (no) return no
-  const r = updateLedger(ctx.root, n, ledger => {
+  const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
     const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), line]
     return { ledger: { ...ledger, notes }, result: notes.length }
@@ -871,11 +912,12 @@ const CLAIM_MS = 10 * 60000
 const REMOVE_WAIT_MS = 10000
 function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   const ctx = repoContext(env, cwd)
-  if (!ctx || !ctx.issue) return { code: 1, out: 'refused: no devflow Issue branch' }
-  const n = ctx.issue
+  if (!ctx || !ctx.branchIssue) return { code: 1, out: 'refused: no devflow Issue branch' }
+  const n = ctx.branchIssue
+  if (legacyOf(ctx, n)) return LEGACY(n)
   const by = token()
   const now = Date.now()
-  const claim = updateLedger(ctx.root, n, ledger => {
+  const claim = updateLedger(ctx.store, n, ledger => {
     // Queued posts wait for a person: an unattended run cannot flush its own queue.
     if (ledger.mode === 'autonomous') return { result: 'autonomous' }
     const queued = ledger.pendingPosts || []
@@ -891,7 +933,7 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   const out = []
   const tryUpdate = fn => {
     try {
-      return updateLedger(ctx.root, n, fn, { waitMs })
+      return updateLedger(ctx.store, n, fn, { waitMs })
     } catch {
       return { ok: false }
     }
@@ -939,8 +981,8 @@ function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
   const ctx = repoContext(env, cwd)
   const n = /^\d+$/.test(argv[1] || '') ? Number(argv[1]) : ctx && ctx.issue
   if (!ctx || !n) return r
-  recordWrite(ctx.root, n, env.vars)
-  const others = sessionWarnings(ctx.root, n, [me.hash])
+  recordWrite(ctx.store, n, env.vars)
+  const others = sessionWarnings(ctx.store, n, [me.hash])
   return others.length ? { ...r, out: [r.out, ...others].join('\n') } : r
 }
 
@@ -981,12 +1023,12 @@ function command(argv, stdin, env, cwd) {
       const ctx = repoContext(env, cwd)
       const n = num(rest[0]) || (ctx && ctx.issue)
       if (!ctx || !n) return { code: 1, out: 'refused: no devflow Issue' }
-      if (cmd === 'ledger') return { code: 0, out: JSON.stringify(readLedger(ctx.root, n), null, 2) }
+      if (cmd === 'ledger') return { code: 0, out: JSON.stringify(readLedger(ctx.store, n), null, 2) }
       const no = ledgerGate(ctx, n, 'ledger writes', { append: false })
       if (no) return no
       // Top-level keys are replaced as sent; a note goes through note, which appends under the lock.
       const patch = JSON.parse(input())
-      const r = updateLedger(ctx.root, n, ledger => ({ ledger: { ...ledger, ...patch } }))
+      const r = updateLedger(ctx.store, n, ledger => ({ ledger: { ...ledger, ...patch } }))
       return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n, r.why), n)
     }
     case 'note':
@@ -995,13 +1037,14 @@ function command(argv, stdin, env, cwd) {
       const n = num(rest[0])
       if (!n) return { code: 2, out: 'usage: devflow-state release <issue>' }
       const ctx = repoContext(env, cwd)
+      if (legacyOf(ctx, n)) return LEGACY(n)
       const me = sessionId(env.vars)
       if (!ctx || !me) return { code: 1, out: 'refused: no devflow repository or no session id to release' }
-      return releaseSessions(ctx.root, n, [me.hash]) ? { code: 0, out: `released this session from Issue #${n}` } : guarded(ctx, LOCKED(n))
+      return releaseSessions(ctx.store, n, [me.hash]) ? { code: 0, out: `released this session from Issue #${n}` } : guarded(ctx, LOCKED(n))
     }
     case 'pending': {
       const ctx = repoContext(env, cwd)
-      const posts = (ctx && ctx.issue && (readLedger(ctx.root, ctx.issue) || {}).pendingPosts) || []
+      const posts = (ctx && ctx.issue && (readLedger(ctx.store, ctx.issue) || {}).pendingPosts) || []
       return { code: 0, out: posts.length ? JSON.stringify(posts, null, 2) : 'nothing pending' }
     }
     case 'flush':
@@ -1024,4 +1067,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { mainTree, legacyOf, INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

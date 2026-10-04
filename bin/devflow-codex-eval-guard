@@ -49,7 +49,7 @@ function decision(input, home) {
 }
 
 function main() {
-  const home = process.env.CODEX_HOME
+  const home = process.argv[2] || process.env.CODEX_HOME
   let publicRoot = ''
   try { publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root } catch {}
   let text = '', finished = false

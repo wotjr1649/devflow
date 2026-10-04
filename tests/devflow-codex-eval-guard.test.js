@@ -53,3 +53,13 @@ test('guard CLI rejects malformed input and emits actual allow/deny decisions', 
   assert.equal(audit.includes(file), false)
   assert.equal(audit.includes('whoami'), false)
 })
+
+test('hook remains configured when its shell environment excludes CODEX_HOME', () => {
+  const { home, file } = setup()
+  const run = spawnSync(process.execPath, [path.resolve(__dirname, '../bin/devflow-codex-eval-guard'), home], {
+    input: JSON.stringify(event(`cat '${file}'`)), encoding: 'utf8', env: {}, timeout: 3000,
+  })
+  assert.equal(run.status, 0)
+  assert.equal(JSON.parse(run.stdout).hookSpecificOutput.permissionDecision, 'allow')
+  assert.equal(fs.existsSync(path.join(home, 'eval-guard-audit.jsonl')), true)
+})

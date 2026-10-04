@@ -20,6 +20,7 @@ function parseTrace(text, skillRoot) {
   const detected = new Set()
   const usage = Object.fromEntries([...usageKeys, 'total_tokens'].map(k => [k, 0]))
   let turns = 0, started = false, broken = false
+  const commands = new Set()
   const root = normalize(skillRoot).toLowerCase() + '/'
   for (const line of text.split(/\r?\n/).filter(l => l.trim())) {
     let event
@@ -37,6 +38,7 @@ function parseTrace(text, skillRoot) {
       usage.total_tokens += event.usage.input_tokens + event.usage.output_tokens
     }
     if (!/^item\./.test(event.type || '') || event.item?.type !== 'command_execution' || typeof event.item.command !== 'string') continue
+    commands.add(event.item.id || event.item.command)
     // Literal read operations only. Messages, command output, listings and echoed paths are not trigger evidence.
     const command = normalize(event.item.command)
     const unwrapped = command.replace(/^(?:"[^"]+"|[^\s]+)\s+(?:-[\w-]+\s+)*-(?:Command|lc|c)\s+["']?/i, '')
@@ -50,7 +52,7 @@ function parseTrace(text, skillRoot) {
       if (/^[A-Za-z0-9_.-]+\/SKILL\.md$/i.test(relative)) detected.add(relative.split('/')[0])
     }
   }
-  return { detectedSkills: [...detected].sort(), usage: turns ? usage : null, valid: started && turns > 0 && !broken }
+  return { detectedSkills: [...detected].sort(), usage: turns ? usage : null, commandExecutions: commands.size, valid: started && turns > 0 && !broken }
 }
 
 function loadCases(dir) {
@@ -192,7 +194,7 @@ function prepare(root, taskDir) {
   fs.writeFileSync(path.join(home, 'eval-public-root.json'), JSON.stringify({ root: loadedRoot }))
   const guardFile = path.join(home, 'eval-guard.cjs')
   fs.copyFileSync(path.join(root, 'bin', 'devflow-codex-eval-guard'), guardFile, fs.constants.COPYFILE_EXCL)
-  const command = '"' + process.execPath + '" "' + guardFile + '"'
+  const command = '"' + process.execPath + '" "' + guardFile + '" "' + home + '"'
   fs.writeFileSync(path.join(home, 'hooks.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', command, timeout: 3 }] }] } }) + '\n')
   return { home, names, skillRoot: path.join(loadedRoot, 'skills'), sourceHash: hash.digest('hex') }
 }
@@ -235,7 +237,7 @@ function hookMetadata(home, cwd, env) {
 async function trustGuard(home, cwd, env) {
   const metadata = await hookMetadata(home, cwd, env)
   const hooks = metadata.data?.flatMap(e => e.hooks) || []
-  const command = '"' + process.execPath + '" "' + path.join(home, 'eval-guard.cjs') + '"'
+  const command = '"' + process.execPath + '" "' + path.join(home, 'eval-guard.cjs') + '" "' + home + '"'
   if (hooks.length !== 1 || hooks[0].eventName !== 'preToolUse' || hooks[0].matcher !== '.*' || hooks[0].command !== command ||
     normalize(hooks[0].sourcePath) !== normalize(path.join(home, 'hooks.json')) || !/^sha256:[a-f0-9]{64}$/.test(hooks[0].currentHash)) throw new Error('Unexpected evaluation hook metadata')
   fs.appendFileSync(path.join(home, 'config.toml'), '\n[hooks.state.' + JSON.stringify(hooks[0].key) + ']\ntrusted_hash = ' + JSON.stringify(hooks[0].currentHash) + '\n')
@@ -274,6 +276,8 @@ async function preflight(home, names, taskDir, env) {
 function execute(c, cwd, home, env) {
   return new Promise(resolve => {
     const start = Date.now()
+    const auditFile = path.join(home, 'eval-guard-audit.jsonl')
+    const auditBefore = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).length : 0
     let stdout = '', size = 0, timedOut = false, overflow = false, spawnFailed = false, stopped = false
     const child = spawn('codex', ['exec', '--json', '--ephemeral', '--skip-git-repo-check', ...configArgs(home), '-'],
       { cwd, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'] })
@@ -295,10 +299,14 @@ function execute(c, cwd, home, env) {
       clearTimeout(timer)
       const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
       const trace = parseTrace(stdout, path.join(publicRoot, 'skills'))
+      const audit = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).slice(auditBefore).map(l => JSON.parse(l)) : []
+      const guardMissing = trace.commandExecutions > 0 && audit.length < trace.commandExecutions
       trace.valid = trace.valid && exitCode === 0 && !timedOut && !overflow && !spawnFailed
+      trace.valid = trace.valid && !guardMissing
       resolve({ id: c.id, expectedSkill: c.expectedSkill, policy: c.policy, promptHash: c.promptHash,
         detectedSkills: trace.detectedSkills, result: score(c, trace), tokens: trace.usage, durationMs: Date.now() - start,
-        exitCode, timedOut, overflow, spawnFailed, stdoutHash: crypto.createHash('sha256').update(stdout).digest('hex') })
+        exitCode, timedOut, overflow, spawnFailed, guardMissing, guardCalls: audit.length, guardAllowed: audit.filter(a => a.allowed).length,
+        stdoutHash: crypto.createHash('sha256').update(stdout).digest('hex') })
     })
   })
 }
@@ -342,6 +350,7 @@ async function main(args) {
     save()
     process.stdout.write(c.id + ': ' + result.result + ', ' + (result.tokens?.total_tokens ?? 'unknown') + ' tokens, ' + (result.durationMs / 1000).toFixed(1) + 's\n')
     if (result.spawnFailed) { report.stoppedReason = 'process-stop-unconfirmed'; break }
+    if (result.guardMissing) { report.stoppedReason = 'guard-execution-unverified'; break }
   }
   report.complete = report.cases.length === selected.length
   report.finishedAt = new Date().toISOString()

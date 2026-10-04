@@ -88,7 +88,7 @@ ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 �
 ### Codex 트리거 eval
 
 Codex 실행기는 수동 opt-in이다. 기본 검사·CI·pre-push는 모델 평가를 실행하지 않는다.
-`evals/trigger/`의 같은 24개 사례에서 frontmatter를 제외한 본문을 그대로 사용하고, 각 Claude grader의
+Claude와 같은 `evals/trigger/`의 모든 사례에서 frontmatter를 제외한 본문을 그대로 사용하고, 각 Claude grader의
 양성·특정 스킬 음성 판정을 유지한다. `none--*`는 스킬이 하나라도 검출되면 실패한다.
 
 ```bash
@@ -98,7 +98,7 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens 4000000 --pri
 node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-budget> --continue-from evals/results/<partial-full>/result.json
 ```
 
-- smoke는 양성·none 각 하나를 한 번씩 실행한다. full은 24개를 `--repetitions <1..1000>`회(기본 1) 순차 실행하며
+- smoke는 양성·none 각 하나를 한 번씩 실행한다. full은 모든 사례를 `--repetitions <1..1000>`회(기본 1) 순차 실행하며
   재시도하지 않는다. 각 시도는 새 세션·새 빈 폴더이고 반복 번호를 결과에 기록한다. invalid·실패한 시도를 대체하지 않는다.
   budget 플래그가 없으면 모델 프로세스를 시작하지 않는다. `--prior-results`의 사용량도 예산에 합친다.
   `--continue-from`은 예산 때문에 중단된 full에서만, 기존 사례·정책·프롬프트 해시·반복 횟수와 Codex 버전·실행기 코드 해시·

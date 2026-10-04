@@ -62,8 +62,11 @@ function parseTrace(text, skillRoot) {
   return { detectedSkills: [...detected].sort(), usage: turns ? usage : null, commandExecutions: commands.size, commands: [...commands.values()], valid: started && turns > 0 && !broken }
 }
 
+// The Claude trigger cases, as many as evals/trigger holds: both hosts measure the same folder (Issue #44).
 function loadCases(dir) {
-  return fs.readdirSync(dir).sort().map(id => {
+  const ids = fs.readdirSync(dir).sort()
+  if (!ids.length) throw new Error('No trigger cases in ' + dir)
+  return ids.map(id => {
     if (!/^[a-z][a-z-]*--[a-z][a-z-]*$/.test(id)) throw new Error('Invalid case name')
     const file = path.join(dir, id, 'prompt.md')
     if (!fs.lstatSync(file).isFile()) throw new Error('Case is not a regular file')
@@ -286,7 +289,6 @@ function execute(c, cwd, env, skillRoot, limits = {}) {
 async function main(args) {
   const opts = parseArgs(args)
   const cases = loadCases(path.join(ROOT, 'evals', 'trigger'))
-  if (cases.length !== 24) throw new Error('Expected the same 24 Claude trigger cases')
   const selected = expandCases(opts.smoke ? ['grilling--grill-en', 'none--trivia-en'].map(id => cases.find(c => c.id === id)) : cases, opts.repetitions)
   const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
   const env = cleanEnv(home)

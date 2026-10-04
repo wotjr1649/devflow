@@ -5,8 +5,8 @@ passing, and the ledger holds the last commit and the next task.
 
 ## Before the first change of a task
 
-- Work in the ledger's `runMode`, which ready picked (design, on the bounded path). Needing another mode means the plan
-  was wrong: go back through plan and ready.
+- Work in the ledger's `runMode`, which ready picked (design, on the bounded path). Needing another mode goes back to
+  where it was picked: ready, or design on the bounded path.
 - Record `base` (`git rev-parse HEAD`) in the ledger. Reviews read BASE..HEAD; `HEAD~1` drops the first commits of a
   multi-commit task.
 

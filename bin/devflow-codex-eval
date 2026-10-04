@@ -95,7 +95,25 @@ function summarize(cases) {
   return { attempted: cases.length, passed: valid.filter(c => c.result === 'pass').length, failed: valid.filter(c => c.result === 'fail').length,
     invalid: cases.length - valid.length, triggerRate, falsePositiveRate,
     totalTokens: cases.reduce((n, c) => n + (c.tokens?.total_tokens || 0), 0), usageKnown: cases.every(c => c.tokens !== null),
-    thresholdPassed: triggerRate !== null && falsePositiveRate !== null && triggerRate >= 0.8 && falsePositiveRate <= 0.1 }
+    thresholdPassed: triggerRate !== null && falsePositiveRate !== null && triggerRate >= 0.8 && falsePositiveRate <= 0.1, perCase: perCase(cases) }
+}
+
+// Variation across repetitions of one case: its result counts and every distinct set of skills it read.
+function perCase(cases) {
+  const out = {}
+  for (const c of cases) {
+    const p = out[c.id] ??= { attempts: 0, pass: 0, fail: 0, invalid: 0, judgmentStable: true, skillSets: [], tokens: 0 }
+    p.attempts++
+    p[c.result]++
+    p.tokens += c.tokens?.total_tokens || 0
+    const set = (c.detectedSkills || []).join('+') || '-'
+    if (!p.skillSets.includes(set)) p.skillSets.push(set)
+  }
+  for (const p of Object.values(out)) {
+    p.skillSets.sort()
+    p.judgmentStable = [p.pass, p.fail, p.invalid].filter(Boolean).length <= 1
+  }
+  return out
 }
 
 function parseArgs(args) {

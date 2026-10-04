@@ -226,7 +226,7 @@ test('the summary gives each case its attempts, result counts and distinct skill
     { id: 'b', repetition: 1, result: 'invalid', detectedSkills: [], tokens: null },
   ]
   assert.deepEqual(summarize(cases).perCase, {
-    a: { attempts: 3, pass: 2, fail: 1, invalid: 0, judgmentStable: false, skillSets: ['devflow+grilling', 'grilling', '-'], tokens: 60 },
+    a: { attempts: 3, pass: 2, fail: 1, invalid: 0, judgmentStable: false, skillSets: ['-', 'devflow+grilling', 'grilling'], tokens: 60 },
     b: { attempts: 1, pass: 0, fail: 0, invalid: 1, judgmentStable: true, skillSets: ['-'], tokens: 0 },
   })
 })

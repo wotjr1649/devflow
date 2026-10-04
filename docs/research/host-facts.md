@@ -223,8 +223,12 @@
   명령에서 동작했다. `--dangerously-bypass-hook-trust`는 그 실행에서만 신뢰 없이 훅을 돌린다.
 
 **훅**
-- 이벤트: SessionStart, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit,
-  SubagentStart, SubagentStop, Stop
+- 이벤트: SessionStart, SessionEnd, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit,
+  SubagentStart, SubagentStop, Stop, Interrupt
+- SessionEnd(2026-10-04, [hooks](https://learn.chatgpt.com/docs/hooks), 0.160.0 원본
+  [session_end.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/events/session_end.rs)): 입력의
+  `session_id`는 thread id이고 `reason`은 언제나 `other`다. 기본 1초, 최대 3초이며 `async`여도 동기로 돈다. 서브에이전트에서는
+  돌지 않고 막을 수 없다.
 - SessionStart 매처는 `startup|resume|clear|compact`다. 출력 맥락의 양은 `additionalContextLimit`로 제한한다.
 - 도구 매칭: 셸(`exec_command` 포함)은 `Bash`, `apply_patch`는 `apply_patch`·`Edit`·`Write`, `spawn_agent`는 `Agent`로
   매칭된다. MCP 도구는 Claude와 같은 `mcp__<server>__<tool>`이고 PreToolUse로 막을 수 있다.
@@ -233,7 +237,7 @@
   아니라 reason으로 새 이어가기 프롬프트를 만든다. 입력은 `turn_id`, `stop_hook_active`, `last_assistant_message`다.
 - 플러그인 훅의 경로 변수는 `PLUGIN_ROOT`, `PLUGIN_DATA`이고, 호환용으로 `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`도 준다.
 - 세션 id(2026-10-03 실측, `codex exec`): 셸에 `CODEX_THREAD_ID`와 `CODEX_SESSION_ID`가 같은 값으로 있다. Claude 안에서
-  띄우면 Claude의 변수도 물려받는다. SessionEnd 이벤트는 없다.
+  띄우면 Claude의 변수도 물려받는다.
 - `apply_patch`의 PreToolUse 입력은 셸과 같은 `tool_input.command`에 패치 문자열이 든다.
 - 명령은 문자열만 받는다(Claude의 `args` exec form이 없다). `PLUGIN_ROOT`는 문자열 치환 없이 환경 변수로만 넘어온다.
 - Windows에서 훅 명령을 어떤 셸이 실행하는지는 문서에 없다. Windows 전용 명령은 `commandWindows`로 따로 줄 수 있다.
@@ -252,6 +256,8 @@
   `developer_instructions`이고, `model`, `model_reasoning_effort`, `sandbox_mode`도 쓸 수 있다.
 - 서브에이전트는 부모의 sandbox를 물려받는다.
 - 띄울 때 지정한 값이 `agents.default_subagent_model`과 `agents.default_subagent_reasoning_effort`보다 우선한다.
+  다만 0.160.0의 `spawn_agent` 도구 설명은 서브에이전트가 기본으로 현재 모델을 물려받으며 "사용자가 명시적으로 다른 모델을
+  요청하지 않으면 `model`을 정하지 말라"고 한다(2026-10-04, 설치된 바이너리의 문자열). 지시서의 모델 지정을 따르는지는 확인하지 않았다.
   동시 스레드 상한은 `agents.max_concurrent_threads_per_session`이다.
 - 문서는 커스텀 에이전트를 이름으로 고를 수 있고, 내장 에이전트와 이름이 같으면 커스텀이 우선한다고 한다.
 - 실행 중인 서브에이전트를 조정, 중지, 닫을 수 있다.

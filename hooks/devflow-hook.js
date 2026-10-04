@@ -698,8 +698,8 @@ function shareSessionId(vars, cwd, sessionId) {
   } catch {}
 }
 
-// A session that ends stops counting as a recent writer of any Issue. One try per lock: SessionEnd has 1.5 s in all,
-// and an entry left behind expires in 30 minutes.
+// A session that ends stops counting as a recent writer of any Issue. One try per lock: SessionEnd has 1.5 s in all in
+// Claude and at most 3 s in Codex, and an entry left behind expires in 30 minutes.
 function releaseEverywhere(cwd, sessionId, env = state.realEnv) {
   const found = devflowRoot(cwd)
   if (!found || !SESSION_ID.test(String(sessionId || ''))) return

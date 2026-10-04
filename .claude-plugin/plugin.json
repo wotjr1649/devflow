@@ -8,6 +8,5 @@
   },
   "homepage": "https://github.com/wotjr1649/devflow",
   "repository": "https://github.com/wotjr1649/devflow",
-  "license": "Apache-2.0",
-  "hooks": "./hooks/claude-hooks.json"
+  "license": "Apache-2.0"
 }

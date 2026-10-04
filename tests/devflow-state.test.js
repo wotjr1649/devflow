@@ -665,13 +665,14 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
   assert.equal(branch.code, 1)
   assert.match(branch.out, /path is the lifecycle path \(spike, bounded or architectural\), not a branch/)
   assert.match(up({ stage: 'coding' }).out, /stage is one of discover, start/)
-  assert.match(up({ runMode: 'M5' }).out, /runMode starts with M0 to M4/)
+  assert.match(up({ runMode: 'M5' }).out, /runMode starts with M0 to M3/)
+  assert.match(up({ runMode: 'M4' }).out, /runMode starts with M0 to M3/, 'M4 left the run modes (ADR-0017)')
   assert.match(up({ task: { current: 1 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: -1, total: 2 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: 0, total: 0 } }).out, /task is \{current, total\}/, 'the Stop hook would read 0/0 as an open task')
   assert.match(up({ path: null }).out, /path is the lifecycle path/, 'a checked key is not cleared with null')
   assert.match(state.main(['ledger-update', '1'], () => '[1]', env(root), '.').out, /JSON object of keys/)
-  for (const ok of [{ path: 'architectural' }, { stage: 'done' }, { runMode: 'M2 for task 1, M1 otherwise' }, { task: { current: 3, total: 2 } }, { notes: [] }]) {
+  for (const ok of [{ path: 'architectural' }, { stage: 'done' }, { runMode: 'M2 for task 1, M1 otherwise' }, { runMode: 'M3' }, { task: { current: 3, total: 2 } }, { notes: [] }]) {
     assert.equal(up(ok).code, 0, JSON.stringify(ok))
   }
   // A new ledger: mode is checked too.

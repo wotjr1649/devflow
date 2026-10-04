@@ -415,10 +415,10 @@ test('a ledger that is not a small plain file is refused, not read and not taken
   assert.deepEqual(state.readLedger(root, 1), { stage: 'build' })
   assert.equal(state.readLedger(root, 2), null, 'no ledger is still none')
   fs.writeFileSync(file, JSON.stringify({ stage: 'build', notes: ['x'.repeat(1 << 20)] }))
-  assert.throws(() => state.readLedger(root, 1), /Issue #1's ledger is not a small plain file/)
+  assert.throws(() => state.readLedger(root, 1), /Issue #1's ledger is over 1 MiB/)
   fs.rmSync(file)
   fs.mkdirSync(file)
-  assert.throws(() => state.readLedger(root, 1), /Issue #1's ledger is not a small plain file/)
+  assert.throws(() => state.readLedger(root, 1), /Issue #1's ledger is not a plain file/)
 })
 
 test('a FIFO ledger cannot hold a ledger read open (#46)', { skip: process.platform === 'win32' }, () => {
@@ -428,5 +428,16 @@ test('a FIFO ledger cannot hold a ledger read open (#46)', { skip: process.platf
   const r = spawnSync(process.execPath, ['-e', 'const s = require(process.argv[1]); try { s.readLedger(process.argv[2], 1); console.log("read") } catch (e) { console.log("refused: " + e.message) }',
     path.resolve(__dirname, '../bin/devflow-state'), root], { encoding: 'utf8', timeout: 8000 })
   assert.equal(r.signal, null, 'the read did not return before the timeout')
-  assert.match(r.stdout, /^refused: Issue #1's ledger is not a small plain file/)
+  assert.match(r.stdout, /^refused: Issue #1's ledger is not a plain file/)
+})
+
+test('a write that would pass the size limit is refused and the ledger stays readable (#46 review)', () => {
+  const root = repo({ stage: 'build' })
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const before = fs.readFileSync(file, 'utf8')
+  assert.throws(() => state.main(['ledger-update', '1'], () => JSON.stringify({ notes: ['x'.repeat(1 << 20)] }), env(root), '.'),
+    /Issue #1's ledger would grow past 1 MiB/)
+  assert.equal(fs.readFileSync(file, 'utf8'), before)
+  assert.deepEqual(state.readLedger(root, 1), { stage: 'build' })
+  assert.equal(fs.existsSync(lockFile(root)), false, 'the lock is released')
 })

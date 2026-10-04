@@ -194,7 +194,10 @@
 - 기본 sandbox(`workspace-write`)는 명령의 네트워크를 막아 `gh`를 부르는 `devflow-state`가 실패한다. 소유자 설정은
   `danger-full-access`라 해당하지 않는다(2026-10-01).
 - 신뢰하지 않은 폴더에서 `codex exec`를 돌리면 전역 `config.toml`에 그 폴더의 `trust_level = "trusted"` 항목이 생길 수
-  있다(2026-10-01). 모델을 부르는 시험은 이미 신뢰한 저장소 안에서 한다.
+  있다(2026-10-01). 0.160.0 원본은 신뢰가 미정이고 실행이 작업 폴더에 쓸 수 있을 때만 기록한다
+  ([thread_processor.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/app-server/src/request_processors/thread_processor.rs)).
+  `--sandbox read-only` 실행은 기록하지 않는다(#39에서 실행 전후 config.toml 해시로 확인). 작업 폴더 경로는 환경 맥락의
+  `<cwd>`로 모델에게 그대로 보인다(#39, `debug prompt-input`).
 - Git Bash에서 `codex exec`는 stdin이 열려 있으면 시작하지 않고 기다릴 수 있다. `< /dev/null`로 닫는다.
 - 이 기기의 pwsh 7은 외부 명령의 출력을 변수나 파이프로 받을 때 콘솔 인코딩(`ks_c_5601-1987`)으로 읽어 UTF-8 한글이
   깨진다. 직접 출력은 그대로다. 받아야 하면 먼저 `[Console]::OutputEncoding = [Text.UTF8Encoding]::new()`를 둔다(2026-10-01).

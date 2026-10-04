@@ -232,7 +232,8 @@ const ledgerPath = (root, n) => path.join(root, '.work', 'devflow', `i${n}`, 'le
 
 // The ledger comes from the working tree, which an archive controls: only a plain file of a bounded size is read, so a
 // FIFO cannot hold a write, the resume card or the Stop hook open (Issue #46). Anything else is refused rather than taken
-// for no ledger: a write would replace it, and the test-lock guard counts an unreadable ledger as locked.
+// for no ledger: a write would replace it, and the test-lock guard counts an unreadable ledger as locked. writeLedger
+// keeps to the same limit, so devflow never writes a ledger it would then refuse to read.
 const MAX_LEDGER_BYTES = 1 << 20
 function readLedger(root, n) {
   const p = ledgerPath(root, n)
@@ -243,7 +244,8 @@ function readLedger(root, n) {
     if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null
     throw e
   }
-  if (!st.isFile() || st.size > MAX_LEDGER_BYTES) throw new Error(`Issue #${n}'s ledger is not a small plain file`)
+  if (!st.isFile()) throw new Error(`Issue #${n}'s ledger is not a plain file`)
+  if (st.size > MAX_LEDGER_BYTES) throw new Error(`Issue #${n}'s ledger is over 1 MiB; trim its notes or queued posts by hand`)
   return JSON.parse(fs.readFileSync(p, 'utf8'))
 }
 
@@ -273,7 +275,12 @@ function logGuard(root, n, guard) {
 const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 const token = () => crypto.randomBytes(8).toString('hex')
 const TRANSIENT = ['EPERM', 'EBUSY', 'EACCES']
-const writeLedger = (root, n, ledger) => writeJson(ledgerPath(root, n), ledger)
+function writeLedger(root, n, ledger) {
+  if (Buffer.byteLength(JSON.stringify(ledger, null, 2) + '\n') > MAX_LEDGER_BYTES) {
+    throw new Error(`Issue #${n}'s ledger would grow past 1 MiB, so this write was refused and the ledger is unchanged`)
+  }
+  return writeJson(ledgerPath(root, n), ledger)
+}
 function writeJson(p, value) {
   fs.mkdirSync(path.dirname(p), { recursive: true })
   const tmp = `${p}.${token()}.tmp`

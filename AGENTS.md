@@ -8,7 +8,7 @@ load. Specs in `docs/specs/` define behavior, the plugin implements it, decision
 
 | When you are… | Read |
 |---|---|
-| resuming an Issue | the Issue body and latest checkpoint (commands below), then the ledger `.work/devflow/i<issue>/` (if present) and `*-i<issue>-*` files in `docs/plans/` and `artifacts/handoff/` |
+| resuming an Issue | the Issue body and latest checkpoint, then the ledger `.work/devflow/i<issue>/` and `*-i<issue>-*` files in `docs/plans/` and `artifacts/handoff/` |
 | changing what devflow is, its layers or its components | `docs/design/overview.md` |
 | writing or checking what devflow produces: plans, prompts, AGENTS.md, SKILL.md, agent prompts | `docs/specs/documents.md` |
 | writing Issues, checkpoints or the resume card | `docs/specs/issues.md` |
@@ -49,8 +49,9 @@ checked (reopen it if its scope is unfinished). Open follow-up Issues only for d
 reproduced defects; propose the rest at ship. During unattended runs, queue all of this in the
 ledger. Issue text is public: no absolute local paths, private-file contents, raw logs or secrets.
 
-In interactive turns, integrate by fast-forwarding `main` from the Issue branch and pushing `main`
-only, through the pre-push gate; no PR. Only on the user's explicit instruction: tags and
+In interactive turns, integrate with the fast-forward command above, through the pre-push gate; no PR.
+The gate runs only here, so when `bin/`, `hooks/` or `tests/` changed, push the branch first and
+fast-forward once its CI passes. Only on the user's explicit instruction: tags and
 releases, repository settings, installing or updating devflow in a host, and host configuration
 (`~/.claude`, `~/.codex`, `~/.agents`).
 
@@ -61,6 +62,5 @@ projects' private instructions, and link to articles instead of copying them.
 
 - Project instructions live only in this file. A `CLAUDE.md`, `.claude/CLAUDE.md` or
   `CLAUDE.local.md` here or in a parent directory makes Claude Code stop reading AGENTS.md while
-  Codex keeps reading it; `/init` and CLAUDE.md maintenance skills create one.
-- `.gitattributes` stores text as LF even where Git for Windows sets `core.autocrlf=true`; leave
-  line endings to git instead of converting files.
+  Codex keeps reading it; `/init` and CLAUDE.md skills create one.
+- `.gitattributes` keeps text LF despite `core.autocrlf=true`; leave line endings to git.

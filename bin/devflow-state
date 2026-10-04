@@ -230,9 +230,21 @@ function filtered(issue) {
 
 const ledgerPath = (root, n) => path.join(root, '.work', 'devflow', `i${n}`, 'ledger.json')
 
+// The ledger comes from the working tree, which an archive controls: only a plain file of a bounded size is read, so a
+// FIFO cannot hold a write, the resume card or the Stop hook open (Issue #46). Anything else is refused rather than taken
+// for no ledger: a write would replace it, and the test-lock guard counts an unreadable ledger as locked.
+const MAX_LEDGER_BYTES = 1 << 20
 function readLedger(root, n) {
   const p = ledgerPath(root, n)
-  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
+  let st
+  try {
+    st = fs.lstatSync(p)
+  } catch (e) {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null
+    throw e
+  }
+  if (!st.isFile() || st.size > MAX_LEDGER_BYTES) throw new Error(`Issue #${n}'s ledger is not a small plain file`)
+  return JSON.parse(fs.readFileSync(p, 'utf8'))
 }
 
 // Every refusal by devflow-state and every block by the devflow hook appends one line here, so the cycle's guard blocks

@@ -146,6 +146,16 @@ function repoContext(env, cwd) {
 
 const samePathKey = p => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
 const differs = (a, b) => samePathKey(a) !== samePathKey(b)
+// git metadata comes from a repository a clone or an archive controls: only a small plain file is read, so a FIFO or a
+// device there cannot hold SessionEnd or the resume card until the host's timeout (Issue #43). A file swapped between
+// the check and the read is not covered; the hook's guard reads use smallFile, which also checks the opened file.
+const MAX_GIT_META_BYTES = 4096
+function smallGitFile(p) {
+  const st = fs.lstatSync(p)
+  if (!st.isFile() || st.size > MAX_GIT_META_BYTES) throw new Error(`${p} is not a small plain file`)
+  return fs.readFileSync(p, 'utf8')
+}
+
 // The main work tree of the work tree at root, when root is a linked worktree git's own records tie to it: its git dir
 // sits right under <common>/worktrees, the common dir is a folder named .git, and git's back link in that git dir names
 // root/.git. A .git file from an extracted archive can point git at any repository, but cannot write into another
@@ -160,10 +170,10 @@ function mainTree(env, root, opts = {}) {
   if ((process.platform === 'win32' ? base.toLowerCase() : base) !== '.git') return null
   if (differs(path.dirname(own), path.join(common, 'worktrees'))) return null
   let back = ''
-  try { back = fs.readFileSync(path.join(own, 'gitdir'), 'utf8').trim() } catch { return null }
+  try { back = smallGitFile(path.join(own, 'gitdir')).trim() } catch { return null }
   if (!back || differs(path.resolve(own, back), path.join(root, '.git'))) return null
   let head = ''
-  try { head = fs.readFileSync(path.join(common, 'HEAD'), 'utf8') } catch {}
+  try { head = smallGitFile(path.join(common, 'HEAD')) } catch {}
   const m = /^ref: refs\/heads\/(\S+)/.exec(head)
   return { path: path.dirname(common), branch: m ? m[1] : '' }
 }

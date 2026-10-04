@@ -26,7 +26,9 @@ them back. **A resume prompt points at them and carries only what they lack** - 
 decisions made since the last checkpoint - in under 500 tokens; restating the Issue costs output
 now and input in every session that reads it. A file goes to `docs/prompts/` as
 `YYYY-MM-DD-i<issue>-<slug>-prompt.md`, which replaces the naming below. A brief for a subagent
-follows [위임 지시서](../../docs/specs/orchestration.md#위임-지시서).
+follows [위임 지시서](../../docs/specs/orchestration.md#위임-지시서); one for another session (`codex exec`,
+`claude -p`) also ends by having that session run `release <issue>`
+([동시 세션](../../docs/specs/ledger.md#동시-세션)).
 
 ## Where it lands
 

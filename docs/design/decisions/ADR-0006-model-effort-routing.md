@@ -3,6 +3,7 @@
 상태: 채택 (사용자 지정). 개정: 기계적 구현을 Sonnet `high`에서 `medium`으로, 판단이 필요한 구현을 Sonnet `xhigh`에서
 Opus `medium`(승격 시 `high`)으로, 보안 리뷰 기본을 `xhigh`에서 `high`로 바꾸고, 승격 규칙과 diagnostician을 더했다.
 이어서 정의를 도구·effort 기준 6개로 합치고, Codex 탐색·요약을 Luna `high` 기본으로 바꿨다(설계 검토 반영, 사용자 결정).
+표 밖으로 route를 넓히는 일은 [ADR-0017](ADR-0017-drop-m4-defer-route.md)에서 보류했다(#41).
 
 ## 맥락
 

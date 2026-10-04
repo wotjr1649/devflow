@@ -14,7 +14,7 @@
 
 - `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`(소스 `./`)
 - `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`
-- `skills/`, `agents/`, `hooks/`, `bin/`, `workflows/`, `evals/` (`workflows/`는 M4를 넣을 때 만든다. Issue #1 범위 밖. [ADR-0015](ADR-0015-paper-features.md)에서 배포하지 않기로 했다)
+- `skills/`, `agents/`, `hooks/`, `bin/`, `workflows/`, `evals/` (`workflows/`는 [ADR-0015](ADR-0015-paper-features.md)에서 배포하지 않기로 했고, M4는 [ADR-0017](ADR-0017-drop-m4-defer-route.md)에서 실행 모드에서 뺐다)
 
 ## 결과
 

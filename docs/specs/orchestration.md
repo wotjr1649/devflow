@@ -43,7 +43,8 @@ architectural 경로의 계획은 대화를 보지 못한 엔지니어가 계획
 | **M1** (기본) | 그 밖의 일반 작업 | 메인 | 탐색, 테스트·로그 요약, 원인 분석, verifier, 최종 리뷰 (모두 읽기 전용) |
 | **M2** | 독립적으로 테스트할 수 있는 작업이 3개 이상이거나, 읽을 양이 메인 컨텍스트의 절반을 넘을 것으로 보이거나, 자율 장시간 실행 | 구현 서브에이전트가 한 번에 하나씩 | 작업별 리뷰, 최종 리뷰 |
 | **M3** (Claude 전용) | 파일이 겹치지 않고 인터페이스가 계획에 고정되어 있다 | worktree별 구현 에이전트, 동시에 2~3개까지 | 작업별 리뷰, 최종 리뷰 |
-| **M4** (Claude 전용) | 수십 개 파일에 같은 기계적 변경, 또는 저장소 전체 감사 | Workflow 스크립트 | 결과를 서로 검증하는 단계 포함. 사용자가 직접 실행하고, devflow는 Workflow를 배포하지 않는다 |
+
+Workflow는 실행 모드가 아니다. 사용자가 devflow 밖에서 직접 실행한다([ADR-0017](../design/decisions/ADR-0017-drop-m4-defer-route.md)).
 
 대화형 M2에서도 한 문장으로 설명되는 한두 줄 편집은 위임하지 않고 메인이 하고 장부에 적는다. 위임 한 번(지시서, 새
 컨텍스트, 보고)이 편집보다 비싸기 때문이다(#25). 작업별 리뷰는 build의 기계적 변경 규칙을 따른다. 무인 실행은 작업마다
@@ -172,9 +173,8 @@ Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔�
 | `.devflow.json`의 `highRisk` 경로를 바꿈 | 경로 | 보안 관점 리뷰를 따로 한 번 |
 | 한 파일 안의 기계적 변경이고 `highRisk` 경로가 아님 | diff | 작업별 리뷰를 생략. 최종 리뷰가 확인한다 |
 
-다른 역할의 effort 승격(탐색 `medium`, 통합 직전 검증 `high`, 리뷰 `xhigh`)은 파일럿에서 부족함이
-확인되면 그 effort의 에이전트 정의를 더해서 넣는다. 승격 조건을 PreToolUse 훅(`updatedInput`)으로 강제하는 것도
-그때 검토한다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선하므로, 같은 조건을 그 값으로 적용한다.
+이 표와 승격 밖의 route(다른 역할의 effort 정의, 훅 강제, 선언형 route)는 보류다. 다시 볼 조건은
+[ADR-0017](../design/decisions/ADR-0017-drop-m4-defer-route.md)에 있다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선하므로, 같은 조건을 그 값으로 적용한다.
 Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이전트의 `sandbox_mode`는 부모 sandbox를 좁히지 못한다
 ([host-facts](../research/host-facts.md#codex)).
 
@@ -185,6 +185,5 @@ Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이�
 | 구현·리뷰 에이전트 | 플러그인 `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`) | 내장 explorer·worker, 띄울 때 모델·effort 지정 |
 | 질문 후 재개 | `SendMessage` | 같은 에이전트에 후속 작업 |
 | 병렬 쓰기 (M3) | Agent 호출마다 `isolation: "worktree"` | 사용하지 않음 |
-| 대규모 변경 (M4) | 사용자가 실행하는 Workflow(devflow는 배포하지 않음) | 사용하지 않음 |
 | 재개 카드, Issue 쓰기 차단, 보호 경로, 자율 계속 | `hooks/hooks.json` | 같은 파일 |
 | 세션이 끝날 때 해제 | `hooks/claude-hooks.json` (매니페스트의 `hooks`) | 없음(해제 명령, 30분 만료) |

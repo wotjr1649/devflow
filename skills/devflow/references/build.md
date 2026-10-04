@@ -5,8 +5,8 @@ passing, and the ledger holds the last commit and the next task.
 
 ## Before the first change of a task
 
-- Pick the run mode by [실행 모드](../../../docs/specs/orchestration.md#실행-모드) and record it as `runMode`; the
-  bounded path uses M0 or M1.
+- Work in the ledger's `runMode`, which ready picked (design, on the bounded path). Needing another mode means the plan
+  was wrong: go back through plan and ready.
 - Record `base` (`git rev-parse HEAD`) in the ledger. Reviews read BASE..HEAD; `HEAD~1` drops the first commits of a
   multi-commit task.
 
@@ -23,10 +23,7 @@ passing, and the ledger holds the last commit and the next task.
 
 ## Delegating (M2, M3)
 
-A change to a `.devflow.json` `highRisk` path gets one `reviewer` pass with the security perspective from
-[perspectives](perspectives.md), whatever the run mode.
-
-In M2 and M3 each task also gets a narrow review before the next starts: the `reviewer` with `model: sonnet`, given
+In M2 and M3 each task gets a narrow review before the next starts: the `reviewer` with `model: sonnet`, given
 that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it.
 
 M3 (Claude only) launches the implementers in the background with the Agent tool's `isolation: "worktree"` on each call,

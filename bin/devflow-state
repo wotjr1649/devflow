@@ -1128,8 +1128,8 @@ function ledgerValueError(patch) {
   if ('path' in patch && !['spike', 'bounded', 'architectural'].includes(patch.path)) {
     return `path is the lifecycle path (spike, bounded or architectural), not a branch; got ${JSON.stringify(patch.path)}`
   }
-  if ('runMode' in patch && !(typeof patch.runMode === 'string' && /^M[0-4](?![0-9])/.test(patch.runMode))) {
-    return `runMode starts with M0 to M4 (docs/specs/orchestration.md, 실행 모드); got ${JSON.stringify(patch.runMode)}`
+  if ('runMode' in patch && !(typeof patch.runMode === 'string' && /^M[0-3](?![0-9])/.test(patch.runMode))) {
+    return `runMode starts with M0 to M3 (docs/specs/orchestration.md, 실행 모드); got ${JSON.stringify(patch.runMode)}`
   }
   if ('task' in patch && !(patch.task && typeof patch.task === 'object' && count(patch.task.current) && count(patch.task.total))) {
     return 'task is {current, total}, two whole numbers from 1 (current may pass total once the last task is done)'

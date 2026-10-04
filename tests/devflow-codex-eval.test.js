@@ -95,15 +95,13 @@ test('240 trials preserve all 24 prompts and identify ten distinct attempts per 
 test('repeated-run continuation resumes after the recorded prefix without replacing invalid attempts', () => {
   const cases = loadCases(path.join(__dirname, '..', 'evals', 'trigger'))
   const trials = expandCases(cases, 10)
-  const recorded = trials.slice(0, 25).map(c => ({ ...c, result: c.repetition === 2 ? 'invalid' : 'pass', tokens: { total_tokens: 10 }, guardMissing: false, spawnFailed: false }))
+  const recorded = trials.slice(0, 25).map(c => ({ ...c, result: c.repetition === 2 ? 'invalid' : 'pass', tokens: { total_tokens: 10 }, spawnFailed: false }))
   const prior = { mode: 'full', repetitions: 10, complete: false, stoppedReason: 'budget', model: 'gpt-6.1-sol', effort: 'high', timeoutSeconds: 300, priorTokens: 0, cases: recorded, summary: { usageKnown: true, totalTokens: 250 }, sourceHash: 'public-snapshot' }
   assert.equal(continuation(prior, trials, 10).cases.length, 25)
   assert.equal(trials[25].repetition, 2)
   assert.notEqual(trials[25].id, trials[24].id)
   assert.throws(() => continuation(prior, trials, 1))
   assert.throws(() => continuation({ ...prior, cases: [...recorded.slice(0, 24), { ...recorded[24], repetition: 1 }] }, trials, 10))
-  assert.throws(() => continuation({ ...prior, globalInstructionsRetained: true }, trials, 10, false))
-  assert.equal(continuation({ ...prior, globalInstructionsRetained: true }, trials, 10, true).cases.length, 25)
 })
 
 test('invalid runs stay visible and are excluded from rates', () => {
@@ -121,10 +119,10 @@ test('invalid runs stay visible and are excluded from rates', () => {
 
 test('explicit budget continuation preserves the charged prefix and rejects changed or repeated cases', () => {
   const cases = loadCases(path.join(__dirname, '..', 'evals', 'trigger'))
-  const old = { ...cases[0], result: 'pass', guardMissing: false, spawnFailed: false, tokens: { total_tokens: 100 } }
+  const old = { ...cases[0], result: 'pass', spawnFailed: false, tokens: { total_tokens: 100 } }
   const report = { mode: 'full', complete: false, stoppedReason: 'budget', model: 'gpt-6.1-sol', effort: 'high', timeoutSeconds: 300, priorTokens: 50, cases: [old], summary: { usageKnown: true, totalTokens: 100 }, sourceHash: 'public-snapshot' }
   assert.deepEqual(continuation(report, cases), { cases: [old], priorTokens: 50, sourceHash: 'public-snapshot' })
-  for (const change of [{ stoppedReason: 'unknown-usage' }, { complete: true }, { summary: { usageKnown: true, totalTokens: 101 } }, { cases: [{ ...old, promptHash: 'changed' }] }, { cases: [old, old] }, { cases: [{ ...old, guardMissing: true }] }]) assert.throws(() => continuation({ ...report, ...change }, cases))
+  for (const change of [{ stoppedReason: 'unknown-usage' }, { complete: true }, { summary: { usageKnown: true, totalTokens: 101 } }, { cases: [{ ...old, promptHash: 'changed' }] }, { cases: [old, old] }, { cases: [{ ...old, spawnFailed: true }] }]) assert.throws(() => continuation({ ...report, ...change }, cases))
   assert.throws(() => parseArgs(['--smoke', '--continue-from', 'result.json', '--budget-tokens', '1000']))
   assert.throws(() => parseArgs(['--full', '--continue-from', 'result.json', '--prior-results', 'smoke.json', '--budget-tokens', '1000']))
   assert.throws(() => parseArgs(['--full', '--budget-tokens', '1000', '--continue-from']))

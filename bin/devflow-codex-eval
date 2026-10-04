@@ -21,7 +21,7 @@ function parseTrace(text, skillRoot) {
   const detected = new Set()
   const usage = Object.fromEntries([...usageKeys, 'total_tokens'].map(k => [k, 0]))
   let turns = 0, started = false, broken = false
-  const commands = new Set()
+  const commands = new Map()
   const fold = s => process.platform === 'win32' || /^[a-z]:\//i.test(normalize(skillRoot)) ? s.toLowerCase() : s
   const root = fold(normalize(skillRoot)) + '/'
   for (const line of text.split(/\r?\n/).filter(l => l.trim())) {
@@ -40,7 +40,7 @@ function parseTrace(text, skillRoot) {
       usage.total_tokens += event.usage.input_tokens + event.usage.output_tokens
     }
     if (!/^item\./.test(event.type || '') || event.item?.type !== 'command_execution' || typeof event.item.command !== 'string') continue
-    commands.add(event.item.id || event.item.command)
+    if (commands.size < 100) commands.set(event.item.id || event.item.command, event.item.command.slice(0, 2000))
     // Literal read operations only. Messages, command output, listings and echoed paths are not trigger evidence.
     const command = normalize(event.item.command.replaceAll('\\"', '"'))
     const unwrapped = command.replace(/^(?:"[^"]+"|[^\s]+)\s+(?:-[\w-]+\s+)*-(?:Command|lc|c)\s+["']?/i, '')
@@ -59,7 +59,7 @@ function parseTrace(text, skillRoot) {
       if (/^[A-Za-z0-9_.-]+\/SKILL\.md$/i.test(relative)) detected.add(fold(relative.split('/')[0]))
     }
   }
-  return { detectedSkills: [...detected].sort(), usage: turns ? usage : null, commandExecutions: commands.size, valid: started && turns > 0 && !broken }
+  return { detectedSkills: [...detected].sort(), usage: turns ? usage : null, commandExecutions: commands.size, commands: [...commands.values()], valid: started && turns > 0 && !broken }
 }
 
 function loadCases(dir) {
@@ -99,7 +99,7 @@ function summarize(cases) {
 }
 
 function parseArgs(args) {
-  const opts = { smoke: false, full: false, repetitions: 1, retainGlobalInstructions: false, budgetTokens: null, priorResults: null, continueFrom: null }
+  const opts = { smoke: false, full: false, repetitions: 1, budgetTokens: null, priorResults: null, continueFrom: null }
   const value = i => {
     if (typeof args[i] !== 'string' || !args[i] || args[i].startsWith('--')) throw new Error('Option value is required')
     return args[i]
@@ -108,11 +108,10 @@ function parseArgs(args) {
     if (args[i] === '--smoke') opts.smoke = true
     else if (args[i] === '--full') opts.full = true
     else if (args[i] === '--repetitions') opts.repetitions = Number(value(++i))
-    else if (args[i] === '--retain-global-instructions') opts.retainGlobalInstructions = true
     else if (args[i] === '--budget-tokens') opts.budgetTokens = Number(value(++i))
     else if (args[i] === '--prior-results') opts.priorResults = value(++i)
     else if (args[i] === '--continue-from') opts.continueFrom = value(++i)
-    else throw new Error('usage: node bin/devflow-codex-eval --smoke|--full --budget-tokens <n> [--repetitions <1..1000>] [--retain-global-instructions] [--prior-results <result.json> | --continue-from <budget-stopped full result.json>]')
+    else throw new Error('usage: node bin/devflow-codex-eval --smoke|--full --budget-tokens <n> [--repetitions <1..1000>] [--prior-results <result.json> | --continue-from <budget-stopped full result.json>]')
   }
   if (opts.smoke === opts.full || !Number.isSafeInteger(opts.budgetTokens) || opts.budgetTokens <= 0) throw new Error('Choose exactly one mode and an explicit positive token budget')
   if (!Number.isSafeInteger(opts.repetitions) || opts.repetitions < 1 || opts.repetitions > 1000 || (opts.smoke && opts.repetitions !== 1)) throw new Error('Repetitions must be 1..1000; smoke runs its two cases once')
@@ -125,13 +124,13 @@ function expandCases(cases, repetitions) {
   return Array.from({ length: repetitions }, (_, index) => cases.map(c => ({ ...c, repetition: index + 1 }))).flat()
 }
 
-function continuation(prior, cases, repetitions = 1, retainGlobalInstructions = false) {
+function continuation(prior, cases, repetitions = 1) {
   if (prior.mode !== 'full' || prior.complete !== false || prior.stoppedReason !== 'budget' || prior.model !== MODEL || prior.effort !== EFFORT || prior.timeoutSeconds !== TIMEOUT / 1000 ||
-    (prior.repetitions ?? 1) !== repetitions || (prior.globalInstructionsRetained ?? false) !== retainGlobalInstructions || !safeNumber(prior.priorTokens) || !Array.isArray(prior.cases) || !prior.cases.length || prior.cases.length >= cases.length) throw new Error('Only an incomplete full run stopped by budget with the same repetitions and instruction mode can continue')
+    (prior.repetitions ?? 1) !== repetitions || !safeNumber(prior.priorTokens) || !Array.isArray(prior.cases) || !prior.cases.length || prior.cases.length >= cases.length) throw new Error('Only an incomplete full run stopped by budget with the same repetitions can continue')
   for (const [i, old] of prior.cases.entries()) {
     const expected = cases[i]
     if (old.id !== expected.id || (old.repetition ?? 1) !== (expected.repetition ?? 1) || old.promptHash !== expected.promptHash || old.expectedSkill !== expected.expectedSkill || old.policy !== expected.policy ||
-      old.guardMissing || old.spawnFailed || !old.tokens || !safeNumber(old.tokens.total_tokens)) throw new Error('Continuation cases, policy, usage or isolation do not match')
+      old.spawnFailed || !old.tokens || !safeNumber(old.tokens.total_tokens)) throw new Error('Continuation cases, policy or usage do not match')
   }
   const summary = summarize(prior.cases)
   if (!prior.summary?.usageKnown || prior.summary.totalTokens !== summary.totalTokens) throw new Error('Continuation usage is inconsistent')
@@ -139,62 +138,46 @@ function continuation(prior, cases, repetitions = 1, retainGlobalInstructions = 
 }
 
 function continuationConditions(prior, current) {
-  if (prior.version !== current.version || !prior.runnerHash || prior.runnerHash !== current.runnerHash ||
-    prior.isolation?.readBoundary !== current.isolation.readBoundary || (prior.isolation?.globalInstructionsHash ?? null) !== current.isolation.globalInstructionsHash)
-    throw new Error('Continuation Codex version, runner code, read boundary or global instructions changed')
-}
-
-// Only shell calls produce command items; audits from other tools must not cover a shell call that skipped the guard.
-const guardMissing = (trace, audit) => trace.commandExecutions > 0 && audit.filter(a => a.shell === true).length < trace.commandExecutions
-
-function systemSkills(home) {
-  const disabled = []
-  for (const base of [path.join(os.homedir(), '.agents', 'skills'), path.join(home, 'skills', '.system')]) {
-    if (!fs.existsSync(base)) continue
-    for (const name of fs.readdirSync(base)) disabled.push(path.join(base, name, 'SKILL.md'))
+  for (const key of ['version', 'runnerHash', 'sourceHash', 'globalInstructionsHash']) {
+    if (!prior[key] || prior[key] !== current[key]) throw new Error('Continuation Codex version, runner code, installed skills or global instructions changed (' + key + ')')
   }
-  // Codex seeds these bundled skills on first use of a fresh home.
-  for (const name of ['skill-creator', 'skill-installer', 'openai-docs', 'imagegen']) disabled.push(path.join(home, 'skills', '.system', name, 'SKILL.md'))
-  return [...new Set(disabled)]
 }
 
-function retainGlobalInstructions(sourceHome, home) {
-  const source = path.join(sourceHome, 'AGENTS.md')
-  if (!fs.lstatSync(source).isFile()) throw new Error('Retained global AGENTS.md must be a regular file')
-  const hash = crypto.createHash('sha256').update(fs.readFileSync(source)).digest('hex')
-  fs.symlinkSync(source, path.join(home, 'AGENTS.md'), 'file')
-  const metadata = { hash }
-  fs.writeFileSync(path.join(home, 'eval-instructions.json'), JSON.stringify(metadata) + '\n')
-  return metadata
+// The run measures the installed plugin, so it has to be the repository's skills, byte for byte.
+function skillSnapshot(dir) {
+  const hash = crypto.createHash('sha256')
+  const walk = relative => {
+    for (const name of fs.readdirSync(path.join(dir, relative)).sort()) {
+      const entry = relative ? relative + '/' + name : name
+      const stat = fs.lstatSync(path.join(dir, entry))
+      if (stat.isDirectory()) walk(entry)
+      else if (stat.isFile()) hash.update(entry).update('\0').update(fs.readFileSync(path.join(dir, entry))).update('\0')
+      else throw new Error('Skill snapshot holds a link or special file: ' + entry)
+    }
+  }
+  walk('')
+  return hash.digest('hex')
 }
 
-function checkGlobalInstructions(home) {
-  const metadata = JSON.parse(fs.readFileSync(path.join(home, 'eval-instructions.json'), 'utf8'))
-  const bytes = fs.readFileSync(path.join(home, 'AGENTS.md'))
-  if (crypto.createHash('sha256').update(bytes).digest('hex') !== metadata.hash) throw new Error('Global instructions changed; measurement stopped before the next model call')
-  return { hash: metadata.hash, text: bytes.toString('utf8') }
+function checkInstalled(repoSkills, installedSkills) {
+  const expected = skillSnapshot(repoSkills)
+  if (skillSnapshot(installedSkills) !== expected) throw new Error('The installed devflow skills differ from this repository; update the installed copy before measuring')
+  return expected
 }
 
-function writeEvalConfig(home, options = {}) {
-  const publicRoot = path.join(home, 'plugins', 'cache', 'devflow', 'devflow', '0.1.0')
-  const instructionRead = options.retainGlobalInstructions ? ',' + toml(fs.realpathSync(path.join(home, 'AGENTS.md'))) + '="read"' : ''
-  const settings = [
-    'model=' + toml(MODEL), 'model_reasoning_effort=' + toml(EFFORT), 'approval_policy="never"',
-    'default_permissions="eval"',
-    'permissions.eval.filesystem={":minimal"="read",' + toml(path.join(publicRoot, 'skills')) + '="read",' + toml(path.join(publicRoot, 'docs')) + '="read"' + instructionRead + '}',
-    'permissions.eval.network.enabled=false', 'windows.sandbox="elevated"',
-    'features.hooks=true', 'features.code_mode=false', 'features.apps=false', 'features.multi_agent=false', 'features.memories=false', 'features.shell_snapshot=false', 'web_search="disabled"',
-    'shell_environment_policy.inherit="none"', 'shell_environment_policy.experimental_use_profile=false',
-    'skills.config=[' + systemSkills(home).map(p => '{path=' + toml(p) + ',enabled=false}').join(',') + ']',
-  ]
-  const file = path.join(home, 'config.toml')
-  const installed = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
-  // Top-level settings precede native plugin tables; appending them would change their TOML scope.
-  fs.writeFileSync(file, settings.join('\n') + '\n\n' + installed)
+// Global instructions stay as the host loads them; a change during the run would change what is measured.
+function globalInstructionsHash(home) {
+  const hash = crypto.createHash('sha256')
+  for (const name of ['AGENTS.override.md', 'AGENTS.md']) {
+    const file = path.join(home, name)
+    hash.update(name).update('\0').update(fs.existsSync(file) ? fs.readFileSync(file) : '').update('\0')
+  }
+  return hash.digest('hex')
 }
 
-function configArgs() {
-  return ['--strict-config']
+// The host config stays untouched: writes are blocked and the measured model is fixed per run on the command line.
+function execArgs() {
+  return ['exec', '--json', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only', '-m', MODEL, '-c', 'model_reasoning_effort=' + JSON.stringify(EFFORT), '-']
 }
 
 function cleanEnv(home) {
@@ -212,184 +195,21 @@ function runLocal(args, options) {
   return result.stdout
 }
 
-function guardCommand(home) {
-  const quote = process.platform === 'win32' ? s => "'" + s.replaceAll("'", "''") + "'" : s => "'" + s.replaceAll("'", "'\\''") + "'"
-  const args = [process.execPath, path.join(home, 'eval-guard.cjs'), home].map(quote).join(' ')
-  // Codex uses the thread's shell for hooks; Windows evaluation uses PowerShell.
-  return (process.platform === 'win32' ? '& ' : '') + args
+// Free check before any model call: the native prompt lists all seven devflow skills.
+function preflight(cwd, env, names) {
+  const text = JSON.stringify(JSON.parse(runLocal(['debug', 'prompt-input'], { cwd, env })))
+  const catalog = [...new Set([...text.matchAll(/- ([\w:-]+): /g)].map(m => m[1]))].sort()
+  const missing = names.filter(n => !catalog.includes('devflow:' + n))
+  if (missing.length) throw new Error('The native prompt does not list devflow skills: ' + missing.join(', '))
+  return catalog
 }
 
-function checkGuardCommand(home, cwd, env) {
-  const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
-  const file = path.join(publicRoot, 'skills', 'grilling', 'SKILL.md')
-  const auditFile = path.join(home, 'eval-guard-audit.jsonl')
-  const before = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).length : 0
-  for (const [command, expected] of [["Get-Content -LiteralPath '" + file + "' -Raw", 'allow'], ['whoami', 'deny'], ["Get-Content '" + path.join(home, 'auth.json') + "'", 'deny']]) {
-    const shell = process.platform === 'win32' ? ['pwsh.exe', ['-NoProfile', '-NonInteractive', '-Command', guardCommand(home)]] : ['sh', ['-c', guardCommand(home)]]
-    const run = spawnSync(shell[0], shell[1], { cwd, env, input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8', timeout: 3000, maxBuffer: 65536, windowsHide: true })
-    let decision
-    try { decision = JSON.parse(run.stdout).hookSpecificOutput.permissionDecision } catch {}
-    if (run.status !== 0 || decision !== expected) throw new Error('Evaluation guard shell canary failed before model execution')
-  }
-  const audit = fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).slice(before).map(l => JSON.parse(l))
-  if (JSON.stringify(audit) !== JSON.stringify([{ allowed: true, shell: true }, { allowed: false, shell: true }, { allowed: false, shell: true }])) throw new Error('Evaluation guard shell audit is incomplete')
-}
-
-function prepare(root, taskDir, options = {}) {
-  const home = path.join(taskDir, 'home')
-  const publicRoot = path.join(taskDir, 'plugin')
-  fs.mkdirSync(home)
-  const sourceHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
-  if (options.retainGlobalInstructions) retainGlobalInstructions(sourceHome, home)
-  // Reuse credential bytes without copying them. Never include the auth link in readable roots or result artifacts.
-  const auth = path.join(sourceHome, 'auth.json')
-  if (!fs.lstatSync(auth).isFile()) throw new Error('Existing file authentication is required; no login or credential installation is performed')
-  fs.symlinkSync(auth, path.join(home, 'auth.json'), 'file')
-  if (process.platform === 'win32') {
-    if (!fs.existsSync(path.join(sourceHome, '.sandbox', 'setup_marker.json'))) throw new Error('An existing elevated Windows sandbox is required; setup is not performed')
-    for (const name of ['.sandbox', '.sandbox-secrets', '.sandbox-bin']) {
-      const source = path.join(sourceHome, name)
-      if (!fs.lstatSync(source).isDirectory()) throw new Error('Existing Windows sandbox state is incomplete')
-      fs.symlinkSync(source, path.join(home, name), 'junction')
-    }
-  }
-  const names = fs.readdirSync(path.join(root, 'skills')).sort()
-  if (names.length !== 7) throw new Error('Expected seven devflow skills')
-  const listed = spawnSync('git', ['ls-files', '-z', '--', 'skills', 'docs/specs', 'docs/research', 'docs/design/decisions'], { cwd: root, encoding: 'utf8', windowsHide: true })
-  if (listed.status !== 0) throw new Error('Cannot inventory public source files')
-  const hash = crypto.createHash('sha256')
-  for (const relative of listed.stdout.split('\0').filter(Boolean)) {
-    if (!/^(skills|docs\/(specs|research|design\/decisions))\//.test(relative) || relative.split('/').includes('..')) throw new Error('Invalid public snapshot path')
-    const source = path.join(root, relative)
-    if (!fs.lstatSync(source).isFile()) throw new Error('Snapshot source is not a regular file')
-    const bytes = fs.readFileSync(source)
-    const target = path.join(publicRoot, relative)
-    fs.mkdirSync(path.dirname(target), { recursive: true })
-    fs.writeFileSync(target, bytes, { flag: 'wx' })
-    hash.update(relative).update('\0').update(bytes)
-  }
-  const init = spawnSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', taskDir], { encoding: 'utf8', windowsHide: true })
-  if (init.status !== 0) throw new Error('Cannot create isolated local project root')
-  const marketplace = '.agents/plugins/marketplace.json'
-  const manifest = '.codex-plugin/plugin.json'
-  for (const relative of [marketplace, manifest]) {
-    const source = fs.readFileSync(path.join(root, relative), 'utf8')
-    const json = JSON.parse(source)
-    if (relative === manifest) delete json.hooks
-    fs.mkdirSync(path.dirname(path.join(publicRoot, relative)), { recursive: true })
-    fs.writeFileSync(path.join(publicRoot, relative), JSON.stringify(json) + '\n', { flag: 'wx' })
-    hash.update(relative).update('\0').update(JSON.stringify(json))
-  }
-  const env = cleanEnv(home)
-  runLocal(['plugin', 'marketplace', 'add', publicRoot], { cwd: taskDir, env })
-  runLocal(['plugin', 'add', 'devflow@devflow'], { cwd: taskDir, env })
-  const loadedRoot = path.join(home, 'plugins', 'cache', 'devflow', 'devflow', '0.1.0')
-  if (!fs.existsSync(path.join(loadedRoot, 'skills', 'devflow', 'SKILL.md'))) throw new Error('Isolated devflow cache is missing')
-  fs.writeFileSync(path.join(home, 'eval-public-root.json'), JSON.stringify({ root: loadedRoot }))
-  const guardFile = path.join(home, 'eval-guard.cjs')
-  fs.copyFileSync(path.join(root, 'bin', 'devflow-codex-eval-guard'), guardFile, fs.constants.COPYFILE_EXCL)
-  const command = guardCommand(home)
-  fs.writeFileSync(path.join(home, 'hooks.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', command, timeout: 3 }] }] } }) + '\n')
-  writeEvalConfig(home, options)
-  return { home, names, skillRoot: path.join(loadedRoot, 'skills'), sourceHash: hash.digest('hex') }
-}
-
-function hookMetadata(home, cwd, env) {
-  return new Promise((resolve, reject) => {
-    const child = spawn('codex', ['app-server', '--stdio', ...configArgs()], { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
-    let buffer = '', settled = false
-    const end = (err, data) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      child.stdin.end()
-      child.kill()
-      err ? reject(err) : resolve(data)
-    }
-    const timer = setTimeout(() => end(new Error('Hook metadata lookup timed out')), 15000)
-    child.on('error', () => end(new Error('Cannot start local hook metadata lookup')))
-    child.on('exit', () => { if (!settled) end(new Error('Hook metadata lookup exited early')) })
-    child.stdout.setEncoding('utf8')
-    child.stdout.on('data', chunk => {
-      buffer += chunk
-      if (buffer.length > MAX_OUTPUT) return end(new Error('Hook metadata output too large'))
-      let at
-      while ((at = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, at); buffer = buffer.slice(at + 1)
-        let message; try { message = JSON.parse(line) } catch { return end(new Error('Invalid hook metadata JSON')) }
-        if (message.error) return end(new Error('Hook metadata request failed'))
-        if (message.id === 1) {
-          child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n')
-          child.stdin.write(JSON.stringify({ id: 2, method: 'hooks/list', params: { cwds: [cwd] } }) + '\n')
-        } else if (message.id === 2) end(null, message.result)
-      }
-    })
-    child.stdin.on('error', () => {})
-    child.stdin.write(JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'devflow-eval-preflight', version: '1' } } }) + '\n')
-  })
-}
-
-async function trustGuard(home, cwd, env) {
-  const metadata = await hookMetadata(home, cwd, env)
-  const hooks = metadata.data?.flatMap(e => e.hooks) || []
-  const command = guardCommand(home)
-  if (hooks.length !== 1 || hooks[0].eventName !== 'preToolUse' || hooks[0].matcher !== '.*' || hooks[0].command !== command ||
-    normalize(hooks[0].sourcePath) !== normalize(path.join(home, 'hooks.json')) || !/^sha256:[a-f0-9]{64}$/.test(hooks[0].currentHash)) throw new Error('Unexpected evaluation hook metadata')
-  fs.appendFileSync(path.join(home, 'config.toml'), '\n[hooks.state.' + JSON.stringify(hooks[0].key) + ']\ntrusted_hash = ' + JSON.stringify(hooks[0].currentHash) + '\n')
-  const verified = await hookMetadata(home, cwd, env)
-  const trusted = verified.data?.flatMap(e => e.hooks) || []
-  if (trusted.length !== 1 || !trusted[0].enabled || trusted[0].trustStatus !== 'trusted') throw new Error('Evaluation guard is not trusted and enabled')
-  return { guardHash: hooks[0].currentHash, trusted: true }
-}
-
-async function preflight(home, names, taskDir, env, options = {}) {
-  const cwd = path.join(taskDir, 'preflight')
-  fs.mkdirSync(cwd)
-  // app-server validates the file strictly; debug and sandbox do not accept --strict-config in 0.160.0.
-  const trusted = await trustGuard(home, cwd, env)
-  checkGuardCommand(home, cwd, env)
-  const raw = runLocal(['debug', 'prompt-input'], { cwd, env })
-  const input = JSON.parse(raw)
-  const text = JSON.stringify(input)
-  const catalog = [...text.matchAll(/- ([\w:-]+): /g)].map(m => m[1].replace(/^devflow:/, '')).sort()
-  if (JSON.stringify(catalog) !== JSON.stringify(names)) throw new Error('Preflight catalog is not exactly the seven devflow skills')
-  // Only the explicitly retained global document may enter a fresh evaluation context.
-  let globalInstructionsHash = null
-  if (options.retainGlobalInstructions) {
-    const instructions = checkGlobalInstructions(home)
-    if (!instructions.text.trim() || !text.includes(JSON.stringify(instructions.text.trim()).slice(1, -1))) throw new Error('Retained global instructions are not present in the native prompt')
-    globalInstructionsHash = instructions.hash
-  } else if (text.includes('Global Agent Operating Contract')) throw new Error('Private context present in preflight')
-  if (text.includes('recent context')) throw new Error('Memory context present in preflight')
-  const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
-  const allowed = path.join(publicRoot, 'skills', names[0], 'SKILL.md')
-  const guard = require('./devflow-codex-eval-guard')
-  const allowedInput = { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: "Get-Content -LiteralPath '" + allowed + "' -Raw" } }
-  if (!guard.permits(allowedInput, publicRoot) || guard.permits({ ...allowedInput, tool_input: { command: "Get-Content '" + path.join(home, 'auth.json') + "'" } }, publicRoot) ||
-    guard.permits({ ...allowedInput, tool_input: { command: 'whoami' } }, publicRoot)) throw new Error('Evaluation guard self-check failed')
-  const command = process.platform === 'win32' ? ['pwsh.exe', '-NoProfile', '-NonInteractive', '-Command',
-    "$ErrorActionPreference='Stop'; if (!(Test-Path -LiteralPath '" + allowed.replaceAll("'", "''") + "')) { exit 11 }; try { Set-Content -LiteralPath 'write-canary.txt' -Value 'test'; exit 13 } catch {}; try { [void](Invoke-WebRequest -Uri 'https://example.com' -TimeoutSec 3); exit 14 } catch {}; Write-Output 'isolation-ok'"] :
-    ['sh', '-c', 'test -r "$1" && ! touch write-canary && ! curl --max-time 3 https://example.com >/dev/null 2>&1', 'sh', allowed]
-  runLocal(['sandbox', '-P', 'eval', ...command], { cwd, env })
-  if (fs.existsSync(path.join(cwd, 'write-canary.txt'))) throw new Error('Sandbox write denial failed')
-  const denied = path.join(home, 'private-read-canary.txt')
-  fs.writeFileSync(denied, 'Public canary outside the allowed snapshot; no credentials.')
-  // Probe the credential link and sandbox secrets themselves, not only an unrelated path. Output is discarded.
-  const probes = [denied, path.join(home, 'auth.json'), path.join(home, '.sandbox-secrets')].filter(p => fs.existsSync(p))
-  const readProbe = process.platform === 'win32' ? ['pwsh.exe', '-NoProfile', '-NonInteractive', '-Command',
-    'foreach ($p in @(' + probes.map(p => "'" + p.replaceAll("'", "''") + "'").join(',') + ')) { try { if (Test-Path -LiteralPath $p -PathType Container) { [void](Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop) } else { [void](Get-Content -LiteralPath $p -ErrorAction Stop) }; exit 19 } catch {} }; Write-Output \'read-denied\''] :
-    ['sh', '-c', 'for p; do if [ -d "$p" ]; then ls "$p/" >/dev/null 2>&1 && exit 19; else cat "$p" >/dev/null 2>&1 && exit 19; fi; done; exit 0', 'sh', ...probes]
-  runLocal(['sandbox', '-P', 'eval', ...readProbe], { cwd, env })
-  return { catalog, privateContext: Boolean(options.retainGlobalInstructions), globalInstructionsHash, sandboxChecked: true, ...trusted, readBoundary: 'os-snapshot-read-allowlist-and-evaluation-hook' }
-}
-
-function execute(c, cwd, home, env, limits = {}) {
+function execute(c, cwd, env, skillRoot, limits = {}) {
   return new Promise(resolve => {
     const start = Date.now()
-    const auditFile = path.join(home, 'eval-guard-audit.jsonl')
-    const auditBefore = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).length : 0
+    const before = new Set(fs.readdirSync(cwd))
     let stdout = '', size = 0, timedOut = false, overflow = false, spawnFailed = false, stopped = false, finished = false, stopWatchdog
-    const child = spawn(limits.executable || 'codex', ['exec', '--json', '--ephemeral', '--skip-git-repo-check', ...configArgs(), '-'],
+    const child = spawn(limits.executable || 'codex', execArgs(),
       { cwd, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'] })
     const stop = () => {
       if (stopped || !child.pid) return
@@ -417,16 +237,14 @@ function execute(c, cwd, home, env, limits = {}) {
       finished = true
       clearTimeout(timer)
       clearTimeout(stopWatchdog)
-      const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
-      const trace = parseTrace(stdout, path.join(publicRoot, 'skills'))
-      const audit = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).slice(auditBefore).map(l => JSON.parse(l)) : []
-      const missing = guardMissing(trace, audit)
-      trace.valid = trace.valid && exitCode === 0 && !timedOut && !overflow && !spawnFailed && !missing
+      const trace = parseTrace(stdout, skillRoot)
+      // The case folder is the run's writable root unless the sandbox holds; anything new in it means it did not.
+      const cwdWrites = fs.readdirSync(cwd).filter(n => !before.has(n)).length
+      trace.valid = trace.valid && exitCode === 0 && !timedOut && !overflow && !spawnFailed && cwdWrites === 0
       resolve({ id: c.id, repetition: c.repetition ?? 1, expectedSkill: c.expectedSkill, policy: c.policy, promptHash: c.promptHash,
         detectedSkills: trace.detectedSkills, result: score(c, trace), tokens: trace.usage, durationMs: Date.now() - start,
         exitCode, timedOut, overflow, spawnFailed, processStopUnconfirmed, ...(processStopUnconfirmed ? { processId: child.pid } : {}),
-        guardMissing: missing, guardCalls: audit.length, guardAllowed: audit.filter(a => a.allowed).length,
-        stdoutHash: crypto.createHash('sha256').update(stdout).digest('hex') })
+        cwdWrites, commands: trace.commands })
     }
     child.on('close', exitCode => finish(exitCode))
   })
@@ -437,6 +255,17 @@ async function main(args) {
   const cases = loadCases(path.join(ROOT, 'evals', 'trigger'))
   if (cases.length !== 24) throw new Error('Expected the same 24 Claude trigger cases')
   const selected = expandCases(opts.smoke ? ['grilling--grill-en', 'none--trivia-en'].map(id => cases.find(c => c.id === id)) : cases, opts.repetitions)
+  const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+  const env = cleanEnv(home)
+  const pluginVersion = JSON.parse(fs.readFileSync(path.join(ROOT, '.codex-plugin', 'plugin.json'), 'utf8')).version
+  const skillRoot = path.join(home, 'plugins', 'cache', 'devflow', 'devflow', pluginVersion, 'skills')
+  const names = fs.readdirSync(path.join(ROOT, 'skills')).sort()
+  const current = {
+    version: runLocal(['--version'], { cwd: ROOT, env }).trim(),
+    runnerHash: crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),
+    sourceHash: checkInstalled(path.join(ROOT, 'skills'), skillRoot),
+    globalInstructionsHash: globalInstructionsHash(home),
+  }
   let priorTokens = 0
   let continued = null
   if (opts.priorResults || opts.continueFrom) {
@@ -445,65 +274,53 @@ async function main(args) {
     if (!priorPath.startsWith(resultsRoot) || !fs.lstatSync(priorPath).isFile() || fs.realpathSync(priorPath) !== priorPath) throw new Error('Prior results must be a regular file inside evals/results')
     const prior = JSON.parse(fs.readFileSync(priorPath, 'utf8'))
     if (prior.model !== MODEL || prior.effort !== EFFORT || !prior.summary?.usageKnown || !safeNumber(prior.summary.totalTokens)) throw new Error('Prior result usage or environment does not match')
-    if (opts.continueFrom) continued = continuation(prior, selected, opts.repetitions, opts.retainGlobalInstructions)
+    if (opts.continueFrom) {
+      continuationConditions(prior, current)
+      continued = continuation(prior, selected, opts.repetitions)
+    }
     priorTokens = continued ? continued.priorTokens : prior.priorTokens + prior.summary.totalTokens
     const charged = prior.priorTokens + prior.summary.totalTokens
     if (!safeNumber(priorTokens) || !safeNumber(charged) || charged >= opts.budgetTokens) throw new Error('Prior usage already exhausted the budget')
   }
-  const runnerHash = crypto.createHash('sha256').update(fs.readFileSync(__filename)).update(fs.readFileSync(path.join(__dirname, 'devflow-codex-eval-guard'))).digest('hex')
-  const version = runLocal(['--version'], { cwd: ROOT, env: cleanEnv(process.env.CODEX_HOME || path.join(os.homedir(), '.codex')) }).trim()
   const work = path.join(ROOT, '.work')
   fs.mkdirSync(work, { recursive: true })
   const taskDir = fs.mkdtempSync(path.join(work, 'codex-eval-'))
-  let unconfirmedProcess = false
-  try {
-  const prepared = prepare(ROOT, taskDir, opts)
-  if (continued && continued.sourceHash !== prepared.sourceHash) throw new Error('Public skill/document snapshot changed; continuation would change the measurement target')
-  const env = cleanEnv(prepared.home)
-  const isolation = await preflight(prepared.home, prepared.names, taskDir, env, opts)
-  if (continued) continuationConditions(JSON.parse(fs.readFileSync(path.resolve(ROOT, opts.continueFrom), 'utf8')), { version, runnerHash, isolation })
+  const preflightDir = path.join(taskDir, 'preflight')
+  fs.mkdirSync(preflightDir)
+  const catalog = preflight(preflightDir, env, names)
   const resultDir = path.join(ROOT, 'evals', 'results', new Date().toISOString().replace(/[:.]/g, '-') + '-codex-' + (opts.smoke ? 'smoke' : 'full'))
   fs.mkdirSync(resultDir, { recursive: true })
-  const report = { host: 'codex', version, model: MODEL, effort: EFFORT, timeoutSeconds: TIMEOUT / 1000, mode: opts.smoke ? 'smoke' : 'full',
-    budgetTokens: opts.budgetTokens, priorTokens, repetitions: opts.repetitions, globalInstructionsRetained: opts.retainGlobalInstructions,
-    activePlugins: ['devflow'], runner: 'devflow-codex-eval', runnerHash, sourceHash: prepared.sourceHash, isolation, startedAt: new Date().toISOString(),
+  const report = { host: 'codex', ...current, model: MODEL, effort: EFFORT, sandbox: 'read-only', codexHome: 'real', timeoutSeconds: TIMEOUT / 1000,
+    mode: opts.smoke ? 'smoke' : 'full', budgetTokens: opts.budgetTokens, priorTokens, repetitions: opts.repetitions, catalog,
+    runner: 'devflow-codex-eval', startedAt: new Date().toISOString(),
     ...(continued ? { continuedFrom: normalize(path.relative(ROOT, path.resolve(ROOT, opts.continueFrom))), continuedAtCase: continued.cases.length } : {}),
     cases: continued ? [...continued.cases] : [], summary: summarize(continued ? continued.cases : []), complete: false, stoppedReason: null }
   const save = () => fs.writeFileSync(path.join(resultDir, 'result.json'), JSON.stringify(report, null, 2) + '\n')
   save()
+  let keep = false
   for (const c of selected.slice(continued ? continued.cases.length : 0)) {
     if (!report.summary.usageKnown || priorTokens + report.summary.totalTokens >= opts.budgetTokens) { report.stoppedReason = report.summary.usageKnown ? 'budget' : 'unknown-usage'; break }
-    if (opts.retainGlobalInstructions) checkGlobalInstructions(prepared.home)
+    if (globalInstructionsHash(home) !== current.globalInstructionsHash) { report.stoppedReason = 'global-instructions-changed'; break }
     const cwd = path.join(taskDir, c.id + (opts.repetitions > 1 ? '--r' + c.repetition : ''))
     fs.mkdirSync(cwd)
-    const result = await execute(c, cwd, prepared.home, env)
-    if (result.processStopUnconfirmed) unconfirmedProcess = true
+    const result = await execute(c, cwd, env, skillRoot)
     report.cases.push(result)
     report.summary = summarize(report.cases)
     save()
     process.stdout.write(c.id + ' [' + c.repetition + '/' + opts.repetitions + ']: ' + result.result + ', ' + (result.tokens?.total_tokens ?? 'unknown') + ' tokens, ' + (result.durationMs / 1000).toFixed(1) + 's\n')
-    if (result.spawnFailed) { report.stoppedReason = 'process-stop-unconfirmed'; break }
-    if (result.guardMissing) { report.stoppedReason = 'guard-execution-unverified'; break }
+    if (result.spawnFailed) { report.stoppedReason = 'process-stop-unconfirmed'; keep = true; break }
+    if (result.cwdWrites) { report.stoppedReason = 'sandbox-write'; keep = true; break }
   }
   report.complete = report.cases.length === selected.length
   report.finishedAt = new Date().toISOString()
   if (!report.summary.usageKnown && !report.stoppedReason) report.stoppedReason = 'unknown-usage'
   save()
+  // Every folder here was created empty by this run and checked empty after its case; keep them only as evidence of a failure.
+  if (keep) process.stderr.write('Case folders are kept for inspection in ' + normalize(path.relative(ROOT, taskDir)) + '\n')
+  else fs.rmSync(taskDir, { recursive: true, force: true })
   process.stdout.write('Result: ' + normalize(path.relative(ROOT, path.join(resultDir, 'result.json'))) + '\n')
   if (!report.complete || report.summary.invalid || !report.summary.thresholdPassed) process.exitCode = 1
-  } finally {
-  // Unlink only task-created references; never traverse or remove their credential/sandbox targets.
-  if (unconfirmedProcess) process.stderr.write('Process stop is unconfirmed; task references are retained for caller recovery. No further case was started.\n')
-  const left = []
-  for (const name of ['auth.json', 'AGENTS.md', '.sandbox', '.sandbox-secrets', '.sandbox-bin']) {
-    if (unconfirmedProcess) break
-    const link = path.join(taskDir, 'home', name)
-    try { if (fs.lstatSync(link).isSymbolicLink()) fs.unlinkSync(link); else left.push(name) } catch (e) { if (e.code !== 'ENOENT') left.push(name) }
-  }
-  // A replaced link (for example a refreshed auth.json written in place of it) may hold credentials: name it, never read it.
-  if (left.length) process.stderr.write('Not removed: ' + left.join(', ') + ' in ' + normalize(path.relative(ROOT, path.join(taskDir, 'home'))) + ' are not task-created links or could not be unlinked; remove them by hand.\n')
-  }
 }
 
-module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, writeEvalConfig, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand, continuation, continuationConditions, guardMissing, expandCases, retainGlobalInstructions, checkGlobalInstructions }
+module.exports = { parseTrace, loadCases, score, parseArgs, summarize, cleanEnv, preflight, execute, execArgs, skillSnapshot, checkInstalled, globalInstructionsHash, continuation, continuationConditions, expandCases }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

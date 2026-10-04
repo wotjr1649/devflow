@@ -92,62 +92,39 @@ Codex 실행기는 수동 opt-in이다. 기본 검사·CI·pre-push는 모델 �
 양성·특정 스킬 음성 판정을 유지한다. `none--*`는 스킬이 하나라도 검출되면 실패한다.
 
 ```bash
-node bin/devflow-codex-eval --smoke --budget-tokens 1000000
-node bin/devflow-codex-eval --full --budget-tokens 1000000 --prior-results evals/results/<smoke>/result.json
-# 사용자가 전역 지침 유지·같은 24개 사례 각 10회를 선택한 후속 조건:
-node bin/devflow-codex-eval --full --repetitions 10 --retain-global-instructions --budget-tokens 100000000
-# 예산 중단 뒤, 사용자 결정으로 총 예산을 늘리고 미실행 사례만 이어갈 때:
-node bin/devflow-codex-eval --full --budget-tokens <new-total-budget> --continue-from evals/results/<partial-full>/result.json
+node bin/devflow-codex-eval --smoke --budget-tokens 200000
+node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens 4000000 --prior-results evals/results/<smoke>/result.json
+# 예산 중단 뒤, 사용자 결정으로 총 예산을 늘리고 미실행 시도만 이어갈 때:
+node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-budget> --continue-from evals/results/<partial-full>/result.json
 ```
 
-- smoke는 양성·none 각 하나다. 전체 실행의 기본은 24개를 각각 한 번 순차 실행하며 재시도하지 않는다.
-  `--repetitions <1..1000>`은 full에서 같은 24개를 지정한 횟수만큼 반복한다. 각 시도는 새 세션·새 빈 폴더이며,
-  반복 번호를 결과에 기록한다. invalid·실패한 시도를 대체하지 않는다. smoke는 두 사례를 한 번씩만 실행한다.
+- smoke는 양성·none 각 하나를 한 번씩 실행한다. full은 24개를 `--repetitions <1..1000>`회(기본 1) 순차 실행하며
+  재시도하지 않는다. 각 시도는 새 세션·새 빈 폴더이고 반복 번호를 결과에 기록한다. invalid·실패한 시도를 대체하지 않는다.
   budget 플래그가 없으면 모델 프로세스를 시작하지 않는다. `--prior-results`의 사용량도 예산에 합친다.
-  `--continue-from`은 예산 때문에 중단된 full에서만, 기존 사례·정책·프롬프트 해시·공개 snapshot이 일치할 때
-  미실행 시도만 실행한다. 반복 횟수·전역 지침 모드·Codex 버전·실행기와 guard 코드 해시·읽기 경계도 같아야 한다.
-  이전 사례의 결과와 사용량을 합치며,
-  기록된 시도를 재실행하거나 자동으로 이어가지 않는다.
-  snapshot이 다르면 중단하므로 이어가기 전에 평가 대상 문서를 바꾸지 않는다.
+  `--continue-from`은 예산 때문에 중단된 full에서만, 기존 사례·정책·프롬프트 해시·반복 횟수와 Codex 버전·실행기 코드 해시·
+  설치된 스킬 해시·전역 지침 해시가 모두 같을 때 미실행 시도만 실행한다. 기록된 시도를 재실행하지 않는다.
 - `gpt-6.1-sol/high`, 사례당 300초다. 모델·effort·시간 제한·측정 대상·예산을 바꾸기 전에 사용자가 결정한다.
-- 실행별 작업 폴더는 시작할 때 비어 있다. 별도의 임시 CODEX_HOME에 공개 snapshot으로 만든 devflow만 설치한다.
-  기본 모드는 개인 지침을 제외한다. `--retain-global-instructions`를 사용자가 선택하면 기존 CODEX_HOME의
-  정규 파일 AGENTS.md만 링크로 참조하고 해당 파일 읽기만 추가로 허용한다. 원본을 수정하거나 본문을 결과에 저장하지 않는다.
-  사전 검사에서 실제 prompt에 본문이 포함됐는지 확인하고, 매 시도 전 해시가 달라지면 다음 모델 호출을 중단한다.
-  이어가기에서도 지침 해시가 같아야 한다. 다른 설정의 추가 지침을 자동으로 가져오는 옵션은 아니다.
-  기억·다른 플러그인·MCP·apps·web search는 포함하지 않는다. catalogue가 devflow 7개와 다르면 비용 없이 멈춘다.
-  평가 조건은 해당 home의 `config.toml`에 저장하며 native plugin 활성화 설정과 guard 신뢰 기록을 보존한다.
-  사전 검사 app-server와 평가 exec에 `--strict-config`를 적용해 알 수 없는 설정을 거부하고,
-  같은 조건을 명령행 `-c`로 중복 지정하지 않는다. 이 옵션을 지원하지 않는 debug·sandbox 명령은 파일을 그대로 읽는다.
-- Windows에서는 이미 설치된 elevated backend를 재사용한다. 인증과 sandbox 상태는 값 복사 없이 임시 링크로 참조하고,
-  종료·실패 시 전역 지침을 포함해 작업이 만든 링크만 제거한다. 링크가 아닌 것으로 바뀌었거나 지우지 못한 이름은
-  알리고 남긴다. 강제 종료되면 링크가 git이 무시하는 `.work/` 아래에 남는다. 새 계정·방화벽·호스트 설정을 만들어 실행하지 않는다.
-- 평가 전용 PreToolUse guard는 공개 snapshot 안의 단일 literal 읽기·목록·검색 명령만 허용한다.
-  OS filesystem profile도 `:minimal`과 공개 skills·docs 및 명시적으로 유지한 전역 지침 파일의 읽기만 허용한다.
-  허용 범위 밖의 비밀 없는 canary와 실제 인증 링크·sandbox 비밀 폴더의 읽기 거부,
-  쓰기·명령 network 거부 검사를 모델 호출 전에 통과해야 한다. 훅 오류 시 도구가 계속될 수 있으므로 guard만으로
-  읽기 격리를 주장하지 않는다. 제한 profile을 지원하지 않는 backend에서는 모델 호출 전에 중단하며 넓은 읽기로 우회하지 않는다.
-  실제 guard 정의의 신뢰 해시를 확인하고
-  신뢰 우회 옵션을 쓰지 않는다. 모델 호출 전 실제 셸로 허용·차단 canary와 감사 기록을 검사하고,
-  실행 중 셸 명령 수보다 셸 도구의 guard 감사 기록이 적으면 invalid로 중단한다. 다른 도구의 감사 기록은 세지 않는다.
-  개수 비교이므로 명령별 대응을 증명하지는 않는다.
-  공개 코드 복사본에서 평가용 manifest의 제품 훅을 제외하며 실제 설치본은 바꾸지 않는다.
-- 현재 codex-cli 0.160.0의 Windows elevated backend는 이 제한 profile을 거부했다. 이 환경에서는 실행할 수 없으며,
-  다른 호스트의 실제 지원은 그 호스트에서 같은 사전 검사를 통과해야 확인된다.
-- 해당 자식의 stdout JSONL만 읽는다. `item.*`의 `command_execution.command`가 대상 snapshot의
+- 사용자의 실제 CODEX_HOME에서 돈다. 호스트가 평소 싣는 전역 지침·활성 플러그인·system 스킬이 그대로 들어가며,
+  설정 파일은 바꾸지 않는다. 명령행으로 `--sandbox read-only`와 모델·effort를 고정하고 `--ephemeral`로 세션을 남기지 않는다.
+  자식에게는 CODEX_HOME과 실행에 필요한 최소 환경 변수만 넘긴다. 평소 사용과의 차이는 쓰기 차단 하나다.
+- 측정 대상은 설치된 플러그인이다. 설치된 devflow 스킬이 저장소의 `skills/`와 바이트 단위로 다르면 비용 없이 멈춘다.
+  모델 호출 전 `codex debug prompt-input`으로 devflow 7개 스킬이 목록에 있는지 확인하고 목록 전체를 결과에 남긴다.
+  매 시도 전 전역 지침 해시가 시작 때와 다르면 멈춘다.
+- 시도가 끝난 뒤 작업 폴더에 새 항목이 있으면 쓰기 차단이 듣지 않은 것이므로 invalid로 두고 더 진행하지 않는다.
+  작업 폴더 밖의 쓰기는 이 검사로 보이지 않는다. 모델은 사용자 권한으로 파일을 읽을 수 있으며 이는 평소 사용과 같다.
+- 해당 자식의 stdout JSONL만 읽는다. `item.*`의 `command_execution.command`가 설치된 devflow의
   `skills/<name>/SKILL.md`를 literal로 읽으려 한 경우 검출한다. 메시지·명령 출력·echo·목록의 경로는 증거가 아니다.
-  guard가 허용하는 `rg` 검색과 이스케이프된 따옴표 형태도 읽기로 본다. 읽기 실패도 시도로 검출한다.
+  `rg` 검색과 이스케이프된 따옴표 형태도 읽기로 본다. 읽기 실패도 시도로 검출한다.
   변수로 조립한 경로, 앞선 명령 뒤의 읽기, 상대 경로, 읽기 없이 이미 주어진 본문을 적용하는 경우는 미검출이다.
   이는 스킬 참조 시도의 대리 지표이며 실제 지침 적용이나 결과 품질을 재지 않는다.
 - 사용량은 `turn.completed.usage`의 input+output 합계다. cached input은 input에 포함되므로 다시 더하지 않는다.
   종료 후 예산에 닿으면 다음 사례를 시작하지 않는다. 진행 중인 turn이 예산을 넘는 것은 막을 수 없다.
   사용량을 얻지 못하면 추가 실행을 중단한다. 시간 초과·비정상 종료·불완전 JSONL은 invalid로 따로 집계하고 성공률에서 제외한다.
-  종료 요청 뒤 5초 안에 close가 없으면 프로세스 종료 미확인으로 기록하고 더 진행하지 않는다. 해당 PID와 임시 참조를
-  보존해 호출자가 종료를 확인하도록 하며, 살아 있을 수 있는 실행의 상태를 정리하거나 다른 실행을 시작하지 않는다.
+  종료 요청 뒤 5초 안에 close가 없으면 프로세스 종료 미확인으로 기록하고 더 진행하지 않는다. 해당 PID와 작업 폴더를
+  보존해 호출자가 종료를 확인하도록 한다.
 - 기대 스킬·검출 스킬·pass/fail/invalid·반복 번호·사용량·시간·환경·완료 여부는 Claude 결과 옆 `evals/results/`에 저장한다.
-  실제 실행기·활성 플러그인·전역 지침 유지 여부와 검증한 지침 해시를 기록한다. plugin-eval의 활성화 여부를
-  plugin-eval benchmark 엔진으로 측정했다는 뜻으로 기록하지 않는다.
-  원시 stdout·stderr와 세션 기록은 저장하거나 읽지 않는다. 실행 오류와 평가 실패는 종료 코드 1이며 완료 조건과 구별한다.
+  시도마다 명령 문자열(명령 100개, 각 2000자까지)을 남겨 파서가 바뀌어도 다시 채점할 수 있게 한다. 명령 출력·메시지·
+  stderr와 세션 기록은 저장하거나 읽지 않는다. 결과 폴더는 git이 무시한다. 실행 오류와 평가 실패는 종료 코드 1이다.
 
 격리 방식과 대안의 이유: [ADR-0016](../design/decisions/ADR-0016-codex-trigger-eval.md).
 

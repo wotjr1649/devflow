@@ -57,10 +57,12 @@ test('multiple turns add usage without adding cached input to the total', () => 
   assert.equal(result.usage.cached_input_tokens, 150)
 })
 
-test('all 24 Claude cases keep body and positive, targeted negative, none policies', () => {
-  const cases = loadCases(path.join(__dirname, '..', 'evals', 'trigger'))
-  assert.equal(cases.length, 24)
-  assert.equal(cases.filter(c => c.policy === 'required').length, 14)
+test('every Claude case keeps body and positive, targeted negative, none policies (#44: no fixed count)', () => {
+  const dir = path.join(__dirname, '..', 'evals', 'trigger')
+  const cases = loadCases(dir)
+  assert.equal(cases.length, fs.readdirSync(dir).length)
+  assert.equal(cases.filter(c => c.policy === 'required').length, 16)
+  assert.equal(cases.filter(c => c.policy === 'forbidden').length, 11)
   assert.equal(cases.filter(c => c.policy === 'none').length, 2)
   const negative = cases.find(c => c.id === 'pr-review-workflow--start-request')
   assert.equal(score(negative, { valid: true, detectedSkills: ['development-start'] }), 'pass')
@@ -68,6 +70,7 @@ test('all 24 Claude cases keep body and positive, targeted negative, none polici
   assert.equal(score(cases.find(c => c.policy === 'none'), { valid: true, detectedSkills: ['grilling'] }), 'fail')
   assert.equal(score(cases[0], { valid: false, detectedSkills: [] }), 'invalid')
   assert.ok(!cases[0].prompt.startsWith('---'))
+  assert.throws(() => loadCases(tmpdir('codex-eval-no-cases-')), /No trigger cases/)
 })
 
 test('no budget or ambiguous mode fails before any model process can start', () => {
@@ -75,12 +78,12 @@ test('no budget or ambiguous mode fails before any model process can start', () 
   assert.equal(parseArgs(['--full', '--budget-tokens', '1000000']).budgetTokens, 1000000)
 })
 
-test('240 trials preserve all 24 prompts and identify ten distinct attempts per case', () => {
+test('ten repetitions preserve every prompt and identify ten distinct attempts per case', () => {
   const cases = loadCases(path.join(__dirname, '..', 'evals', 'trigger'))
   const opts = parseArgs(['--full', '--repetitions', '10', '--budget-tokens', '100000000'])
   assert.equal(opts.repetitions, 10)
   const trials = expandCases(cases, opts.repetitions)
-  assert.equal(trials.length, 240)
+  assert.equal(trials.length, cases.length * 10)
   for (const c of cases) {
     const attempts = trials.filter(trial => trial.id === c.id)
     assert.deepEqual(attempts.map(trial => trial.repetition), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
@@ -95,13 +98,14 @@ test('240 trials preserve all 24 prompts and identify ten distinct attempts per 
 test('repeated-run continuation resumes after the recorded prefix without replacing invalid attempts', () => {
   const cases = loadCases(path.join(__dirname, '..', 'evals', 'trigger'))
   const trials = expandCases(cases, 10)
-  const recorded = trials.slice(0, 25).map(c => ({ ...c, result: c.repetition === 2 ? 'invalid' : 'pass', tokens: { total_tokens: 10 }, spawnFailed: false }))
-  const prior = { mode: 'full', repetitions: 10, complete: false, stoppedReason: 'budget', model: 'gpt-6.1-sol', effort: 'high', timeoutSeconds: 300, priorTokens: 0, cases: recorded, summary: { usageKnown: true, totalTokens: 250 }, sourceHash: 'public-snapshot' }
-  assert.equal(continuation(prior, trials, 10).cases.length, 25)
-  assert.equal(trials[25].repetition, 2)
-  assert.notEqual(trials[25].id, trials[24].id)
+  const n = cases.length
+  const recorded = trials.slice(0, n + 1).map(c => ({ ...c, result: c.repetition === 2 ? 'invalid' : 'pass', tokens: { total_tokens: 10 }, spawnFailed: false }))
+  const prior = { mode: 'full', repetitions: 10, complete: false, stoppedReason: 'budget', model: 'gpt-6.1-sol', effort: 'high', timeoutSeconds: 300, priorTokens: 0, cases: recorded, summary: { usageKnown: true, totalTokens: (n + 1) * 10 }, sourceHash: 'public-snapshot' }
+  assert.equal(continuation(prior, trials, 10).cases.length, n + 1)
+  assert.equal(trials[n + 1].repetition, 2)
+  assert.notEqual(trials[n + 1].id, trials[n].id)
   assert.throws(() => continuation(prior, trials, 1))
-  assert.throws(() => continuation({ ...prior, cases: [...recorded.slice(0, 24), { ...recorded[24], repetition: 1 }] }, trials, 10))
+  assert.throws(() => continuation({ ...prior, cases: [...recorded.slice(0, n), { ...recorded[n], repetition: 1 }] }, trials, 10))
 })
 
 test('invalid runs stay visible and are excluded from rates', () => {

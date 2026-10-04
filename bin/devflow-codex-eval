@@ -15,6 +15,7 @@ const normalize = s => s.replaceAll('\\', '/').replace(/\/+$/, '')
 const toml = s => JSON.stringify(normalize(s))
 const usageKeys = ['input_tokens', 'cached_input_tokens', 'output_tokens']
 const safeNumber = n => Number.isSafeInteger(n) && n >= 0
+const READ = /^(?:Get-Content|cat|head|tail|sed|rg|readFileSync|readFile|read_text)\b/i
 
 function parseTrace(text, skillRoot) {
   const detected = new Set()
@@ -41,11 +42,11 @@ function parseTrace(text, skillRoot) {
     if (!/^item\./.test(event.type || '') || event.item?.type !== 'command_execution' || typeof event.item.command !== 'string') continue
     commands.add(event.item.id || event.item.command)
     // Literal read operations only. Messages, command output, listings and echoed paths are not trigger evidence.
-    const command = normalize(event.item.command)
+    const command = normalize(event.item.command.replaceAll('\\"', '"'))
     const unwrapped = command.replace(/^(?:"[^"]+"|[^\s]+)\s+(?:-[\w-]+\s+)*-(?:Command|lc|c)\s+["']?/i, '')
-    if (!/^(?:Get-Content|cat|head|tail|sed|readFileSync|readFile|read_text)\b/i.test(unwrapped)) continue
+    if (!READ.test(unwrapped) || /^rg\b.*\s--files\b/i.test(unwrapped)) continue
     // Tokenize literal operands of the first read; quoted echo text and later commands are data.
-    const operands = unwrapped.replace(/^(?:Get-Content|cat|head|tail|sed|readFileSync|readFile|read_text)\b/i, '')
+    const operands = unwrapped.replace(READ, '')
     for (const m of operands.matchAll(/'([^']*)'|"([^"]*)"|([;|&])|([^\s'";|&]+)/g)) {
       if (m[3]) break
       const file = m[1] ?? m[2] ?? m[4]
@@ -134,6 +135,15 @@ function continuation(prior, cases, repetitions = 1, retainGlobalInstructions = 
   return { cases: prior.cases, priorTokens: prior.priorTokens, sourceHash: prior.sourceHash }
 }
 
+function continuationConditions(prior, current) {
+  if (prior.version !== current.version || !prior.runnerHash || prior.runnerHash !== current.runnerHash ||
+    prior.isolation?.readBoundary !== current.isolation.readBoundary || (prior.isolation?.globalInstructionsHash ?? null) !== current.isolation.globalInstructionsHash)
+    throw new Error('Continuation Codex version, runner code, read boundary or global instructions changed')
+}
+
+// Only shell calls produce command items; audits from other tools must not cover a shell call that skipped the guard.
+const guardMissing = (trace, audit) => trace.commandExecutions > 0 && audit.filter(a => a.shell === true).length < trace.commandExecutions
+
 function systemSkills(home) {
   const disabled = []
   for (const base of [path.join(os.homedir(), '.agents', 'skills'), path.join(home, 'skills', '.system')]) {
@@ -219,7 +229,7 @@ function checkGuardCommand(home, cwd, env) {
     if (run.status !== 0 || decision !== expected) throw new Error('Evaluation guard shell canary failed before model execution')
   }
   const audit = fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).slice(before).map(l => JSON.parse(l))
-  if (JSON.stringify(audit) !== JSON.stringify([{ allowed: true }, { allowed: false }, { allowed: false }])) throw new Error('Evaluation guard shell audit is incomplete')
+  if (JSON.stringify(audit) !== JSON.stringify([{ allowed: true, shell: true }, { allowed: false, shell: true }, { allowed: false, shell: true }])) throw new Error('Evaluation guard shell audit is incomplete')
 }
 
 function prepare(root, taskDir, options = {}) {
@@ -361,9 +371,11 @@ async function preflight(home, names, taskDir, env, options = {}) {
   if (fs.existsSync(path.join(cwd, 'write-canary.txt'))) throw new Error('Sandbox write denial failed')
   const denied = path.join(home, 'private-read-canary.txt')
   fs.writeFileSync(denied, 'Public canary outside the allowed snapshot; no credentials.')
+  // Probe the credential link and sandbox secrets themselves, not only an unrelated path. Output is discarded.
+  const probes = [denied, path.join(home, 'auth.json'), path.join(home, '.sandbox-secrets')].filter(p => fs.existsSync(p))
   const readProbe = process.platform === 'win32' ? ['pwsh.exe', '-NoProfile', '-NonInteractive', '-Command',
-    "try { [void](Get-Content -LiteralPath '" + denied.replaceAll("'", "''") + "' -ErrorAction Stop); exit 19 } catch { Write-Output 'read-denied' }"] :
-    ['sh', '-c', 'if cat "$1" >/dev/null 2>&1; then exit 19; fi', 'sh', denied]
+    'foreach ($p in @(' + probes.map(p => "'" + p.replaceAll("'", "''") + "'").join(',') + ')) { try { if (Test-Path -LiteralPath $p -PathType Container) { [void](Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop) } else { [void](Get-Content -LiteralPath $p -ErrorAction Stop) }; exit 19 } catch {} }; Write-Output \'read-denied\''] :
+    ['sh', '-c', 'for p; do if [ -d "$p" ]; then ls "$p/" >/dev/null 2>&1 && exit 19; else cat "$p" >/dev/null 2>&1 && exit 19; fi; done; exit 0', 'sh', ...probes]
   runLocal(['sandbox', '-P', 'eval', ...readProbe], { cwd, env })
   return { catalog, privateContext: Boolean(options.retainGlobalInstructions), globalInstructionsHash, sandboxChecked: true, ...trusted, readBoundary: 'os-snapshot-read-allowlist-and-evaluation-hook' }
 }
@@ -405,13 +417,12 @@ function execute(c, cwd, home, env, limits = {}) {
       const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
       const trace = parseTrace(stdout, path.join(publicRoot, 'skills'))
       const audit = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).slice(auditBefore).map(l => JSON.parse(l)) : []
-      const guardMissing = trace.commandExecutions > 0 && audit.length < trace.commandExecutions
-      trace.valid = trace.valid && exitCode === 0 && !timedOut && !overflow && !spawnFailed
-      trace.valid = trace.valid && !guardMissing
+      const missing = guardMissing(trace, audit)
+      trace.valid = trace.valid && exitCode === 0 && !timedOut && !overflow && !spawnFailed && !missing
       resolve({ id: c.id, repetition: c.repetition ?? 1, expectedSkill: c.expectedSkill, policy: c.policy, promptHash: c.promptHash,
         detectedSkills: trace.detectedSkills, result: score(c, trace), tokens: trace.usage, durationMs: Date.now() - start,
         exitCode, timedOut, overflow, spawnFailed, processStopUnconfirmed, ...(processStopUnconfirmed ? { processId: child.pid } : {}),
-        guardMissing, guardCalls: audit.length, guardAllowed: audit.filter(a => a.allowed).length,
+        guardMissing: missing, guardCalls: audit.length, guardAllowed: audit.filter(a => a.allowed).length,
         stdoutHash: crypto.createHash('sha256').update(stdout).digest('hex') })
     }
     child.on('close', exitCode => finish(exitCode))
@@ -436,6 +447,7 @@ async function main(args) {
     const charged = prior.priorTokens + prior.summary.totalTokens
     if (!safeNumber(priorTokens) || !safeNumber(charged) || charged >= opts.budgetTokens) throw new Error('Prior usage already exhausted the budget')
   }
+  const runnerHash = crypto.createHash('sha256').update(fs.readFileSync(__filename)).update(fs.readFileSync(path.join(__dirname, 'devflow-codex-eval-guard'))).digest('hex')
   const version = runLocal(['--version'], { cwd: ROOT, env: cleanEnv(process.env.CODEX_HOME || path.join(os.homedir(), '.codex')) }).trim()
   const work = path.join(ROOT, '.work')
   fs.mkdirSync(work, { recursive: true })
@@ -446,16 +458,13 @@ async function main(args) {
   if (continued && continued.sourceHash !== prepared.sourceHash) throw new Error('Public skill/document snapshot changed; continuation would change the measurement target')
   const env = cleanEnv(prepared.home)
   const isolation = await preflight(prepared.home, prepared.names, taskDir, env, opts)
-  if (continued && opts.retainGlobalInstructions) {
-    const prior = JSON.parse(fs.readFileSync(path.resolve(ROOT, opts.continueFrom), 'utf8'))
-    if (prior.isolation?.globalInstructionsHash !== isolation.globalInstructionsHash) throw new Error('Continuation global instructions changed')
-  }
+  if (continued) continuationConditions(JSON.parse(fs.readFileSync(path.resolve(ROOT, opts.continueFrom), 'utf8')), { version, runnerHash, isolation })
   const resultDir = path.join(ROOT, 'evals', 'results', new Date().toISOString().replace(/[:.]/g, '-') + '-codex-' + (opts.smoke ? 'smoke' : 'full'))
   fs.mkdirSync(resultDir, { recursive: true })
   const report = { host: 'codex', version, model: MODEL, effort: EFFORT, timeoutSeconds: TIMEOUT / 1000, mode: opts.smoke ? 'smoke' : 'full',
     budgetTokens: opts.budgetTokens, priorTokens, repetitions: opts.repetitions, globalInstructionsRetained: opts.retainGlobalInstructions,
-    activePlugins: ['devflow'], runner: 'devflow-codex-eval', sourceHash: prepared.sourceHash, isolation, startedAt: new Date().toISOString(),
-    ...(continued ? { continuedFrom: normalize(opts.continueFrom), continuedAtCase: continued.cases.length } : {}),
+    activePlugins: ['devflow'], runner: 'devflow-codex-eval', runnerHash, sourceHash: prepared.sourceHash, isolation, startedAt: new Date().toISOString(),
+    ...(continued ? { continuedFrom: normalize(path.relative(ROOT, path.resolve(ROOT, opts.continueFrom))), continuedAtCase: continued.cases.length } : {}),
     cases: continued ? [...continued.cases] : [], summary: summarize(continued ? continued.cases : []), complete: false, stoppedReason: null }
   const save = () => fs.writeFileSync(path.join(resultDir, 'result.json'), JSON.stringify(report, null, 2) + '\n')
   save()
@@ -482,13 +491,16 @@ async function main(args) {
   } finally {
   // Unlink only task-created references; never traverse or remove their credential/sandbox targets.
   if (unconfirmedProcess) process.stderr.write('Process stop is unconfirmed; task references are retained for caller recovery. No further case was started.\n')
+  const left = []
   for (const name of ['auth.json', 'AGENTS.md', '.sandbox', '.sandbox-secrets', '.sandbox-bin']) {
     if (unconfirmedProcess) break
     const link = path.join(taskDir, 'home', name)
-    try { if (fs.lstatSync(link).isSymbolicLink()) fs.unlinkSync(link) } catch (e) { if (e.code !== 'ENOENT') throw e }
+    try { if (fs.lstatSync(link).isSymbolicLink()) fs.unlinkSync(link); else left.push(name) } catch (e) { if (e.code !== 'ENOENT') left.push(name) }
   }
+  // A replaced link (for example a refreshed auth.json written in place of it) may hold credentials: name it, never read it.
+  if (left.length) process.stderr.write('Not removed: ' + left.join(', ') + ' in ' + normalize(path.relative(ROOT, path.join(taskDir, 'home'))) + ' are not task-created links or could not be unlinked; remove them by hand.\n')
   }
 }
 
-module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, writeEvalConfig, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand, continuation, expandCases, retainGlobalInstructions, checkGlobalInstructions }
+module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, writeEvalConfig, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand, continuation, continuationConditions, guardMissing, expandCases, retainGlobalInstructions, checkGlobalInstructions }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

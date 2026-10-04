@@ -21,9 +21,11 @@ function allowedFile(file, home, directory = false) {
   } catch { return false }
 }
 
+const SHELL_TOOLS = ['Bash', 'PowerShell', 'exec_command', 'functions.exec_command']
+
 function permits(input, home) {
   if (input?.hook_event_name !== 'PreToolUse') return false
-  if (!['Bash', 'PowerShell', 'exec_command', 'functions.exec_command'].includes(input.tool_name)) return false
+  if (!SHELL_TOOLS.includes(input.tool_name)) return false
   const tool = input.tool_input
   if (!tool || typeof tool !== 'object' || Array.isArray(tool)) return false
   const keys = new Set(['command', 'cmd', 'workdir', 'cwd', 'login', 'description', 'timeout', 'yield_time_ms', 'max_output_tokens'])
@@ -60,7 +62,7 @@ function main() {
     const output = decision(input, publicRoot)
     // Store bounded decisions, never command text, paths, tool output or credentials.
     if (home) {
-      try { fs.appendFileSync(path.join(home, 'eval-guard-audit.jsonl'), JSON.stringify({ allowed: output.hookSpecificOutput.permissionDecision === 'allow' }) + '\n') }
+      try { fs.appendFileSync(path.join(home, 'eval-guard-audit.jsonl'), JSON.stringify({ allowed: output.hookSpecificOutput.permissionDecision === 'allow', shell: SHELL_TOOLS.includes(input?.tool_name) }) + '\n') }
       catch { output.hookSpecificOutput.permissionDecision = 'deny' }
     }
     fs.writeSync(1, JSON.stringify(output))

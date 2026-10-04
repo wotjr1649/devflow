@@ -94,25 +94,35 @@ Codex 실행기는 수동 opt-in이다. 기본 검사·CI·pre-push는 모델 �
 ```bash
 node bin/devflow-codex-eval --smoke --budget-tokens 1000000
 node bin/devflow-codex-eval --full --budget-tokens 1000000 --prior-results evals/results/<smoke>/result.json
+# 사용자가 전역 지침 유지·같은 24개 사례 각 10회를 선택한 후속 조건:
+node bin/devflow-codex-eval --full --repetitions 10 --retain-global-instructions --budget-tokens 100000000
 # 예산 중단 뒤, 사용자 결정으로 총 예산을 늘리고 미실행 사례만 이어갈 때:
 node bin/devflow-codex-eval --full --budget-tokens <new-total-budget> --continue-from evals/results/<partial-full>/result.json
 ```
 
-- smoke는 양성·none 각 하나다. 전체 실행은 24개를 각각 한 번 순차 실행하며 재시도하지 않는다.
+- smoke는 양성·none 각 하나다. 전체 실행의 기본은 24개를 각각 한 번 순차 실행하며 재시도하지 않는다.
+  `--repetitions <1..1000>`은 full에서 같은 24개를 지정한 횟수만큼 반복한다. 각 시도는 새 세션·새 빈 폴더이며,
+  반복 번호를 결과에 기록한다. invalid·실패한 시도를 대체하지 않는다. smoke는 두 사례를 한 번씩만 실행한다.
   budget 플래그가 없으면 모델 프로세스를 시작하지 않는다. `--prior-results`의 사용량도 예산에 합친다.
   `--continue-from`은 예산 때문에 중단된 full에서만, 기존 사례·정책·프롬프트 해시·공개 snapshot이 일치할 때
-  미실행 사례만 실행한다. 이전 사례의 결과와 사용량을 합치며, 완료된 사례를 재실행하거나 자동으로 이어가지 않는다.
+  미실행 시도만 실행한다. 반복 횟수·전역 지침 모드도 같아야 한다. 이전 사례의 결과와 사용량을 합치며,
+  기록된 시도를 재실행하거나 자동으로 이어가지 않는다.
   snapshot이 다르면 중단하므로 이어가기 전에 평가 대상 문서를 바꾸지 않는다.
 - `gpt-6.1-sol/high`, 사례당 300초다. 모델·effort·시간 제한·측정 대상·예산을 바꾸기 전에 사용자가 결정한다.
 - 실행별 작업 폴더는 시작할 때 비어 있다. 별도의 임시 CODEX_HOME에 공개 snapshot으로 만든 devflow만 설치한다.
-  개인 지침·기억·다른 플러그인·MCP·apps·web search는 포함하지 않는다. catalogue가 devflow 7개와 다르면 비용 없이 멈춘다.
+  기본 모드는 개인 지침을 제외한다. `--retain-global-instructions`를 사용자가 선택하면 기존 CODEX_HOME의
+  정규 파일 AGENTS.md만 링크로 참조하고 해당 파일 읽기만 추가로 허용한다. 원본을 수정하거나 본문을 결과에 저장하지 않는다.
+  사전 검사에서 실제 prompt에 본문이 포함됐는지 확인하고, 매 시도 전 해시가 달라지면 다음 모델 호출을 중단한다.
+  이어가기에서도 지침 해시가 같아야 한다. 다른 설정의 추가 지침을 자동으로 가져오는 옵션은 아니다.
+  기억·다른 플러그인·MCP·apps·web search는 포함하지 않는다. catalogue가 devflow 7개와 다르면 비용 없이 멈춘다.
   평가 조건은 해당 home의 `config.toml`에 저장하며 native plugin 활성화 설정과 guard 신뢰 기록을 보존한다.
   사전 검사 app-server와 평가 exec에 `--strict-config`를 적용해 알 수 없는 설정을 거부하고,
   같은 조건을 명령행 `-c`로 중복 지정하지 않는다. 이 옵션을 지원하지 않는 debug·sandbox 명령은 파일을 그대로 읽는다.
 - Windows에서는 이미 설치된 elevated backend를 재사용한다. 인증과 sandbox 상태는 값 복사 없이 임시 링크로 참조하고,
-  종료·실패 시 링크만 제거한다. 새 계정·방화벽·호스트 설정을 만들어 실행하지 않는다.
+  종료·실패 시 전역 지침을 포함해 작업이 만든 링크만 제거한다. 새 계정·방화벽·호스트 설정을 만들어 실행하지 않는다.
 - 평가 전용 PreToolUse guard는 공개 snapshot 안의 단일 literal 읽기·목록·검색 명령만 허용한다.
-  OS filesystem profile도 `:minimal`과 공개 skills·docs의 읽기만 허용한다. snapshot 밖의 비밀 없는 canary 읽기,
+  OS filesystem profile도 `:minimal`과 공개 skills·docs 및 명시적으로 유지한 전역 지침 파일의 읽기만 허용한다.
+  허용 범위 밖의 비밀 없는 canary 읽기,
   쓰기·명령 network 거부 검사를 모델 호출 전에 통과해야 한다. 훅 오류 시 도구가 계속될 수 있으므로 guard만으로
   읽기 격리를 주장하지 않는다. 제한 profile을 지원하지 않는 backend에서는 모델 호출 전에 중단하며 넓은 읽기로 우회하지 않는다.
   실제 guard 정의의 신뢰 해시를 확인하고
@@ -130,7 +140,9 @@ node bin/devflow-codex-eval --full --budget-tokens <new-total-budget> --continue
   사용량을 얻지 못하면 추가 실행을 중단한다. 시간 초과·비정상 종료·불완전 JSONL은 invalid로 따로 집계하고 성공률에서 제외한다.
   종료 요청 뒤 5초 안에 close가 없으면 프로세스 종료 미확인으로 기록하고 더 진행하지 않는다. 해당 PID와 임시 참조를
   보존해 호출자가 종료를 확인하도록 하며, 살아 있을 수 있는 실행의 상태를 정리하거나 다른 실행을 시작하지 않는다.
-- 기대 스킬·검출 스킬·pass/fail/invalid·사용량·시간·환경·완료 여부는 Claude 결과 옆 `evals/results/`에 저장한다.
+- 기대 스킬·검출 스킬·pass/fail/invalid·반복 번호·사용량·시간·환경·완료 여부는 Claude 결과 옆 `evals/results/`에 저장한다.
+  실제 실행기·활성 플러그인·전역 지침 유지 여부와 검증한 지침 해시를 기록한다. plugin-eval의 활성화 여부를
+  plugin-eval benchmark 엔진으로 측정했다는 뜻으로 기록하지 않는다.
   원시 stdout·stderr와 세션 기록은 저장하거나 읽지 않는다. 실행 오류와 평가 실패는 종료 코드 1이며 완료 조건과 구별한다.
 
 격리 방식과 대안의 이유: [ADR-0016](../design/decisions/ADR-0016-codex-trigger-eval.md).

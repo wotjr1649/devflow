@@ -95,7 +95,7 @@ function summarize(cases) {
 }
 
 function parseArgs(args) {
-  const opts = { smoke: false, full: false, budgetTokens: null, priorResults: null, continueFrom: null }
+  const opts = { smoke: false, full: false, repetitions: 1, retainGlobalInstructions: false, budgetTokens: null, priorResults: null, continueFrom: null }
   const value = i => {
     if (typeof args[i] !== 'string' || !args[i] || args[i].startsWith('--')) throw new Error('Option value is required')
     return args[i]
@@ -103,22 +103,30 @@ function parseArgs(args) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--smoke') opts.smoke = true
     else if (args[i] === '--full') opts.full = true
+    else if (args[i] === '--repetitions') opts.repetitions = Number(value(++i))
+    else if (args[i] === '--retain-global-instructions') opts.retainGlobalInstructions = true
     else if (args[i] === '--budget-tokens') opts.budgetTokens = Number(value(++i))
     else if (args[i] === '--prior-results') opts.priorResults = value(++i)
     else if (args[i] === '--continue-from') opts.continueFrom = value(++i)
-    else throw new Error('usage: node bin/devflow-codex-eval --smoke|--full --budget-tokens <n> [--prior-results <result.json> | --continue-from <budget-stopped full result.json>]')
+    else throw new Error('usage: node bin/devflow-codex-eval --smoke|--full --budget-tokens <n> [--repetitions <1..1000>] [--retain-global-instructions] [--prior-results <result.json> | --continue-from <budget-stopped full result.json>]')
   }
   if (opts.smoke === opts.full || !Number.isSafeInteger(opts.budgetTokens) || opts.budgetTokens <= 0) throw new Error('Choose exactly one mode and an explicit positive token budget')
+  if (!Number.isSafeInteger(opts.repetitions) || opts.repetitions < 1 || opts.repetitions > 1000 || (opts.smoke && opts.repetitions !== 1)) throw new Error('Repetitions must be 1..1000; smoke runs its two cases once')
   if (opts.continueFrom && (!opts.full || opts.priorResults)) throw new Error('Continuation requires full mode and cannot also use prior-results')
   return opts
 }
 
-function continuation(prior, cases) {
+function expandCases(cases, repetitions) {
+  if (!Number.isSafeInteger(repetitions) || repetitions < 1 || repetitions > 1000) throw new Error('Invalid repetitions')
+  return Array.from({ length: repetitions }, (_, index) => cases.map(c => ({ ...c, repetition: index + 1 }))).flat()
+}
+
+function continuation(prior, cases, repetitions = 1, retainGlobalInstructions = false) {
   if (prior.mode !== 'full' || prior.complete !== false || prior.stoppedReason !== 'budget' || prior.model !== MODEL || prior.effort !== EFFORT || prior.timeoutSeconds !== TIMEOUT / 1000 ||
-    !safeNumber(prior.priorTokens) || !Array.isArray(prior.cases) || !prior.cases.length || prior.cases.length >= cases.length) throw new Error('Only an incomplete full run stopped by budget can continue')
+    (prior.repetitions ?? 1) !== repetitions || (prior.globalInstructionsRetained ?? false) !== retainGlobalInstructions || !safeNumber(prior.priorTokens) || !Array.isArray(prior.cases) || !prior.cases.length || prior.cases.length >= cases.length) throw new Error('Only an incomplete full run stopped by budget with the same repetitions and instruction mode can continue')
   for (const [i, old] of prior.cases.entries()) {
     const expected = cases[i]
-    if (old.id !== expected.id || old.promptHash !== expected.promptHash || old.expectedSkill !== expected.expectedSkill || old.policy !== expected.policy ||
+    if (old.id !== expected.id || (old.repetition ?? 1) !== (expected.repetition ?? 1) || old.promptHash !== expected.promptHash || old.expectedSkill !== expected.expectedSkill || old.policy !== expected.policy ||
       old.guardMissing || old.spawnFailed || !old.tokens || !safeNumber(old.tokens.total_tokens)) throw new Error('Continuation cases, policy, usage or isolation do not match')
   }
   const summary = summarize(prior.cases)
@@ -137,12 +145,30 @@ function systemSkills(home) {
   return [...new Set(disabled)]
 }
 
-function writeEvalConfig(home) {
+function retainGlobalInstructions(sourceHome, home) {
+  const source = path.join(sourceHome, 'AGENTS.md')
+  if (!fs.lstatSync(source).isFile()) throw new Error('Retained global AGENTS.md must be a regular file')
+  const hash = crypto.createHash('sha256').update(fs.readFileSync(source)).digest('hex')
+  fs.symlinkSync(source, path.join(home, 'AGENTS.md'), 'file')
+  const metadata = { hash }
+  fs.writeFileSync(path.join(home, 'eval-instructions.json'), JSON.stringify(metadata) + '\n')
+  return metadata
+}
+
+function checkGlobalInstructions(home) {
+  const metadata = JSON.parse(fs.readFileSync(path.join(home, 'eval-instructions.json'), 'utf8'))
+  const bytes = fs.readFileSync(path.join(home, 'AGENTS.md'))
+  if (crypto.createHash('sha256').update(bytes).digest('hex') !== metadata.hash) throw new Error('Global instructions changed; measurement stopped before the next model call')
+  return { hash: metadata.hash, text: bytes.toString('utf8') }
+}
+
+function writeEvalConfig(home, options = {}) {
   const publicRoot = path.join(home, 'plugins', 'cache', 'devflow', 'devflow', '0.1.0')
+  const instructionRead = options.retainGlobalInstructions ? ',' + toml(fs.realpathSync(path.join(home, 'AGENTS.md'))) + '="read"' : ''
   const settings = [
     'model=' + toml(MODEL), 'model_reasoning_effort=' + toml(EFFORT), 'approval_policy="never"',
     'default_permissions="eval"',
-    'permissions.eval.filesystem={":minimal"="read",' + toml(path.join(publicRoot, 'skills')) + '="read",' + toml(path.join(publicRoot, 'docs')) + '="read"}',
+    'permissions.eval.filesystem={":minimal"="read",' + toml(path.join(publicRoot, 'skills')) + '="read",' + toml(path.join(publicRoot, 'docs')) + '="read"' + instructionRead + '}',
     'permissions.eval.network.enabled=false', 'windows.sandbox="elevated"',
     'features.hooks=true', 'features.code_mode=false', 'features.apps=false', 'features.multi_agent=false', 'features.memories=false', 'features.shell_snapshot=false', 'web_search="disabled"',
     'shell_environment_policy.inherit="none"', 'shell_environment_policy.experimental_use_profile=false',
@@ -196,11 +222,12 @@ function checkGuardCommand(home, cwd, env) {
   if (JSON.stringify(audit) !== JSON.stringify([{ allowed: true }, { allowed: false }, { allowed: false }])) throw new Error('Evaluation guard shell audit is incomplete')
 }
 
-function prepare(root, taskDir) {
+function prepare(root, taskDir, options = {}) {
   const home = path.join(taskDir, 'home')
   const publicRoot = path.join(taskDir, 'plugin')
   fs.mkdirSync(home)
   const sourceHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+  if (options.retainGlobalInstructions) retainGlobalInstructions(sourceHome, home)
   // Reuse credential bytes without copying them. Never include the auth link in readable roots or result artifacts.
   const auth = path.join(sourceHome, 'auth.json')
   if (!fs.lstatSync(auth).isFile()) throw new Error('Existing file authentication is required; no login or credential installation is performed')
@@ -250,7 +277,7 @@ function prepare(root, taskDir) {
   fs.copyFileSync(path.join(root, 'bin', 'devflow-codex-eval-guard'), guardFile, fs.constants.COPYFILE_EXCL)
   const command = guardCommand(home)
   fs.writeFileSync(path.join(home, 'hooks.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', command, timeout: 3 }] }] } }) + '\n')
-  writeEvalConfig(home)
+  writeEvalConfig(home, options)
   return { home, names, skillRoot: path.join(loadedRoot, 'skills'), sourceHash: hash.digest('hex') }
 }
 
@@ -302,7 +329,7 @@ async function trustGuard(home, cwd, env) {
   return { guardHash: hooks[0].currentHash, trusted: true }
 }
 
-async function preflight(home, names, taskDir, env) {
+async function preflight(home, names, taskDir, env, options = {}) {
   const cwd = path.join(taskDir, 'preflight')
   fs.mkdirSync(cwd)
   // app-server validates the file strictly; debug and sandbox do not accept --strict-config in 0.160.0.
@@ -313,8 +340,14 @@ async function preflight(home, names, taskDir, env) {
   const text = JSON.stringify(input)
   const catalog = [...text.matchAll(/- ([\w:-]+): /g)].map(m => m[1].replace(/^devflow:/, '')).sort()
   if (JSON.stringify(catalog) !== JSON.stringify(names)) throw new Error('Preflight catalog is not exactly the seven devflow skills')
-  // A fresh home and empty workspace supply no user instructions. Hooks are not disabled or bypassed.
-  if (text.includes('Global Agent Operating Contract') || text.includes('recent context')) throw new Error('Private context present in preflight')
+  // Only the explicitly retained global document may enter a fresh evaluation context.
+  let globalInstructionsHash = null
+  if (options.retainGlobalInstructions) {
+    const instructions = checkGlobalInstructions(home)
+    if (!instructions.text.trim() || !text.includes(JSON.stringify(instructions.text.trim()).slice(1, -1))) throw new Error('Retained global instructions are not present in the native prompt')
+    globalInstructionsHash = instructions.hash
+  } else if (text.includes('Global Agent Operating Contract')) throw new Error('Private context present in preflight')
+  if (text.includes('recent context')) throw new Error('Memory context present in preflight')
   const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
   const allowed = path.join(publicRoot, 'skills', names[0], 'SKILL.md')
   const guard = require('./devflow-codex-eval-guard')
@@ -332,7 +365,7 @@ async function preflight(home, names, taskDir, env) {
     "try { [void](Get-Content -LiteralPath '" + denied.replaceAll("'", "''") + "' -ErrorAction Stop); exit 19 } catch { Write-Output 'read-denied' }"] :
     ['sh', '-c', 'if cat "$1" >/dev/null 2>&1; then exit 19; fi', 'sh', denied]
   runLocal(['sandbox', '-P', 'eval', ...readProbe], { cwd, env })
-  return { catalog, privateContext: false, sandboxChecked: true, ...trusted, readBoundary: 'os-snapshot-read-allowlist-and-evaluation-hook' }
+  return { catalog, privateContext: Boolean(options.retainGlobalInstructions), globalInstructionsHash, sandboxChecked: true, ...trusted, readBoundary: 'os-snapshot-read-allowlist-and-evaluation-hook' }
 }
 
 function execute(c, cwd, home, env, limits = {}) {
@@ -375,7 +408,7 @@ function execute(c, cwd, home, env, limits = {}) {
       const guardMissing = trace.commandExecutions > 0 && audit.length < trace.commandExecutions
       trace.valid = trace.valid && exitCode === 0 && !timedOut && !overflow && !spawnFailed
       trace.valid = trace.valid && !guardMissing
-      resolve({ id: c.id, expectedSkill: c.expectedSkill, policy: c.policy, promptHash: c.promptHash,
+      resolve({ id: c.id, repetition: c.repetition ?? 1, expectedSkill: c.expectedSkill, policy: c.policy, promptHash: c.promptHash,
         detectedSkills: trace.detectedSkills, result: score(c, trace), tokens: trace.usage, durationMs: Date.now() - start,
         exitCode, timedOut, overflow, spawnFailed, processStopUnconfirmed, ...(processStopUnconfirmed ? { processId: child.pid } : {}),
         guardMissing, guardCalls: audit.length, guardAllowed: audit.filter(a => a.allowed).length,
@@ -389,7 +422,7 @@ async function main(args) {
   const opts = parseArgs(args)
   const cases = loadCases(path.join(ROOT, 'evals', 'trigger'))
   if (cases.length !== 24) throw new Error('Expected the same 24 Claude trigger cases')
-  const selected = opts.smoke ? ['grilling--grill-en', 'none--trivia-en'].map(id => cases.find(c => c.id === id)) : cases
+  const selected = expandCases(opts.smoke ? ['grilling--grill-en', 'none--trivia-en'].map(id => cases.find(c => c.id === id)) : cases, opts.repetitions)
   let priorTokens = 0
   let continued = null
   if (opts.priorResults || opts.continueFrom) {
@@ -398,7 +431,7 @@ async function main(args) {
     if (!priorPath.startsWith(resultsRoot) || !fs.lstatSync(priorPath).isFile() || fs.realpathSync(priorPath) !== priorPath) throw new Error('Prior results must be a regular file inside evals/results')
     const prior = JSON.parse(fs.readFileSync(priorPath, 'utf8'))
     if (prior.model !== MODEL || prior.effort !== EFFORT || !prior.summary?.usageKnown || !safeNumber(prior.summary.totalTokens)) throw new Error('Prior result usage or environment does not match')
-    if (opts.continueFrom) continued = continuation(prior, cases)
+    if (opts.continueFrom) continued = continuation(prior, selected, opts.repetitions, opts.retainGlobalInstructions)
     priorTokens = continued ? continued.priorTokens : prior.priorTokens + prior.summary.totalTokens
     const charged = prior.priorTokens + prior.summary.totalTokens
     if (!safeNumber(priorTokens) || !safeNumber(charged) || charged >= opts.budgetTokens) throw new Error('Prior usage already exhausted the budget')
@@ -409,28 +442,34 @@ async function main(args) {
   const taskDir = fs.mkdtempSync(path.join(work, 'codex-eval-'))
   let unconfirmedProcess = false
   try {
-  const prepared = prepare(ROOT, taskDir)
+  const prepared = prepare(ROOT, taskDir, opts)
   if (continued && continued.sourceHash !== prepared.sourceHash) throw new Error('Public skill/document snapshot changed; continuation would change the measurement target')
   const env = cleanEnv(prepared.home)
-  const isolation = await preflight(prepared.home, prepared.names, taskDir, env)
+  const isolation = await preflight(prepared.home, prepared.names, taskDir, env, opts)
+  if (continued && opts.retainGlobalInstructions) {
+    const prior = JSON.parse(fs.readFileSync(path.resolve(ROOT, opts.continueFrom), 'utf8'))
+    if (prior.isolation?.globalInstructionsHash !== isolation.globalInstructionsHash) throw new Error('Continuation global instructions changed')
+  }
   const resultDir = path.join(ROOT, 'evals', 'results', new Date().toISOString().replace(/[:.]/g, '-') + '-codex-' + (opts.smoke ? 'smoke' : 'full'))
   fs.mkdirSync(resultDir, { recursive: true })
   const report = { host: 'codex', version, model: MODEL, effort: EFFORT, timeoutSeconds: TIMEOUT / 1000, mode: opts.smoke ? 'smoke' : 'full',
-    budgetTokens: opts.budgetTokens, priorTokens, sourceHash: prepared.sourceHash, isolation, startedAt: new Date().toISOString(),
+    budgetTokens: opts.budgetTokens, priorTokens, repetitions: opts.repetitions, globalInstructionsRetained: opts.retainGlobalInstructions,
+    activePlugins: ['devflow'], runner: 'devflow-codex-eval', sourceHash: prepared.sourceHash, isolation, startedAt: new Date().toISOString(),
     ...(continued ? { continuedFrom: normalize(opts.continueFrom), continuedAtCase: continued.cases.length } : {}),
     cases: continued ? [...continued.cases] : [], summary: summarize(continued ? continued.cases : []), complete: false, stoppedReason: null }
   const save = () => fs.writeFileSync(path.join(resultDir, 'result.json'), JSON.stringify(report, null, 2) + '\n')
   save()
   for (const c of selected.slice(continued ? continued.cases.length : 0)) {
     if (!report.summary.usageKnown || priorTokens + report.summary.totalTokens >= opts.budgetTokens) { report.stoppedReason = report.summary.usageKnown ? 'budget' : 'unknown-usage'; break }
-    const cwd = path.join(taskDir, c.id)
+    if (opts.retainGlobalInstructions) checkGlobalInstructions(prepared.home)
+    const cwd = path.join(taskDir, c.id + (opts.repetitions > 1 ? '--r' + c.repetition : ''))
     fs.mkdirSync(cwd)
     const result = await execute(c, cwd, prepared.home, env)
     if (result.processStopUnconfirmed) unconfirmedProcess = true
     report.cases.push(result)
     report.summary = summarize(report.cases)
     save()
-    process.stdout.write(c.id + ': ' + result.result + ', ' + (result.tokens?.total_tokens ?? 'unknown') + ' tokens, ' + (result.durationMs / 1000).toFixed(1) + 's\n')
+    process.stdout.write(c.id + ' [' + c.repetition + '/' + opts.repetitions + ']: ' + result.result + ', ' + (result.tokens?.total_tokens ?? 'unknown') + ' tokens, ' + (result.durationMs / 1000).toFixed(1) + 's\n')
     if (result.spawnFailed) { report.stoppedReason = 'process-stop-unconfirmed'; break }
     if (result.guardMissing) { report.stoppedReason = 'guard-execution-unverified'; break }
   }
@@ -443,7 +482,7 @@ async function main(args) {
   } finally {
   // Unlink only task-created references; never traverse or remove their credential/sandbox targets.
   if (unconfirmedProcess) process.stderr.write('Process stop is unconfirmed; task references are retained for caller recovery. No further case was started.\n')
-  for (const name of ['auth.json', '.sandbox', '.sandbox-secrets', '.sandbox-bin']) {
+  for (const name of ['auth.json', 'AGENTS.md', '.sandbox', '.sandbox-secrets', '.sandbox-bin']) {
     if (unconfirmedProcess) break
     const link = path.join(taskDir, 'home', name)
     try { if (fs.lstatSync(link).isSymbolicLink()) fs.unlinkSync(link) } catch (e) { if (e.code !== 'ENOENT') throw e }
@@ -451,5 +490,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, writeEvalConfig, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand, continuation }
+module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, writeEvalConfig, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand, continuation, expandCases, retainGlobalInstructions, checkGlobalInstructions }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

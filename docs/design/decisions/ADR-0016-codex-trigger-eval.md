@@ -66,3 +66,18 @@ native plugin 활성화 설정과 guard 신뢰 기록을 유지하고 app-server
 
 기존 24개 결과는 당시 승인된 guard 방식과 파서 revision의 관측으로 보존한다. 보장된 OS 읽기 격리나 수정된 파서의
 재채점 결과로 확대하지 않는다. 원시 stdout을 보존하지 않았으므로 세션 archive에서 복구하거나 비용 없이 재채점했다고 주장하지 않는다.
+
+## 후속 반복과 전역 지침
+
+사용자는 Windows 우선·전용 Windows 환경 인정·동일 24개 사례당 10회·예산 상한 100M을 선택했다.
+후속 조건에서는 사용자 전역 지침을 유지한다. ponytail·claude-mem에 이어 plugin-eval도 비활성화했으며,
+평가받는 세션에는 devflow만 노출하기로 선택했다. 이전 지침 제외 조건의 결과와 별도로 기록한다.
+
+실행기는 `devflow-codex-eval`을 유지한다. 설치된 plugin-eval의 analyze는 정적 분석이고 benchmark는 실제
+codex exec의 작업 완료·workspace diff·verifier·사용량을 수집한다. 기존 24개 grader의 SKILL.md 읽기 판정은 제공하지 않으므로
+이번 트리거 평가의 실행기를 대체하지 않는다. 활성 플러그인과 실제 실행기를 구분해 보고한다.
+
+반복 횟수·전역 지침 모드는 명시적 옵션으로 선택한다([eval 계약](../../specs/lifecycle.md#codex-트리거-eval)).
+각 반복은 독립된 시도이고 실패·invalid를 대체하는 재시도가 아니다. 원본 전역 지침은 참조만 하고,
+실행 중 변경 및 이어가기에서 조건이 달라지는 것을 거부한다. 전역 지침 유지나 플러그인 비활성화로
+Windows 파일 접근 경계가 생기지는 않으므로 모델 호출 전 OS 사전 검사 조건을 유지한다.

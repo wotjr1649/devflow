@@ -3,7 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, writeEvalConfig, configArgs } = require('../bin/devflow-codex-eval')
+const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, writeEvalConfig, configArgs, expandCases, retainGlobalInstructions, checkGlobalInstructions } = require('../bin/devflow-codex-eval')
 const tmpdir = require('./tmpdir')
 const skillRoot = ['C:', 'eval', 'home', 'skills'].join('/')
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/codex-eval', name + '.jsonl'), 'utf8').replaceAll('EVAL_SKILLS', skillRoot)
@@ -27,6 +27,32 @@ test('dedicated home config preserves plugin activation and later hook trust whi
   assert.ok(config.includes(JSON.stringify(path.join(home, 'plugins/cache/devflow/devflow/0.1.0/skills').replaceAll(String.fromCharCode(92), '/')) + '="read"'))
   assert.ok(config.indexOf('default_permissions=') < config.indexOf('[plugins.'))
   assert.deepEqual(configArgs(), ['--strict-config'])
+})
+
+test('retained global instructions stay unchanged and add only the selected file to the read profile', () => {
+  const sourceHome = tmpdir('codex-eval-instructions-source-')
+  const home = tmpdir('codex-eval-instructions-target-')
+  const source = path.join(sourceHome, 'AGENTS.md')
+  const body = '# Global Agent Operating Contract\nFixture instructions only.\n'
+  fs.writeFileSync(source, body)
+  const metadata = retainGlobalInstructions(sourceHome, home)
+  assert.match(metadata.hash, /^[a-f0-9]{64}$/)
+  assert.equal(fs.readFileSync(path.join(home, 'AGENTS.md'), 'utf8'), body)
+  writeEvalConfig(home, { retainGlobalInstructions: true })
+  const config = fs.readFileSync(path.join(home, 'config.toml'), 'utf8')
+  assert.ok(config.includes(JSON.stringify(source.replaceAll(String.fromCharCode(92), '/')) + '="read"'))
+  assert.ok(!config.includes('":root"'))
+  assert.ok(!config.includes(body))
+  assert.equal(fs.readFileSync(source, 'utf8'), body)
+  assert.deepEqual(checkGlobalInstructions(home), { hash: metadata.hash, text: body })
+  fs.writeFileSync(source, body + 'Changed instructions.\n')
+  assert.throws(() => checkGlobalInstructions(home), /Global instructions changed/)
+  fs.writeFileSync(source, body)
+  fs.unlinkSync(path.join(home, 'AGENTS.md'))
+  assert.equal(fs.readFileSync(source, 'utf8'), body)
+  assert.throws(() => retainGlobalInstructions(tmpdir('codex-eval-instructions-missing-'), home))
+  assert.equal(parseArgs(['--full', '--retain-global-instructions', '--budget-tokens', '1000']).retainGlobalInstructions, true)
+  assert.equal(parseArgs(['--full', '--budget-tokens', '1000']).retainGlobalInstructions, false)
 })
 
 test('saved CLI stdout detects a read once and counts cached input once', () => {
@@ -93,6 +119,37 @@ test('all 24 Claude cases keep body and positive, targeted negative, none polici
 test('no budget or ambiguous mode fails before any model process can start', () => {
   for (const args of [[], ['--full'], ['--full', '--budget-tokens', '0'], ['--full', '--smoke', '--budget-tokens', '1000'], ['--unknown']]) assert.throws(() => parseArgs(args))
   assert.equal(parseArgs(['--full', '--budget-tokens', '1000000']).budgetTokens, 1000000)
+})
+
+test('240 trials preserve all 24 prompts and identify ten distinct attempts per case', () => {
+  const cases = loadCases(path.join(__dirname, '..', 'evals', 'trigger'))
+  const opts = parseArgs(['--full', '--repetitions', '10', '--budget-tokens', '100000000'])
+  assert.equal(opts.repetitions, 10)
+  const trials = expandCases(cases, opts.repetitions)
+  assert.equal(trials.length, 240)
+  for (const c of cases) {
+    const attempts = trials.filter(trial => trial.id === c.id)
+    assert.deepEqual(attempts.map(trial => trial.repetition), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    assert.ok(attempts.every(trial => trial.prompt === c.prompt && trial.promptHash === c.promptHash && trial.policy === c.policy))
+  }
+  assert.equal(parseArgs(['--full', '--budget-tokens', '1000']).repetitions, 1)
+  for (const args of [['--full', '--repetitions', '0'], ['--full', '--repetitions', '1.5'], ['--full', '--repetitions', '1001'], ['--smoke', '--repetitions', '10']]) {
+    assert.throws(() => parseArgs([...args, '--budget-tokens', '1000']))
+  }
+})
+
+test('repeated-run continuation resumes after the recorded prefix without replacing invalid attempts', () => {
+  const cases = loadCases(path.join(__dirname, '..', 'evals', 'trigger'))
+  const trials = expandCases(cases, 10)
+  const recorded = trials.slice(0, 25).map(c => ({ ...c, result: c.repetition === 2 ? 'invalid' : 'pass', tokens: { total_tokens: 10 }, guardMissing: false, spawnFailed: false }))
+  const prior = { mode: 'full', repetitions: 10, complete: false, stoppedReason: 'budget', model: 'gpt-6.1-sol', effort: 'high', timeoutSeconds: 300, priorTokens: 0, cases: recorded, summary: { usageKnown: true, totalTokens: 250 }, sourceHash: 'public-snapshot' }
+  assert.equal(continuation(prior, trials, 10).cases.length, 25)
+  assert.equal(trials[25].repetition, 2)
+  assert.notEqual(trials[25].id, trials[24].id)
+  assert.throws(() => continuation(prior, trials, 1))
+  assert.throws(() => continuation({ ...prior, cases: [...recorded.slice(0, 24), { ...recorded[24], repetition: 1 }] }, trials, 10))
+  assert.throws(() => continuation({ ...prior, globalInstructionsRetained: true }, trials, 10, false))
+  assert.equal(continuation({ ...prior, globalInstructionsRetained: true }, trials, 10, true).cases.length, 25)
 })
 
 test('invalid runs stay visible and are excluded from rates', () => {

@@ -156,8 +156,8 @@ function continuation(prior, cases, repetitions = 1) {
 }
 
 function continuationConditions(prior, current) {
-  for (const key of ['version', 'runnerHash', 'sourceHash', 'globalInstructionsHash']) {
-    if (!prior[key] || prior[key] !== current[key]) throw new Error('Continuation Codex version, runner code, installed skills or global instructions changed (' + key + ')')
+  for (const key of ['version', 'runnerHash', 'sourceHash', 'globalInstructionsHash', 'catalogHash']) {
+    if (!prior[key] || prior[key] !== current[key]) throw new Error('Continuation Codex version, runner code, installed skills, global instructions or skill catalog changed (' + key + ')')
   }
 }
 
@@ -194,8 +194,13 @@ function globalInstructionsHash(home) {
 }
 
 // The host config stays untouched: writes are blocked and the measured model is fixed per run on the command line.
+// Case folders sit inside this trusted repository, so the run needs no new trust entry. Without these two overrides
+// Codex would load this repository's AGENTS.md (its project root is the repository) and the devflow hooks would add
+// the current Issue's resume card (they look upward for .devflow.json); both were seen in a #39 run.
+const CONTEXT_OVERRIDES = ['-c', 'project_root_markers=[]', '-c', 'features.hooks=false']
+
 function execArgs() {
-  return ['exec', '--json', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only', '-m', MODEL, '-c', 'model_reasoning_effort=' + JSON.stringify(EFFORT), '-']
+  return ['exec', '--json', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only', '-m', MODEL, '-c', 'model_reasoning_effort=' + JSON.stringify(EFFORT), ...CONTEXT_OVERRIDES, '-']
 }
 
 function cleanEnv(home) {
@@ -215,7 +220,7 @@ function runLocal(args, options) {
 
 // Free check before any model call: the native prompt lists all seven devflow skills.
 function preflight(cwd, env, names) {
-  const text = JSON.stringify(JSON.parse(runLocal(['debug', 'prompt-input'], { cwd, env })))
+  const text = JSON.stringify(JSON.parse(runLocal(['debug', 'prompt-input', ...CONTEXT_OVERRIDES], { cwd, env })))
   const catalog = [...new Set([...text.matchAll(/- ([\w:-]+): /g)].map(m => m[1]))].sort()
   const missing = names.filter(n => !catalog.includes('devflow:' + n))
   if (missing.length) throw new Error('The native prompt does not list devflow skills: ' + missing.join(', '))
@@ -257,12 +262,13 @@ function execute(c, cwd, env, skillRoot, limits = {}) {
       clearTimeout(stopWatchdog)
       const trace = parseTrace(stdout, skillRoot)
       // The case folder is the run's writable root unless the sandbox holds; anything new in it means it did not.
-      const cwdWrites = fs.readdirSync(cwd).filter(n => !before.has(n)).length
-      trace.valid = trace.valid && exitCode === 0 && !timedOut && !overflow && !spawnFailed && cwdWrites === 0
+      const cwdMissing = !fs.existsSync(cwd)
+      const cwdWrites = cwdMissing ? 0 : fs.readdirSync(cwd).filter(n => !before.has(n)).length
+      trace.valid = trace.valid && exitCode === 0 && !timedOut && !overflow && !spawnFailed && !cwdMissing && cwdWrites === 0
       resolve({ id: c.id, repetition: c.repetition ?? 1, expectedSkill: c.expectedSkill, policy: c.policy, promptHash: c.promptHash,
         detectedSkills: trace.detectedSkills, result: score(c, trace), tokens: trace.usage, durationMs: Date.now() - start,
         exitCode, timedOut, overflow, spawnFailed, processStopUnconfirmed, ...(processStopUnconfirmed ? { processId: child.pid } : {}),
-        cwdWrites, commands: trace.commands })
+        cwdWrites, cwdMissing, commands: trace.commands })
     }
     child.on('close', exitCode => finish(exitCode))
   })
@@ -284,6 +290,13 @@ async function main(args) {
     sourceHash: checkInstalled(path.join(ROOT, 'skills'), skillRoot),
     globalInstructionsHash: globalInstructionsHash(home),
   }
+  const work = path.join(ROOT, '.work')
+  fs.mkdirSync(work, { recursive: true })
+  const taskDir = fs.mkdtempSync(path.join(work, 'codex-eval-'))
+  const preflightDir = path.join(taskDir, 'preflight')
+  fs.mkdirSync(preflightDir)
+  const catalog = preflight(preflightDir, env, names)
+  current.catalogHash = crypto.createHash('sha256').update(JSON.stringify(catalog)).digest('hex')
   let priorTokens = 0
   let continued = null
   if (opts.priorResults || opts.continueFrom) {
@@ -300,12 +313,6 @@ async function main(args) {
     const charged = prior.priorTokens + prior.summary.totalTokens
     if (!safeNumber(priorTokens) || !safeNumber(charged) || charged >= opts.budgetTokens) throw new Error('Prior usage already exhausted the budget')
   }
-  const work = path.join(ROOT, '.work')
-  fs.mkdirSync(work, { recursive: true })
-  const taskDir = fs.mkdtempSync(path.join(work, 'codex-eval-'))
-  const preflightDir = path.join(taskDir, 'preflight')
-  fs.mkdirSync(preflightDir)
-  const catalog = preflight(preflightDir, env, names)
   const resultDir = path.join(ROOT, 'evals', 'results', new Date().toISOString().replace(/[:.]/g, '-') + '-codex-' + (opts.smoke ? 'smoke' : 'full'))
   fs.mkdirSync(resultDir, { recursive: true })
   const report = { host: 'codex', ...current, model: MODEL, effort: EFFORT, sandbox: 'read-only', codexHome: 'real', timeoutSeconds: TIMEOUT / 1000,
@@ -327,7 +334,7 @@ async function main(args) {
     save()
     process.stdout.write(c.id + ' [' + c.repetition + '/' + opts.repetitions + ']: ' + result.result + ', ' + (result.tokens?.total_tokens ?? 'unknown') + ' tokens, ' + (result.durationMs / 1000).toFixed(1) + 's\n')
     if (result.spawnFailed) { report.stoppedReason = 'process-stop-unconfirmed'; keep = true; break }
-    if (result.cwdWrites) { report.stoppedReason = 'sandbox-write'; keep = true; break }
+    if (result.cwdWrites || result.cwdMissing) { report.stoppedReason = 'sandbox-write'; keep = true; break }
   }
   report.complete = report.cases.length === selected.length
   report.finishedAt = new Date().toISOString()

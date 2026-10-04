@@ -102,11 +102,14 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
   재시도하지 않는다. 각 시도는 새 세션·새 빈 폴더이고 반복 번호를 결과에 기록한다. invalid·실패한 시도를 대체하지 않는다.
   budget 플래그가 없으면 모델 프로세스를 시작하지 않는다. `--prior-results`의 사용량도 예산에 합친다.
   `--continue-from`은 예산 때문에 중단된 full에서만, 기존 사례·정책·프롬프트 해시·반복 횟수와 Codex 버전·실행기 코드 해시·
-  설치된 스킬 해시·전역 지침 해시가 모두 같을 때 미실행 시도만 실행한다. 기록된 시도를 재실행하지 않는다.
+  설치된 스킬 해시·전역 지침 해시·스킬 목록 해시가 모두 같을 때 미실행 시도만 실행한다. 기록된 시도를 재실행하지 않는다.
 - `gpt-6.1-sol/high`, 사례당 300초다. 모델·effort·시간 제한·측정 대상·예산을 바꾸기 전에 사용자가 결정한다.
 - 사용자의 실제 CODEX_HOME에서 돈다. 호스트가 평소 싣는 전역 지침·활성 플러그인·system 스킬이 그대로 들어가며,
   설정 파일은 바꾸지 않는다. 명령행으로 `--sandbox read-only`와 모델·effort를 고정하고 `--ephemeral`로 세션을 남기지 않는다.
-  자식에게는 CODEX_HOME과 실행에 필요한 최소 환경 변수만 넘긴다. 평소 사용과의 차이는 쓰기 차단 하나다.
+  자식에게는 CODEX_HOME과 실행에 필요한 최소 환경 변수만 넘긴다. 사례 폴더는 신뢰된 이 저장소의 `.work/` 아래에 두어
+  새 신뢰 항목이 생기지 않게 하고, 명령행 `-c project_root_markers=[]`와 `-c features.hooks=false`로 이 저장소의
+  AGENTS.md와 devflow 훅의 재개 카드를 뺀다. devflow가 아닌 프로젝트에서 devflow 훅은 출력이 없으므로 평소 사용과의
+  차이는 쓰기 차단과 훅의 실행 비용 정도다. 두 덮어쓰기가 듣는지는 모델에게 맥락을 물어 확인했다(#39).
 - 측정 대상은 설치된 플러그인이다. 설치된 devflow 스킬이 저장소의 `skills/`와 바이트 단위로 다르면 비용 없이 멈춘다.
   모델 호출 전 `codex debug prompt-input`으로 devflow 7개 스킬이 목록에 있는지 확인하고 목록 전체를 결과에 남긴다.
   매 시도 전 전역 지침 해시가 시작 때와 다르면 멈춘다.
@@ -127,7 +130,7 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
   시도마다 명령 문자열(명령 100개, 각 2000자까지)을 남겨 파서가 바뀌어도 다시 채점할 수 있게 한다. 명령 출력·메시지·
   stderr와 세션 기록은 저장하거나 읽지 않는다. 결과 폴더는 git이 무시한다. 실행 오류와 평가 실패는 종료 코드 1이다.
 
-격리 방식과 대안의 이유: [ADR-0016](../design/decisions/ADR-0016-codex-trigger-eval.md).
+실행 방식과 대안의 이유: [ADR-0016](../design/decisions/ADR-0016-codex-trigger-eval.md).
 
 ## 회고와 기억
 

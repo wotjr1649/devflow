@@ -193,3 +193,15 @@ test('Issue writes from a task worktree stay refused: only the branch Issue is w
   assert.equal(e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue').length, 0)
   assert.ok(main)
 })
+
+test('a FIFO in a worktree git dir cannot hold mainTree open (#43)', { skip: process.platform === 'win32' }, () => {
+  const { wt } = project('feat/43-x', 'fix/43-wt')
+  // git keeps the worktree's back link in <common>/worktrees/<name>/gitdir; git itself does not read it here.
+  const own = git(wt, 'rev-parse', '--path-format=absolute', '--git-dir')
+  fs.rmSync(path.join(own, 'gitdir'))
+  assert.equal(spawnSync('mkfifo', [path.join(own, 'gitdir')]).status, 0)
+  const r = spawnSync(process.execPath, ['-e', 'const s = require(process.argv[1]); console.log(JSON.stringify(s.mainTree(s.realEnv, process.argv[2])))',
+    path.resolve(__dirname, '../bin/devflow-state'), wt], { encoding: 'utf8', env: cleanEnv, timeout: 8000 })
+  assert.equal(r.signal, null, 'mainTree did not return before the timeout')
+  assert.equal(r.stdout.trim(), 'null')
+})

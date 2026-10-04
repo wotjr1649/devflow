@@ -44,12 +44,15 @@ function parseTrace(text, skillRoot) {
     // Literal read operations only. Messages, command output, listings and echoed paths are not trigger evidence.
     const command = normalize(event.item.command.replaceAll('\\"', '"'))
     const unwrapped = command.replace(/^(?:"[^"]+"|[^\s]+)\s+(?:-[\w-]+\s+)*-(?:Command|lc|c)\s+["']?/i, '')
-    if (!READ.test(unwrapped) || /^rg\b.*\s--files\b/i.test(unwrapped)) continue
+    if (!READ.test(unwrapped) || /^rg\b.*\s--files(?![\w-])/i.test(unwrapped)) continue
     // Tokenize literal operands of the first read; quoted echo text and later commands are data.
     const operands = unwrapped.replace(READ, '')
+    // rg's first non-option operand is the search pattern, not a file.
+    let pattern = /^rg\b/i.test(unwrapped)
     for (const m of operands.matchAll(/'([^']*)'|"([^"]*)"|([;|&])|([^\s'";|&]+)/g)) {
       if (m[3]) break
       const file = m[1] ?? m[2] ?? m[4]
+      if (pattern && !file.startsWith('-')) { pattern = false; continue }
       const key = fold(file)
       if (!key.startsWith(root)) continue
       const relative = file.slice(root.length)

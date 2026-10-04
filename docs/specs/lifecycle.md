@@ -109,10 +109,15 @@ node bin/devflow-codex-eval --full --budget-tokens <new-total-budget> --continue
 - Windows에서는 이미 설치된 elevated backend를 재사용한다. 인증과 sandbox 상태는 값 복사 없이 임시 링크로 참조하고,
   종료·실패 시 링크만 제거한다. 새 계정·방화벽·호스트 설정을 만들어 실행하지 않는다.
 - 평가 전용 PreToolUse guard는 공개 snapshot 안의 단일 literal 읽기·목록·검색 명령만 허용한다.
-  읽기 범위는 guard, 쓰기·명령 network 제한은 read-only sandbox가 맡는다. 실제 guard 정의의 신뢰 해시를 확인하고
+  OS filesystem profile도 `:minimal`과 공개 skills·docs의 읽기만 허용한다. snapshot 밖의 비밀 없는 canary 읽기,
+  쓰기·명령 network 거부 검사를 모델 호출 전에 통과해야 한다. 훅 오류 시 도구가 계속될 수 있으므로 guard만으로
+  읽기 격리를 주장하지 않는다. 제한 profile을 지원하지 않는 backend에서는 모델 호출 전에 중단하며 넓은 읽기로 우회하지 않는다.
+  실제 guard 정의의 신뢰 해시를 확인하고
   신뢰 우회 옵션을 쓰지 않는다. 모델 호출 전 실제 셸로 허용·차단 canary와 감사 기록을 검사하고,
   실행 중 명령 수보다 guard 감사 기록이 적으면 invalid로 중단한다.
   공개 코드 복사본에서 평가용 manifest의 제품 훅을 제외하며 실제 설치본은 바꾸지 않는다.
+- 현재 codex-cli 0.160.0의 Windows elevated backend는 이 제한 profile을 거부했다. 이 환경에서는 실행할 수 없으며,
+  다른 호스트의 실제 지원은 그 호스트에서 같은 사전 검사를 통과해야 확인된다.
 - 해당 자식의 stdout JSONL만 읽는다. `item.*`의 `command_execution.command`가 대상 snapshot의
   `skills/<name>/SKILL.md`를 literal로 읽으려 한 경우 검출한다. 메시지·명령 출력·echo·목록의 경로는 증거가 아니다.
   읽기 실패도 시도로 검출하며, 변수로 조립한 경로나 읽기 없이 이미 주어진 본문을 적용하는 경우는 미검출이다.
@@ -120,6 +125,8 @@ node bin/devflow-codex-eval --full --budget-tokens <new-total-budget> --continue
 - 사용량은 `turn.completed.usage`의 input+output 합계다. cached input은 input에 포함되므로 다시 더하지 않는다.
   종료 후 예산에 닿으면 다음 사례를 시작하지 않는다. 진행 중인 turn이 예산을 넘는 것은 막을 수 없다.
   사용량을 얻지 못하면 추가 실행을 중단한다. 시간 초과·비정상 종료·불완전 JSONL은 invalid로 따로 집계하고 성공률에서 제외한다.
+  종료 요청 뒤 5초 안에 close가 없으면 프로세스 종료 미확인으로 기록하고 더 진행하지 않는다. 해당 PID와 임시 참조를
+  보존해 호출자가 종료를 확인하도록 하며, 살아 있을 수 있는 실행의 상태를 정리하거나 다른 실행을 시작하지 않는다.
 - 기대 스킬·검출 스킬·pass/fail/invalid·사용량·시간·환경·완료 여부는 Claude 결과 옆 `evals/results/`에 저장한다.
   원시 stdout·stderr와 세션 기록은 저장하거나 읽지 않는다. 실행 오류와 평가 실패는 종료 코드 1이며 완료 조건과 구별한다.
 

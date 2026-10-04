@@ -3,7 +3,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { parseTrace, loadCases, score, parseArgs, summarize, continuation } = require('../bin/devflow-codex-eval')
+const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv } = require('../bin/devflow-codex-eval')
+const tmpdir = require('./tmpdir')
 const skillRoot = ['C:', 'eval', 'home', 'skills'].join('/')
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/codex-eval', name + '.jsonl'), 'utf8').replaceAll('EVAL_SKILLS', skillRoot)
 const event = command => JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command } }) + '\n'
@@ -19,6 +20,8 @@ test('messages, command output, listings and echo do not count as reads', () => 
   const text = fixture('quiet') + event(`echo '${skillRoot}/grilling/SKILL.md'`) + event(`echo "cat ${skillRoot}/grilling/SKILL.md"`) + event(`rg --files ${skillRoot}/grilling/SKILL.md`) +
     JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command: 'pwd', aggregated_output: skillRoot + '/grilling/SKILL.md' } })
   assert.deepEqual(parseTrace(text, skillRoot).detectedSkills, [])
+  assert.deepEqual(parseTrace(fixture('quiet') + event(`Get-Content 'ordinary.txt'; echo "cat '${skillRoot}/grilling/SKILL.md'"`), skillRoot).detectedSkills, [])
+  assert.deepEqual(parseTrace(fixture('quiet') + event(`Get-Content 'ordinary.txt' "cat '${skillRoot}/grilling/SKILL.md'"`), skillRoot).detectedSkills, [])
 })
 
 test('unknown usage types do not turn an incomplete run into a neutral success', () => {
@@ -33,6 +36,7 @@ test('literal Windows and POSIX reads count; another plugin with the same name d
   const other = ['C:', 'other', 'skills', 'grilling', 'SKILL.md'].join('/')
   const text = fixture('quiet') + event(`Get-Content "${winFile}"`) + event(`cat '${other}'`)
   assert.deepEqual(parseTrace(text, skillRoot).detectedSkills, ['writing-for-agents'])
+  assert.deepEqual(parseTrace(fixture('quiet') + event(`Get-Content '${skillRoot}/GRILLING/SKILL.md'`), skillRoot).detectedSkills, ['grilling'])
   assert.deepEqual(parseTrace(fixture('quiet') + event("sed -n '1,80p' '/eval/home/skills/grilling/SKILL.md'"), '/eval/home/skills').detectedSkills, ['grilling'])
 })
 
@@ -94,4 +98,20 @@ test('explicit budget continuation preserves the charged prefix and rejects chan
   assert.throws(() => parseArgs(['--full', '--continue-from', 'result.json', '--prior-results', 'smoke.json', '--budget-tokens', '1000']))
   assert.throws(() => parseArgs(['--full', '--budget-tokens', '1000', '--continue-from']))
   assert.throws(() => parseArgs(['--full', '--budget-tokens', '1000', '--prior-results']))
+})
+
+test('a real silent child is stopped on timeout and returns invalid with no known usage', async () => {
+  const home = tmpdir('codex-eval-child-')
+  // Execute a task-local Node copy, never Codex or a model. The process lifetime is the behavior under test.
+  const executable = path.join(home, process.platform === 'win32' ? 'codex-test.exe' : 'codex-test')
+  fs.copyFileSync(process.execPath, executable)
+  if (process.platform !== 'win32') fs.chmodSync(executable, 0o700)
+  fs.writeFileSync(path.join(home, 'exec'), 'setInterval(() => {}, 1000)\n')
+  fs.writeFileSync(path.join(home, 'eval-public-root.json'), JSON.stringify({ root: home }))
+  const result = await execute({ id: 'none--silent', expectedSkill: null, policy: 'none', prompt: '' }, home, home, cleanEnv(home), { executable, timeoutMs: 200 })
+  assert.equal(result.timedOut, true)
+  assert.equal(result.result, 'invalid')
+  assert.equal(result.tokens, null)
+  assert.equal(result.processStopUnconfirmed, false)
+  assert.ok(result.durationMs < 10000)
 })

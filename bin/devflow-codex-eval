@@ -21,7 +21,8 @@ function parseTrace(text, skillRoot) {
   const usage = Object.fromEntries([...usageKeys, 'total_tokens'].map(k => [k, 0]))
   let turns = 0, started = false, broken = false
   const commands = new Set()
-  const root = normalize(skillRoot).toLowerCase() + '/'
+  const fold = s => process.platform === 'win32' || /^[a-z]:\//i.test(normalize(skillRoot)) ? s.toLowerCase() : s
+  const root = fold(normalize(skillRoot)) + '/'
   for (const line of text.split(/\r?\n/).filter(l => l.trim())) {
     let event
     try { event = JSON.parse(line) } catch { broken = true; continue }
@@ -43,13 +44,15 @@ function parseTrace(text, skillRoot) {
     const command = normalize(event.item.command)
     const unwrapped = command.replace(/^(?:"[^"]+"|[^\s]+)\s+(?:-[\w-]+\s+)*-(?:Command|lc|c)\s+["']?/i, '')
     if (!/^(?:Get-Content|cat|head|tail|sed|readFileSync|readFile|read_text)\b/i.test(unwrapped)) continue
-    const reads = /\b(?:Get-Content|cat|head|tail|sed|readFileSync|readFile|read_text)\b[^;\n]*?(?:["']([^"']*\/skills\/[A-Za-z0-9_.-]+\/SKILL\.md)["']|([^\s"']*\/skills\/[A-Za-z0-9_.-]+\/SKILL\.md))/gi
-    for (const m of command.matchAll(reads)) {
-      const file = m[1] || m[2]
-      const key = file.toLowerCase()
+    // Tokenize literal operands of the first read; quoted echo text and later commands are data.
+    const operands = unwrapped.replace(/^(?:Get-Content|cat|head|tail|sed|readFileSync|readFile|read_text)\b/i, '')
+    for (const m of operands.matchAll(/'([^']*)'|"([^"]*)"|([;|&])|([^\s'";|&]+)/g)) {
+      if (m[3]) break
+      const file = m[1] ?? m[2] ?? m[4]
+      const key = fold(file)
       if (!key.startsWith(root)) continue
       const relative = file.slice(root.length)
-      if (/^[A-Za-z0-9_.-]+\/SKILL\.md$/i.test(relative)) detected.add(relative.split('/')[0])
+      if (/^[A-Za-z0-9_.-]+\/SKILL\.md$/i.test(relative)) detected.add(fold(relative.split('/')[0]))
     }
   }
   return { detectedSkills: [...detected].sort(), usage: turns ? usage : null, commandExecutions: commands.size, valid: started && turns > 0 && !broken }
@@ -135,9 +138,11 @@ function systemSkills(home) {
 }
 
 function configArgs(home) {
+  const publicRoot = path.join(home, 'plugins', 'cache', 'devflow', 'devflow', '0.1.0')
   const settings = [
     'model=' + toml(MODEL), 'model_reasoning_effort=' + toml(EFFORT), 'approval_policy="never"',
-    'default_permissions="eval"', 'permissions.eval.extends=":read-only"',
+    'default_permissions="eval"',
+    'permissions.eval.filesystem={":minimal"="read",' + toml(path.join(publicRoot, 'skills')) + '="read",' + toml(path.join(publicRoot, 'docs')) + '="read"}',
     'permissions.eval.network.enabled=false', 'windows.sandbox="elevated"',
     'features.hooks=true', 'features.code_mode=false', 'features.apps=false', 'features.multi_agent=false', 'features.memories=false', 'features.shell_snapshot=false', 'web_search="disabled"',
     'shell_environment_policy.inherit="none"', 'shell_environment_policy.experimental_use_profile=false',
@@ -313,16 +318,22 @@ async function preflight(home, names, taskDir, env) {
     ['sh', '-c', 'test -r "$1" && ! touch write-canary && ! curl --max-time 3 https://example.com >/dev/null 2>&1', 'sh', allowed]
   runLocal(['sandbox', '-P', 'eval', ...args, ...command], { cwd, env })
   if (fs.existsSync(path.join(cwd, 'write-canary.txt'))) throw new Error('Sandbox write denial failed')
-  return { catalog, privateContext: false, sandboxChecked: true, ...trusted, readBoundary: 'evaluation-hook-literal-read-grammar' }
+  const denied = path.join(home, 'private-read-canary.txt')
+  fs.writeFileSync(denied, 'Public canary outside the allowed snapshot; no credentials.')
+  const readProbe = process.platform === 'win32' ? ['pwsh.exe', '-NoProfile', '-NonInteractive', '-Command',
+    "try { [void](Get-Content -LiteralPath '" + denied.replaceAll("'", "''") + "' -ErrorAction Stop); exit 19 } catch { Write-Output 'read-denied' }"] :
+    ['sh', '-c', 'if cat "$1" >/dev/null 2>&1; then exit 19; fi', 'sh', denied]
+  runLocal(['sandbox', '-P', 'eval', ...args, ...readProbe], { cwd, env })
+  return { catalog, privateContext: false, sandboxChecked: true, ...trusted, readBoundary: 'os-snapshot-read-allowlist-and-evaluation-hook' }
 }
 
-function execute(c, cwd, home, env) {
+function execute(c, cwd, home, env, limits = {}) {
   return new Promise(resolve => {
     const start = Date.now()
     const auditFile = path.join(home, 'eval-guard-audit.jsonl')
     const auditBefore = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).length : 0
-    let stdout = '', size = 0, timedOut = false, overflow = false, spawnFailed = false, stopped = false
-    const child = spawn('codex', ['exec', '--json', '--ephemeral', '--skip-git-repo-check', ...configArgs(home), '-'],
+    let stdout = '', size = 0, timedOut = false, overflow = false, spawnFailed = false, stopped = false, finished = false, stopWatchdog
+    const child = spawn(limits.executable || 'codex', ['exec', '--json', '--ephemeral', '--skip-git-repo-check', ...configArgs(home), '-'],
       { cwd, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'] })
     const stop = () => {
       if (stopped || !child.pid) return
@@ -331,15 +342,25 @@ function execute(c, cwd, home, env) {
         const killed = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8', timeout: 10000 })
         if (killed.status !== 0) spawnFailed = true
       } else { try { process.kill(-child.pid, 'SIGKILL') } catch (e) { if (e.code !== 'ESRCH') spawnFailed = true } }
+      stopWatchdog = setTimeout(() => {
+        spawnFailed = true
+        child.stdout.destroy()
+        child.stdin.destroy()
+        child.unref()
+        finish(null, true)
+      }, 5000)
     }
-    const timer = setTimeout(() => { timedOut = true; stop() }, TIMEOUT)
+    const timer = setTimeout(() => { timedOut = true; stop() }, limits.timeoutMs ?? TIMEOUT)
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', chunk => { size += Buffer.byteLength(chunk); if (size > MAX_OUTPUT) { overflow = true; stop() } else stdout += chunk })
     child.on('error', () => { spawnFailed = true })
     child.stdin.on('error', () => {})
     child.stdin.end(c.prompt)
-    child.on('close', exitCode => {
+    const finish = (exitCode, processStopUnconfirmed = false) => {
+      if (finished) return
+      finished = true
       clearTimeout(timer)
+      clearTimeout(stopWatchdog)
       const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
       const trace = parseTrace(stdout, path.join(publicRoot, 'skills'))
       const audit = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).slice(auditBefore).map(l => JSON.parse(l)) : []
@@ -348,9 +369,11 @@ function execute(c, cwd, home, env) {
       trace.valid = trace.valid && !guardMissing
       resolve({ id: c.id, expectedSkill: c.expectedSkill, policy: c.policy, promptHash: c.promptHash,
         detectedSkills: trace.detectedSkills, result: score(c, trace), tokens: trace.usage, durationMs: Date.now() - start,
-        exitCode, timedOut, overflow, spawnFailed, guardMissing, guardCalls: audit.length, guardAllowed: audit.filter(a => a.allowed).length,
+        exitCode, timedOut, overflow, spawnFailed, processStopUnconfirmed, ...(processStopUnconfirmed ? { processId: child.pid } : {}),
+        guardMissing, guardCalls: audit.length, guardAllowed: audit.filter(a => a.allowed).length,
         stdoutHash: crypto.createHash('sha256').update(stdout).digest('hex') })
-    })
+    }
+    child.on('close', exitCode => finish(exitCode))
   })
 }
 
@@ -376,6 +399,7 @@ async function main(args) {
   const work = path.join(ROOT, '.work')
   fs.mkdirSync(work, { recursive: true })
   const taskDir = fs.mkdtempSync(path.join(work, 'codex-eval-'))
+  let unconfirmedProcess = false
   try {
   const prepared = prepare(ROOT, taskDir)
   if (continued && continued.sourceHash !== prepared.sourceHash) throw new Error('Public skill/document snapshot changed; continuation would change the measurement target')
@@ -394,6 +418,7 @@ async function main(args) {
     const cwd = path.join(taskDir, c.id)
     fs.mkdirSync(cwd)
     const result = await execute(c, cwd, prepared.home, env)
+    if (result.processStopUnconfirmed) unconfirmedProcess = true
     report.cases.push(result)
     report.summary = summarize(report.cases)
     save()
@@ -409,7 +434,9 @@ async function main(args) {
   if (!report.complete || report.summary.invalid || !report.summary.thresholdPassed) process.exitCode = 1
   } finally {
   // Unlink only task-created references; never traverse or remove their credential/sandbox targets.
+  if (unconfirmedProcess) process.stderr.write('Process stop is unconfirmed; task references are retained for caller recovery. No further case was started.\n')
   for (const name of ['auth.json', '.sandbox', '.sandbox-secrets', '.sandbox-bin']) {
+    if (unconfirmedProcess) break
     const link = path.join(taskDir, 'home', name)
     try { if (fs.lstatSync(link).isSymbolicLink()) fs.unlinkSync(link) } catch (e) { if (e.code !== 'ENOENT') throw e }
   }

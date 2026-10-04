@@ -822,7 +822,7 @@ test('alias lookup consumes the remaining hook budget including profile inspecti
 })
 
 // Issue #10: Claude's SessionStart hands its session id to the shell; SessionEnd drops the session from every Issue's
-// recent writers. Both live where Codex cannot read them: Codex has no SessionEnd and no CLAUDE_ENV_FILE.
+// recent writers. Codex has no CLAUDE_ENV_FILE (its shell has CODEX_THREAD_ID), and runs SessionEnd too (#42).
 const hashOf = id => require('crypto').createHash('sha256').update(id).digest('hex').slice(0, 12)
 const SID = '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0'
 const noGit = { run: () => ({ code: 1, stdout: '', stderr: '' }) }
@@ -883,16 +883,29 @@ test('SessionEnd in a worktree releases the session from the main work tree fold
   assert.equal(fs.existsSync(path.join(folder, 'ledger.json')), false)
 })
 
-test('SessionEnd lives in a Claude-only hook file the Claude manifest names; hooks.json, which Codex reads, has none', () => {
-  const claude = require('../hooks/claude-hooks.json').hooks
-  assert.deepEqual(Object.keys(claude), ['SessionEnd'])
+test('SessionEnd lives in hooks.json, which both hosts read; no Claude-only hook file is left (#42)', () => {
   const shared = require('../hooks/hooks.json').hooks
-  assert.equal(shared.SessionEnd, undefined)
-  const { command, timeout } = claude.SessionEnd[0].hooks[0]
+  assert.equal(shared.SessionEnd.length, 1)
+  // No matcher: Claude matches it on the end reason, Codex on its one reason "other".
+  assert.equal(shared.SessionEnd[0].matcher, undefined)
+  const { command, timeout } = shared.SessionEnd[0].hooks[0]
   assert.equal(command, shared.Stop[0].hooks[0].command)
-  assert.ok(timeout <= 5)
-  assert.equal(require('../.claude-plugin/plugin.json').hooks, './hooks/claude-hooks.json')
+  assert.ok(timeout <= 3, 'Codex caps SessionEnd at 3 s')
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'hooks', 'claude-hooks.json')), false)
+  assert.equal('hooks' in require('../.claude-plugin/plugin.json'), false, 'Claude reads hooks/hooks.json by default')
   assert.equal(require('../.codex-plugin/plugin.json').hooks, './hooks/hooks.json')
+})
+
+test('SessionEnd in the Codex input shape releases the thread the session was recorded under (#42)', () => {
+  // codex-rs/hooks/src/events/session_end.rs (rust-v0.160.0): session_id is the thread id, reason is always "other".
+  const tid = '019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b'
+  const root = dir(true)
+  const d = path.join(root, '.work', 'devflow', 'i3')
+  fs.mkdirSync(d, { recursive: true })
+  fs.writeFileSync(path.join(d, 'sessions.json'), JSON.stringify({ [hashOf(tid)]: { host: 'codex', at: Date.now() } }))
+  const input = { session_id: tid, transcript_path: null, reason: 'other' }
+  assert.equal(hook.handle(event('SessionEnd', root, input), noGit), '')
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(d, 'sessions.json'), 'utf8')), {})
 })
 
 test('SessionStart passes the session id to the card, so its own writes are not warned about', () => {

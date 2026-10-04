@@ -59,6 +59,13 @@ a region of behaviour in very few tokens.
 An invented word recruits no priors: you pay in definition tokens what a pretrained word gives
 free. **Assume the document carries restatements a leading word retires, and go find them.**
 
+## Prohibition
+
+The reasons behind the spec's positive phrasing and its one exception: a prohibition drags the
+forbidden thing into context, so a positive recipe shapes output better. **A safety floor stays a
+prohibition**, because a rule that says what to do instead is a default, and a default is not a
+floor.
+
 ## Pruning
 
 **A document restating the environment is a cache** - of a script's usage output, a config file,

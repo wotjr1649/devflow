@@ -3,7 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, expandCases, continuationConditions, execArgs, skillSnapshot, checkInstalled } = require('../bin/devflow-codex-eval')
+const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, expandCases, continuationConditions, execArgs, skillSnapshot, checkInstalled, caseDir, taskRoot } = require('../bin/devflow-codex-eval')
 const tmpdir = require('./tmpdir')
 const skillRoot = ['C:', 'eval', 'home', 'skills'].join('/')
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/codex-eval', name + '.jsonl'), 'utf8').replaceAll('EVAL_SKILLS', skillRoot)
@@ -162,8 +162,8 @@ test('the real-home run blocks writes and fixes model and effort on the command 
   assert.equal(at('--sandbox'), 'read-only')
   assert.equal(at('-m'), 'gpt-6.1-sol')
   const overrides = args.flatMap((a, i) => a === '-c' ? [args[i + 1]] : [])
-  // The case folder sits in this repository: keep its AGENTS.md and the devflow resume card out of the measurement.
-  assert.deepEqual(overrides, ['model_reasoning_effort="high"', 'project_root_markers=[]', 'features.hooks=false'])
+  // Hooks stay on as in normal use; only a parent folder's AGENTS.md is kept out.
+  assert.deepEqual(overrides, ['model_reasoning_effort="high"', 'project_root_markers=[]'])
   assert.ok(args.includes('--ephemeral') && args.includes('--json'))
   assert.equal(args.at(-1), '-')
   assert.throws(() => parseArgs(['--full', '--retain-global-instructions', '--budget-tokens', '1000']))
@@ -244,4 +244,15 @@ test('a case folder removed during the run gives an invalid result instead of cr
   const result = await execute({ id: 'none--x', expectedSkill: null, policy: 'none', prompt: '' }, cwd, cleanEnv(home), skillRoot, { executable })
   assert.equal(result.result, 'invalid')
   assert.equal(result.cwdMissing, true)
+})
+
+test('case folders tell the model nothing: outside this repository, named by position only (#39 review)', () => {
+  // The working folder reaches the model as <cwd>; a case id or "devflow" in it would hint at the expected skill.
+  const root = taskRoot()
+  const rel = path.relative(path.resolve(__dirname, '..'), root)
+  assert.ok(rel.startsWith('..') || path.isAbsolute(rel), 'outside the repository')
+  assert.ok(!/devflow/i.test(root))
+  const dir = caseDir(path.join(root, 'cx-abc'), 6)
+  assert.equal(path.basename(dir), 't07')
+  assert.ok(!/devflow|grill|none|skill/i.test(dir.slice(root.length)))
 })

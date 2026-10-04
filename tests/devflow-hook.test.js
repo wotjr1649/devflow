@@ -731,6 +731,19 @@ test('a FIFO profile cannot hold the hook open', { skip: process.platform === 'w
   assert.equal(decision(r.stdout), 'deny')
 })
 
+test('a FIFO ledger cannot hold the test-lock guard open; it counts as locked (#46)', { skip: process.platform === 'win32' }, () => {
+  const d = gitRepo('fix/7-x', { tests: ['tests/**'] })
+  const ledgerFile = path.join(d, '.work', 'devflow', 'i7', 'ledger.json')
+  fs.mkdirSync(path.dirname(ledgerFile), { recursive: true })
+  execFileSync('mkfifo', [ledgerFile])
+  const input = event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, 'tests', 'a.test.js') } })
+  const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
+    cwd: d, input, encoding: 'utf8', timeout: 8000,
+  })
+  assert.equal(r.signal, null, 'the hook did not answer before the timeout')
+  assert.equal(decision(r.stdout), 'deny')
+})
+
 test('PowerShell content parameters cannot hide the actual write path', () => {
   const d = dir(true)
   fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))

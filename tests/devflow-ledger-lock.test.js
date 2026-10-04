@@ -7,7 +7,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const tmpdir = require('./tmpdir')
-const { spawn } = require('child_process')
+const { spawn, spawnSync, execFileSync } = require('child_process')
 const state = require('../bin/devflow-state')
 
 const BRANCH = 'feat/1-x'
@@ -405,4 +405,16 @@ test('a subagent shares its parent session id, so its writes are not warned abou
   const sub = { ...A, CLAUDE_CODE_CHILD_SESSION: '1' }
   assert.doesNotMatch(run(root, sub, ['note', '1'], 'subagent').out, WARN)
   assert.doesNotMatch(run(root, A, ['note', '1'], 'main again').out, WARN)
+})
+
+// Issue #46: the ledger comes from the working tree, which an archive controls. Only a plain file of a bounded size is
+// read; anything else is refused rather than read as no ledger, so a write cannot replace it and the guard stays locked.
+test('a FIFO ledger cannot hold a ledger read open (#46)', { skip: process.platform === 'win32' }, () => {
+  const root = repo()
+  fs.mkdirSync(path.join(root, '.work/devflow/i1'), { recursive: true })
+  execFileSync('mkfifo', [path.join(root, '.work/devflow/i1/ledger.json')])
+  const r = spawnSync(process.execPath, ['-e', 'const s = require(process.argv[1]); try { s.readLedger(process.argv[2], 1); console.log("read") } catch (e) { console.log("refused: " + e.message) }',
+    path.resolve(__dirname, '../bin/devflow-state'), root], { encoding: 'utf8', timeout: 8000 })
+  assert.equal(r.signal, null, 'the read did not return before the timeout')
+  assert.match(r.stdout, /^refused: Issue #1's ledger is not a small plain file/)
 })

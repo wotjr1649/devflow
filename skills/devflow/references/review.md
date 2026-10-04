@@ -28,7 +28,7 @@ disappear later, and `devflow-state` writes an Issue only from its branch. Rules
 3. Decide the trigger eval by [eval](../../../docs/specs/lifecycle.md#eval): `git diff --name-status <base>..HEAD -- skills
    evals/trigger` shows added, deleted or renamed skills and any changed eval case, and `git diff -U0 <base>..HEAD --
    'skills/*/SKILL.md'` shows changed frontmatter lines. When it is due, ask the user to run it in their terminal, since
-   it cannot authenticate inside a session. Either way the ship checkpoint says whether it ran and why.
+   it cannot authenticate inside a session, with `--no-publish` as in that command, so the report stays local. Either way the ship checkpoint says whether it ran and why.
 4. Once every delegation has finished (the ledger's `running` is empty), run `devflow-metrics <issue>` (next to the
    `Tool:` command) from the Issue's work tree and save its output as `artifacts/metrics/i<issue>.json` in the main work
    tree: the host writes subagent records late, so a delegation still running adds records before the saved `until`.

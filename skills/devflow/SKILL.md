@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: Route Issue-tracked work in a repository with .devflow.json to its lifecycle stage. Use when a [devflow] resume card is in context, after /clear or compaction, when a stage's work is done, or when new information may send the work back to an earlier stage.
+description: Route Issue-tracked work in a repository with .devflow.json to its lifecycle stage. Use to continue the Issue a [devflow] resume card shows, after /clear or compaction, when a stage's work is done, or when new information may send the work back to an earlier stage. Not for starting new work, which development-start takes.
 ---
 
 # devflow
@@ -11,8 +11,7 @@ did not run; say which, and route nothing.
 
 A card that names a reason instead of the state (another branch in the state block, a failed lookup, a body written
 by a non-writer) means the stage is unknown; report the reason to the user rather than guess around it. A branch
-without an Issue number means the work has no Issue yet: classify its path first. A spike, or work whose problem and
-acceptance the user has not confirmed, goes to discover; the rest goes to start.
+without an Issue number means the work has no Issue yet: new work goes to `development-start`, which classifies its path.
 
 ## devflow-state
 

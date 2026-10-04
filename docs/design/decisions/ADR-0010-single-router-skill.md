@@ -1,6 +1,7 @@
 # ADR-0010: 책임별 단계를 라우터가 기존 단계 스킬로 보낸다
 
-상태: 채택 (사용자 결정)
+상태: 채택 (사용자 결정). 개정: 카드가 있어도 새 작업 요청은 development-start가 받고 경로를 가른다
+([ADR-0018](ADR-0018-new-work-goes-to-development-start.md), #45).
 
 ## 맥락
 

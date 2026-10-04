@@ -7,6 +7,8 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 ## 라우터
 
 - `devflow` 스킬이 재개 카드(Issue 현재 상태, 작업 장부, `.devflow.json`)로 지금 단계와 작업 번호를 판단한다.
+- 카드가 있어도 새 작업 요청은 `development-start`가 받고 [경로](#경로별-단계)를 가른다. spike나 문제와 수용 기준이
+  확인되지 않은 일은 discover로 보낸다([ADR-0018](../design/decisions/ADR-0018-new-work-goes-to-development-start.md)).
 - 담당 스킬이 있는 단계는 그 스킬을 이름으로 부르고, 없는 단계는 라우터의 단계 reference를 읽는다.
 - 단계를 옮길 때 장부와 Issue 현재 상태의 "단계"를 바꾼다. 작업 루프 안에서 build와 verify를 오가는 것은 장부에만
   적는다.
@@ -73,7 +75,7 @@ ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 �
 
 ## eval
 
-트리거 eval(`claude plugin eval . --tag trigger`)은 스킬 목록이 바뀐 사이클에서만 돌린다. BASE..HEAD로 판별한다.
+트리거 eval(`claude plugin eval . --tag trigger --no-publish`)은 스킬 목록이 바뀐 사이클에서만 돌린다. BASE..HEAD로 판별한다.
 
 - 돌린다: `skills/*/SKILL.md` frontmatter의 호출 필드(`name`, `description`, `when_to_use`, `paths`,
   `disable-model-invocation`, `user-invocable`)가 바뀌었거나, 스킬을 더하거나 지우거나 이름을 바꿨거나, `evals/trigger/`가
@@ -82,7 +84,8 @@ ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 �
   로드되고, 호스트는 스킬 목록만 보고 자동 호출을 정하므로 이 변경은 결과를 바꾸지 않는다([host-facts](../research/host-facts.md)).
 - 결과 eval은 두지 않는다. 스킬 본문의 변경은 리뷰와 사이클 지표(개입, 오탐, 차단)로 보고, 개입이 늘거나 같은 실수가
   반복되면 결과 eval 장치를 만드는 Issue를 연다.
-- Claude eval은 사용자 터미널에서 돌린다. 세션 안에서 띄우면 인증이 없어 멈춘다. 판정은 오류 난 실행을 빼고 트리거 80% 이상,
+- Claude eval은 사용자 터미널에서 돌린다. 세션 안에서 띄우면 인증이 없어 멈춘다. 리포트는 `--no-publish`로 게시하지 않고
+  결과는 체크포인트와 장부에 남긴다(#45). 판정은 오류 난 실행을 빼고 트리거 80% 이상,
   오탐 10% 이하다. ship 체크포인트에 돌렸는지와 판별 근거를 남긴다.
 
 ### Codex 트리거 eval

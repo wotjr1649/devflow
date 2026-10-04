@@ -2,7 +2,7 @@
 max_turns: 6
 timeout_seconds: 180
 allowed_tools: [Skill, Read, Glob, Grep]
-tags: [trigger, should, devflow]
+tags: [trigger, should, development-start]
 ---
 
 [devflow] o/r · feat/12-csv-export · HEAD 3f2a1bc

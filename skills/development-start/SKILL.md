@@ -1,11 +1,13 @@
 ---
 name: development-start
-description: Use when asked to start a change - a feature, fix or refactor - before any code is written, to align requirements, Issue tracking, and a dedicated branch/worktree. Excludes resuming from a devflow resume card, standalone reviews and release execution.
+description: Use when asked to start a change - a feature, fix or refactor - before any code is written, to align requirements, Issue tracking, and a dedicated branch/worktree, also when a [devflow] resume card shows other work. Excludes continuing the card's own Issue, standalone reviews and release execution.
 ---
 
 # Development start
 
 Apply at task/scope/branch transitions. Analysis/review alone creates no Issue or branch.
+
+In a repository with `.devflow.json`, classify the path first ([경로별 단계](../../docs/specs/lifecycle.md#경로별-단계)): a spike, or work whose problem and acceptance the user has not confirmed, goes to the devflow router's [discover](../devflow/references/discover.md) reference before any Issue; the rest starts here.
 
 Read the project contracts relevant to this task. Changes require an Issue; repository changes, including docs, require a dedicated branch. Reuse matching work, not one new Issue per branch. Use project base/naming/checks. Resolve material conflicts without discarding work.
 

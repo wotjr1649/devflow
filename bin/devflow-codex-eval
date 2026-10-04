@@ -137,7 +137,7 @@ function systemSkills(home) {
   return [...new Set(disabled)]
 }
 
-function configArgs(home) {
+function writeEvalConfig(home) {
   const publicRoot = path.join(home, 'plugins', 'cache', 'devflow', 'devflow', '0.1.0')
   const settings = [
     'model=' + toml(MODEL), 'model_reasoning_effort=' + toml(EFFORT), 'approval_policy="never"',
@@ -148,7 +148,14 @@ function configArgs(home) {
     'shell_environment_policy.inherit="none"', 'shell_environment_policy.experimental_use_profile=false',
     'skills.config=[' + systemSkills(home).map(p => '{path=' + toml(p) + ',enabled=false}').join(',') + ']',
   ]
-  return settings.flatMap(s => ['-c', s])
+  const file = path.join(home, 'config.toml')
+  const installed = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
+  // Top-level settings precede native plugin tables; appending them would change their TOML scope.
+  fs.writeFileSync(file, settings.join('\n') + '\n\n' + installed)
+}
+
+function configArgs() {
+  return ['--strict-config']
 }
 
 function cleanEnv(home) {
@@ -243,12 +250,13 @@ function prepare(root, taskDir) {
   fs.copyFileSync(path.join(root, 'bin', 'devflow-codex-eval-guard'), guardFile, fs.constants.COPYFILE_EXCL)
   const command = guardCommand(home)
   fs.writeFileSync(path.join(home, 'hooks.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', command, timeout: 3 }] }] } }) + '\n')
+  writeEvalConfig(home)
   return { home, names, skillRoot: path.join(loadedRoot, 'skills'), sourceHash: hash.digest('hex') }
 }
 
 function hookMetadata(home, cwd, env) {
   return new Promise((resolve, reject) => {
-    const child = spawn('codex', ['app-server', '--stdio', ...configArgs(home)], { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
+    const child = spawn('codex', ['app-server', '--stdio', ...configArgs()], { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
     let buffer = '', settled = false
     const end = (err, data) => {
       if (settled) return
@@ -297,8 +305,10 @@ async function trustGuard(home, cwd, env) {
 async function preflight(home, names, taskDir, env) {
   const cwd = path.join(taskDir, 'preflight')
   fs.mkdirSync(cwd)
-  const args = configArgs(home)
-  const raw = runLocal(['debug', 'prompt-input', ...args], { cwd, env })
+  // app-server validates the file strictly; debug and sandbox do not accept --strict-config in 0.160.0.
+  const trusted = await trustGuard(home, cwd, env)
+  checkGuardCommand(home, cwd, env)
+  const raw = runLocal(['debug', 'prompt-input'], { cwd, env })
   const input = JSON.parse(raw)
   const text = JSON.stringify(input)
   const catalog = [...text.matchAll(/- ([\w:-]+): /g)].map(m => m[1].replace(/^devflow:/, '')).sort()
@@ -307,8 +317,6 @@ async function preflight(home, names, taskDir, env) {
   if (text.includes('Global Agent Operating Contract') || text.includes('recent context')) throw new Error('Private context present in preflight')
   const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
   const allowed = path.join(publicRoot, 'skills', names[0], 'SKILL.md')
-  const trusted = await trustGuard(home, cwd, env)
-  checkGuardCommand(home, cwd, env)
   const guard = require('./devflow-codex-eval-guard')
   const allowedInput = { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: "Get-Content -LiteralPath '" + allowed + "' -Raw" } }
   if (!guard.permits(allowedInput, publicRoot) || guard.permits({ ...allowedInput, tool_input: { command: "Get-Content '" + path.join(home, 'auth.json') + "'" } }, publicRoot) ||
@@ -316,14 +324,14 @@ async function preflight(home, names, taskDir, env) {
   const command = process.platform === 'win32' ? ['pwsh.exe', '-NoProfile', '-NonInteractive', '-Command',
     "$ErrorActionPreference='Stop'; if (!(Test-Path -LiteralPath '" + allowed.replaceAll("'", "''") + "')) { exit 11 }; try { Set-Content -LiteralPath 'write-canary.txt' -Value 'test'; exit 13 } catch {}; try { [void](Invoke-WebRequest -Uri 'https://example.com' -TimeoutSec 3); exit 14 } catch {}; Write-Output 'isolation-ok'"] :
     ['sh', '-c', 'test -r "$1" && ! touch write-canary && ! curl --max-time 3 https://example.com >/dev/null 2>&1', 'sh', allowed]
-  runLocal(['sandbox', '-P', 'eval', ...args, ...command], { cwd, env })
+  runLocal(['sandbox', '-P', 'eval', ...command], { cwd, env })
   if (fs.existsSync(path.join(cwd, 'write-canary.txt'))) throw new Error('Sandbox write denial failed')
   const denied = path.join(home, 'private-read-canary.txt')
   fs.writeFileSync(denied, 'Public canary outside the allowed snapshot; no credentials.')
   const readProbe = process.platform === 'win32' ? ['pwsh.exe', '-NoProfile', '-NonInteractive', '-Command',
     "try { [void](Get-Content -LiteralPath '" + denied.replaceAll("'", "''") + "' -ErrorAction Stop); exit 19 } catch { Write-Output 'read-denied' }"] :
     ['sh', '-c', 'if cat "$1" >/dev/null 2>&1; then exit 19; fi', 'sh', denied]
-  runLocal(['sandbox', '-P', 'eval', ...args, ...readProbe], { cwd, env })
+  runLocal(['sandbox', '-P', 'eval', ...readProbe], { cwd, env })
   return { catalog, privateContext: false, sandboxChecked: true, ...trusted, readBoundary: 'os-snapshot-read-allowlist-and-evaluation-hook' }
 }
 
@@ -333,7 +341,7 @@ function execute(c, cwd, home, env, limits = {}) {
     const auditFile = path.join(home, 'eval-guard-audit.jsonl')
     const auditBefore = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).length : 0
     let stdout = '', size = 0, timedOut = false, overflow = false, spawnFailed = false, stopped = false, finished = false, stopWatchdog
-    const child = spawn(limits.executable || 'codex', ['exec', '--json', '--ephemeral', '--skip-git-repo-check', ...configArgs(home), '-'],
+    const child = spawn(limits.executable || 'codex', ['exec', '--json', '--ephemeral', '--skip-git-repo-check', ...configArgs(), '-'],
       { cwd, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'] })
     const stop = () => {
       if (stopped || !child.pid) return
@@ -443,5 +451,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand, continuation }
+module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, writeEvalConfig, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand, continuation }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

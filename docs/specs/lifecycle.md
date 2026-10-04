@@ -106,6 +106,9 @@ node bin/devflow-codex-eval --full --budget-tokens <new-total-budget> --continue
 - `gpt-6.1-sol/high`, 사례당 300초다. 모델·effort·시간 제한·측정 대상·예산을 바꾸기 전에 사용자가 결정한다.
 - 실행별 작업 폴더는 시작할 때 비어 있다. 별도의 임시 CODEX_HOME에 공개 snapshot으로 만든 devflow만 설치한다.
   개인 지침·기억·다른 플러그인·MCP·apps·web search는 포함하지 않는다. catalogue가 devflow 7개와 다르면 비용 없이 멈춘다.
+  평가 조건은 해당 home의 `config.toml`에 저장하며 native plugin 활성화 설정과 guard 신뢰 기록을 보존한다.
+  사전 검사 app-server와 평가 exec에 `--strict-config`를 적용해 알 수 없는 설정을 거부하고,
+  같은 조건을 명령행 `-c`로 중복 지정하지 않는다. 이 옵션을 지원하지 않는 debug·sandbox 명령은 파일을 그대로 읽는다.
 - Windows에서는 이미 설치된 elevated backend를 재사용한다. 인증과 sandbox 상태는 값 복사 없이 임시 링크로 참조하고,
   종료·실패 시 링크만 제거한다. 새 계정·방화벽·호스트 설정을 만들어 실행하지 않는다.
 - 평가 전용 PreToolUse guard는 공개 snapshot 안의 단일 literal 읽기·목록·검색 명령만 허용한다.

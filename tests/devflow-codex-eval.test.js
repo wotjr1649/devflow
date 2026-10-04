@@ -3,11 +3,31 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv } = require('../bin/devflow-codex-eval')
+const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, writeEvalConfig, configArgs } = require('../bin/devflow-codex-eval')
 const tmpdir = require('./tmpdir')
 const skillRoot = ['C:', 'eval', 'home', 'skills'].join('/')
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/codex-eval', name + '.jsonl'), 'utf8').replaceAll('EVAL_SKILLS', skillRoot)
 const event = command => JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command } }) + '\n'
+
+test('dedicated home config preserves plugin activation and later hook trust while restricting reads', () => {
+  const home = tmpdir('codex-eval-config-')
+  const file = path.join(home, 'config.toml')
+  const plugin = '[plugins."devflow@devflow"]\nenabled = true\n'
+  fs.writeFileSync(file, plugin)
+  writeEvalConfig(home)
+  fs.appendFileSync(file, '\n[hooks.state."sample"]\ntrusted_hash = "sha256:sample"\n')
+  const config = fs.readFileSync(file, 'utf8')
+  assert.ok(config.endsWith(plugin + '\n[hooks.state."sample"]\ntrusted_hash = "sha256:sample"\n'))
+  assert.match(config, /^model="gpt-6\.1-sol"$/m)
+  assert.match(config, /^model_reasoning_effort="high"$/m)
+  assert.match(config, /^default_permissions="eval"$/m)
+  assert.match(config, /^permissions\.eval\.network\.enabled=false$/m)
+  assert.match(config, /^permissions\.eval\.filesystem=\{":minimal"="read",/m)
+  assert.ok(!config.includes('":root"'))
+  assert.ok(config.includes(JSON.stringify(path.join(home, 'plugins/cache/devflow/devflow/0.1.0/skills').replaceAll(String.fromCharCode(92), '/')) + '="read"'))
+  assert.ok(config.indexOf('default_permissions=') < config.indexOf('[plugins.'))
+  assert.deepEqual(configArgs(), ['--strict-config'])
+})
 
 test('saved CLI stdout detects a read once and counts cached input once', () => {
   const result = parseTrace(fixture('read'), skillRoot)

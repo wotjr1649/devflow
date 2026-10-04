@@ -58,5 +58,11 @@ timeout 등으로 사용량이 없으면 비용이 불명인 채 다음 사례�
 OS에서도 `:minimal`과 공개 snapshot만 허용하고, 밖의 canary 읽기 거부를 확인해야 모델 호출을 시작한다.
 현재 Windows backend는 제한 profile을 거부했으므로 추가 유료 실행을 중단했다. 다른 호스트의 실검증은 미실행이다.
 
+후속 사용자 결정으로 평가 조건을 전용 `CODEX_HOME/config.toml`에 모으고 중복 CLI override를 제거한다.
+native plugin 활성화 설정과 guard 신뢰 기록을 유지하고 app-server·exec의 `--strict-config`로 알려지지 않은 설정을 거부한다.
+0.160.0의 debug·sandbox는 이 옵션을 받지 않으므로 app-server에서 먼저 검사한 파일을 그대로 읽는다.
+설정의 전달 경로만 바꾸며 OS 읽기 제한과 guard는 유지한다. 프로젝트 `.codex/config.toml`은 개인 설정을 제외하지 않고
+신뢰된 프로젝트에서만 적용되므로 선택하지 않았다. 파일로 옮기는 것만으로 Windows backend의 제한 profile 지원이 생기지는 않는다.
+
 기존 24개 결과는 당시 승인된 guard 방식과 파서 revision의 관측으로 보존한다. 보장된 OS 읽기 격리나 수정된 파서의
 재채점 결과로 확대하지 않는다. 원시 stdout을 보존하지 않았으므로 세션 archive에서 복구하거나 비용 없이 재채점했다고 주장하지 않는다.

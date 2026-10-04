@@ -186,3 +186,5 @@ Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이�
 | 질문 후 재개 | `SendMessage` | 같은 에이전트에 후속 작업 |
 | 병렬 쓰기 (M3) | Agent 호출마다 `isolation: "worktree"` | 사용하지 않음 |
 | 재개 카드, Issue 쓰기 차단, 보호 경로, 자율 계속, 세션이 끝날 때 해제 | `hooks/hooks.json` | 같은 파일 |
+
+Codex의 SessionEnd는 서브에이전트에서 돌지 않는다. 훅이 돌지 않고 끝난 세션은 30분 뒤 만료된다([동시 세션](ledger.md#동시-세션)).

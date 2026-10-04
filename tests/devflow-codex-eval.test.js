@@ -161,7 +161,9 @@ test('the real-home run blocks writes and fixes model and effort on the command 
   const at = flag => args[args.indexOf(flag) + 1]
   assert.equal(at('--sandbox'), 'read-only')
   assert.equal(at('-m'), 'gpt-6.1-sol')
-  assert.equal(at('-c'), 'model_reasoning_effort="high"')
+  const overrides = args.flatMap((a, i) => a === '-c' ? [args[i + 1]] : [])
+  // The case folder sits in this repository: keep its AGENTS.md and the devflow resume card out of the measurement.
+  assert.deepEqual(overrides, ['model_reasoning_effort="high"', 'project_root_markers=[]', 'features.hooks=false'])
   assert.ok(args.includes('--ephemeral') && args.includes('--json'))
   assert.equal(args.at(-1), '-')
   assert.throws(() => parseArgs(['--full', '--retain-global-instructions', '--budget-tokens', '1000']))
@@ -204,9 +206,9 @@ test('a case keeps its command strings, and a file written into its folder makes
 })
 
 test('continuation needs the same Codex version, runner code, installed skills and global instructions (#39)', () => {
-  const current = { version: 'codex-cli 0.160.0', runnerHash: 'a', sourceHash: 's', globalInstructionsHash: 'g' }
+  const current = { version: 'codex-cli 0.160.0', runnerHash: 'a', sourceHash: 's', globalInstructionsHash: 'g', catalogHash: 'c' }
   continuationConditions({ ...current }, current)
-  for (const change of [{ version: 'codex-cli 0.161.0' }, { runnerHash: 'b' }, { runnerHash: undefined }, { sourceHash: 't' }, { globalInstructionsHash: null }])
+  for (const change of [{ version: 'codex-cli 0.161.0' }, { runnerHash: 'b' }, { runnerHash: undefined }, { sourceHash: 't' }, { globalInstructionsHash: null }, { catalogHash: 'other plugins' }])
     assert.throws(() => continuationConditions({ ...current, ...change }, current), JSON.stringify(change))
 })
 
@@ -229,4 +231,17 @@ test('the summary gives each case its attempts, result counts and distinct skill
     a: { attempts: 3, pass: 2, fail: 1, invalid: 0, judgmentStable: false, skillSets: ['-', 'devflow+grilling', 'grilling'], tokens: 60 },
     b: { attempts: 1, pass: 0, fail: 0, invalid: 1, judgmentStable: true, skillSets: ['-'], tokens: 0 },
   })
+})
+
+test('a case folder removed during the run gives an invalid result instead of crashing (#39 review)', async () => {
+  const home = tmpdir('codex-eval-removed-')
+  const executable = path.join(home, process.platform === 'win32' ? 'codex-test.exe' : 'codex-test')
+  fs.copyFileSync(process.execPath, executable)
+  if (process.platform !== 'win32') fs.chmodSync(executable, 0o700)
+  const cwd = path.join(home, 'case')
+  fs.mkdirSync(cwd)
+  fs.writeFileSync(path.join(cwd, 'exec'), 'process.chdir(".."); require("fs").rmSync(require("path").join(process.cwd(), "case"), { recursive: true })\n')
+  const result = await execute({ id: 'none--x', expectedSkill: null, policy: 'none', prompt: '' }, cwd, cleanEnv(home), skillRoot, { executable })
+  assert.equal(result.result, 'invalid')
+  assert.equal(result.cwdMissing, true)
 })

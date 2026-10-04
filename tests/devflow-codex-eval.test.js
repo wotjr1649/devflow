@@ -214,3 +214,8 @@ test('continuation refuses a prefix from another Codex version, runner or read b
   for (const change of [{ version: 'codex-cli 0.161.0' }, { runnerHash: 'b' }, { runnerHash: undefined }, { isolation: { readBoundary: 'hook', globalInstructionsHash: null } }, { isolation: { readBoundary: 'os', globalInstructionsHash: 'x' } }])
     assert.throws(() => continuationConditions({ ...prior, ...change }, current), JSON.stringify(change))
 })
+
+test('an rg search pattern is not a path, and rg --files-with-matches is still a search (#38 review)', () => {
+  assert.deepEqual(parseTrace(fixture('quiet') + event(`rg -n -- '${skillRoot}/grilling/SKILL.md' '${skillRoot}/../docs'`), skillRoot).detectedSkills, [])
+  assert.deepEqual(parseTrace(fixture('quiet') + event(`rg --files-with-matches -- 'When' '${skillRoot}/grilling/SKILL.md'`), skillRoot).detectedSkills, ['grilling'])
+})

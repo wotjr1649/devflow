@@ -409,6 +409,18 @@ test('a subagent shares its parent session id, so its writes are not warned abou
 
 // Issue #46: the ledger comes from the working tree, which an archive controls. Only a plain file of a bounded size is
 // read; anything else is refused rather than read as no ledger, so a write cannot replace it and the guard stays locked.
+test('a ledger that is not a small plain file is refused, not read and not taken for none (#46)', () => {
+  const root = repo({ stage: 'build' })
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  assert.deepEqual(state.readLedger(root, 1), { stage: 'build' })
+  assert.equal(state.readLedger(root, 2), null, 'no ledger is still none')
+  fs.writeFileSync(file, JSON.stringify({ stage: 'build', notes: ['x'.repeat(1 << 20)] }))
+  assert.throws(() => state.readLedger(root, 1), /Issue #1's ledger is not a small plain file/)
+  fs.rmSync(file)
+  fs.mkdirSync(file)
+  assert.throws(() => state.readLedger(root, 1), /Issue #1's ledger is not a small plain file/)
+})
+
 test('a FIFO ledger cannot hold a ledger read open (#46)', { skip: process.platform === 'win32' }, () => {
   const root = repo()
   fs.mkdirSync(path.join(root, '.work/devflow/i1'), { recursive: true })

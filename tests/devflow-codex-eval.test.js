@@ -209,3 +209,11 @@ test('continuation needs the same Codex version, runner code, installed skills a
   for (const change of [{ version: 'codex-cli 0.161.0' }, { runnerHash: 'b' }, { runnerHash: undefined }, { sourceHash: 't' }, { globalInstructionsHash: null }])
     assert.throws(() => continuationConditions({ ...current, ...change }, current), JSON.stringify(change))
 })
+
+test('command strings recorded from a real codex-cli 0.160.0 run on Windows count as reads (#39)', () => {
+  // Captured from the #39 smoke with only the install path replaced: an escaped pwsh path and a forward-slash skill path.
+  const result = parseTrace(fixture('real-0.160'), skillRoot)
+  assert.deepEqual(result.detectedSkills, ['devflow', 'grilling'])
+  assert.equal(result.commandExecutions, 2)
+  assert.equal(result.valid, true)
+})

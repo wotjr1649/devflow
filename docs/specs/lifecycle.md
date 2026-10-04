@@ -110,7 +110,8 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
   이 저장소 밖 OS 임시 폴더에 위치 번호만 담은 이름(`cx-*/t01`)으로 만든다. 명령행 `-c project_root_markers=[]`로
   상위 폴더의 AGENTS.md도 싣지 않는다. 훅은 평소처럼 켜 두며, devflow 훅은 devflow 저장소 밖에서 출력이 없다.
   임시 폴더는 신뢰하지 않은 폴더지만 codex-cli 0.160.0은 쓸 수 있는 실행에서만 새 폴더의 신뢰를 기록하므로
-  read-only 실행은 전역 config.toml을 바꾸지 않는다. 평소 사용과의 차이는 쓰기 차단이다.
+  read-only 실행은 전역 config.toml을 바꾸지 않는다. 사전 검사도 read-only로 고정하고, 임시 폴더가 이 저장소 안이면 멈춘다.
+  평소 사용과의 차이는 쓰기 차단이다.
 - 측정 대상은 설치된 플러그인이다. 설치된 devflow 스킬이 저장소의 `skills/`와 바이트 단위로 다르면 비용 없이 멈춘다.
   모델 호출 전 `codex debug prompt-input`으로 devflow 7개 스킬이 목록에 있는지 확인하고 목록 전체를 결과에 남긴다.
   매 시도 전 전역 지침 해시가 시작 때와 다르면 멈춘다.

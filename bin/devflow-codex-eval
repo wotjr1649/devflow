@@ -200,6 +200,12 @@ function globalInstructionsHash(home) {
 // to it (app-server thread_processor.rs), and these runs are read-only.
 const CONTEXT_OVERRIDES = ['-c', 'project_root_markers=[]']
 const taskRoot = () => os.tmpdir()
+// The preflight also runs in an untrusted temp folder, so it is pinned read-only like the cases.
+const preflightArgs = () => ['debug', 'prompt-input', '-c', 'sandbox_mode="read-only"', ...CONTEXT_OVERRIDES]
+function checkOutsideRepo(dir) {
+  const rel = path.relative(ROOT, dir)
+  if (!rel.startsWith('..') && !path.isAbsolute(rel)) throw new Error('Case folders must be outside this repository; the temp folder is inside it')
+}
 const caseDir = (taskDir, index) => path.join(taskDir, 't' + String(index + 1).padStart(2, '0'))
 
 function execArgs() {
@@ -223,7 +229,7 @@ function runLocal(args, options) {
 
 // Free check before any model call: the native prompt lists all seven devflow skills.
 function preflight(cwd, env, names) {
-  const text = JSON.stringify(JSON.parse(runLocal(['debug', 'prompt-input', ...CONTEXT_OVERRIDES], { cwd, env })))
+  const text = JSON.stringify(JSON.parse(runLocal(preflightArgs(), { cwd, env })))
   const catalog = [...new Set([...text.matchAll(/- ([\w:-]+): /g)].map(m => m[1]))].sort()
   const missing = names.filter(n => !catalog.includes('devflow:' + n))
   if (missing.length) throw new Error('The native prompt does not list devflow skills: ' + missing.join(', '))
@@ -293,6 +299,7 @@ async function main(args) {
     sourceHash: checkInstalled(path.join(ROOT, 'skills'), skillRoot),
     globalInstructionsHash: globalInstructionsHash(home),
   }
+  checkOutsideRepo(taskRoot())
   const preflightDir = fs.mkdtempSync(path.join(taskRoot(), 'cx-'))
   let catalog
   try { catalog = preflight(preflightDir, env, names) } finally { fs.rmSync(preflightDir, { recursive: true, force: true }) }
@@ -324,6 +331,7 @@ async function main(args) {
   const save = () => fs.writeFileSync(path.join(resultDir, 'result.json'), JSON.stringify(report, null, 2) + '\n')
   save()
   let keep = false
+  try {
   const start = continued ? continued.cases.length : 0
   for (const [offset, c] of selected.slice(start).entries()) {
     if (!report.summary.usageKnown || priorTokens + report.summary.totalTokens >= opts.budgetTokens) { report.stoppedReason = report.summary.usageKnown ? 'budget' : 'unknown-usage'; break }
@@ -342,12 +350,14 @@ async function main(args) {
   report.finishedAt = new Date().toISOString()
   if (!report.summary.usageKnown && !report.stoppedReason) report.stoppedReason = 'unknown-usage'
   save()
+  } finally {
   // Every folder here was created empty by this run and checked empty after its case; keep them only as evidence of a failure.
   if (keep) process.stderr.write('Case folders are kept for inspection in ' + normalize(taskDir) + '\n')
   else fs.rmSync(taskDir, { recursive: true, force: true })
+  }
   process.stdout.write('Result: ' + normalize(path.relative(ROOT, path.join(resultDir, 'result.json'))) + '\n')
   if (!report.complete || report.summary.invalid || !report.summary.thresholdPassed) process.exitCode = 1
 }
 
-module.exports = { parseTrace, loadCases, score, parseArgs, summarize, cleanEnv, preflight, execute, execArgs, skillSnapshot, checkInstalled, caseDir, taskRoot, globalInstructionsHash, continuation, continuationConditions, expandCases }
+module.exports = { parseTrace, loadCases, score, parseArgs, summarize, cleanEnv, preflight, execute, execArgs, skillSnapshot, checkInstalled, caseDir, taskRoot, preflightArgs, checkOutsideRepo, globalInstructionsHash, continuation, continuationConditions, expandCases }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

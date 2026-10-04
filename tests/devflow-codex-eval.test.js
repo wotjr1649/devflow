@@ -3,7 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, writeEvalConfig, configArgs, expandCases, retainGlobalInstructions, checkGlobalInstructions } = require('../bin/devflow-codex-eval')
+const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, writeEvalConfig, configArgs, expandCases, retainGlobalInstructions, checkGlobalInstructions, guardMissing, continuationConditions } = require('../bin/devflow-codex-eval')
 const tmpdir = require('./tmpdir')
 const skillRoot = ['C:', 'eval', 'home', 'skills'].join('/')
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/codex-eval', name + '.jsonl'), 'utf8').replaceAll('EVAL_SKILLS', skillRoot)
@@ -191,4 +191,26 @@ test('a real silent child is stopped on timeout and returns invalid with no know
   assert.equal(result.tokens, null)
   assert.equal(result.processStopUnconfirmed, false)
   assert.ok(result.durationMs < 10000)
+})
+
+test('a guard-allowed rg search and a command with escaped quotes count as reads (#38 review)', () => {
+  const winFile = (skillRoot + '/grilling/SKILL.md').replaceAll('/', String.fromCharCode(92))
+  const escaped = 'pwsh -NoProfile -Command "Get-Content -LiteralPath ' + String.fromCharCode(92) + '"' + winFile + String.fromCharCode(92) + '""'
+  assert.deepEqual(parseTrace(fixture('quiet') + event(escaped), skillRoot).detectedSkills, ['grilling'])
+  assert.deepEqual(parseTrace(fixture('quiet') + event(`rg -n -- 'When' '${skillRoot}/grilling/SKILL.md'`), skillRoot).detectedSkills, ['grilling'])
+})
+
+test('guard audits from other tools cannot cover a shell command that skipped the guard (#38 review)', () => {
+  const trace = { commandExecutions: 2 }
+  assert.equal(guardMissing(trace, [{ allowed: false, shell: false }, { allowed: true, shell: true }]), true)
+  assert.equal(guardMissing(trace, [{ allowed: true, shell: true }, { allowed: true, shell: true }, { allowed: false, shell: false }]), false)
+  assert.equal(guardMissing({ commandExecutions: 0 }, []), false)
+})
+
+test('continuation refuses a prefix from another Codex version, runner or read boundary (#38 review)', () => {
+  const current = { version: 'codex-cli 0.160.0', runnerHash: 'a', isolation: { readBoundary: 'os', globalInstructionsHash: null } }
+  const prior = { ...current, isolation: { ...current.isolation } }
+  continuationConditions(prior, current)
+  for (const change of [{ version: 'codex-cli 0.161.0' }, { runnerHash: 'b' }, { runnerHash: undefined }, { isolation: { readBoundary: 'hook', globalInstructionsHash: null } }, { isolation: { readBoundary: 'os', globalInstructionsHash: 'x' } }])
+    assert.throws(() => continuationConditions({ ...prior, ...change }, current), JSON.stringify(change))
 })

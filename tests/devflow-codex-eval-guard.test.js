@@ -53,6 +53,7 @@ test('guard CLI rejects malformed input and emits actual allow/deny decisions', 
   const audit = fs.readFileSync(path.join(home, 'eval-guard-audit.jsonl'), 'utf8')
   assert.equal(audit.includes(file), false)
   assert.equal(audit.includes('whoami'), false)
+  assert.deepEqual(audit.trim().split('\n').map(l => JSON.parse(l).shell), [true, false, true])
 })
 
 test('hook remains configured when its shell environment excludes CODEX_HOME', () => {
@@ -70,7 +71,7 @@ test('the configured hook command runs through the host shell with allow and den
   fs.copyFileSync(path.resolve(__dirname, '../bin/devflow-codex-eval-guard'), path.join(home, 'eval-guard.cjs'))
   checkGuardCommand(home, home, cleanEnv(home))
   assert.deepEqual(fs.readFileSync(path.join(home, 'eval-guard-audit.jsonl'), 'utf8').trim().split('\n').map(JSON.parse), [
-    { allowed: true }, { allowed: false }, { allowed: false },
+    { allowed: true, shell: true }, { allowed: false, shell: true }, { allowed: false, shell: true },
   ])
   if (process.platform === 'win32') {
     const previous = spawnSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-Command', guardCommand(home).slice(2)], {

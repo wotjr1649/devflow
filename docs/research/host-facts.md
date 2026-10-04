@@ -228,7 +228,10 @@
 - SessionEnd(2026-10-04, [hooks](https://learn.chatgpt.com/docs/hooks), 0.160.0 원본
   [session_end.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/events/session_end.rs)): 입력의
   `session_id`는 thread id이고 `reason`은 언제나 `other`다. 기본 1초, 최대 3초이며 `async`여도 동기로 돈다. 서브에이전트에서는
-  돌지 않고 막을 수 없다.
+  돌지 않고 막을 수 없다. 세션 런타임을 닫을 때(`shutdown_session_runtime`)만 돈다. 관찰(2026-10-04, 0.160.0, `codex exec`,
+  훅 신뢰 뒤): `devflow-state`로 Issue에 쓴 thread가 실행이 끝나자 `sessions.json`에서 빠졌다. TUI `/clear`는 새 thread를
+  시작하는데, 이전 thread를 닫는지는 원본에서 찾지 못했고 관찰하지 않았다. 0.144 이하에는 이 이벤트가 없고, 훅 파일의 모르는
+  이벤트 키는 무시된다(`HookEventsToml`에 `deny_unknown_fields`가 없다).
 - SessionStart 매처는 `startup|resume|clear|compact`다. 출력 맥락의 양은 `additionalContextLimit`로 제한한다.
 - 도구 매칭: 셸(`exec_command` 포함)은 `Bash`, `apply_patch`는 `apply_patch`·`Edit`·`Write`, `spawn_agent`는 `Agent`로
   매칭된다. MCP 도구는 Claude와 같은 `mcp__<server>__<tool>`이고 PreToolUse로 막을 수 있다.

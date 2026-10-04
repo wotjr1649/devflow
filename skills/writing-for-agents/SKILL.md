@@ -9,10 +9,11 @@ The packaging differs - a contract, a preamble, a skill - and the writing does n
 here pull on two things: what the document costs every turn, and whether the agent takes the same
 process on every run.
 
-**This is about the sentences.** A skill's machinery - directory layout, frontmatter fields, skill
-types, `description:` wording, prohibition under pressure, and the pressure tests that prove a
-skill works - is not here. Where `superpowers:writing-skills` is installed it carries that half
-and the measurements behind it; where it is not, that half is simply out of scope.
+**This is about the sentences.** The rules live in devflow's documents spec:
+[text an agent reads](../../docs/specs/documents.md#에이전트가-읽는-글) and
+[skill descriptions](../../docs/specs/documents.md#스킬-description). Where this skill and the spec
+differ, the spec wins. What follows is the method behind those rules and what they leave out; a
+skill's machinery - directory layout, frontmatter fields - is the host's documentation.
 
 ## Two loads
 
@@ -58,32 +59,15 @@ a region of behaviour in very few tokens.
 An invented word recruits no priors: you pay in definition tokens what a pretrained word gives
 free. **Assume the document carries restatements a leading word retires, and go find them.**
 
-## Prohibition
-
-For shaping what the output looks like, a positive recipe beats a prohibition, which drags the
-forbidden thing into context.
-
-**A safety floor is the exception, and it stays as it is.** A non-waivable invariant cannot be
-phrased positively without losing its edge: a rule that says what to do instead is a default, and
-a default is not a floor.
-
 ## Pruning
 
-**The environment is a source of truth** - a script's usage output, a config file, the directory
-layout, a table another document owns. A document restating one of those is a cache. Cache what
-the agent cannot find by looking: the unwritten convention, the reason behind a choice, the
-failure no config confesses.
+**A document restating the environment is a cache** - of a script's usage output, a config file,
+the directory layout, a table another document owns. Cache only what the agent cannot find by
+looking: the unwritten convention, the reason behind a choice, the failure no config confesses.
 
 **Sediment** is the default fate without pruning: stale layers settling because adding feels safe
 and removing feels risky, until the live rules must be dug out from under them.
 
-**Hunt no-ops sentence by sentence.** An instruction the model already follows by default pays
-load to say nothing, and the test - does this change behaviour against the default? - is
-model-relative, not reader-relative. Settle it by running the document rather than by arguing.
+**Hunt no-ops sentence by sentence.** Whether a sentence changes behaviour against the default is
+model-relative, not reader-relative: settle it by running the document rather than by arguing.
 When a sentence fails, delete the sentence rather than trim words from it.
-
-## What a note carries
-
-The rule, and the reason the rule exists. The measurement behind it, the count, the session that
-found it: those belong in the commit message, where history is read as history. A note states what
-holds, so it carries no date.

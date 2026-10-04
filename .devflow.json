@@ -8,6 +8,9 @@
     ".work/",
     "_ref/"
   ],
+  "allowLocalPaths": [
+    "tests/fixtures/codex-eval/*.jsonl"
+  ],
   "protected": [
     "_ref/**"
   ],

@@ -1,0 +1,36 @@
+# ADR-0016 — Codex 트리거 eval은 실행별 stdout의 읽기 시도를 잰다
+
+상태: 채택. Issue #38. 2026-10-04.
+
+## 결정과 이유
+
+Claude의 24개 프롬프트·grader를 유지하며 Codex에서도 호출 여부를 기록한다. #36은 세 양성·한 중립 사례에서
+SKILL.md 참조 시도가 구별됨을 보였지만 rollout 수집과 설치된 전체 plugin 환경을 사용했다.
+정식 실행은 [OpenAI의 stdout eval 지침](https://developers.openai.com/blog/eval-skills)에 따라 자식 프로세스의
+`codex exec --json` stdout만 채점한다. 세션 archive를 읽을 필요가 없고 실행 간 기록 혼합도 피한다.
+
+사용자가 선택한 조건은 devflow만 격리, gpt-6.1-sol/high, 300초, timeout invalid·재시도 없음,
+smoke 포함 총 1M tokens다. 기존 사례의 180초와 달라 Claude 결과와 완전히 같은 실행 조건은 아니다.
+주어진 SKILL.md 본문만 적용해 읽기가 없더라도 사례를 제외하지 않는다. 이 측정의 신호는 읽기 시도다.
+특정 스킬 음성 사례는 그 스킬의 오탐만, none 사례는 모든 스킬의 오탐을 판정한다.
+
+빈 작업 폴더만으로는 전역 지침과 다른 플러그인이 제외되지 않았다. 별도 CODEX_HOME과 공개 파일 snapshot을
+사용하며 인증 bytes는 복사하지 않는다. 임시 home의 설치·신뢰 상태만 바꾸고 실제 호스트 설정과 설치본은 유지한다.
+모델이 인증 링크나 다른 개인 파일을 읽지 못하도록 평가 전용 command grammar를 적용한다.
+
+codex-cli 0.160.0의 Windows 사전 검사에서 unelevated backend는 restricted read-only access를 거부했고,
+기존 elevated backend도 `:minimal` profile에 `effective :root read access`가 필요하다고 거부했다.
+read-only만으로 읽기 격리를 보장할 수 없어서 사용자가 임시 guard를 선택했다.
+guard는 단일 literal 읽기·검색만 허용하며, 동적 실행·명령 연결·symlink 경유·다른 도구를 거부한다.
+정상·우회 시험 뒤 native hooks/list의 정확한 정의 해시로 임시 신뢰 상태를 기록하고 다시 확인한다.
+제품 훅은 평가용 공개 복사본 manifest에서만 제외한다. 이 결과는 생산 환경의 훅이나 작업 완수를 평가하지 않는다.
+
+## 대안과 한계
+
+전체 설치 환경은 스킬 경합과 개인 지침까지 재지만 Claude의 격리된 plugin eval과 대상이 달라 선택하지 않았다.
+rollout 수집은 신호가 더 풍부하지만 이번 읽기 범위 밖이다. 읽기 성공·지침 적용·품질 평가는 추가 판정기가 필요해 제외했다.
+Windows 전역 sandbox 재설정과 private 폴더 ACL 변경은 이 작업의 권한·대상이 아니어서 하지 않는다.
+
+사용량 이벤트는 turn 종료 뒤 오므로 예산은 다음 사례 시작을 제한하는 장치다. 정확한 진행 중 상한은 아니다.
+timeout 등으로 사용량이 없으면 비용이 불명인 채 다음 사례를 실행하지 않는다. 실패한 읽기도 호출 시도로 기록하므로
+실제 적용의 정확도로 확대 해석하지 않는다. 반복성·다른 모델·다른 호스트 플랫폼은 이번 1회 실행이 입증하지 않는다.

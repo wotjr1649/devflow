@@ -82,8 +82,41 @@ ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 �
   로드되고, 호스트는 스킬 목록만 보고 자동 호출을 정하므로 이 변경은 결과를 바꾸지 않는다([host-facts](../research/host-facts.md)).
 - 결과 eval은 두지 않는다. 스킬 본문의 변경은 리뷰와 사이클 지표(개입, 오탐, 차단)로 보고, 개입이 늘거나 같은 실수가
   반복되면 결과 eval 장치를 만드는 Issue를 연다.
-- eval은 사용자 터미널에서 돌린다. 세션 안에서 띄우면 인증이 없어 멈춘다. 판정은 오류 난 실행을 빼고 트리거 80% 이상,
+- Claude eval은 사용자 터미널에서 돌린다. 세션 안에서 띄우면 인증이 없어 멈춘다. 판정은 오류 난 실행을 빼고 트리거 80% 이상,
   오탐 10% 이하다. ship 체크포인트에 돌렸는지와 판별 근거를 남긴다.
+
+### Codex 트리거 eval
+
+Codex 실행기는 수동 opt-in이다. 기본 검사·CI·pre-push는 모델 평가를 실행하지 않는다.
+`evals/trigger/`의 같은 24개 사례에서 frontmatter를 제외한 본문을 그대로 사용하고, 각 Claude grader의
+양성·특정 스킬 음성 판정을 유지한다. `none--*`는 스킬이 하나라도 검출되면 실패한다.
+
+```bash
+node bin/devflow-codex-eval --smoke --budget-tokens 1000000
+node bin/devflow-codex-eval --full --budget-tokens 1000000 --prior-results evals/results/<smoke>/result.json
+```
+
+- smoke는 양성·none 각 하나다. 전체 실행은 24개를 각각 한 번 순차 실행하며 재시도하지 않는다.
+  budget 플래그가 없으면 모델 프로세스를 시작하지 않는다. `--prior-results`의 사용량도 예산에 합친다.
+- `gpt-6.1-sol/high`, 사례당 300초다. 모델·effort·시간 제한·측정 대상·예산을 바꾸기 전에 사용자가 결정한다.
+- 실행별 작업 폴더는 시작할 때 비어 있다. 별도의 임시 CODEX_HOME에 공개 snapshot으로 만든 devflow만 설치한다.
+  개인 지침·기억·다른 플러그인·MCP·apps·web search는 포함하지 않는다. catalogue가 devflow 7개와 다르면 비용 없이 멈춘다.
+- Windows에서는 이미 설치된 elevated backend를 재사용한다. 인증과 sandbox 상태는 값 복사 없이 임시 링크로 참조하고,
+  종료·실패 시 링크만 제거한다. 새 계정·방화벽·호스트 설정을 만들어 실행하지 않는다.
+- 평가 전용 PreToolUse guard는 공개 snapshot 안의 단일 literal 읽기·목록·검색 명령만 허용한다.
+  읽기 범위는 guard, 쓰기·명령 network 제한은 read-only sandbox가 맡는다. 실제 guard 정의의 신뢰 해시를 확인하고
+  신뢰 우회 옵션을 쓰지 않는다. 공개 코드 복사본에서 평가용 manifest의 제품 훅을 제외하며 실제 설치본은 바꾸지 않는다.
+- 해당 자식의 stdout JSONL만 읽는다. `item.*`의 `command_execution.command`가 대상 snapshot의
+  `skills/<name>/SKILL.md`를 literal로 읽으려 한 경우 검출한다. 메시지·명령 출력·echo·목록의 경로는 증거가 아니다.
+  읽기 실패도 시도로 검출하며, 변수로 조립한 경로나 읽기 없이 이미 주어진 본문을 적용하는 경우는 미검출이다.
+  이는 스킬 참조 시도의 대리 지표이며 실제 지침 적용이나 결과 품질을 재지 않는다.
+- 사용량은 `turn.completed.usage`의 input+output 합계다. cached input은 input에 포함되므로 다시 더하지 않는다.
+  종료 후 예산에 닿으면 다음 사례를 시작하지 않는다. 진행 중인 turn이 예산을 넘는 것은 막을 수 없다.
+  사용량을 얻지 못하면 추가 실행을 중단한다. 시간 초과·비정상 종료·불완전 JSONL은 invalid로 따로 집계하고 성공률에서 제외한다.
+- 기대 스킬·검출 스킬·pass/fail/invalid·사용량·시간·환경·완료 여부는 Claude 결과 옆 `evals/results/`에 저장한다.
+  원시 stdout·stderr와 세션 기록은 저장하거나 읽지 않는다. 실행 오류와 평가 실패는 종료 코드 1이며 완료 조건과 구별한다.
+
+격리 방식과 대안의 이유: [ADR-0016](../design/decisions/ADR-0016-codex-trigger-eval.md).
 
 ## 회고와 기억
 

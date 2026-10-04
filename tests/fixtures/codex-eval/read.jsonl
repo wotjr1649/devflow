@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"sample-thread"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"read-1","type":"command_execution","command":"pwsh -NoProfile -Command Get-Content -LiteralPath 'EVAL_SKILLS/grilling/SKILL.md'","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"read-1","type":"command_execution","command":"pwsh -NoProfile -Command Get-Content -LiteralPath 'EVAL_SKILLS/grilling/SKILL.md'","aggregated_output":"sample public skill","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"skills/other/SKILL.md"}}
+{"type":"turn.completed","usage":{"input_tokens":1234,"cached_input_tokens":1000,"output_tokens":56}}

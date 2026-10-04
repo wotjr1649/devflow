@@ -142,6 +142,29 @@ function runLocal(args, options) {
   return result.stdout
 }
 
+function guardCommand(home) {
+  const quote = process.platform === 'win32' ? s => "'" + s.replaceAll("'", "''") + "'" : s => "'" + s.replaceAll("'", "'\\''") + "'"
+  const args = [process.execPath, path.join(home, 'eval-guard.cjs'), home].map(quote).join(' ')
+  // Codex uses the thread's shell for hooks; Windows evaluation uses PowerShell.
+  return (process.platform === 'win32' ? '& ' : '') + args
+}
+
+function checkGuardCommand(home, cwd, env) {
+  const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
+  const file = path.join(publicRoot, 'skills', 'grilling', 'SKILL.md')
+  const auditFile = path.join(home, 'eval-guard-audit.jsonl')
+  const before = fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).length : 0
+  for (const [command, expected] of [["Get-Content -LiteralPath '" + file + "' -Raw", 'allow'], ['whoami', 'deny'], ["Get-Content '" + path.join(home, 'auth.json') + "'", 'deny']]) {
+    const shell = process.platform === 'win32' ? ['pwsh.exe', ['-NoProfile', '-NonInteractive', '-Command', guardCommand(home)]] : ['sh', ['-c', guardCommand(home)]]
+    const run = spawnSync(shell[0], shell[1], { cwd, env, input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8', timeout: 3000, maxBuffer: 65536, windowsHide: true })
+    let decision
+    try { decision = JSON.parse(run.stdout).hookSpecificOutput.permissionDecision } catch {}
+    if (run.status !== 0 || decision !== expected) throw new Error('Evaluation guard shell canary failed before model execution')
+  }
+  const audit = fs.readFileSync(auditFile, 'utf8').split('\n').filter(Boolean).slice(before).map(l => JSON.parse(l))
+  if (JSON.stringify(audit) !== JSON.stringify([{ allowed: true }, { allowed: false }, { allowed: false }])) throw new Error('Evaluation guard shell audit is incomplete')
+}
+
 function prepare(root, taskDir) {
   const home = path.join(taskDir, 'home')
   const publicRoot = path.join(taskDir, 'plugin')
@@ -194,7 +217,7 @@ function prepare(root, taskDir) {
   fs.writeFileSync(path.join(home, 'eval-public-root.json'), JSON.stringify({ root: loadedRoot }))
   const guardFile = path.join(home, 'eval-guard.cjs')
   fs.copyFileSync(path.join(root, 'bin', 'devflow-codex-eval-guard'), guardFile, fs.constants.COPYFILE_EXCL)
-  const command = '"' + process.execPath + '" "' + guardFile + '" "' + home + '"'
+  const command = guardCommand(home)
   fs.writeFileSync(path.join(home, 'hooks.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', command, timeout: 3 }] }] } }) + '\n')
   return { home, names, skillRoot: path.join(loadedRoot, 'skills'), sourceHash: hash.digest('hex') }
 }
@@ -237,7 +260,7 @@ function hookMetadata(home, cwd, env) {
 async function trustGuard(home, cwd, env) {
   const metadata = await hookMetadata(home, cwd, env)
   const hooks = metadata.data?.flatMap(e => e.hooks) || []
-  const command = '"' + process.execPath + '" "' + path.join(home, 'eval-guard.cjs') + '" "' + home + '"'
+  const command = guardCommand(home)
   if (hooks.length !== 1 || hooks[0].eventName !== 'preToolUse' || hooks[0].matcher !== '.*' || hooks[0].command !== command ||
     normalize(hooks[0].sourcePath) !== normalize(path.join(home, 'hooks.json')) || !/^sha256:[a-f0-9]{64}$/.test(hooks[0].currentHash)) throw new Error('Unexpected evaluation hook metadata')
   fs.appendFileSync(path.join(home, 'config.toml'), '\n[hooks.state.' + JSON.stringify(hooks[0].key) + ']\ntrusted_hash = ' + JSON.stringify(hooks[0].currentHash) + '\n')
@@ -261,6 +284,7 @@ async function preflight(home, names, taskDir, env) {
   const publicRoot = JSON.parse(fs.readFileSync(path.join(home, 'eval-public-root.json'), 'utf8')).root
   const allowed = path.join(publicRoot, 'skills', names[0], 'SKILL.md')
   const trusted = await trustGuard(home, cwd, env)
+  checkGuardCommand(home, cwd, env)
   const guard = require('./devflow-codex-eval-guard')
   const allowedInput = { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: "Get-Content -LiteralPath '" + allowed + "' -Raw" } }
   if (!guard.permits(allowedInput, publicRoot) || guard.permits({ ...allowedInput, tool_input: { command: "Get-Content '" + path.join(home, 'auth.json') + "'" } }, publicRoot) ||
@@ -367,5 +391,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, cleanEnv, prepare, preflight, execute, hookMetadata }
+module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

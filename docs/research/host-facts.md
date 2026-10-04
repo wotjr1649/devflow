@@ -234,6 +234,9 @@
 - `apply_patch`의 PreToolUse 입력은 셸과 같은 `tool_input.command`에 패치 문자열이 든다.
 - 명령은 문자열만 받는다(Claude의 `args` exec form이 없다). `PLUGIN_ROOT`는 문자열 치환 없이 환경 변수로만 넘어온다.
 - Windows에서 훅 명령을 어떤 셸이 실행하는지는 문서에 없다. Windows 전용 명령은 `commandWindows`로 따로 줄 수 있다.
+  0.160.0 원본의 [build_hooks_config](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core/src/session/mod.rs)는
+  thread의 셸에서 훅 실행 인자를 얻는다. PowerShell의 따옴표로 감싼 절대 실행 경로를 호출할 때 `&`가 없으면
+  ParserError로 실패했다. `&`를 넣으면 같은 guard의 허용·차단 및 감사 기록이 동작했다(#38, 2026-10-04 로컬 관찰).
   그래서 devflow는 셸이 해석할 문법이 없는 `node -e "require(process.env.CLAUDE_PLUGIN_ROOT+'/...').main()"`을 두 호스트에
   같이 쓴다. 이 명령은 cmd, pwsh 7, Git Bash에서 같은 결과를 낸다(2026-10-01).
 - `codex debug prompt-input`에는 SessionStart 훅의 출력이 나오지 않는다(신뢰하지 않은 플러그인 훅, 2026-10-01).

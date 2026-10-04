@@ -105,7 +105,9 @@ node bin/devflow-codex-eval --full --budget-tokens 1000000 --prior-results evals
   종료·실패 시 링크만 제거한다. 새 계정·방화벽·호스트 설정을 만들어 실행하지 않는다.
 - 평가 전용 PreToolUse guard는 공개 snapshot 안의 단일 literal 읽기·목록·검색 명령만 허용한다.
   읽기 범위는 guard, 쓰기·명령 network 제한은 read-only sandbox가 맡는다. 실제 guard 정의의 신뢰 해시를 확인하고
-  신뢰 우회 옵션을 쓰지 않는다. 공개 코드 복사본에서 평가용 manifest의 제품 훅을 제외하며 실제 설치본은 바꾸지 않는다.
+  신뢰 우회 옵션을 쓰지 않는다. 모델 호출 전 실제 셸로 허용·차단 canary와 감사 기록을 검사하고,
+  실행 중 명령 수보다 guard 감사 기록이 적으면 invalid로 중단한다.
+  공개 코드 복사본에서 평가용 manifest의 제품 훅을 제외하며 실제 설치본은 바꾸지 않는다.
 - 해당 자식의 stdout JSONL만 읽는다. `item.*`의 `command_execution.command`가 대상 snapshot의
   `skills/<name>/SKILL.md`를 literal로 읽으려 한 경우 검출한다. 메시지·명령 출력·echo·목록의 경로는 증거가 아니다.
   읽기 실패도 시도로 검출하며, 변수로 조립한 경로나 읽기 없이 이미 주어진 본문을 적용하는 경우는 미검출이다.

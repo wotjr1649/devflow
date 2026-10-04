@@ -6,6 +6,7 @@ const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 const tmpdir = require('./tmpdir')
 const { permits } = require('../bin/devflow-codex-eval-guard')
+const { guardCommand, checkGuardCommand, cleanEnv } = require('../bin/devflow-codex-eval')
 
 function setup() {
   const home = tmpdir('codex-eval-guard-')
@@ -62,4 +63,20 @@ test('hook remains configured when its shell environment excludes CODEX_HOME', (
   assert.equal(run.status, 0)
   assert.equal(JSON.parse(run.stdout).hookSpecificOutput.permissionDecision, 'allow')
   assert.equal(fs.existsSync(path.join(home, 'eval-guard-audit.jsonl')), true)
+})
+
+test('the configured hook command runs through the host shell with allow and deny audit', () => {
+  const { home } = setup()
+  fs.copyFileSync(path.resolve(__dirname, '../bin/devflow-codex-eval-guard'), path.join(home, 'eval-guard.cjs'))
+  checkGuardCommand(home, home, cleanEnv(home))
+  assert.deepEqual(fs.readFileSync(path.join(home, 'eval-guard-audit.jsonl'), 'utf8').trim().split('\n').map(JSON.parse), [
+    { allowed: true }, { allowed: false }, { allowed: false },
+  ])
+  if (process.platform === 'win32') {
+    const previous = spawnSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-Command', guardCommand(home).slice(2)], {
+      input: '{}', encoding: 'utf8', timeout: 3000,
+    })
+    assert.notEqual(previous.status, 0)
+    assert.match(previous.stderr, /ParserError|Unexpected token/)
+  }
 })

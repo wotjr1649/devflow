@@ -3,58 +3,11 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, writeEvalConfig, configArgs, expandCases, retainGlobalInstructions, checkGlobalInstructions, guardMissing, continuationConditions } = require('../bin/devflow-codex-eval')
+const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, expandCases, continuationConditions, execArgs, skillSnapshot, checkInstalled } = require('../bin/devflow-codex-eval')
 const tmpdir = require('./tmpdir')
 const skillRoot = ['C:', 'eval', 'home', 'skills'].join('/')
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/codex-eval', name + '.jsonl'), 'utf8').replaceAll('EVAL_SKILLS', skillRoot)
 const event = command => JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command } }) + '\n'
-
-test('dedicated home config preserves plugin activation and later hook trust while restricting reads', () => {
-  const home = tmpdir('codex-eval-config-')
-  const file = path.join(home, 'config.toml')
-  const plugin = '[plugins."devflow@devflow"]\nenabled = true\n'
-  fs.writeFileSync(file, plugin)
-  writeEvalConfig(home)
-  fs.appendFileSync(file, '\n[hooks.state."sample"]\ntrusted_hash = "sha256:sample"\n')
-  const config = fs.readFileSync(file, 'utf8')
-  assert.ok(config.endsWith(plugin + '\n[hooks.state."sample"]\ntrusted_hash = "sha256:sample"\n'))
-  assert.match(config, /^model="gpt-6\.1-sol"$/m)
-  assert.match(config, /^model_reasoning_effort="high"$/m)
-  assert.match(config, /^default_permissions="eval"$/m)
-  assert.match(config, /^permissions\.eval\.network\.enabled=false$/m)
-  assert.match(config, /^permissions\.eval\.filesystem=\{":minimal"="read",/m)
-  assert.ok(!config.includes('":root"'))
-  assert.ok(config.includes(JSON.stringify(path.join(home, 'plugins/cache/devflow/devflow/0.1.0/skills').replaceAll(String.fromCharCode(92), '/')) + '="read"'))
-  assert.ok(config.indexOf('default_permissions=') < config.indexOf('[plugins.'))
-  assert.deepEqual(configArgs(), ['--strict-config'])
-})
-
-test('retained global instructions stay unchanged and add only the selected file to the read profile', () => {
-  const sourceHome = tmpdir('codex-eval-instructions-source-')
-  const home = tmpdir('codex-eval-instructions-target-')
-  const source = path.join(sourceHome, 'AGENTS.md')
-  const body = '# Global Agent Operating Contract\nFixture instructions only.\n'
-  fs.writeFileSync(source, body)
-  const metadata = retainGlobalInstructions(sourceHome, home)
-  assert.match(metadata.hash, /^[a-f0-9]{64}$/)
-  assert.equal(fs.readFileSync(path.join(home, 'AGENTS.md'), 'utf8'), body)
-  writeEvalConfig(home, { retainGlobalInstructions: true })
-  const config = fs.readFileSync(path.join(home, 'config.toml'), 'utf8')
-  // The read rule names the real path: macOS temporary folders sit behind /var -> /private/var.
-  assert.ok(config.includes(JSON.stringify(fs.realpathSync(source).replaceAll(String.fromCharCode(92), '/')) + '="read"'))
-  assert.ok(!config.includes('":root"'))
-  assert.ok(!config.includes(body))
-  assert.equal(fs.readFileSync(source, 'utf8'), body)
-  assert.deepEqual(checkGlobalInstructions(home), { hash: metadata.hash, text: body })
-  fs.writeFileSync(source, body + 'Changed instructions.\n')
-  assert.throws(() => checkGlobalInstructions(home), /Global instructions changed/)
-  fs.writeFileSync(source, body)
-  fs.unlinkSync(path.join(home, 'AGENTS.md'))
-  assert.equal(fs.readFileSync(source, 'utf8'), body)
-  assert.throws(() => retainGlobalInstructions(tmpdir('codex-eval-instructions-missing-'), home))
-  assert.equal(parseArgs(['--full', '--retain-global-instructions', '--budget-tokens', '1000']).retainGlobalInstructions, true)
-  assert.equal(parseArgs(['--full', '--budget-tokens', '1000']).retainGlobalInstructions, false)
-})
 
 test('saved CLI stdout detects a read once and counts cached input once', () => {
   const result = parseTrace(fixture('read'), skillRoot)
@@ -185,8 +138,7 @@ test('a real silent child is stopped on timeout and returns invalid with no know
   fs.copyFileSync(process.execPath, executable)
   if (process.platform !== 'win32') fs.chmodSync(executable, 0o700)
   fs.writeFileSync(path.join(home, 'exec'), 'setInterval(() => {}, 1000)\n')
-  fs.writeFileSync(path.join(home, 'eval-public-root.json'), JSON.stringify({ root: home }))
-  const result = await execute({ id: 'none--silent', expectedSkill: null, policy: 'none', prompt: '' }, home, home, cleanEnv(home), { executable, timeoutMs: 200 })
+  const result = await execute({ id: 'none--silent', expectedSkill: null, policy: 'none', prompt: '' }, home, cleanEnv(home), skillRoot, { executable, timeoutMs: 200 })
   assert.equal(result.timedOut, true)
   assert.equal(result.result, 'invalid')
   assert.equal(result.tokens, null)
@@ -201,22 +153,61 @@ test('a guard-allowed rg search and a command with escaped quotes count as reads
   assert.deepEqual(parseTrace(fixture('quiet') + event(`rg -n -- 'When' '${skillRoot}/grilling/SKILL.md'`), skillRoot).detectedSkills, ['grilling'])
 })
 
-test('guard audits from other tools cannot cover a shell command that skipped the guard (#38 review)', () => {
-  const trace = { commandExecutions: 2 }
-  assert.equal(guardMissing(trace, [{ allowed: false, shell: false }, { allowed: true, shell: true }]), true)
-  assert.equal(guardMissing(trace, [{ allowed: true, shell: true }, { allowed: true, shell: true }, { allowed: false, shell: false }]), false)
-  assert.equal(guardMissing({ commandExecutions: 0 }, []), false)
-})
-
-test('continuation refuses a prefix from another Codex version, runner or read boundary (#38 review)', () => {
-  const current = { version: 'codex-cli 0.160.0', runnerHash: 'a', isolation: { readBoundary: 'os', globalInstructionsHash: null } }
-  const prior = { ...current, isolation: { ...current.isolation } }
-  continuationConditions(prior, current)
-  for (const change of [{ version: 'codex-cli 0.161.0' }, { runnerHash: 'b' }, { runnerHash: undefined }, { isolation: { readBoundary: 'hook', globalInstructionsHash: null } }, { isolation: { readBoundary: 'os', globalInstructionsHash: 'x' } }])
-    assert.throws(() => continuationConditions({ ...prior, ...change }, current), JSON.stringify(change))
-})
-
 test('an rg search pattern is not a path, and rg --files-with-matches is still a search (#38 review)', () => {
   assert.deepEqual(parseTrace(fixture('quiet') + event(`rg -n -- '${skillRoot}/grilling/SKILL.md' '${skillRoot}/../docs'`), skillRoot).detectedSkills, [])
   assert.deepEqual(parseTrace(fixture('quiet') + event(`rg --files-with-matches -- 'When' '${skillRoot}/grilling/SKILL.md'`), skillRoot).detectedSkills, ['grilling'])
+})
+
+test('the real-home run blocks writes and fixes model and effort on the command line, leaving host config alone (#39)', () => {
+  const args = execArgs()
+  const at = flag => args[args.indexOf(flag) + 1]
+  assert.equal(at('--sandbox'), 'read-only')
+  assert.equal(at('-m'), 'gpt-6.1-sol')
+  assert.equal(at('-c'), 'model_reasoning_effort="high"')
+  assert.ok(args.includes('--ephemeral') && args.includes('--json'))
+  assert.equal(args.at(-1), '-')
+  assert.throws(() => parseArgs(['--full', '--retain-global-instructions', '--budget-tokens', '1000']))
+})
+
+test('the installed skills must be the repository skills, byte for byte (#39)', () => {
+  const repo = tmpdir('codex-eval-repo-skills-')
+  const installed = tmpdir('codex-eval-installed-skills-')
+  for (const dir of [repo, installed]) {
+    fs.mkdirSync(path.join(dir, 'grilling', 'references'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'grilling', 'SKILL.md'), 'body')
+    fs.writeFileSync(path.join(dir, 'grilling', 'references', 'a.md'), 'ref')
+  }
+  assert.equal(checkInstalled(repo, installed), skillSnapshot(repo))
+  fs.writeFileSync(path.join(installed, 'grilling', 'references', 'a.md'), 'changed')
+  assert.throws(() => checkInstalled(repo, installed), /installed/)
+  fs.writeFileSync(path.join(installed, 'grilling', 'references', 'a.md'), 'ref')
+  fs.writeFileSync(path.join(installed, 'grilling', 'extra.md'), 'x')
+  assert.throws(() => checkInstalled(repo, installed), /installed/)
+})
+
+test('a case keeps its command strings, and a file written into its folder makes it invalid (#39)', async () => {
+  const home = tmpdir('codex-eval-real-child-')
+  const executable = path.join(home, process.platform === 'win32' ? 'codex-test.exe' : 'codex-test')
+  fs.copyFileSync(process.execPath, executable)
+  if (process.platform !== 'win32') fs.chmodSync(executable, 0o700)
+  const cwd = path.join(home, 'case')
+  fs.mkdirSync(cwd)
+  const command = "Get-Content -LiteralPath '" + skillRoot + "/grilling/SKILL.md'"
+  const lines = [{ type: 'thread.started', thread_id: 't' }, { type: 'item.completed', item: { id: 'c1', type: 'command_execution', command, aggregated_output: 'secret-looking output' } },
+    { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 2 } }]
+  fs.writeFileSync(path.join(cwd, 'exec'), 'process.stdout.write(' + JSON.stringify(lines.map(l => JSON.stringify(l)).join('\n') + '\n') + '); require("fs").writeFileSync("stray.txt", "x")\n')
+  const c = { id: 'grilling--x', expectedSkill: 'grilling', policy: 'required', prompt: '' }
+  const result = await execute(c, cwd, cleanEnv(home), skillRoot, { executable })
+  assert.deepEqual(result.detectedSkills, ['grilling'])
+  assert.deepEqual(result.commands, [command])
+  assert.equal(JSON.stringify(result).includes('secret-looking output'), false)
+  assert.equal(result.cwdWrites, 1)
+  assert.equal(result.result, 'invalid')
+})
+
+test('continuation needs the same Codex version, runner code, installed skills and global instructions (#39)', () => {
+  const current = { version: 'codex-cli 0.160.0', runnerHash: 'a', sourceHash: 's', globalInstructionsHash: 'g' }
+  continuationConditions({ ...current }, current)
+  for (const change of [{ version: 'codex-cli 0.161.0' }, { runnerHash: 'b' }, { runnerHash: undefined }, { sourceHash: 't' }, { globalInstructionsHash: null }])
+    assert.throws(() => continuationConditions({ ...current, ...change }, current), JSON.stringify(change))
 })

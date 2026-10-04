@@ -40,7 +40,8 @@ test('retained global instructions stay unchanged and add only the selected file
   assert.equal(fs.readFileSync(path.join(home, 'AGENTS.md'), 'utf8'), body)
   writeEvalConfig(home, { retainGlobalInstructions: true })
   const config = fs.readFileSync(path.join(home, 'config.toml'), 'utf8')
-  assert.ok(config.includes(JSON.stringify(source.replaceAll(String.fromCharCode(92), '/')) + '="read"'))
+  // The read rule names the real path: macOS temporary folders sit behind /var -> /private/var.
+  assert.ok(config.includes(JSON.stringify(fs.realpathSync(source).replaceAll(String.fromCharCode(92), '/')) + '="read"'))
   assert.ok(!config.includes('":root"'))
   assert.ok(!config.includes(body))
   assert.equal(fs.readFileSync(source, 'utf8'), body)

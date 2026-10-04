@@ -94,10 +94,15 @@ Codex 실행기는 수동 opt-in이다. 기본 검사·CI·pre-push는 모델 �
 ```bash
 node bin/devflow-codex-eval --smoke --budget-tokens 1000000
 node bin/devflow-codex-eval --full --budget-tokens 1000000 --prior-results evals/results/<smoke>/result.json
+# 예산 중단 뒤, 사용자 결정으로 총 예산을 늘리고 미실행 사례만 이어갈 때:
+node bin/devflow-codex-eval --full --budget-tokens <new-total-budget> --continue-from evals/results/<partial-full>/result.json
 ```
 
 - smoke는 양성·none 각 하나다. 전체 실행은 24개를 각각 한 번 순차 실행하며 재시도하지 않는다.
   budget 플래그가 없으면 모델 프로세스를 시작하지 않는다. `--prior-results`의 사용량도 예산에 합친다.
+  `--continue-from`은 예산 때문에 중단된 full에서만, 기존 사례·정책·프롬프트 해시·공개 snapshot이 일치할 때
+  미실행 사례만 실행한다. 이전 사례의 결과와 사용량을 합치며, 완료된 사례를 재실행하거나 자동으로 이어가지 않는다.
+  snapshot이 다르면 중단하므로 이어가기 전에 평가 대상 문서를 바꾸지 않는다.
 - `gpt-6.1-sol/high`, 사례당 300초다. 모델·effort·시간 제한·측정 대상·예산을 바꾸기 전에 사용자가 결정한다.
 - 실행별 작업 폴더는 시작할 때 비어 있다. 별도의 임시 CODEX_HOME에 공개 snapshot으로 만든 devflow만 설치한다.
   개인 지침·기억·다른 플러그인·MCP·apps·web search는 포함하지 않는다. catalogue가 devflow 7개와 다르면 비용 없이 멈춘다.

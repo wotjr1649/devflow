@@ -3,7 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { parseTrace, loadCases, score, parseArgs, summarize } = require('../bin/devflow-codex-eval')
+const { parseTrace, loadCases, score, parseArgs, summarize, continuation } = require('../bin/devflow-codex-eval')
 const skillRoot = ['C:', 'eval', 'home', 'skills'].join('/')
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/codex-eval', name + '.jsonl'), 'utf8').replaceAll('EVAL_SKILLS', skillRoot)
 const event = command => JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command } }) + '\n'
@@ -82,4 +82,16 @@ test('invalid runs stay visible and are excluded from rates', () => {
   assert.equal(result.falsePositiveRate, 1)
   assert.equal(result.totalTokens, 30)
   assert.equal(result.usageKnown, false)
+})
+
+test('explicit budget continuation preserves the charged prefix and rejects changed or repeated cases', () => {
+  const cases = loadCases(path.join(__dirname, '..', 'evals', 'trigger'))
+  const old = { ...cases[0], result: 'pass', guardMissing: false, spawnFailed: false, tokens: { total_tokens: 100 } }
+  const report = { mode: 'full', complete: false, stoppedReason: 'budget', model: 'gpt-6.1-sol', effort: 'high', timeoutSeconds: 300, priorTokens: 50, cases: [old], summary: { usageKnown: true, totalTokens: 100 }, sourceHash: 'public-snapshot' }
+  assert.deepEqual(continuation(report, cases), { cases: [old], priorTokens: 50, sourceHash: 'public-snapshot' })
+  for (const change of [{ stoppedReason: 'unknown-usage' }, { complete: true }, { summary: { usageKnown: true, totalTokens: 101 } }, { cases: [{ ...old, promptHash: 'changed' }] }, { cases: [old, old] }, { cases: [{ ...old, guardMissing: true }] }]) assert.throws(() => continuation({ ...report, ...change }, cases))
+  assert.throws(() => parseArgs(['--smoke', '--continue-from', 'result.json', '--budget-tokens', '1000']))
+  assert.throws(() => parseArgs(['--full', '--continue-from', 'result.json', '--prior-results', 'smoke.json', '--budget-tokens', '1000']))
+  assert.throws(() => parseArgs(['--full', '--budget-tokens', '1000', '--continue-from']))
+  assert.throws(() => parseArgs(['--full', '--budget-tokens', '1000', '--prior-results']))
 })

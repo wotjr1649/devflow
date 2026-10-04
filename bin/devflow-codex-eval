@@ -92,16 +92,35 @@ function summarize(cases) {
 }
 
 function parseArgs(args) {
-  const opts = { smoke: false, full: false, budgetTokens: null, priorResults: null }
+  const opts = { smoke: false, full: false, budgetTokens: null, priorResults: null, continueFrom: null }
+  const value = i => {
+    if (typeof args[i] !== 'string' || !args[i] || args[i].startsWith('--')) throw new Error('Option value is required')
+    return args[i]
+  }
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--smoke') opts.smoke = true
     else if (args[i] === '--full') opts.full = true
-    else if (args[i] === '--budget-tokens') opts.budgetTokens = Number(args[++i])
-    else if (args[i] === '--prior-results') opts.priorResults = args[++i]
-    else throw new Error('usage: node bin/devflow-codex-eval --smoke|--full --budget-tokens <n> [--prior-results <relative result.json>]')
+    else if (args[i] === '--budget-tokens') opts.budgetTokens = Number(value(++i))
+    else if (args[i] === '--prior-results') opts.priorResults = value(++i)
+    else if (args[i] === '--continue-from') opts.continueFrom = value(++i)
+    else throw new Error('usage: node bin/devflow-codex-eval --smoke|--full --budget-tokens <n> [--prior-results <result.json> | --continue-from <budget-stopped full result.json>]')
   }
   if (opts.smoke === opts.full || !Number.isSafeInteger(opts.budgetTokens) || opts.budgetTokens <= 0) throw new Error('Choose exactly one mode and an explicit positive token budget')
+  if (opts.continueFrom && (!opts.full || opts.priorResults)) throw new Error('Continuation requires full mode and cannot also use prior-results')
   return opts
+}
+
+function continuation(prior, cases) {
+  if (prior.mode !== 'full' || prior.complete !== false || prior.stoppedReason !== 'budget' || prior.model !== MODEL || prior.effort !== EFFORT || prior.timeoutSeconds !== TIMEOUT / 1000 ||
+    !safeNumber(prior.priorTokens) || !Array.isArray(prior.cases) || !prior.cases.length || prior.cases.length >= cases.length) throw new Error('Only an incomplete full run stopped by budget can continue')
+  for (const [i, old] of prior.cases.entries()) {
+    const expected = cases[i]
+    if (old.id !== expected.id || old.promptHash !== expected.promptHash || old.expectedSkill !== expected.expectedSkill || old.policy !== expected.policy ||
+      old.guardMissing || old.spawnFailed || !old.tokens || !safeNumber(old.tokens.total_tokens)) throw new Error('Continuation cases, policy, usage or isolation do not match')
+  }
+  const summary = summarize(prior.cases)
+  if (!prior.summary?.usageKnown || prior.summary.totalTokens !== summary.totalTokens) throw new Error('Continuation usage is inconsistent')
+  return { cases: prior.cases, priorTokens: prior.priorTokens, sourceHash: prior.sourceHash }
 }
 
 function systemSkills(home) {
@@ -341,14 +360,17 @@ async function main(args) {
   if (cases.length !== 24) throw new Error('Expected the same 24 Claude trigger cases')
   const selected = opts.smoke ? ['grilling--grill-en', 'none--trivia-en'].map(id => cases.find(c => c.id === id)) : cases
   let priorTokens = 0
-  if (opts.priorResults) {
-    const priorPath = path.resolve(ROOT, opts.priorResults)
+  let continued = null
+  if (opts.priorResults || opts.continueFrom) {
+    const priorPath = path.resolve(ROOT, opts.priorResults || opts.continueFrom)
     const resultsRoot = path.join(ROOT, 'evals', 'results') + path.sep
     if (!priorPath.startsWith(resultsRoot) || !fs.lstatSync(priorPath).isFile() || fs.realpathSync(priorPath) !== priorPath) throw new Error('Prior results must be a regular file inside evals/results')
     const prior = JSON.parse(fs.readFileSync(priorPath, 'utf8'))
     if (prior.model !== MODEL || prior.effort !== EFFORT || !prior.summary?.usageKnown || !safeNumber(prior.summary.totalTokens)) throw new Error('Prior result usage or environment does not match')
-    priorTokens = prior.priorTokens + prior.summary.totalTokens
-    if (!safeNumber(priorTokens) || priorTokens >= opts.budgetTokens) throw new Error('Prior usage already exhausted the budget')
+    if (opts.continueFrom) continued = continuation(prior, cases)
+    priorTokens = continued ? continued.priorTokens : prior.priorTokens + prior.summary.totalTokens
+    const charged = prior.priorTokens + prior.summary.totalTokens
+    if (!safeNumber(priorTokens) || !safeNumber(charged) || charged >= opts.budgetTokens) throw new Error('Prior usage already exhausted the budget')
   }
   const version = runLocal(['--version'], { cwd: ROOT, env: cleanEnv(process.env.CODEX_HOME || path.join(os.homedir(), '.codex')) }).trim()
   const work = path.join(ROOT, '.work')
@@ -356,15 +378,18 @@ async function main(args) {
   const taskDir = fs.mkdtempSync(path.join(work, 'codex-eval-'))
   try {
   const prepared = prepare(ROOT, taskDir)
+  if (continued && continued.sourceHash !== prepared.sourceHash) throw new Error('Public skill/document snapshot changed; continuation would change the measurement target')
   const env = cleanEnv(prepared.home)
   const isolation = await preflight(prepared.home, prepared.names, taskDir, env)
   const resultDir = path.join(ROOT, 'evals', 'results', new Date().toISOString().replace(/[:.]/g, '-') + '-codex-' + (opts.smoke ? 'smoke' : 'full'))
   fs.mkdirSync(resultDir, { recursive: true })
   const report = { host: 'codex', version, model: MODEL, effort: EFFORT, timeoutSeconds: TIMEOUT / 1000, mode: opts.smoke ? 'smoke' : 'full',
-    budgetTokens: opts.budgetTokens, priorTokens, sourceHash: prepared.sourceHash, isolation, startedAt: new Date().toISOString(), cases: [], summary: summarize([]), complete: false, stoppedReason: null }
+    budgetTokens: opts.budgetTokens, priorTokens, sourceHash: prepared.sourceHash, isolation, startedAt: new Date().toISOString(),
+    ...(continued ? { continuedFrom: normalize(opts.continueFrom), continuedAtCase: continued.cases.length } : {}),
+    cases: continued ? [...continued.cases] : [], summary: summarize(continued ? continued.cases : []), complete: false, stoppedReason: null }
   const save = () => fs.writeFileSync(path.join(resultDir, 'result.json'), JSON.stringify(report, null, 2) + '\n')
   save()
-  for (const c of selected) {
+  for (const c of selected.slice(continued ? continued.cases.length : 0)) {
     if (!report.summary.usageKnown || priorTokens + report.summary.totalTokens >= opts.budgetTokens) { report.stoppedReason = report.summary.usageKnown ? 'budget' : 'unknown-usage'; break }
     const cwd = path.join(taskDir, c.id)
     fs.mkdirSync(cwd)
@@ -391,5 +416,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand }
+module.exports = { parseTrace, loadCases, score, parseArgs, summarize, configArgs, cleanEnv, prepare, preflight, execute, hookMetadata, guardCommand, checkGuardCommand, continuation }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

@@ -819,9 +819,13 @@ test('Windows spellings of a path inside the repository stay inside it, and shar
   const d = dir(true)
   fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
   const inside = path.join(d, '_ref', 'a.md')
-  const share = `\\\\localhost\\${inside[0]}$${inside.slice(2)}`
-  for (const p of [`\\\\?\\${inside}`, `\\\\.\\${inside}`, share, `\\\\?\\UNC\\localhost\\${inside[0]}$${inside.slice(2)}`]) {
+  for (const p of [`\\\\?\\${inside}`, `\\\\.\\${inside}`]) {
     assert.equal(decision(hook.handle(pre(d, `Remove-Item ${p}`, 'PowerShell'))), 'deny', p)
+  }
+  // The admin share holds a $, which the shell check counts as a word built at run time (ADR-0004); edit tools name the
+  // file outright.
+  for (const p of [`\\\\localhost\\${inside[0]}$${inside.slice(2)}`, `\\\\?\\UNC\\localhost\\${inside[0]}$${inside.slice(2)}`, `\\\\?\\${inside}`]) {
+    assert.equal(decision(hook.handle(event('PreToolUse', d, { tool_name: 'Write', tool_input: { file_path: p } }))), 'deny', p)
   }
   // A script on a share is not opened to look inside it: opening it would reach the server (and offer it credentials).
   const seen = []

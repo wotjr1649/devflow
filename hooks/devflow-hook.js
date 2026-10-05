@@ -832,12 +832,11 @@ function shareSessionId(vars, cwd, sessionId) {
 
 // A session that ends stops counting as a recent writer of any Issue. One try per lock: SessionEnd has 1.5 s in all in
 // Claude and at most 3 s in Codex, and an entry left behind expires in 30 minutes.
-function releaseEverywhere(cwd, sessionId, env = state.realEnv) {
+function releaseEverywhere(cwd, sessionId) {
   const found = devflowRoot(cwd)
   if (!found || !SESSION_ID.test(String(sessionId || ''))) return
-  // Issue folders live in the main work tree (Issue #14): one short git call finds it, else the folder in hand.
-  const main = state.mainTree(env, found, { timeout: 1000 })
-  const root = main ? main.path : found
+  // Use the guard's local metadata proof: a slow git process used to leave the main tree's session behind (#47).
+  const root = gitLocation(found)?.main || found
   const hash = crypto.createHash('sha256').update(String(sessionId)).digest('hex').slice(0, 12)
   const base = path.join(root, '.work', 'devflow')
   // Real folders only: a .work that is a link (to a network share, say) is not listed.
@@ -925,12 +924,10 @@ function headBranch(gitDir) {
   return m ? m[1] : null
 }
 
-// Where a block is logged: the Issue of the work tree's branch, or, in a worktree on another branch (an M3 task
-// worktree), the Issue of the main work tree. Read from HEAD files, not git, so a slow git cannot push the hook past
-// its timeout. Never throws.
-function guardTarget(root) {
+// Local git directories shared by guard logging and session cleanup. A main tree is returned only with its back-link
+// proof, without starting git or following a network path. Never throws.
+function gitLocation(root) {
   try {
-    const issueOf = b => { const m = /^[^/]+\/(\d+)-/.exec(b || ''); return m ? Number(m[1]) : null }
     const dotGit = path.join(root, '.git')
     const st = fs.lstatSync(dotGit)
     let own = dotGit
@@ -942,8 +939,20 @@ function guardTarget(root) {
       const commondir = smallFile(path.join(own, 'commondir'))
       common = commondir ? path.resolve(own, commondir.trim()) : own
     } else if (!st.isDirectory()) return null
+    return { own, common, main: st.isFile() ? provenMain(root, own, common) : null }
+  } catch {
+    return null
+  }
+}
+
+// Where a block is logged: the Issue of this branch, or the main tree's Issue for an M3 task branch.
+function guardTarget(root) {
+  try {
+    const issueOf = b => { const m = /^[^/]+\/(\d+)-/.exec(b || ''); return m ? Number(m[1]) : null }
+    const location = gitLocation(root)
+    if (!location) return null
+    const { own, common, main: proven } = location
     const issue = issueOf(headBranch(own))
-    const proven = st.isFile() ? provenMain(root, own, common) : null
     if (issue) return { root: proven || root, issue }
     if (proven) {
       const main = issueOf(headBranch(common))
@@ -1014,7 +1023,7 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
   }
   if (input.hook_event_name === 'SessionEnd') {
     try {
-      releaseEverywhere(cwd, input.session_id, env)
+      releaseEverywhere(cwd, input.session_id)
     } catch {}
     return '' // SessionEnd cannot block, and its output is dropped
   }

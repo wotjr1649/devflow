@@ -232,8 +232,13 @@
   [session_end.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/events/session_end.rs)): 입력의
   `session_id`는 thread id이고 `reason`은 언제나 `other`다. 기본 1초, 최대 3초이며 `async`여도 동기로 돈다. 서브에이전트에서는
   돌지 않고 막을 수 없다. 세션 런타임을 닫을 때(`shutdown_session_runtime`)만 돈다. 관찰(2026-10-04, 0.160.0, `codex exec`,
-  훅 신뢰 뒤): `devflow-state`로 Issue에 쓴 thread가 실행이 끝나자 `sessions.json`에서 빠졌다. TUI `/clear`는 새 thread를
-  시작하는데, 이전 thread를 닫는지는 원본에서 찾지 못했고 관찰하지 않았다. 0.144 이하에는 이 이벤트가 없고, 훅 파일의 모르는
+  훅 신뢰 뒤): `devflow-state`로 Issue에 쓴 thread가 실행이 끝나자 `sessions.json`에서 빠졌다. 관찰(2026-10-05, 0.160.0,
+  사용자 TUI, #47): 연결 worktree에서 기록한 뒤 `/clear`를 실행해도 이전 thread의 항목은 즉시 사라지지 않았고 다른 세션도
+  보존됐다. 원본의 `app/event_dispatch.rs` → `app/session_lifecycle.rs` →
+  [app/voice_owner.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/tui/src/app/voice_owner.rs)는 새 thread를
+  시작하고 이전 thread에 `thread_unsubscribe`를 보낸다. 구독 해제는 즉시 SessionEnd를 실행하는 종료가 아니다
+  ([현재 훅 문서](https://learn.chatgpt.com/docs/hooks#sessionend)). 새 SessionStart 입력에는 이전 thread id가 없다.
+  0.144 이하에는 이 이벤트가 없고, 훅 파일의 모르는
   이벤트 키는 무시된다(`HookEventsToml`에 `deny_unknown_fields`가 없다).
 - SessionStart 매처는 `startup|resume|clear|compact`다. 출력 맥락의 양은 `additionalContextLimit`로 제한한다.
 - 도구 매칭: 셸(`exec_command` 포함)은 `Bash`, `apply_patch`는 `apply_patch`·`Edit`·`Write`, `spawn_agent`는 `Agent`로

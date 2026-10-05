@@ -570,7 +570,9 @@ function analyze(src, ctx, depth = 0, cmdShell = false) {
   // drive path may define one.
   const known = c => plainCd(c) ||
     (c.words.length > 0 && /^[A-Za-z][\w-]*$/.test(c.words[0].raw) && KEEPS_FOLDER.has(c.words[0].raw.toLowerCase()))
-  if (cmdShell || nested.length || !plainText(src) || /\b(function|alias):/i.test(src) || !cmds.every(known)) ctx.unsure = true
+  // Checked on each word as the shell reads it: quotes inside a word (fun'ction:x') join up.
+  const provider = cmds.some(c => c.words.some(w => /(function|alias):/i.test(w.text)) || c.redirects.some(p => /(function|alias):/i.test(p)))
+  if (cmdShell || nested.length || !plainText(src) || provider || !cmds.every(known)) ctx.unsure = true
   const { each, seen } = cwdsAlong(cmds, outer || [ctx.cwd], !ctx.unsure)
   try {
     // A substitution's place in the list is not kept, so it may run in any of the folders.

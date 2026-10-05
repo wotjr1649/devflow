@@ -129,7 +129,7 @@ function parse(src, powershell = false) {
   for (let i = 0; i < src.length; i++) {
     const c = src[i]
     const n = src[i + 1]
-    if (c === '\\' && n === '\n') {
+    if ((powershell ? c === '`' : c === '\\') && n === '\n') {
       i++
     } else if (c === '\n') {
       end(false, ';')
@@ -220,13 +220,13 @@ function parse(src, powershell = false) {
           s.text += src.slice(j, k + 1)
           s.raw += src.slice(j, k + 1)
           j = k
-        } else if (d === '`' && tick > j && (quote < 0 || tick < quote)) {
+        } else if (!powershell && d === '`' && tick > j && (quote < 0 || tick < quote)) {
           nested.push(src.slice(j + 1, tick))
           s.dynamic = true
           s.text += src.slice(j, tick + 1)
           s.raw += src.slice(j, tick + 1)
           j = tick
-        } else if ((d === '\\' || d === '`') && j + 1 < src.length) {
+        } else if (((!powershell && d === '\\') || d === '`') && j + 1 < src.length) {
           s.text += src[j + 1]
           s.raw += d + src[j + 1]
           j++
@@ -243,12 +243,12 @@ function parse(src, powershell = false) {
       nested.push(src.slice(i + 2, k))
       substitution(i, k)
       i = k
-    } else if (c === '`' && src.indexOf('`', i + 1) > i) {
+    } else if (!powershell && c === '`' && src.indexOf('`', i + 1) > i) {
       const k = src.indexOf('`', i + 1)
       nested.push(src.slice(i + 1, k))
       substitution(i, k)
       i = k
-    } else if (c === '\\' && i + 1 < src.length) {
+    } else if ((powershell ? c === '`' : c === '\\') && i + 1 < src.length) {
       const s = start()
       s.text += n
       s.raw += c + n
@@ -584,8 +584,8 @@ function analyze(src, ctx, depth = 0, cmdShell = false, powershell = false) {
   if (HTTP_ISSUES.test(src) && HTTP_WRITE.test(src)) return 'direct GitHub API Issue write'
   if (HTTP_GRAPHQL.test(src) && /\bmutation\b/i.test(src)) return 'direct GitHub GraphQL mutation'
   // Shell-specific quotes and comments can hide writes from the other reading. PowerShell block comments end at
-  // the first #>, and its single quotes do not use ANSI-C backslash escapes. Keep the Bash reading too.
-  if (!powershell && (src.includes('<#') || src.includes("$'"))) {
+  // the first #>, backslashes are literal, and backticks escape rather than substitute. Keep the Bash reading too.
+  if (!powershell && (src.includes('<#') || src.includes("$'") || /[\\`]/.test(src))) {
     const hit = analyze(src, ctx, depth, cmdShell, true)
     if (hit) return hit
   }

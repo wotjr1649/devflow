@@ -39,9 +39,10 @@ const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
 const ANALYSIS_TIMEOUT_MS = 5000
-// Starting the logging child alone took 0.7-1.4 s on a loaded machine (Issue #53). Input, analysis and logging stay
-// within 11 s of the 15 s the hooks get.
-const LOG_TIMEOUT_MS = 3000
+// The PreToolUse hook gets 15 s (hooks.json); this is what its process may use from loading, leaving room for its start
+// and exit. Starting the logging child alone took 0.7-1.4 s on a loaded machine, past a fixed 1 s (Issue #53), so
+// logging gets whatever input and analysis left of it.
+const HOOK_BUDGET_MS = 12000
 const ANALYSIS_FAILURES = {
   'analysis-deadline': 'devflow: the 5-second analysis deadline was exceeded, so the tool call was blocked.',
   'hook-check-failed': 'devflow: the analyzer failed, so the tool call was blocked.',
@@ -492,15 +493,22 @@ function checkCommand(cmd, ctx, depth) {
   return null
 }
 
-const CD = new Set(['cd', 'chdir', 'pushd', 'set-location', 'sl', 'push-location'])
-const CWD_CHANGERS = new Set([...CD, 'popd', 'pop-location', ...EVALS, ...SOURCERS])
+// cd's names in bash, PowerShell and cmd. chdir and sl may be other programs in bash.
+const CD = new Set(['cd', 'pushd', 'set-location', 'push-location'])
+const CWD_CHANGERS = new Set([...CD, 'chdir', 'sl', 'popd', 'pop-location', ...EVALS, ...SOURCERS])
+// A folder a cd reaches from wherever the shell stands. On Windows only a drive or share path: Git Bash mounts /tmp
+// and / on other folders.
+const fixedFolder = t => (process.platform === 'win32' ? /^([A-Za-z]:[\\/]|[\\/]{2})/.test(nativePath(t)) : t.startsWith('/'))
+// Text that defines a function or alias may give cd another meaning.
+const REDEFINES = /\(\s*\)|\bfunction\b|\b(alias|set-alias|new-alias)\b/i
 
 // The folders each command of a list may run in, from those in start (Issue #53). A command joined by && to a cd that
 // surely moved the shell runs only there, so a write into another repository is not judged as one into this one;
 // after any other separator a command may run in any folder seen so far. A cd moves the shell for sure only when the
-// shell runs it itself, not in a pipeline or behind ||, to a folder no setting picks ($CDPATH, ~, -, variables), and
-// not in cmd, whose cd keeps the drive. Anything else that may change the folder leaves every folder seen.
-function cwdsAlong(cmds, start, cmdShell) {
+// shell runs it itself, not in a pipeline or behind ||, to a fixed folder: a relative one may start from a folder a
+// cd the hook cannot place picked, and $CDPATH, ~, - and variables are settings. Not in cmd, whose cd keeps the
+// drive, nor when narrow is false. Anything else that may change the folder leaves every folder seen.
+function cwdsAlong(cmds, start, narrow) {
   const unique = a => [...new Set(a)]
   let here = start
   let seen = start
@@ -512,8 +520,7 @@ function cwdsAlong(cmds, start, cmdShell) {
     if (cmd.words.length === 2 && CD.has(names[0]) && !to.dynamic && !/^[-~]/.test(to.text) && !cmd.seps.includes('|')) {
       const readings = pathsOf(to)
       const moved = here.flatMap(c => readings.map(t => path.resolve(c, nativePath(t))))
-      const sure = !cmdShell && !cmd.seps.includes('||') &&
-        readings.every(t => path.isAbsolute(nativePath(t)) || /^\.\.?([\\/]|$)/.test(t))
+      const sure = narrow && !cmd.seps.includes('||') && readings.every(fixedFolder)
       here = unique(sure ? moved : [...moved, ...seen])
     } else if (CWD_CHANGERS.has(names[leadOf(cmd.words, names)])) here = seen
     seen = unique([...seen, ...here])
@@ -530,7 +537,9 @@ function analyze(src, ctx, depth = 0, cmdShell = false) {
   if (HTTP_GRAPHQL.test(src) && /\bmutation\b/i.test(src)) return 'direct GitHub GraphQL mutation'
   const { cmds, nested } = parse(src)
   const outer = ctx.cwds
-  const { each, seen } = cwdsAlong(cmds, outer || [ctx.cwd], cmdShell)
+  // A definition holds for the rest of the command, including the text it runs.
+  if (REDEFINES.test(src)) ctx.redefined = true
+  const { each, seen } = cwdsAlong(cmds, outer || [ctx.cwd], !cmdShell && !ctx.redefined)
   try {
     // A substitution's place in the list is not kept, so it may run in any of the folders.
     ctx.cwds = seen
@@ -821,22 +830,28 @@ const isNetwork = s => NETWORK_PATH.test(s) && !/^(\\\\|\/\/)[?.][\\/][A-Za-z]:/
 
 // False when p, or a folder link on the way to it, names a network path. A link is judged by its own text, read
 // without following it, so the check itself never touches the network. A link to a link is judged the same way
-// along the chain (Issue #53); past MAX_LINKS links in all, the path counts as remote.
+// along the chain (Issue #53): the walk goes on from the link's text, past folders already known to be no links, so
+// each link counts once; past MAX_LINKS links in all, the path counts as remote.
 const MAX_LINKS = 8
-function localPath(p, links = { left: MAX_LINKS }) {
+function localPath(p) {
   if (isNetwork(p)) return false
-  const parts = []
-  for (let d = path.resolve(p); ; d = path.dirname(d)) {
-    parts.unshift(d)
-    if (path.dirname(d) === d) break
-  }
-  for (const q of parts) {
+  let done = path.parse(path.resolve(p)).root
+  let rest = path.resolve(p).slice(done.length).split(/[\\/]/).filter(Boolean)
+  let links = 0
+  while (rest.length) {
+    const q = path.join(done, rest.shift())
     let st
     try { st = fs.lstatSync(q) } catch { return true }
-    if (!st.isSymbolicLink()) continue
+    if (!st.isSymbolicLink()) {
+      done = q
+      continue
+    }
     let to
     try { to = fs.readlinkSync(q) } catch { return false }
-    if (--links.left < 0 || !localPath(path.resolve(path.dirname(q), to), links)) return false
+    const next = path.resolve(done, to)
+    if (++links > MAX_LINKS || isNetwork(to) || isNetwork(next)) return false
+    done = path.parse(next).root
+    rest = [...next.slice(done.length).split(/[\\/]/).filter(Boolean), ...rest]
   }
   return true
 }
@@ -1102,7 +1117,7 @@ async function main(inProcess = false) {
     if (guard) {
       // Logging reads repository metadata too. Bound it separately, so even a broken log path cannot delay denial.
       const log = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main(process.argv[2])', __filename, guard], {
-        input: raw, encoding: 'utf8', timeout: LOG_TIMEOUT_MS, windowsHide: true,
+        input: raw, encoding: 'utf8', timeout: Math.max(1, Math.floor(HOOK_BUDGET_MS - (performance.now() - started))), windowsHide: true,
       })
       timing('log-done', ` error=${log.error?.code || ''} status=${log.status}`)
       out = log.status === 0 && log.stdout.trim() ? log.stdout.trim() : deny(ANALYSIS_FAILURES[guard])

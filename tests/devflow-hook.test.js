@@ -784,6 +784,33 @@ test('backslash paths count as paths: protected folders, locked tests and script
   assert.equal(decision(hook.handle(pre(g, 'Remove-Item .\\tests\\a.test.js'))), 'deny')
 })
 
+test('backslash paths inside a script handed to a shell, decoy scripts, and paths outside the root (#48 review)', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**', '**/secret/**'] }))
+  for (const tool of ['PowerShell', 'Bash']) {
+    for (const c of ['pwsh -Command "Remove-Item -Recurse .\\_ref\\docs"', 'cmd /c del _ref\\a.md',
+      'powershell -c "Set-Content _ref\\a.md x"', 'Invoke-Expression "Remove-Item .\\_ref\\a.md"']) {
+      assert.equal(decision(hook.handle(pre(d, c, tool))), 'deny', `${tool}: ${c}`)
+    }
+  }
+  fs.mkdirSync(path.join(d, 'scripts'))
+  fs.writeFileSync(path.join(d, 'scripts', 'post.ps1'), 'gh issue close 1\n')
+  fs.writeFileSync(path.join(d, 'scripts', 'post.cmd'), 'gh issue close 1\n')
+  assert.ok(check('pwsh -c "& .\\scripts\\post.ps1"', d))
+  assert.ok(check('powershell .\\scripts\\post.ps1', d))
+  assert.ok(check('cmd /c .\\scripts\\post.cmd', d))
+  // A file under the Bash reading's name must not hide the script the Windows reading names.
+  for (const decoy of ['echo hi\n', '#!/usr/bin/python\nprint(1)\n']) {
+    fs.writeFileSync(path.join(d, '.scriptspost.ps1'), decoy)
+    assert.ok(check('& .\\scripts\\post.ps1', d), JSON.stringify(decoy))
+  }
+  // Another drive or a share is outside the repository, whatever the protected globs say.
+  for (const c of ['Copy-Item a.md C:\\tmp\\secret\\a.md', 'Remove-Item \\\\server\\share\\secret\\a.md', 'Remove-Item C:/tmp/secret/a.md']) {
+    assert.equal(hook.handle(pre(d, c, 'PowerShell')), '', c)
+  }
+  assert.equal(decision(hook.handle(pre(d, 'Remove-Item .\\secret\\a.md', 'PowerShell'))), 'deny')
+})
+
 test('an entry-point deadline is logged to the input worktree even from a subfolder', () => {
   const parent = gitRepo('fix/8-other')
   const input = gitRepo('fix/7-deadline')

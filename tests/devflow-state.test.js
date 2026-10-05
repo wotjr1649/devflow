@@ -1382,3 +1382,25 @@ test('a criteria heading hidden in a comment is skipped for check, carry and the
   assert.match(r.out, /not carried over .*: 2$/)
   assert.match(ghWrites(e)[0].input, /- \[x\] a\n- \[ \] c/)
 })
+
+// Issue #50: a ship checkpoint carries the lines the ship steps require, or it is not posted.
+test('a ship checkpoint without the trigger eval, measurement or (after an unlock) unlock line is refused (#50)', () => {
+  const root = repo({ ledger: { stage: 'ship', notes: [] } })
+  const e = env(root)
+  const post = text => state.main(['comment', '1'], () => text, e, '.')
+  const ship = (...ls) => ['### Checkpoint ship — 끝', '- 변경: abc1234', ...ls].join('\n')
+  const evalLine = '- 트리거 eval: 실행 안 함. 스킬 변경 없음'
+  const measured = '- 측정(v2): calls 1, tools 2'
+  let r = post(ship(measured))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /ship checkpoint .*"- 트리거 eval:"/)
+  assert.match(post(ship(evalLine)).out, /"- 측정\(v<n>\):"/)
+  assert.equal(post(ship(measured).replace('Checkpoint ship', 'Checkpoint ship(부분)')).code, 1, 'a variant of the stage word is still a ship')
+  assert.equal(post(ship(evalLine, measured)).code, 0)
+  assert.equal(post(checkpoint('ship 아님')).code, 0, 'other stages are not checked')
+  fs.writeFileSync(path.join(root, '.work/devflow/i1/ledger.json'), JSON.stringify({ stage: 'ship', notes: ['tests unlocked: a review reproduction test'] }))
+  r = post(ship(evalLine, measured))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /"- 시험 잠금 해제"/)
+  assert.equal(post(ship(evalLine, measured, '- 시험 잠금 해제 1회: 리뷰 재현 시험 추가')).code, 0)
+})

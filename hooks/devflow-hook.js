@@ -88,7 +88,7 @@ function substitutions(text) {
 
 // Splits shell text into simple commands. Bash rules first; PowerShell and cmd differ mostly in ways that only
 // make this see more, not less. Substitutions, process substitutions and heredoc bodies are kept for a closer look.
-function parse(src) {
+function parse(src, blockComments = false) {
   const cmds = []
   const nested = []
   const docs = []
@@ -107,6 +107,7 @@ function parse(src) {
   }
   const end = (pipe, sep) => {
     push()
+    into = 'words'
     const done = cur
     const kept = done.words.length || done.stdin.length || done.redirects.length
     if (kept) cmds.push(done)
@@ -149,6 +150,14 @@ function parse(src) {
       }
     } else if (/\s/.test(c)) {
       push()
+    } else if (blockComments && c === '<' && n === '#') {
+      push()
+      let depth = 1
+      for (i += 2; i < src.length && depth; i++) {
+        if (src[i] === '<' && src[i + 1] === '#') { depth++; i++ }
+        else if (src[i] === '#' && src[i + 1] === '>') { depth--; i++ }
+      }
+      i--
     } else if (c === '#' && !w) {
       while (i + 1 < src.length && src[i + 1] !== '\n') i++
     } else if (c === '<' && n === '<') {
@@ -179,6 +188,21 @@ function parse(src) {
     } else if (c === ';' || c === '&' || c === '(' || c === ')') {
       end(false, c === '&' && n === '&' ? '&&' : c)
       if ((c === '&' && n === '&') || (c === ';' && n === ';')) i++
+    } else if (c === '$' && n === "'") {
+      const s = start()
+      let j = i + 2
+      for (; j < src.length && src[j] !== "'"; j++) if (src[j] === '\\') j++
+      // ANSI-C quotes are literal after escape decoding; an escaped quote does not end the word. Keep raw text for
+      // the other path reading, but use the decoded text for redirects and file operands.
+      const escapes = { a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' }
+      s.text += src.slice(i + 2, j).replace(/\\(x[\da-fA-F]{1,2}|u[\da-fA-F]{1,4}|U[\da-fA-F]{1,8}|[0-7]{1,3}|c[\s\S]|[\s\S])/g, (raw, code) => {
+        if (/^[xuU]/.test(code) && code.length > 1) return String.fromCodePoint(parseInt(code.slice(1), 16))
+        if (/^[0-7]/.test(code)) return String.fromCharCode(parseInt(code, 8) & 255)
+        if (code[0] === 'c' && code.length > 1) return String.fromCharCode(code[1] === '?' ? 127 : code[1].toUpperCase().charCodeAt(0) & 31)
+        return escapes[code] ?? (/^[\\'"?]$/.test(code) ? code : raw)
+      }).split('\0')[0]
+      s.raw += src.slice(i, j + 1)
+      i = j
     } else if (c === "'") {
       const k = src.indexOf("'", i + 1) < 0 ? src.length : src.indexOf("'", i + 1)
       const s = start()
@@ -545,10 +569,10 @@ function cwdsAlong(cmds, start, narrow) {
     const at = here
     const names = cmd.words.map(w => baseName(w.raw))
     const to = cmd.words[1]
-    if (cdLike(cmd) && !to.dynamic && !/^[-~]/.test(to.text) && !cmd.seps.includes('|')) {
+    if (cdLike(cmd) && !to.dynamic && !/^[-~]/.test(to.text)) {
       const readings = pathsOf(to)
       const moved = here.flatMap(c => readings.map(t => path.resolve(c, nativePath(t))))
-      const sure = narrow && plainCd(cmd) && !cmd.seps.includes('||') && readings.every(fixedFolder)
+      const sure = narrow && plainCd(cmd) && !cmd.seps.some(s => s === '||' || s === '|') && readings.every(fixedFolder)
       here = unique(sure ? moved : [...moved, ...seen])
     } else if (CWD_CHANGERS.has(names[leadOf(cmd.words, names)])) here = seen
     seen = unique([...seen, ...here])
@@ -558,12 +582,18 @@ function cwdsAlong(cmds, start, narrow) {
 }
 
 // ctx.cwds holds the folders the command being checked may run in; text it runs (a script, a substitution) starts there.
-function analyze(src, ctx, depth = 0, cmdShell = false) {
+function analyze(src, ctx, depth = 0, cmdShell = false, blockComments = false) {
   if (!src) return null
   if (depth > MAX_DEPTH) return 'command nested too deeply to check'
   if (HTTP_ISSUES.test(src) && HTTP_WRITE.test(src)) return 'direct GitHub API Issue write'
   if (HTTP_GRAPHQL.test(src) && /\bmutation\b/i.test(src)) return 'direct GitHub GraphQL mutation'
-  const { cmds, nested } = parse(src)
+  // PowerShell block comments can hide the rest of a line from the Bash-first reader. Check both interpretations:
+  // removing comments globally would instead hide commands Bash really executes between the comment markers.
+  if (!blockComments && src.includes('<#')) {
+    const hit = analyze(src, ctx, depth, cmdShell, true)
+    if (hit) return hit
+  }
+  const { cmds, nested } = parse(src, blockComments)
   const outer = ctx.cwds
   // Anything else turns narrowing off for the rest of the command, the text it runs included: a definition there may
   // be exported to it, and a substitution is read after the list's folders are worked out. A program counts by its

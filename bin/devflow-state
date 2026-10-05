@@ -1017,6 +1017,18 @@ function write(env, cwd, op, n, text = '', title, opts = {}) {
   return guarded(ctx, attempt(ctx, op, n, text, title, opts))
 }
 
+// The lines a ship checkpoint carries (Issue #50): whether the trigger eval ran, the measurement, and any test unlock.
+// Any stage word starting with "ship" counts, so "ship(부분)" is no way around it.
+function shipMissing(text, ledger) {
+  const ls = lines(text)
+  if (!/^### Checkpoint ship/i.test(ls[0] || '')) return ''
+  const need = [['"- 트리거 eval:"', /^-\s*트리거 eval\s*:/], ['"- 측정(v<n>):"', /^-\s*측정\(v\d+\)\s*:/]]
+  if ((Array.isArray(ledger.notes) ? ledger.notes : []).some(s => typeof s === 'string' && s.startsWith('tests unlocked:'))) {
+    need.push(['"- 시험 잠금 해제"', /^-\s*시험 잠금 해제/])
+  }
+  return need.filter(([, re]) => !ls.some(l => re.test(l.trim()))).map(([name]) => name).join(', ')
+}
+
 function attempt(ctx, op, n, text, title, { flushing = false }) {
   if (!ctx || !ctx.repo) return { code: 1, out: 'refused: not a devflow repository with a GitHub origin' }
   if (op !== 'create' && n !== ctx.branchIssue) {
@@ -1056,6 +1068,8 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
   // An interactive write only reads the ledger, so it needs no lock and a folder that cannot take one does not stop it.
   // Queueing is decided again under the lock. A new Issue from a branch without one has no ledger yet.
   const peek = owner && issueDirOk(ctx.store, owner) ? readLedger(ctx.store, owner) || {} : {}
+  const short = op === 'comment' && shipMissing(text, peek)
+  if (short) return { code: 1, guard: 'state-ship-lines', out: `refused: the ship checkpoint has no ${short} line (skills/devflow/references/review.md, Before integrating)` }
   // A queued post whose body rule fails would only show at flush, after the unattended run reported it queued, and would
   // hold every later post (Issue #31). The Issue is read now, outside the ledger lock; decide replays the queue on it under
   // the lock. When it cannot be read (an offline run), the post queues unchecked and flush checks it, as before.

@@ -1087,6 +1087,40 @@ test('SessionEnd in a worktree releases the session from the main work tree fold
   assert.equal(fs.existsSync(path.join(folder, 'ledger.json')), false)
 })
 
+test('SessionEnd resolves a linked worktree without a git process and preserves other sessions (#47)', () => {
+  const root = gitRepo('feat/47-session-release')
+  const wt = sibling()
+  git(root, 'worktree', 'add', '-q', '--relative-paths', '-b', 'fix/47-worker', wt)
+  const folder = path.join(root, '.work', 'devflow', 'i47')
+  fs.mkdirSync(folder, { recursive: true })
+  const file = path.join(folder, 'sessions.json')
+  const other = { host: 'claude', at: Date.now() }
+  fs.writeFileSync(file, JSON.stringify({ [hashOf(SID)]: { host: 'codex', at: Date.now() }, [hashOf('other')]: other }))
+  let calls = 0
+  const unavailable = { run: () => { calls++; return { code: 'ETIMEDOUT', stdout: '', stderr: '' } } }
+  hook.handle(event('SessionEnd', wt, { session_id: SID }), unavailable)
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { [hashOf('other')]: other })
+  assert.equal(calls, 0, 'session cleanup does not depend on starting git before a deadline')
+  assert.equal(fs.existsSync(path.join(wt, '.work')), false)
+})
+
+test('SessionEnd cannot release another worktree through a forged gitdir (#47)', () => {
+  const root = gitRepo('main')
+  const wt = sibling()
+  git(root, 'worktree', 'add', '-q', '-b', 'worker', wt)
+  const folder = path.join(root, '.work', 'devflow', 'i47')
+  fs.mkdirSync(folder, { recursive: true })
+  const file = path.join(folder, 'sessions.json')
+  const content = JSON.stringify({ [hashOf(SID)]: { host: 'codex', at: Date.now() } })
+  fs.writeFileSync(file, content)
+  const forged = dir(true)
+  fs.writeFileSync(path.join(forged, '.git'), fs.readFileSync(path.join(wt, '.git')))
+  hook.handle(event('SessionEnd', forged, { session_id: SID }), noGit)
+  assert.equal(fs.readFileSync(file, 'utf8'), content)
+  hook.handle(event('SessionEnd', wt, { session_id: SID }), noGit)
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {}, 'a non-Issue branch can still release its session')
+})
+
 test('SessionEnd lives in hooks.json, which both hosts read; no Claude-only hook file is left (#42)', () => {
   const shared = require('../hooks/hooks.json').hooks
   assert.equal(shared.SessionEnd.length, 1)

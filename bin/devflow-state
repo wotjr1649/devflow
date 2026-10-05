@@ -198,6 +198,8 @@ function scopesOf(head) {
 
 // include: ask gh for the response headers too, to read the token scopes from the same call.
 function fetchIssue(ctx, n, { include } = {}) {
+  // n reaches gh as -F n=<value>, and gh reads a file for a value that starts with @: only a whole number goes there.
+  if (!Number.isSafeInteger(n) || n < 1) return { error: 'the Issue number is not a whole number' }
   const [owner, name] = ctx.repo.split('/')
   const r = ctx.env.run('gh', ['api', 'graphql', ...(include ? ['--include'] : []), '-f', `query=${QUERY}`, '-f', `o=${owner}`, '-f', `r=${name}`, '-F', `n=${n}`])
   if (r.code !== 0) return { error: `Issue #${n} lookup failed (gh exit ${r.code})` }
@@ -901,7 +903,7 @@ function postedAlready(ctx, op, n, text, title, since) {
     return null
   }
 }
-const UNKNOWN = (op, code) => `${op}: posting state unknown (gh exit ${code}, and reading the Issue back failed); look at the Issue before trying again`
+const UNKNOWN = (op, code) => `${op}: posting state unknown (gh exit ${code}); look at the Issue before trying again`
 
 function post(ctx, op, n, text, title) {
   const gh = (args, input) => ctx.env.run('gh', args, { cwd: ctx.root, input })
@@ -952,7 +954,9 @@ function post(ctx, op, n, text, title) {
   if (r.code !== 0 && READ_BACK.has(op) && r.code !== 4) {
     const url = postedAlready(ctx, op, n, text, title, since)
     if (url) return { code: 0, out: `${url} (gh exit ${r.code}, but the ${op} is on GitHub)` }
-    if (url === null) return { code: 1, out: UNKNOWN(op, r.code), unconfirmed: { at: since } }
+    // A gh the time limit killed (an error code, not an exit status) may have sent the post, which GitHub may not
+    // show yet: missing is unknown then, not failed.
+    if (url === null || typeof r.code === 'string') return { code: 1, out: UNKNOWN(op, r.code), unconfirmed: { at: since } }
   }
   return r.code === 0 ? { code: 0, out: r.stdout.trim() || `${op} #${n} done` } : { code: 1, out: `${op} failed (gh exit ${r.code})` }
 }
@@ -1296,12 +1300,19 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   // A posted item still in the queue would post again, so one that cannot be removed stops the flush too.
   for (const p of posts) {
     // A post an earlier flush could not confirm is read back before it is sent: it may be on GitHub already (#49).
+    // The ledger is a working-tree file: only this branch's Issue is read back (any other is refused by write below), and
+    // a mark that is not a past time is not guessed at.
     let r = null
     if (p.unconfirmed && READ_BACK.has(p.op)) {
-      const url = postedAlready(ctx, p.op, p.issue, p.text, p.title, Number(p.unconfirmed.at) || 0)
-      if (url) r = { code: 0, out: `${p.op} (${p.id}) was already on GitHub: ${url}` }
-      else if (url === null) {
-        r = { code: 1, out: `${p.op} (${p.id}): posting state still unknown (reading the Issue back failed)`, unconfirmed: p.unconfirmed }
+      const at = p.unconfirmed.at
+      if (!Number.isFinite(at) || at <= 0 || at > now + 60000) {
+        r = { code: 1, out: `${p.op} (${p.id}): its unconfirmed mark is not a past time; look at the Issue, then drop it or fix the ledger` }
+      } else if (p.op === 'create' || p.issue === ctx.branchIssue) {
+        const url = postedAlready(ctx, p.op, p.issue, p.text, p.title, at)
+        if (url) r = { code: 0, out: `${p.op} (${p.id}) was already on GitHub: ${url}` }
+        else if (url === null) {
+          r = { code: 1, out: `${p.op} (${p.id}): posting state still unknown (reading the Issue back failed)`, unconfirmed: p.unconfirmed }
+        }
       }
     }
     if (!r) r = write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true })
@@ -1335,6 +1346,10 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
     }))
     if (stuck) out.push(`posted ${stuck.op} (${stuck.id}) but could not remove it from the queue; remove it with devflow-state pending drop ${stuck.issue} ${stuck.id} --posted < reason before the next flush, or it posts again in ${CLAIM_MS / 60000} min`)
     if (!back.ok) out.push(`the queue stays claimed for ${CLAIM_MS / 60000} min`)
+    if (!back.ok && unsure) {
+      out.push(`the unconfirmed mark on ${unsure.id} could not be saved, so the next flush would post it without reading it back: ` +
+        'look at the Issue first, and drop it with --posted if it is there')
+    }
     const later = posts.length - posted - (failed ? 1 : 0)
     if (later > 0) out.push(`${later} later posts wait behind the ${failed ? 'failed' : 'unremoved'} one`)
   }

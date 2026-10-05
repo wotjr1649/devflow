@@ -451,10 +451,12 @@ function checkCommand(cmd, ctx, depth) {
     const r = analyze([inline, ...words.slice(split + 1).map(w => w.text)].join(' ').trim(), ctx, depth + 1)
     if (r) return r
   }
-  // devflow-state tests <n> lock -- <command> runs the command (Issue #50): it is checked as a command of its own.
-  const ds = names.indexOf('devflow-state')
-  if (ds >= 0 && names[ds + 1] === 'tests' && names[ds + 3] === 'lock' && words[ds + 4] && words[ds + 4].text === '--') {
-    const r = checkCommand({ words: words.slice(ds + 5), stdin: [], redirects: [], pipedFrom: null }, ctx, depth + 1)
+  // devflow-state tests <n> lock -- <command> runs the command (Issue #50): what follows the first "--" after any word
+  // naming devflow-state, in either reading, is checked as a command of its own.
+  const ds = words.findIndex((w, k) => names[k] === 'devflow-state' || baseName(w.text) === 'devflow-state')
+  const dash = ds < 0 ? -1 : words.findIndex((w, j) => j > ds && w.text === '--')
+  if (dash >= 0) {
+    const r = checkCommand({ words: words.slice(dash + 1), stdin: [], redirects: [], pipedFrom: null }, ctx, depth + 1)
     if (r) return r
   }
   const lead = leadOf(words, names)

@@ -1266,7 +1266,8 @@ function testsLock(env, cwd, n, op, reason, command = []) {
     if (held.testsLocked) return { code: 0, out: `tests already locked at ${held.testsLocked.at}` }
     if (command.length) {
       // Run outside the ledger lock: a test run can take minutes.
-      const ran = env.exec(command[0], command.slice(1), { cwd: ctx.root, timeout: LOCK_TIMEOUT_MS })
+      // In the folder this was called from, where the hook resolved the command's paths.
+      const ran = env.exec(command[0], command.slice(1), { cwd: path.resolve(cwd), timeout: LOCK_TIMEOUT_MS })
       const shown = command.join(' ').slice(0, 200)
       if (typeof ran.code === 'string') {
         return { code: 1, out: `refused: the test command did not run (${ran.code}); on Windows a .cmd runner such as npm cannot start without a ` +
@@ -1276,7 +1277,7 @@ function testsLock(env, cwd, n, op, reason, command = []) {
       if (testsDirty()) return { code: 1, out: 'refused: the test command changed the test files, so it says nothing about the committed test' }
       failing = { command: shown, exit: ran.code }
     } else {
-      const ci = new RegExp(`^https://github\\.com/${ctx.repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/actions/runs/\\d+`, 'i').exec(why)
+      const ci = ctx.repo && new RegExp(`^https://github\\.com/${ctx.repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/actions/runs/\\d+`, 'i').exec(why)
       if (ci) failing = { ci: ci[0] }
       else if (why === 'rebase' && held.testsFailing && typeof held.testsFailing === 'object') failing = { ...held.testsFailing, rebased: true }
       else if (why === 'rebase') return { code: 1, out: `refused: no earlier failing lock of Issue #${n} to carry over a rebase` }
@@ -1297,9 +1298,9 @@ function testsLock(env, cwd, n, op, reason, command = []) {
         result: `tests locked at ${at} (${brief})` }
     }
     if (!ledger.testsLocked) return { result: ZERO }
-    // The evidence stays, so a relock after a rebase can carry it.
-    const { testsLocked, ...rest } = ledger
-    const kept = testsLocked.failing ? { testsFailing: testsLocked.failing } : {}
+    // Only an unlock for a rebase keeps the evidence for the relock: after any other reason the test may be new or rewritten.
+    const { testsLocked, testsFailing, ...rest } = ledger
+    const kept = why === 'rebase' && testsLocked.failing ? { testsFailing: testsLocked.failing } : {}
     return { ledger: { ...rest, ...kept, notes: [...notes, `tests unlocked: ${why}`] }, result: 'tests unlocked' }
   })
   if (r.ok && r.result === MISSING) return NO_LEDGER(n)

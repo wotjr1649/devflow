@@ -39,7 +39,7 @@ copy, such as a skill `main` removed, are not checked):
 ```bash
 git -C ../devflow-deploy checkout --detach main
 codex plugin add devflow@devflow < /dev/null
-version=$(node -p "require('./.codex-plugin/plugin.json').version")
+version=$(node -p "require('../devflow-deploy/.codex-plugin/plugin.json').version")
 node bin/devflow-install-check --ref main ../devflow-deploy ~/.codex/plugins/cache/devflow/devflow/"$version"
 ```
 

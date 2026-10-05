@@ -58,13 +58,27 @@ test('shell-specific quotes and block comments keep following writes visible (#5
   fs.writeFileSync(path.join(root, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
   for (const src of [
     'echo x <# comment #> > _ref/x',
-    'echo x <# outer <# inner #> end #> > _ref/x',
     String.raw`printf %s $'it\'s' > _ref/x`,
     String.raw`echo x > $'\x5fref/x'`,
     String.raw`echo x > $'\137ref/x'`,
   ]) assert.equal(decision(hook.handle(pre(root, src))), 'deny', src)
   assert.equal(hook.handle(pre(root, `echo '<# not a comment #>' > safe.txt`)), '')
   assert.ok(check('echo x <#\ngh issue close 1\n#>', root), 'the Bash reading must also be checked')
+})
+
+test('PowerShell comment and quote readings do not hide trailing redirects (#53 review)', () => {
+  const cwd = dir(true)
+  const targetsOf = src => {
+    const targets = []
+    hook.issueWrite(src, {cwd, env: noAliases, protect: ts => {targets.push(...ts.map(t => t.path)); return null}})
+    return targets
+  }
+  for (const src of [
+    'echo x <# a <# b #> > probe.txt',
+    String.raw`echo $'\' > probe.txt #'`,
+  ]) assert.ok(targetsOf(src).includes(path.join(cwd, 'probe.txt')), src)
+  assert.ok(!targetsOf('echo x <# outer <# inner #> end #> > probe.txt').includes(path.join(cwd, 'probe.txt')),
+    'the first #> ends the block comment; the remaining # starts a line comment')
 })
 
 test('a pipeline cd contributes a possible working directory without discarding the original (#53 follow-up)', () => {

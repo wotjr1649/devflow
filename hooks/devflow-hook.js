@@ -39,6 +39,9 @@ const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
 const ANALYSIS_TIMEOUT_MS = 5000
+// Starting the logging child alone took 0.7-1.4 s on a loaded machine (Issue #53). Input, analysis and logging stay
+// within 11 s of the 15 s the hooks get.
+const LOG_TIMEOUT_MS = 3000
 const ANALYSIS_FAILURES = {
   'analysis-deadline': 'devflow: the 5-second analysis deadline was exceeded, so the tool call was blocked.',
   'hook-check-failed': 'devflow: the analyzer failed, so the tool call was blocked.',
@@ -88,7 +91,8 @@ function parse(src) {
   const cmds = []
   const nested = []
   const docs = []
-  const newCmd = pipedFrom => ({ words: [], stdin: [], redirects: [], pipedFrom })
+  // seps: the separators between this command and the one before it, for following cd (Issue #53).
+  const newCmd = (pipedFrom, seps = []) => ({ words: [], stdin: [], redirects: [], pipedFrom, seps })
   let cur = newCmd(null)
   let w = null
   let into = 'words' // where the next word goes: words, stdin (here-string) or redirects (a redirect target)
@@ -100,11 +104,12 @@ function parse(src) {
     if (w) into = 'words'
     w = null
   }
-  const end = pipe => {
+  const end = (pipe, sep) => {
     push()
     const done = cur
-    if (done.words.length || done.stdin.length || done.redirects.length) cmds.push(done)
-    cur = newCmd(pipe && done.words.length ? done : null)
+    const kept = done.words.length || done.stdin.length || done.redirects.length
+    if (kept) cmds.push(done)
+    cur = newCmd(pipe && done.words.length ? done : null, kept ? [sep] : [...done.seps, sep])
   }
   const close = (i, open, shut) => {
     for (let d = 0, j = i; j < src.length; j++) {
@@ -125,7 +130,7 @@ function parse(src) {
     if (c === '\\' && n === '\n') {
       i++
     } else if (c === '\n') {
-      end(false)
+      end(false, ';')
       for (const doc of docs.splice(0)) {
         const body = []
         let j = i + 1
@@ -168,10 +173,10 @@ function parse(src) {
         while (/\d/.test(src[i + 1] || '')) i++
       } else into = reads ? 'nowhere' : 'redirects'
     } else if (c === '|') {
-      end(n !== '|')
+      end(n !== '|', n === '|' ? '||' : '|')
       if (n === '|' || n === '&') i++
     } else if (c === ';' || c === '&' || c === '(' || c === ')') {
-      end(false)
+      end(false, c === '&' && n === '&' ? '&&' : c)
       if ((c === '&' && n === '&') || (c === ';' && n === ';')) i++
     } else if (c === "'") {
       const k = src.indexOf("'", i + 1) < 0 ? src.length : src.indexOf("'", i + 1)
@@ -402,7 +407,7 @@ function shellWrite(cmd, k, ctx, depth) {
   }
   const stdinScript = scripts.some(s => s === '-')
   for (const s of scripts.filter(s => s !== '-')) {
-    const r = analyze(s, ctx, depth + 1)
+    const r = analyze(s, ctx, depth + 1, name === 'cmd')
     if (r) return r
   }
   for (const f of files) {
@@ -418,7 +423,7 @@ function shellWrite(cmd, k, ctx, depth) {
     : []
   const input = [...cmd.stdin, ...(from ? [...from.stdin, from.words.slice(1).map(a => a.text).join(' '), ...fromFiles] : [])]
   for (const s of input) {
-    const r = analyze(s, ctx, depth + 1)
+    const r = analyze(s, ctx, depth + 1, name === 'cmd')
     if (r) return r
   }
   return null
@@ -441,7 +446,8 @@ function checkCommand(cmd, ctx, depth) {
   const { words } = cmd
   const names = words.map(w => baseName(w.raw))
   if (ctx.protect) {
-    const hit = ctx.protect(writeTargets(cmd, names))
+    const targets = writeTargets(cmd, names)
+    const hit = ctx.protect((ctx.cwds || [ctx.cwd]).flatMap(c => targets.map(t => ({ ...t, path: path.resolve(c, nativePath(t.path)) }))))
     if (hit) return PROTECTED + hit
   }
   // env -S splits its argument into a command line of its own.
@@ -467,7 +473,7 @@ function checkCommand(cmd, ctx, depth) {
     // Every reading that names a script is checked: a file under one reading's name must not hide the other's.
     for (const body of pathsOf(words[lead]).map(p => readScript(ctx.cwd, p)).filter(Boolean)) {
       if (/^#!.*\b(sh|bash|zsh|pwsh)\b|^(?!#!)/.test(body) && !body.includes('\0')) {
-        const r = analyze(body, ctx, depth + 1)
+        const r = analyze(body, ctx, depth + 1, /\.(cmd|bat)$/i.test(words[lead].text))
         if (r) return r
       }
     }
@@ -486,21 +492,61 @@ function checkCommand(cmd, ctx, depth) {
   return null
 }
 
-function analyze(src, ctx, depth = 0) {
+const CD = new Set(['cd', 'chdir', 'pushd', 'set-location', 'sl', 'push-location'])
+const CWD_CHANGERS = new Set([...CD, 'popd', 'pop-location', ...EVALS, ...SOURCERS])
+
+// The folders each command of a list may run in, from those in start (Issue #53). A command joined by && to a cd that
+// surely moved the shell runs only there, so a write into another repository is not judged as one into this one;
+// after any other separator a command may run in any folder seen so far. A cd moves the shell for sure only when the
+// shell runs it itself, not in a pipeline or behind ||, to a folder no setting picks ($CDPATH, ~, -, variables), and
+// not in cmd, whose cd keeps the drive. Anything else that may change the folder leaves every folder seen.
+function cwdsAlong(cmds, start, cmdShell) {
+  const unique = a => [...new Set(a)]
+  let here = start
+  let seen = start
+  const each = cmds.map(cmd => {
+    if (!(cmd.seps.length === 1 && cmd.seps[0] === '&&')) here = seen
+    const at = here
+    const names = cmd.words.map(w => baseName(w.raw))
+    const to = cmd.words[1]
+    if (cmd.words.length === 2 && CD.has(names[0]) && !to.dynamic && !/^[-~]/.test(to.text) && !cmd.seps.includes('|')) {
+      const readings = pathsOf(to)
+      const moved = here.flatMap(c => readings.map(t => path.resolve(c, nativePath(t))))
+      const sure = !cmdShell && !cmd.seps.includes('||') &&
+        readings.every(t => path.isAbsolute(nativePath(t)) || /^\.\.?([\\/]|$)/.test(t))
+      here = unique(sure ? moved : [...moved, ...seen])
+    } else if (CWD_CHANGERS.has(names[leadOf(cmd.words, names)])) here = seen
+    seen = unique([...seen, ...here])
+    return at
+  })
+  return { each, seen }
+}
+
+// ctx.cwds holds the folders the command being checked may run in; text it runs (a script, a substitution) starts there.
+function analyze(src, ctx, depth = 0, cmdShell = false) {
   if (!src) return null
   if (depth > MAX_DEPTH) return 'command nested too deeply to check'
   if (HTTP_ISSUES.test(src) && HTTP_WRITE.test(src)) return 'direct GitHub API Issue write'
   if (HTTP_GRAPHQL.test(src) && /\bmutation\b/i.test(src)) return 'direct GitHub GraphQL mutation'
   const { cmds, nested } = parse(src)
-  for (const s of nested) {
-    const r = analyze(s, ctx, depth + 1)
-    if (r) return r
+  const outer = ctx.cwds
+  const { each, seen } = cwdsAlong(cmds, outer || [ctx.cwd], cmdShell)
+  try {
+    // A substitution's place in the list is not kept, so it may run in any of the folders.
+    ctx.cwds = seen
+    for (const s of nested) {
+      const r = analyze(s, ctx, depth + 1, cmdShell)
+      if (r) return r
+    }
+    for (const [i, cmd] of cmds.entries()) {
+      ctx.cwds = each[i]
+      const r = checkCommand(cmd, ctx, depth)
+      if (r) return r
+    }
+    return null
+  } finally {
+    ctx.cwds = outer
   }
-  for (const cmd of cmds) {
-    const r = checkCommand(cmd, ctx, depth)
-    if (r) return r
-  }
-  return null
 }
 
 // Returns what kind of Issue write the shell command makes, or null. It follows what the text runs: separators,
@@ -774,8 +820,10 @@ const NETWORK_PATH = /^(\\\\|\/\/)/
 const isNetwork = s => NETWORK_PATH.test(s) && !/^(\\\\|\/\/)[?.][\\/][A-Za-z]:/.test(s)
 
 // False when p, or a folder link on the way to it, names a network path. A link is judged by its own text, read
-// without following it, so the check itself never touches the network.
-function localPath(p) {
+// without following it, so the check itself never touches the network. A link to a link is judged the same way
+// along the chain (Issue #53); past MAX_LINKS links in all, the path counts as remote.
+const MAX_LINKS = 8
+function localPath(p, links = { left: MAX_LINKS }) {
   if (isNetwork(p)) return false
   const parts = []
   for (let d = path.resolve(p); ; d = path.dirname(d)) {
@@ -786,7 +834,9 @@ function localPath(p) {
     let st
     try { st = fs.lstatSync(q) } catch { return true }
     if (!st.isSymbolicLink()) continue
-    try { if (isNetwork(fs.readlinkSync(q))) return false } catch { return false }
+    let to
+    try { to = fs.readlinkSync(q) } catch { return false }
+    if (--links.left < 0 || !localPath(path.resolve(path.dirname(q), to), links)) return false
   }
   return true
 }
@@ -1052,7 +1102,7 @@ async function main(inProcess = false) {
     if (guard) {
       // Logging reads repository metadata too. Bound it separately, so even a broken log path cannot delay denial.
       const log = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main(process.argv[2])', __filename, guard], {
-        input: raw, encoding: 'utf8', timeout: 1000, windowsHide: true,
+        input: raw, encoding: 'utf8', timeout: LOG_TIMEOUT_MS, windowsHide: true,
       })
       timing('log-done', ` error=${log.error?.code || ''} status=${log.status}`)
       out = log.status === 0 && log.stdout.trim() ? log.stdout.trim() : deny(ANALYSIS_FAILURES[guard])

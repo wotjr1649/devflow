@@ -488,6 +488,12 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
     `Import-Module ./m.psm1; Set-Location '${o}' && Set-Content .devflow.json x`,
     `/usr/bin/cd "${o}" && echo x > .devflow.json`,
     `./cd "${o}" && echo x > .devflow.json`,
+    // Second re-review: a PowerShell filter, a definition read in a substitution, bash's case, and a pattern the shell expands.
+    `filter Set-Location { }; Set-Location '${o}' && Set-Content .devflow.json x`,
+    `$(Import-Module ./m.psm1); Set-Location '${o}' && Set-Content .devflow.json x`,
+    `CD "${o}" && echo x > .devflow.json`,
+    `cd ${here.slice(0, -1)}[${here.slice(-1)}] && echo x > .devflow.json`,
+    `cd ${here.slice(0, -1)}* && echo x > .devflow.json`,
   ]) assert.equal(run(c), 'deny', c)
   // Git Bash mounts /tmp on the user's temp folder, where this repository is; the hook cannot place it.
   if (process.platform === 'win32') {

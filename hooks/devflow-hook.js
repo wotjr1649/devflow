@@ -512,11 +512,12 @@ const KEEPS_FOLDER = new Set(['echo', 'printf', 'cat', 'head', 'tail', 'tee', 'l
   'mkdir', 'touch', 'cp', 'mv', 'ln', 'chmod', 'sed', 'awk', 'grep', 'jq', 'git', 'node', 'npm', 'npx', 'python', 'python3',
   'write-output', 'write-host', 'get-content', 'set-content', 'add-content', 'out-file', 'new-item', 'remove-item',
   'copy-item', 'move-item', 'get-childitem'])
-// True when bash, zsh and PowerShell all split src as the parser does: outside quotes no character any of them reads
-// specially (backtick escapes and line joins, parentheses, braces, globs, comments, $), inside double quotes no $ or
-// backtick, and no backslash before a quote, which only bash reads as an escape.
+// True when bash, zsh and PowerShell all split src as the parser does: one line of printable ASCII (bash joins a line
+// ending in a backslash, PowerShell one ending in a backtick, and PowerShell reads curly quotes as quotes); outside
+// quotes no character any of them reads specially (backticks, parentheses, braces, globs, comments, $); inside double
+// quotes no $ or backtick; and no backslash before a quote, which only bash reads as an escape.
 function plainText(src) {
-  if (/\\['"]/.test(src)) return false
+  if (/[^\x20-\x7e]/.test(src) || /\\['"]/.test(src)) return false
   let quote = null
   for (const ch of src) {
     if (quote === "'") quote = ch === "'" ? null : quote
@@ -524,7 +525,7 @@ function plainText(src) {
       if (ch === '"') quote = null
       else if (ch === '$' || ch === '`') return false
     } else if (ch === "'" || ch === '"') quote = ch
-    else if (!/[\w\s./\\:=,@%+&>|;-]/.test(ch)) return false
+    else if (!/[\w ./\\:=,@%+&>|;-]/.test(ch)) return false
   }
   return quote === null
 }

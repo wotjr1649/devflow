@@ -59,6 +59,16 @@ const slug = h => h.trim().toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').repla
 // git that runs and exits non-zero is an answer: null, which each caller reads.
 const GIT_TIMEOUT_MS = 30000
 class GitFailed extends Error {}
+// devflow-state's git runner, under the same rule: its own limit turns a hung git into an error code, which ends doctor
+// too rather than reading as an answer.
+function stateEnv() {
+  const { realEnv } = require('./devflow-state')
+  return { ...realEnv, run: (cmd, args, o) => {
+    const r = realEnv.run(cmd, args, o)
+    if (typeof r.code === 'string') throw new GitFailed(`${cmd} ${args.join(' ')} failed (${r.code})`)
+    return r
+  } }
+}
 function git(root, args) {
   // core.quotePath=false: git otherwise quotes non-ASCII names, which then match no file on disk.
   const r = spawnSync('git', ['-C', root, '-c', 'core.quotePath=false', ...args],
@@ -210,7 +220,7 @@ function checks(dir, { only } = {}) {
       const real = p => { try { return fs.realpathSync.native(p) } catch { return null } }
       const key = p => p && (process.platform === 'win32' ? p.toLowerCase() : p)
       const read = p => { try { return fs.readFileSync(p, 'utf8') } catch { return null } }
-      const main = require('./devflow-state').mainTree(require('./devflow-state').realEnv, root)
+      const main = require('./devflow-state').mainTree(stateEnv(), root)
       const here = real(path.join(root, '.githooks'))
       const there = main ? real(path.join(main.path, '.githooks')) : null
       const given = path.isAbsolute(hooksPath) ? real(hooksPath) : null
@@ -305,13 +315,7 @@ function checks(dir, { only } = {}) {
   const configured = Array.isArray(tests) && tests.length > 0
   if (!only) {
     const state = require('./devflow-state')
-    // The lookup runs git through devflow-state, whose own limit turns a hung git into an error code; that too ends doctor.
-    const env = { ...state.realEnv, run: (cmd, args, o) => {
-      const r = state.realEnv.run(cmd, args, o)
-      if (typeof r.code === 'string') throw new GitFailed(`${cmd} ${args.join(' ')} failed (${r.code})`)
-      return r
-    } }
-    const ctx = state.repoContext(env, root)
+    const ctx = state.repoContext(stateEnv(), root)
     let ledger = null
     let unread = false
     try {

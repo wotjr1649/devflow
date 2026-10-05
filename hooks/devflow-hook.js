@@ -496,6 +496,8 @@ function checkCommand(cmd, ctx, depth) {
 // cd as the shell itself runs it, by its bare name: a path or an extension (/usr/bin/cd, ./cd.cmd) runs a program,
 // which cannot move the shell, and bash finds CD on the PATH. PowerShell's own names ignore case.
 const isCd = raw => /^(cd|pushd)$/.test(raw) || /^(set|push)-location$/i.test(raw)
+// A redirect on a cd may be a pattern the parser split (zsh's <->), so only a bare one counts.
+const plainCd = c => c.words.length === 2 && isCd(c.words[0].raw) && !c.redirects.length && !c.stdin.length
 // chdir and sl may be other programs in bash, so they only leave every folder seen.
 const CWD_CHANGERS = new Set(['cd', 'pushd', 'set-location', 'push-location', 'chdir', 'sl', 'popd', 'pop-location',
   ...EVALS, ...SOURCERS])
@@ -503,10 +505,12 @@ const CWD_CHANGERS = new Set(['cd', 'pushd', 'set-location', 'push-location', 'c
 // drive or share path: Git Bash mounts /tmp and / on other folders.
 const fixedFolder = t => !/[*?[{]/.test(t) &&
   (process.platform === 'win32' ? /^([A-Za-z]:[\\/]|[\\/]{2})/.test(nativePath(t)) : t.startsWith('/'))
-// Text that defines a function or alias may give cd another meaning, and so may what a command it runs reads in: a
-// sourced file, an eval, a module, bash's enable -n cd or zsh's disable cd. The hook reads those too late or not at all.
-const REDEFINES = /\(\s*\)|\b(function|filter)\b|\b(alias|set-alias|new-alias)\b|\busing\s+module\b/i
-const DEFINERS = new Set([...EVALS, ...SOURCERS, 'enable', 'disable', 'import-module', 'ipmo'])
+// Programs and cmdlets that cannot move the shell or give cd another meaning. A cd narrows only in text made of these
+// and plain cds: a deny list of what can (functions, aliases, sourced files, modules, script blocks, cd..) never ended.
+const KEEPS_FOLDER = new Set(['echo', 'printf', 'cat', 'head', 'tail', 'tee', 'ls', 'test', 'true', 'false', 'rm', 'rmdir',
+  'mkdir', 'touch', 'cp', 'mv', 'ln', 'chmod', 'sed', 'awk', 'grep', 'jq', 'git', 'node', 'npm', 'npx', 'python', 'python3',
+  'write-output', 'write-host', 'get-content', 'set-content', 'add-content', 'out-file', 'new-item', 'remove-item',
+  'copy-item', 'move-item', 'get-childitem'])
 
 // The folders each command of a list may run in, from those in start (Issue #53). A command joined by && to a cd that
 // surely moved the shell runs only there, so a write into another repository is not judged as one into this one;
@@ -523,7 +527,7 @@ function cwdsAlong(cmds, start, narrow) {
     const at = here
     const names = cmd.words.map(w => baseName(w.raw))
     const to = cmd.words[1]
-    if (cmd.words.length === 2 && isCd(cmd.words[0].raw) && !to.dynamic && !/^[-~]/.test(to.text) && !cmd.seps.includes('|')) {
+    if (plainCd(cmd) && !to.dynamic && !/^[-~]/.test(to.text) && !cmd.seps.includes('|')) {
       const readings = pathsOf(to)
       const moved = here.flatMap(c => readings.map(t => path.resolve(c, nativePath(t))))
       const sure = narrow && !cmd.seps.includes('||') && readings.every(fixedFolder)
@@ -543,11 +547,11 @@ function analyze(src, ctx, depth = 0, cmdShell = false) {
   if (HTTP_GRAPHQL.test(src) && /\bmutation\b/i.test(src)) return 'direct GitHub GraphQL mutation'
   const { cmds, nested } = parse(src)
   const outer = ctx.cwds
-  // A definition holds for the rest of the command, including the text it runs. A substitution may make one too
-  // (PowerShell runs $(...) in the caller's scope), and it is read after the list's folders are worked out.
-  const leadName = c => { const names = c.words.map(w => baseName(w.raw)); return names[leadOf(c.words, names)] }
-  if (REDEFINES.test(src) || nested.length || cmds.some(c => DEFINERS.has(leadName(c)))) ctx.redefined = true
-  const { each, seen } = cwdsAlong(cmds, outer || [ctx.cwd], !cmdShell && !ctx.redefined)
+  // Anything else, or a substitution, turns narrowing off for the rest of the command, the text it runs included: a
+  // definition there may be exported to it, and a substitution is read after the list's folders are worked out.
+  const known = c => plainCd(c) || (c.words.length > 0 && KEEPS_FOLDER.has(baseName(c.words[0].raw)))
+  if (cmdShell || nested.length || !cmds.every(known)) ctx.unsure = true
+  const { each, seen } = cwdsAlong(cmds, outer || [ctx.cwd], !ctx.unsure)
   try {
     // A substitution's place in the list is not kept, so it may run in any of the folders.
     ctx.cwds = seen

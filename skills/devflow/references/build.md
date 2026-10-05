@@ -14,8 +14,11 @@ passing, and the ledger holds the last commit and the next task.
 
 - New behaviour: see its test fail before the change, or with the change reverted. A bug fix starts from a
   reproduction test that fails, and the fix leaves that test as it is. A test never seen failing proves nothing.
-  Where `.devflow.json` lists `tests`, commit the reproduction test and run `tests <issue> lock`; unlock only when
-  the test itself is wrong, with the reason on stdin.
+  Where `.devflow.json` lists `tests`, commit the reproduction test and lock with `tests <issue> lock -- <command that
+  runs it>`: the lock runs it and locks only if it fails. A test that is skipped here gets pushed first and locked with
+  the failing CI run's URL on stdin. Unlock, with the reason on stdin, only when the test itself is wrong or to add a
+  reproduction test for a review finding or the next task, then commit and lock again; after a rebase, lock with
+  `rebase` on stdin.
 - Run the checks that execute the change: the `.devflow.json` `checks` entry for the paths touched, and `verify`
   before the work leaves build. Syntax checks and checks that never started are not verification; name any check
   that could not run and why.

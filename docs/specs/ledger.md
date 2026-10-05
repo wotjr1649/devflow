@@ -18,7 +18,8 @@
 | `task` | `{current, total}`, 1 이상의 정수. 마지막 작업이 끝나면 current가 total을 넘을 수 있다 |
 | `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
 | `counts` | 작업별 `{fix, promote, continue}` |
-| `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`. 개수는 `devflow-state metric`으로 더하고, eval은 `metric <n> eval <통과>/<전체> < 메모`로 적는다([metrics](metrics.md#수동-지표)) |
+| `metrics` | 사이클의 수동 지표 `{interventions, filterFalsePositives, eval}`. 개수는 `devflow-state metric`으로 더하고, eval은 호스트별 `{claude, codex}`에 `{passed, total, rev}`로 `metric <n> eval <통과>/<전체> --host <호스트> --rev <커밋> < 메모`가 적는다(#50, [metrics](metrics.md#수동-지표)) |
+| `testsLocked`, `testsFailing` | 시험 잠금의 `{at, failing}`과, 풀었을 때 남는 실패 증거. `tests` 명령만 바꾼다([시험 잠금](repository.md#devflowjson)) |
 | `notes` | 수정·승격·경로 변경과 수동 지표 증가의 이유, 검증 증거, 한 줄씩(`note`로 덧붙인다) |
 | `decisions` | 열린 결정만. 내린 결정은 체크포인트나 결정 기록에 둔다 |
 | `blocked` | 막힘이나 사람을 기다리는 사유(원격 쓰기 확인 포함). 비어 있지 않으면 자율 계속을 하지 않는다 |

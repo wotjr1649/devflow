@@ -15,6 +15,10 @@ and verify and a narrowed re-review passed. `pr-review-workflow` runs the review
 - A change to a `.devflow.json` `highRisk` path also gets the security perspective from [perspectives](perspectives.md).
 - Fix findings that change behaviour or break a requirement; a reviewer asked to find something finds something, and
   fixing every remark over-builds the change. Record the disposition of each finding in the checkpoint.
+- After the fixes: a fix that changes anything but `.md` documents goes back to a fresh-context verifier for the
+  criteria it touches; a documents-only fix is checked by the main session with doctor and the tests. Once BASE..HEAD
+  differs from what the reviewer saw, a narrowed re-review of that difference passes before integrating, even for
+  documents ([review](../../../docs/specs/orchestration.md#리뷰)).
 
 ## Before integrating
 
@@ -28,7 +32,11 @@ disappear later, and `devflow-state` writes an Issue only from its branch. Rules
 3. Decide the trigger eval by [eval](../../../docs/specs/lifecycle.md#eval): `git diff --name-status <base>..HEAD -- skills
    evals/trigger` shows added, deleted or renamed skills and any changed eval case, and `git diff -U0 <base>..HEAD --
    'skills/*/SKILL.md'` shows changed frontmatter lines. When it is due, ask the user to run it in their terminal, since
-   it cannot authenticate inside a session, with `--no-publish` as in that command, so the report stays local. Either way the ship checkpoint says whether it ran and why.
+   it cannot authenticate inside a session, with `--no-publish` as in that command, so the report stays local. Record
+  each host's result with `metric <issue> eval <passed>/<total> --host claude|codex --rev <commit it ran on>`. Either
+  way the ship checkpoint has a `- 트리거 eval:` line: per host `통과/전체 @rev`, or that it did not run and why.
+  `comment` refuses a ship checkpoint without that line, the `- 측정(v…)` line, or, when the notes hold an unlock, a
+  `- 시험 잠금 해제` line.
 4. Once every delegation has finished (the ledger's `running` is empty), run `devflow-metrics <issue>` (next to the
    `Tool:` command) from the Issue's work tree and save its output as `artifacts/metrics/i<issue>.json` in the main work
    tree: the host writes subagent records late, so a delegation still running adds records before the saved `until`.

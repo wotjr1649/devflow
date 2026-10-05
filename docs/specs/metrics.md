@@ -79,8 +79,10 @@
 `devflow-doctor`와 pre-push 관문은 기록하지 않는다. ship에서 이 기록 중 정당한 동작을 막은 것을 가려
 `filterFalsePositives`로 센다.
 
-트리거율과 통과율은 eval 결과다. 그 사이클에서 스킬을 바꿔 eval을 돌렸을 때만 결과의 통과 수와 전체 수를
-`devflow-state metric <issue> eval <통과>/<전체> < 메모`로 `metrics.eval`에 `{passed, total}`로 적는다.
+트리거율과 통과율은 eval 결과다. 그 사이클에서 스킬을 바꿔 eval을 돌렸을 때만 호스트마다 결과의 통과 수와 전체 수를
+`devflow-state metric <issue> eval <통과>/<전체> --host claude|codex --rev <돌린 커밋> < 메모`로 `metrics.eval`의 그
+호스트 아래 `{passed, total, rev}`로 적는다(#50). 한 호스트의 기록은 다른 호스트를 덮지 않고, #50 전의 단일 값은
+Claude 결과로 읽는다. 출력은 정수만 담으므로 `rev`는 장부와 ship 체크포인트의 `- 트리거 eval:` 줄(`통과/전체 @rev`)에 남는다.
 
 ## 출력
 
@@ -91,20 +93,20 @@
 
 ```json
 {
-  "schema": 2, "issue": 4, "until": 1790870000, "activeMinutes": 0,
+  "schema": 3, "issue": 4, "until": 1790870000, "activeMinutes": 0,
   "claude": {
     "main": {"calls": 0, "inputUncached": 0, "cacheRead": 0, "cacheWrite": 0, "output": 0, "reasoning": 0, "tools": 0, "activeMinutes": 0},
     "sub": {"calls": 0, "inputUncached": 0, "cacheRead": 0, "cacheWrite": 0, "output": 0, "reasoning": 0, "tools": 0, "activeMinutes": 0, "subagents": 0}
   },
   "codex": {"main": {}, "sub": {}},
   "models": {"claude-opus-5-5": 0},
-  "manual": {"interventions": 0, "filterFalsePositives": 0, "guardBlocks": 0, "counts": {"fix": 0, "promote": 0, "continue": 0}, "eval": {"passed": 0, "total": 0}},
+  "manual": {"interventions": 0, "filterFalsePositives": 0, "guardBlocks": 0, "counts": {"fix": 0, "promote": 0, "continue": 0}, "eval": {"claude": {"passed": 0, "total": 0}, "codex": {"passed": 0, "total": 0}}},
   "skipped": {"badLines": 0, "longLines": 0, "outsideScope": 0, "noReflog": 0, "fallbackSessions": 0, "missingCwd": 0}
 }
 ```
 
 `codex`의 블록은 `claude`와 키가 같다. `manual.guardBlocks`는 `until`까지의 차단 기록 수다. schema 1(#4까지)과는
-`guardBlocks`만 다르다. `skipped.missingCwd`는 #7에서 더했다. `manual.counts`는 장부 `counts`의 작업별 값을 더한 것이고, 장부에 없는 값은 0이다.
+`guardBlocks`만 다르고, schema 3(#50)은 `manual.eval`을 호스트별로 나눴다. `skipped.missingCwd`는 #7에서 더했다. `manual.counts`는 장부 `counts`의 작업별 값을 더한 것이고, 장부에 없는 값은 0이다.
 
 `--line`은 공개용 한 줄을 낸다. 두 호스트와 메인·서브를 더한 값이고, 순서는 고정이다.
 

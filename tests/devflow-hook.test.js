@@ -452,7 +452,7 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
     `cd ${o} && printf x > .devflow.json && rm -f tests/a.test.js`,
     `(cd "${o}" && cat > .devflow.json <<'EOF'\n{}\nEOF\n)`,
     `Set-Location '${o}' && Set-Content .devflow.json x`,
-    `cd "${o}" && bash -c "echo x > .devflow.json"`,
+    `cd "${o}" && git add .devflow.json && node x.js > .devflow.json`,
   ]) assert.equal(run(c), '', c)
   for (const c of [
     `cd "${o}"; echo x > .devflow.json`, // the cd may have failed
@@ -494,6 +494,12 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
     `CD "${o}" && echo x > .devflow.json`,
     `cd ${here.slice(0, -1)}[${here.slice(-1)}] && echo x > .devflow.json`,
     `cd ${here.slice(0, -1)}* && echo x > .devflow.json`,
+    // Third re-review: only commands known not to touch the shell's folder or definitions let a cd narrow.
+    `Set-Location '${here}/tests' && cd.. && Set-Content .devflow.json x`,
+    `sal Set-Location Write-Output; Set-Location '${o}' && Set-Content .devflow.json x`,
+    `Set-Location '${o}' && Invoke-Command { Set-Location '${here}' } && Set-Content .devflow.json x`,
+    `cd ${o}<-> && echo x > .devflow.json`,
+    `cd "${o}" && bash -c "echo x > .devflow.json"`, // a shell may read definitions its parent exported
   ]) assert.equal(run(c), 'deny', c)
   // Git Bash mounts /tmp on the user's temp folder, where this repository is; the hook cannot place it.
   if (process.platform === 'win32') {

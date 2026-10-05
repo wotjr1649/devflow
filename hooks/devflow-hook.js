@@ -47,6 +47,10 @@ const ANALYSIS_FAILURES = {
 const word = text => ({ text, raw: text, dynamic: /[$`]/.test(text) })
 const baseName = raw => raw.replace(/^["']|["']$/g, '').split(/[\\/]/).pop().toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, '')
 const flatten = ws => ws.flatMap(w => (w.dynamic ? [w] : w.text.split(/\s+/).filter(Boolean).map(word)))
+// PowerShell and cmd separate paths with a backslash, which the Bash reading drops as an escape (Issue #48). The hook
+// cannot tell which shell runs the text (Codex sends pwsh commands as Bash), so a word used as a path counts in both
+// readings: the Bash one, and the raw word without quotes with its backslashes as separators.
+const pathsOf = w => (w.raw.includes('\\') ? [w.text, w.raw.replace(/["']/g, '').replace(/\\/g, '/')] : [w.text])
 
 // The $(...) and `...` bodies in text the shell expands whatever quotes it holds (an unquoted heredoc body).
 function substitutions(text) {
@@ -85,7 +89,7 @@ function parse(src) {
   const push = () => {
     if (w && into === 'words') cur.words.push(w)
     else if (w && into === 'stdin') cur.stdin.push(w.text)
-    else if (w && into === 'redirects' && !w.text.startsWith('&')) cur.redirects.push(w.text)
+    else if (w && into === 'redirects' && !w.text.startsWith('&')) cur.redirects.push(...pathsOf(w))
     if (w) into = 'words'
     w = null
   }
@@ -361,25 +365,25 @@ function shellWrite(cmd, k, ctx, depth) {
     const j = args.findIndex(a => /^\/[ck]$/i.test(a.text))
     if (j >= 0) scripts.push(texts(j + 1))
   } else if (SOURCERS.has(name)) {
-    if (args[0]) files.push(args[0].text)
+    if (args[0]) files.push(...pathsOf(args[0]))
   } else if (PWSH.has(name)) {
     let bare = null
     args.forEach((a, i) => {
       const t = a.text
       if (/^-(c|com\w*)$/i.test(t)) scripts.push(texts(i + 1))
       else if (/^-(e|ec|en\w*)$/i.test(t) && args[i + 1]) scripts.push(Buffer.from(args[i + 1].text, 'base64').toString('utf16le'))
-      else if (/^-f(ile)?$/i.test(t) && args[i + 1]) files.push(args[i + 1].text)
-      else if (bare === null && !t.startsWith('-') && (name === 'powershell' || isFile(path.resolve(ctx.cwd, t)))) bare = i
+      else if (/^-f(ile)?$/i.test(t) && args[i + 1]) files.push(...pathsOf(args[i + 1]))
+      else if (bare === null && !t.startsWith('-') && (name === 'powershell' || pathsOf(a).some(p => isFile(path.resolve(ctx.cwd, p))))) bare = i
     })
     // Windows PowerShell 5.1 reads a bare argument as -Command; PowerShell 7 reads it as -File.
-    if (bare !== null) name === 'powershell' ? scripts.push(texts(bare)) : files.push(args[bare].text)
+    if (bare !== null) name === 'powershell' ? scripts.push(texts(bare)) : files.push(...pathsOf(args[bare]))
   } else {
     args.forEach((a, i) => {
       if (/^-[A-Za-z]*c[A-Za-z]*$/.test(a.text) && args[i + 1]) scripts.push(args[i + 1].text)
     })
     // The first operand that is a file: an option's value (-o pipefail, --rcfile x) is passed over unless it is one.
-    const operand = args.find(a => !/^[-+]/.test(a.text) && isFile(path.resolve(ctx.cwd, a.text)))
-    if (operand) files.push(operand.text)
+    const operand = args.find(a => !/^[-+]/.test(a.text) && pathsOf(a).some(p => isFile(path.resolve(ctx.cwd, p))))
+    if (operand) files.push(...pathsOf(operand))
   }
   const stdinScript = scripts.some(s => s === '-')
   for (const s of scripts.filter(s => s !== '-')) {
@@ -395,7 +399,7 @@ function shellWrite(cmd, k, ctx, depth) {
   const from = cmd.pipedFrom
   const fromNames = from ? from.words.map(w => baseName(w.raw)) : []
   const fromFiles = from && FILE_PRINTERS.has(fromNames[0])
-    ? from.words.slice(1).filter(a => !a.text.startsWith('-')).map(a => readScript(ctx.cwd, a.text))
+    ? from.words.slice(1).filter(a => !a.text.startsWith('-')).flatMap(a => pathsOf(a).map(p => readScript(ctx.cwd, p)))
     : []
   const input = [...cmd.stdin, ...(from ? [...from.stdin, from.words.slice(1).map(a => a.text).join(' '), ...fromFiles] : [])]
   for (const s of input) {
@@ -437,7 +441,7 @@ function checkCommand(cmd, ctx, depth) {
   if (words[lead].dynamic && words.some(w => /^(issue|api)$/i.test(w.text))) return 'command name built at run time with Issue words'
   if (PRINTERS.has(names[lead])) return null
   if (/\.(sh|bash|ps1|cmd|bat)$/i.test(words[lead].text) || /^\.{0,2}[\\/]/.test(words[lead].text)) {
-    const body = readScript(ctx.cwd, words[lead].text)
+    const body = pathsOf(words[lead]).map(p => readScript(ctx.cwd, p)).find(Boolean) || ''
     if (/^#!.*\b(sh|bash|zsh|pwsh)\b|^(?!#!)/.test(body) && !body.includes('\0')) {
       const r = analyze(body, ctx, depth + 1)
       if (r) return r
@@ -496,7 +500,8 @@ function writeTargets(cmd, names) {
   if (lead < 0) return targets
   const n = names[lead]
   const rest = cmd.words.slice(lead + 1)
-  const operands = rest.filter(w => !w.dynamic && !w.text.startsWith('-')).map(w => w.text)
+  const operandWords = rest.filter(w => !w.dynamic && !w.text.startsWith('-'))
+  const operands = operandWords.flatMap(pathsOf)
   const add = (paths, deep) => targets.push(...paths.map(p => ({ path: p, deep })))
   if (CONTENT_WRITES.has(n)) {
     // Content and option values are data. Unknown parameters retain the conservative operand check.
@@ -511,14 +516,14 @@ function writeTargets(cmd, names) {
       else positional.push(w)
     }
     const paths = named.length ? named : unknown ? positional : positional.slice(0, 1)
-    add(paths.filter(w => !w.dynamic).map(w => w.text), false)
+    add(paths.filter(w => !w.dynamic).flatMap(pathsOf), false)
   } else if (WRITE_ALL.has(n) || (n === 'sed' && rest.some(w => /^(-i|--in-place)/.test(w.text)))) add(operands, WRITE_DEEP.has(n))
-  else if (WRITE_LAST.has(n) && operands.length) add([operands.at(-1)], false)
+  else if (WRITE_LAST.has(n) && operandWords.length) add(pathsOf(operandWords.at(-1)), false)
   else if (n === 'find' && rest.some(w => w.text === '-delete')) {
     const starts = []
     for (const w of rest) {
       if (/^[-(!]/.test(w.text)) break
-      starts.push(w.text)
+      starts.push(...pathsOf(w))
     }
     add(starts.length ? starts : ['.'], true)
   } else if (n === 'git') {
@@ -526,7 +531,7 @@ function writeTargets(cmd, names) {
     let i = 0
     while (i < rest.length && rest[i].text.startsWith('-')) i += /^(-C|-c|--git-dir|--work-tree|--namespace)$/.test(rest[i].text) ? 2 : 1
     const sub = rest[i] ? rest[i].text.toLowerCase() : ''
-    const paths = rest.slice(i + 1).filter(w => !w.dynamic && !w.text.startsWith('-')).map(w => w.text)
+    const paths = rest.slice(i + 1).filter(w => !w.dynamic && !w.text.startsWith('-')).flatMap(pathsOf)
     if (GIT_WRITES.has(sub)) add(paths.length ? paths : sub === 'clean' ? ['.'] : [], true)
   }
   return targets

@@ -46,7 +46,7 @@ const USAGE = `usage: devflow-state <command>
                               change the ledger's mode, keeping the reason and time of the change
   running <n> add|done <label>
                               record a background delegation as it starts and ends; the Stop hook waits while any runs
-  tests <n> lock | tests <n> unlock < reason
+  tests <n> lock -- <test command> | tests <n> lock < <CI run URL of this repository or "rebase"> | tests <n> unlock < reason
                               lock the .devflow.json "tests" files once the reproduction test is written: the hook
                               refuses edits to them and doctor reports any changed since; unlock keeps the reason
   release <n>                 when handing the Issue to another session: stop warning it about this one
@@ -86,6 +86,11 @@ const realEnv = {
       cwd: opts.cwd, input: opts.input, encoding: 'utf8', timeout: opts.timeout || RUN_TIMEOUT_MS, windowsHide: true,
     })
     return { code: r.status ?? (r.error ? r.error.code : 1), stdout: r.stdout || '', stderr: r.stderr || '' }
+  },
+  // A test command a lock runs: no shell, its output straight to the terminal so the agent sees why it failed.
+  exec(cmd, args, opts = {}) {
+    const r = spawnSync(cmd, args, { cwd: opts.cwd, stdio: ['ignore', 'inherit', 'inherit'], timeout: opts.timeout, windowsHide: true })
+    return { code: r.status ?? (r.error ? r.error.code : 1) }
   },
 }
 
@@ -1206,11 +1211,17 @@ function ledgerValueError(patch) {
 
 // Locks the project's test files for a fix once its reproduction test is written: the hook then refuses edits to them
 // and doctor reports any that changed since the commit recorded here (Issue #20). Unlocking takes a reason, kept in notes.
-const TESTS_USAGE = 'usage: devflow-state tests <issue> lock | tests <issue> unlock < reason'
-function testsLock(env, cwd, n, op, reason) {
+// A lock needs evidence that the test failed before the fix (Issue #50): the lock runs the test command and locks only
+// when it fails, or, for a test that does not run here, takes a CI run of this repository; a relock after a rebase
+// carries the evidence the unlock kept. Free text is not evidence.
+const TESTS_USAGE = 'usage: devflow-state tests <issue> lock -- <test command> | tests <issue> lock < <CI run URL of this repository ' +
+  'or "rebase"> | tests <issue> unlock < reason'
+const LOCK_TIMEOUT_MS = 10 * 60000
+function testsLock(env, cwd, n, op, reason, command = []) {
   const why = String(reason || '').trim().split(/\r?\n/)[0].trim()
   if (!['lock', 'unlock'].includes(op) || (op === 'unlock' && !why)) return { code: 2, out: TESTS_USAGE }
   const ctx = repoContext(env, cwd)
+  let failing = null
   if (op === 'lock') {
     let globs
     try {
@@ -1220,21 +1231,54 @@ function testsLock(env, cwd, n, op, reason) {
     if (!Array.isArray(globs) || globs.some(g => typeof g !== 'string' || !g)) return { code: 1, out: 'refused: "tests" in .devflow.json must be a list of path globs' }
     if (!ctx || !ctx.head) return { code: 1, out: 'refused: there is no commit to lock the tests at' }
     // Lock after the reproduction test is committed: doctor compares the tests with the locked commit.
-    const dirty = env.run('git', ['status', '--porcelain', '--', ...globs.map(g => `:(glob)${g}`)], { cwd: ctx.root })
-    if (dirty.code === 0 && dirty.stdout.trim()) return { code: 1, out: 'refused: commit the test files first; uncommitted:\n' + dirty.stdout.trimEnd() }
+    const testsDirty = () => {
+      const r = env.run('git', ['status', '--porcelain', '--', ...globs.map(g => `:(glob)${g}`)], { cwd: ctx.root })
+      return r.code === 0 && r.stdout.trim() ? r.stdout.trimEnd() : ''
+    }
+    const dirty = testsDirty()
+    if (dirty) return { code: 1, out: 'refused: commit the test files first; uncommitted:\n' + dirty }
+    const no = ledgerGate(ctx, n, 'test locks', { append: true })
+    if (no) return no
+    const held = readLedger(ctx.store, n) || {}
+    // Already locked: nothing runs and the lock stays at its commit.
+    if (held.testsLocked) return { code: 0, out: `tests already locked at ${held.testsLocked.at}` }
+    if (command.length) {
+      // Run outside the ledger lock: a test run can take minutes.
+      const ran = env.exec(command[0], command.slice(1), { cwd: ctx.root, timeout: LOCK_TIMEOUT_MS })
+      const shown = command.join(' ').slice(0, 200)
+      if (typeof ran.code === 'string') {
+        return { code: 1, out: `refused: the test command did not run (${ran.code}); on Windows a .cmd runner such as npm cannot start without a ` +
+          'shell: run the test file with node directly, or lock with the CI run that saw it fail' }
+      }
+      if (ran.code === 0) return { code: 1, out: 'refused: the test command passed; a test never seen failing proves nothing, so run it before the fix' }
+      if (testsDirty()) return { code: 1, out: 'refused: the test command changed the test files, so it says nothing about the committed test' }
+      failing = { command: shown, exit: ran.code }
+    } else {
+      const ci = new RegExp(`^https://github\\.com/${ctx.repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/actions/runs/\\d+`, 'i').exec(why)
+      if (ci) failing = { ci: ci[0] }
+      else if (why === 'rebase' && held.testsFailing && typeof held.testsFailing === 'object') failing = { ...held.testsFailing, rebased: true }
+      else if (why === 'rebase') return { code: 1, out: `refused: no earlier failing lock of Issue #${n} to carry over a rebase` }
+      else return { code: 2, out: TESTS_USAGE }
+    }
   }
   const no = ledgerGate(ctx, n, 'test locks', { append: true })
   if (no) return no
+  const said = f => (f.command ? `seen failing: ${f.command} (exit ${f.exit})` : `seen failing in CI: ${f.ci}`) + (f.rebased ? ', carried over a rebase' : '')
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
+    const notes = Array.isArray(ledger.notes) ? ledger.notes : []
     if (op === 'lock') {
-      const at = ledger.testsLocked && ledger.testsLocked.at || ctx.head
-      return { ledger: { ...ledger, testsLocked: { at } }, result: `tests locked at ${at}` }
+      if (ledger.testsLocked) return { result: `tests already locked at ${ledger.testsLocked.at}` }
+      const at = ctx.head
+      const brief = failing.command ? `seen failing: ${failing.command}, exit ${failing.exit}` : said(failing)
+      return { ledger: { ...ledger, testsLocked: { at, failing }, notes: [...notes, `tests locked at ${at}: ${said(failing)}`] },
+        result: `tests locked at ${at} (${brief})` }
     }
     if (!ledger.testsLocked) return { result: ZERO }
+    // The evidence stays, so a relock after a rebase can carry it.
     const { testsLocked, ...rest } = ledger
-    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `tests unlocked: ${why}`]
-    return { ledger: { ...rest, notes }, result: 'tests unlocked' }
+    const kept = testsLocked.failing ? { testsFailing: testsLocked.failing } : {}
+    return { ledger: { ...rest, ...kept, notes: [...notes, `tests unlocked: ${why}`] }, result: 'tests unlocked' }
   })
   if (r.ok && r.result === MISSING) return NO_LEDGER(n)
   if (r.ok && r.result === ZERO) return { code: 1, out: `refused: tests are not locked for Issue #${n}` }
@@ -1413,8 +1457,8 @@ function command(argv, stdin, env, cwd) {
       if (no) return no
       // Top-level keys are replaced as sent; a note goes through note, which appends under the lock.
       const patch = JSON.parse(input())
-      if (patch && typeof patch === 'object' && 'testsLocked' in patch) {
-        return { code: 1, out: 'refused: testsLocked changes only through devflow-state tests <issue> lock|unlock' }
+      if (patch && typeof patch === 'object' && ('testsLocked' in patch || 'testsFailing' in patch)) {
+        return { code: 1, out: `refused: ${'testsLocked' in patch ? 'testsLocked' : 'testsFailing'} changes only through devflow-state tests <issue> lock|unlock` }
       }
       // Queued posts are devflow-state's own; replacing them would drop public writes waiting for the user (Issue #27).
       const wrong = patch && typeof patch === 'object' && !Array.isArray(patch) ? ledgerValueError(patch) : 'a ledger update is a JSON object of keys'
@@ -1454,7 +1498,8 @@ function command(argv, stdin, env, cwd) {
     case 'mode':
       return num(rest[0]) && rest.length === 2 ? mode(env, cwd, num(rest[0]), rest[1], input()) : { code: 2, out: MODE_USAGE }
     case 'tests':
-      return num(rest[0]) && rest.length === 2 ? testsLock(env, cwd, num(rest[0]), rest[1], rest[1] === 'unlock' ? input() : '') : { code: 2, out: TESTS_USAGE }
+      if (num(rest[0]) && rest[1] === 'lock' && rest[2] === '--' && rest.length > 3) return testsLock(env, cwd, num(rest[0]), 'lock', '', rest.slice(3))
+      return num(rest[0]) && rest.length === 2 ? testsLock(env, cwd, num(rest[0]), rest[1], input()) : { code: 2, out: TESTS_USAGE }
     case 'release': {
       const n = num(rest[0])
       if (!n) return { code: 2, out: 'usage: devflow-state release <issue>' }

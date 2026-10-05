@@ -451,6 +451,12 @@ function checkCommand(cmd, ctx, depth) {
     const r = analyze([inline, ...words.slice(split + 1).map(w => w.text)].join(' ').trim(), ctx, depth + 1)
     if (r) return r
   }
+  // devflow-state tests <n> lock -- <command> runs the command (Issue #50): it is checked as a command of its own.
+  const ds = names.indexOf('devflow-state')
+  if (ds >= 0 && names[ds + 1] === 'tests' && names[ds + 3] === 'lock' && words[ds + 4] && words[ds + 4].text === '--') {
+    const r = checkCommand({ words: words.slice(ds + 5), stdin: [], redirects: [], pipedFrom: null }, ctx, depth + 1)
+    if (r) return r
+  }
   const lead = leadOf(words, names)
   if (lead < 0) return null
   if (words[lead].dynamic && words.some(w => /^(issue|api)$/i.test(w.text))) return 'command name built at run time with Issue words'

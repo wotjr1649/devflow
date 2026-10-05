@@ -457,7 +457,10 @@ function report({ claude: c, codex: x, ledger, issue, until, guardTimes = [] }) 
   const out = (b, list) => ({ ...Object.fromEntries(KEYS.map(k => [k, b[k]])), activeMinutes: minutes(list), ...('subagents' in b ? { subagents: b.subagents } : {}) })
   const host = h => ({ main: out(h.main, h.intervals.main), sub: out(h.sub, h.intervals.sub) })
   const m = ledger && ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}
+  // Per host since #50; a single result from before then was the Claude run.
   const ev = m.eval && typeof m.eval === 'object' ? m.eval : {}
+  const evals = 'passed' in ev ? { claude: ev } : ev
+  const evalOf = h => ({ passed: nat(evals[h] && evals[h].passed), total: nat(evals[h] && evals[h].total) })
   const counts = { fix: 0, promote: 0, continue: 0 }
   for (const t of Object.values(ledger && ledger.counts && typeof ledger.counts === 'object' ? ledger.counts : {})) {
     for (const k of Object.keys(counts)) counts[k] += nat(t && t[k])
@@ -468,11 +471,11 @@ function report({ claude: c, codex: x, ledger, issue, until, guardTimes = [] }) 
   // Without --until the count runs to now: a guard block can be logged after the last session record is flushed.
   const end = until || Math.floor(Date.now() / 1000)
   return {
-    schema: 2, issue, until: end,
+    schema: 3, issue, until: end,
     activeMinutes: minutes([...c.intervals.main, ...c.intervals.sub, ...x.intervals.main, ...x.intervals.sub]),
     claude: host(c), codex: host(x), models,
     manual: { interventions: nat(m.interventions), filterFalsePositives: nat(m.filterFalsePositives),
-      guardBlocks: guardTimes.filter(t => t <= limitOf(end)).length, counts, eval: { passed: nat(ev.passed), total: nat(ev.total) } },
+      guardBlocks: guardTimes.filter(t => t <= limitOf(end)).length, counts, eval: { claude: evalOf('claude'), codex: evalOf('codex') } },
     skipped,
   }
 }

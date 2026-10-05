@@ -57,7 +57,7 @@ const USAGE = `usage: devflow-state <command>
   metric <n> <key> [--undo] < note
                               add one to interventions or filterFalsePositives in the ledger, with a note line;
                               --undo takes one back (never below 0)
-  metric <n> eval <passed>/<total> < note
+  metric <n> eval <passed>/<total> --host claude|codex --rev <commit> < note
                               record the cycle's trigger eval result
 Issue writes go only to the branch's Issue (create excepted), and text with local paths, secrets, hidden
 characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.
@@ -1088,23 +1088,31 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
 // Adds one to a manual metric and appends its note in one step, so an agent never rewrites the ledger by hand to count.
 const METRICS = new Set(['interventions', 'filterFalsePositives'])
 // The trigger eval's result for the cycle, {passed, total}, set under the lock like the counts (Issue #27).
-function metricEval(env, cwd, n, score, note) {
+// Each host's trigger eval is kept apart, with the commit it ran on (Issue #50); a result from before then was the Claude run.
+const EVAL_USAGE = 'usage: devflow-state metric <issue> eval <passed>/<total> --host claude|codex --rev <commit> < note'
+function metricEval(env, cwd, n, score, note, host, rev) {
   const line = String(note || '').trim().split(/\r?\n/)[0].trim()
   const m = /^(\d+)\/(\d+)$/.exec(String(score || ''))
-  if (!m || !line || Number(m[2]) < 1 || Number(m[1]) > Number(m[2])) return { code: 2, out: 'usage: devflow-state metric <issue> eval <passed>/<total> < note' }
+  if (!m || !line || Number(m[2]) < 1 || Number(m[1]) > Number(m[2]) || !['claude', 'codex'].includes(host) || !/^[0-9a-f]{7,40}$/i.test(rev || '')) {
+    return { code: 2, out: EVAL_USAGE }
+  }
   const ctx = repoContext(env, cwd)
   const no = ledgerGate(ctx, n, 'metrics', { append: true })
   if (no) return no
   const passed = Number(m[1])
   const total = Number(m[2])
+  const said = `eval ${host} ${passed}/${total} @${rev}`
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
-    const metrics = { ...(ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}), eval: { passed, total } }
-    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `eval ${passed}/${total}: ${line}`]
+    const old = ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}
+    const was = old.eval && typeof old.eval === 'object' ? old.eval : {}
+    const hosts = 'passed' in was ? { claude: { passed: was.passed, total: was.total } } : was
+    const metrics = { ...old, eval: { ...hosts, [host]: { passed, total, rev } } }
+    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${said}: ${line}`]
     return { ledger: { ...ledger, metrics, notes }, result: true }
   })
   if (r.ok && r.result === MISSING) return NO_LEDGER(n)
-  return r.ok ? { code: 0, out: `eval ${passed}/${total}` } : guarded(ctx, LOCKED(n, r.why), n)
+  return r.ok ? { code: 0, out: said } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
 // Takes one queued post out, with the reason in notes: a post flush cannot make (a create or close the current rules
@@ -1538,7 +1546,8 @@ function command(argv, stdin, env, cwd) {
       return flush(env, cwd)
     case 'metric':
       if (num(rest[0]) && rest[1] === 'eval') {
-        return rest.length === 3 ? metricEval(env, cwd, num(rest[0]), rest[2], input()) : { code: 2, out: 'usage: devflow-state metric <issue> eval <passed>/<total> < note' }
+        const opt = k => (rest.indexOf(k) > 2 ? rest[rest.indexOf(k) + 1] : undefined)
+        return rest.length === 7 ? metricEval(env, cwd, num(rest[0]), rest[2], input(), opt('--host'), opt('--rev')) : { code: 2, out: EVAL_USAGE }
       }
       if (!num(rest[0]) || rest.length > 3 || (rest[2] !== undefined && rest[2] !== '--undo')) {
         return { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives [--undo] < note' }

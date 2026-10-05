@@ -480,6 +480,14 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
     `function Set-Location {}; Set-Location '${o}' && Set-Content .devflow.json x`,
     `sl "${o}" && echo x > .devflow.json`,
     `chdir "${o}" && echo x > .devflow.json`,
+    // Re-review: definitions a sourced file or module makes, and a cd that is a program found by its path.
+    `. ./defs.sh; cd "${o}" && echo x > .devflow.json`,
+    `source ./defs.sh && cd "${o}" && echo x > .devflow.json`,
+    `eval "$(cat defs)"; cd "${o}" && echo x > .devflow.json`,
+    `enable -n cd; cd "${o}" && echo x > .devflow.json`,
+    `Import-Module ./m.psm1; Set-Location '${o}' && Set-Content .devflow.json x`,
+    `/usr/bin/cd "${o}" && echo x > .devflow.json`,
+    `./cd "${o}" && echo x > .devflow.json`,
   ]) assert.equal(run(c), 'deny', c)
   // Git Bash mounts /tmp on the user's temp folder, where this repository is; the hook cannot place it.
   if (process.platform === 'win32') {

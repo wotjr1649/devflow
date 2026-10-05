@@ -198,6 +198,23 @@ test('metrics reads ledgers only through the bounded ledger contract (#55)', t =
   }
 })
 
+test('a refused main ledger never falls back to stale worktree metrics (#55)', () => {
+  const mainRoot = tmp('dfm-refused-main-')
+  const root = tmp('dfm-stale-legacy-')
+  const ctx = { mainRoot, root }
+  const file = base => path.join(base, '.work', 'devflow', 'i4', 'ledger.json')
+  for (const base of [mainRoot, root]) fs.mkdirSync(path.dirname(file(base)), { recursive: true })
+  fs.writeFileSync(file(root), JSON.stringify({ metrics: { interventions: 99 } }))
+  assert.equal(metrics.readLedger(ctx, 4).metrics.interventions, 99, 'a missing main ledger permits the legacy copy')
+  for (const input of ['{}' + ' '.repeat(1 << 20), 'invalid json']) {
+    fs.writeFileSync(file(mainRoot), input)
+    assert.equal(metrics.readLedger(ctx, 4), null, 'a refused main ledger is not a missing ledger')
+  }
+  fs.unlinkSync(file(mainRoot))
+  fs.mkdirSync(file(mainRoot))
+  assert.equal(metrics.readLedger(ctx, 4), null, 'a non-plain main ledger also blocks the legacy copy')
+})
+
 test('claude does not follow a linked subagents folder', async () => {
   const root = gitRepo()
   const home = tmp('dfm-c-')

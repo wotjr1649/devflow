@@ -510,6 +510,9 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
     'cd tests 2>/dev/null && rm a.test.js',
     // Fifth re-review: a provider path spelled with quotes inside the word.
     `New-Item fun'ction:Set-Location' -Value x; Set-Location '${o}' && Set-Content .devflow.json x`,
+    // Sixth re-review: only one line of ASCII narrows (bash joins a backslash line end, PowerShell reads curly quotes).
+    `echo \\\nSet-Alias Set-Location Write-Output; Set-Location '${o}' && Set-Content .devflow.json x`,
+    `echo '’; Set-Alias Set-Location Write-Output; ‘'; Set-Location '${o}' && Set-Content .devflow.json x`,
   ]) assert.equal(run(c), 'deny', c)
   // Git Bash mounts /tmp on the user's temp folder, where this repository is; the hook cannot place it.
   if (process.platform === 'win32') {

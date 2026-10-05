@@ -496,8 +496,9 @@ function checkCommand(cmd, ctx, depth) {
 // cd as the shell itself runs it, by its bare name: a path or an extension (/usr/bin/cd, ./cd.cmd) runs a program,
 // which cannot move the shell, and bash finds CD on the PATH. PowerShell's own names ignore case.
 const isCd = raw => /^(cd|pushd)$/.test(raw) || /^(set|push)-location$/i.test(raw)
-// A redirect on a cd may be a pattern the parser split (zsh's <->), so only a bare one counts.
-const plainCd = c => c.words.length === 2 && isCd(c.words[0].raw) && !c.redirects.length && !c.stdin.length
+const cdLike = c => c.words.length === 2 && isCd(c.words[0].raw)
+// A redirect on a cd may be a pattern the parser split (zsh's <->), so only a bare one narrows.
+const plainCd = c => cdLike(c) && !c.redirects.length && !c.stdin.length
 // chdir and sl may be other programs in bash, so they only leave every folder seen.
 const CWD_CHANGERS = new Set(['cd', 'pushd', 'set-location', 'push-location', 'chdir', 'sl', 'popd', 'pop-location',
   ...EVALS, ...SOURCERS])
@@ -511,6 +512,22 @@ const KEEPS_FOLDER = new Set(['echo', 'printf', 'cat', 'head', 'tail', 'tee', 'l
   'mkdir', 'touch', 'cp', 'mv', 'ln', 'chmod', 'sed', 'awk', 'grep', 'jq', 'git', 'node', 'npm', 'npx', 'python', 'python3',
   'write-output', 'write-host', 'get-content', 'set-content', 'add-content', 'out-file', 'new-item', 'remove-item',
   'copy-item', 'move-item', 'get-childitem'])
+// True when bash, zsh and PowerShell all split src as the parser does: outside quotes no character any of them reads
+// specially (backtick escapes and line joins, parentheses, braces, globs, comments, $), inside double quotes no $ or
+// backtick, and no backslash before a quote, which only bash reads as an escape.
+function plainText(src) {
+  if (/\\['"]/.test(src)) return false
+  let quote = null
+  for (const ch of src) {
+    if (quote === "'") quote = ch === "'" ? null : quote
+    else if (quote === '"') {
+      if (ch === '"') quote = null
+      else if (ch === '$' || ch === '`') return false
+    } else if (ch === "'" || ch === '"') quote = ch
+    else if (!/[\w\s./\\:=,@%+&>|;-]/.test(ch)) return false
+  }
+  return quote === null
+}
 
 // The folders each command of a list may run in, from those in start (Issue #53). A command joined by && to a cd that
 // surely moved the shell runs only there, so a write into another repository is not judged as one into this one;
@@ -527,10 +544,10 @@ function cwdsAlong(cmds, start, narrow) {
     const at = here
     const names = cmd.words.map(w => baseName(w.raw))
     const to = cmd.words[1]
-    if (plainCd(cmd) && !to.dynamic && !/^[-~]/.test(to.text) && !cmd.seps.includes('|')) {
+    if (cdLike(cmd) && !to.dynamic && !/^[-~]/.test(to.text) && !cmd.seps.includes('|')) {
       const readings = pathsOf(to)
       const moved = here.flatMap(c => readings.map(t => path.resolve(c, nativePath(t))))
-      const sure = narrow && !cmd.seps.includes('||') && readings.every(fixedFolder)
+      const sure = narrow && plainCd(cmd) && !cmd.seps.includes('||') && readings.every(fixedFolder)
       here = unique(sure ? moved : [...moved, ...seen])
     } else if (CWD_CHANGERS.has(names[leadOf(cmd.words, names)])) here = seen
     seen = unique([...seen, ...here])
@@ -547,10 +564,13 @@ function analyze(src, ctx, depth = 0, cmdShell = false) {
   if (HTTP_GRAPHQL.test(src) && /\bmutation\b/i.test(src)) return 'direct GitHub GraphQL mutation'
   const { cmds, nested } = parse(src)
   const outer = ctx.cwds
-  // Anything else, or a substitution, turns narrowing off for the rest of the command, the text it runs included: a
-  // definition there may be exported to it, and a substitution is read after the list's folders are worked out.
-  const known = c => plainCd(c) || (c.words.length > 0 && KEEPS_FOLDER.has(baseName(c.words[0].raw)))
-  if (cmdShell || nested.length || !cmds.every(known)) ctx.unsure = true
+  // Anything else turns narrowing off for the rest of the command, the text it runs included: a definition there may
+  // be exported to it, and a substitution is read after the list's folders are worked out. A program counts by its
+  // bare name (a path or an extension may name a script that moves the shell), and a PowerShell function: or alias:
+  // drive path may define one.
+  const known = c => plainCd(c) ||
+    (c.words.length > 0 && /^[A-Za-z][\w-]*$/.test(c.words[0].raw) && KEEPS_FOLDER.has(c.words[0].raw.toLowerCase()))
+  if (cmdShell || nested.length || !plainText(src) || /\b(function|alias):/i.test(src) || !cmds.every(known)) ctx.unsure = true
   const { each, seen } = cwdsAlong(cmds, outer || [ctx.cwd], !ctx.unsure)
   try {
     // A substitution's place in the list is not kept, so it may run in any of the folders.

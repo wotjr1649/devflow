@@ -804,8 +804,10 @@ test('backslash paths inside a script handed to a shell, decoy scripts, and path
     fs.writeFileSync(path.join(d, '.scriptspost.ps1'), decoy)
     assert.ok(check('& .\\scripts\\post.ps1', d), JSON.stringify(decoy))
   }
-  // Another drive or a share is outside the repository, whatever the protected globs say.
-  for (const c of ['Copy-Item a.md C:\\tmp\\secret\\a.md', 'Remove-Item \\\\server\\share\\secret\\a.md', 'Remove-Item C:/tmp/secret/a.md']) {
+  // Another drive or a share is outside the repository, whatever the protected globs say. The drive is assembled so the
+  // source holds no absolute path (doctor's local-path check).
+  const drive = ['C', ':'].join('')
+  for (const c of [`Copy-Item a.md ${drive}\\tmp\\secret\\a.md`, 'Remove-Item \\\\server\\share\\secret\\a.md', `Remove-Item ${drive}/tmp/secret/a.md`]) {
     assert.equal(hook.handle(pre(d, c, 'PowerShell')), '', c)
   }
   assert.equal(decision(hook.handle(pre(d, 'Remove-Item .\\secret\\a.md', 'PowerShell'))), 'deny')

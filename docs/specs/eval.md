@@ -63,4 +63,3 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
   stderr와 세션 기록은 저장하거나 읽지 않는다. 결과 폴더는 git이 무시한다. 실행 오류와 평가 실패는 종료 코드 1이다.
 
 실행 방식과 대안의 이유: [ADR-0016](../design/decisions/ADR-0016-codex-trigger-eval.md).
-

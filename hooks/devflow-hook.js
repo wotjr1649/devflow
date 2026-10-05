@@ -239,9 +239,10 @@ function parse(src) {
   return { cmds, nested }
 }
 
+// A file on a share is not opened: opening it would reach the server and offer it this user's credentials (Issue #48).
 const isFile = p => {
   try {
-    return fs.statSync(p).isFile()
+    return localPath(p) && fs.statSync(p).isFile()
   } catch {
     return false
   }
@@ -250,6 +251,7 @@ const isFile = p => {
 function readScript(cwd, file) {
   try {
     const p = path.resolve(cwd, file)
+    if (!localPath(p)) return ''
     const st = fs.statSync(p)
     return st.isFile() && st.size <= MAX_SCRIPT_BYTES ? fs.readFileSync(p, 'utf8') : ''
   } catch {
@@ -584,8 +586,14 @@ const globToRegExp = g => new RegExp('^' + g.split('**').map(part => part.split(
 const matchesGlob = (file, glob) => (path.posix.matchesGlob ? path.posix.matchesGlob(file, glob) : globToRegExp(glob).test(file))
 
 // Paths relative to the devflow root, in forward slashes; files outside it are left out.
-// Git Bash and Cygwin write a drive path as /d/x or /cygdrive/d/x; on Windows that is the same file, so compare it as such.
-const nativePath = f => (process.platform === 'win32' ? f.replace(/^\/(?:cygdrive\/)?([a-zA-Z])(?=\/|$)/, '$1:') : f)
+// Git Bash and Cygwin write a drive path as /d/x or /cygdrive/d/x. Windows also names local files through the long-path
+// and device prefixes (\\?\ and \\.\ before a drive), \\?\UNC\host\share\x, and this machine's admin share of a drive
+// (\\localhost\<drive>$\x). On Windows these are the same files, so compare them as such (Issue #48 review).
+const nativePath = f => (process.platform !== 'win32' ? f : f
+  .replace(/^\/(?:cygdrive\/)?([a-zA-Z])(?=\/|$)/, '$1:')
+  .replace(/^[\\/]{2}[?.][\\/]UNC[\\/]/i, '//')
+  .replace(/^[\\/]{2}[?.][\\/](?=[a-zA-Z]:)/, '')
+  .replace(/^[\\/]{2}(?:localhost|127\.0\.0\.1)[\\/]([a-zA-Z])\$(?=[\\/]|$)/i, '$1:'))
 
 function relativeTo(root, cwd, files, { keepRoot = false } = {}) {
   return files.map(f => path.relative(root, path.resolve(cwd, nativePath(f))))

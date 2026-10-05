@@ -43,11 +43,10 @@ test('verify children do not inherit the pushing worktree Git environment (#53 f
   if (spawnSync('sh', ['-c', 'exit 0']).status !== 0) return t.skip('no sh here')
   const d = fs.realpathSync.native(tmpdir('devflow-prepush-env-'))
   fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ verify: 'node verify.js' }))
+  const outside = tmpdir('devflow-prepush-outside-')
   fs.writeFileSync(path.join(d, 'verify.js'), `
     const {spawnSync} = require('child_process')
-    const fs = require('fs'), path = require('path')
-    const outside = path.join(require('os').tmpdir(), 'unused-repository-for-check')
-    const r = spawnSync('git', ['rev-parse', '--git-dir'], {cwd: require('os').tmpdir(), encoding:'utf8'})
+    const r = spawnSync('git', ['rev-parse', '--git-dir'], {cwd: ${JSON.stringify(outside)}, encoding:'utf8'})
     if (r.status === 0 || process.env.GIT_DIR || process.env.GIT_COMMON_DIR || process.env.GIT_INDEX_FILE) process.exit(1)
   `)
   git(d, 'init', '-q')

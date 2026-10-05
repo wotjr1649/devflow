@@ -22,3 +22,14 @@ test('no test file makes folders in the OS temp folder directly', () => {
     assert.doesNotMatch(fs.readFileSync(path.join(__dirname, f), 'utf8'), /os\.tmpdir\(\)/, `${f} uses os.tmpdir(); use require('./tmpdir')`)
   }
 })
+
+test('fixtures discard inherited Git context before any git operation (#53 follow-up)', () => {
+  const script = `require(${JSON.stringify(path.join(__dirname, 'tmpdir.js'))});` +
+    `process.stdout.write(JSON.stringify(Object.keys(process.env).filter(k => k.startsWith('GIT_'))))`
+  const r = spawnSync(process.execPath, ['-e', script], {
+    encoding: 'utf8', timeout: 10000,
+    env: {...process.env, GIT_DIR: 'fixture-git-dir', GIT_COMMON_DIR: 'fixture-common-dir', GIT_INDEX_FILE: 'fixture-index'},
+  })
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(JSON.parse(r.stdout), [])
+})

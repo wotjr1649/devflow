@@ -441,3 +441,84 @@ test('a write that would pass the size limit is refused and the ledger stays rea
   assert.deepEqual(state.readLedger(root, 1), { stage: 'build' })
   assert.equal(fs.existsSync(lockFile(root)), false, 'the lock is released')
 })
+
+// Issue #49: gh can fail after GitHub took the post (a timeout, a dropped connection). A comment or a new Issue is read
+// back before it counts as failed, so neither a flush nor the agent posts it twice.
+const COMMENT = '### Checkpoint build — x\n- y'
+const answer = stdout => ({ code: 0, stdout, stderr: '' })
+const TIMEOUT = { code: 'ETIMEDOUT', stdout: '', stderr: '' }
+function ghAnswers(root, pick) {
+  const e = env(root)
+  const run = e.run
+  e.run = (cmd, args, opts = {}) => {
+    const a = cmd === 'gh' ? pick(args) : null
+    if (!a) return run(cmd, args, opts)
+    e.calls.push({ cmd, args, input: opts.input })
+    return a
+  }
+  return e
+}
+const sent = (e, op) => e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue' && c.args[1] === op).length
+const withComment = (body, at = new Date().toISOString()) => answer(JSON.stringify({ data: { repository: { issue: {
+  ...issue(), comments: { nodes: [{ body, authorAssociation: 'OWNER', url: 'https://github.com/o/r/issues/1#issuecomment-7', createdAt: at }] } } } } }))
+
+test('a comment gh reports as failed but GitHub has is not posted again (#49)', () => {
+  const e = ghAnswers(repo(), args => (args[1] === 'comment' ? TIMEOUT : args[0] === 'api' ? withComment(COMMENT + '\n') : null))
+  const r = state.write(e, '.', 'comment', 1, COMMENT)
+  assert.equal(r.code, 0)
+  assert.match(r.out, /issuecomment-7/)
+  assert.match(r.out, /is on GitHub/)
+  assert.equal(sent(e, 'comment'), 1)
+})
+
+test('a failed comment GitHub lacks stays a plain failure; one that cannot be read back is reported unknown (#49)', () => {
+  let e = ghAnswers(repo(), args => (args[1] === 'comment' ? TIMEOUT : null))
+  assert.deepEqual(state.write(e, '.', 'comment', 1, COMMENT), { code: 1, out: 'comment failed (gh exit ETIMEDOUT)' })
+  e = ghAnswers(repo(), args => (args[1] === 'comment' ? TIMEOUT : args[0] === 'api' ? withComment(COMMENT, new Date(Date.now() - 3600e3).toISOString()) : null))
+  assert.equal(state.write(e, '.', 'comment', 1, COMMENT).code, 1, 'an hour-old identical comment is not this one')
+  e = ghAnswers(repo(), args => (args[1] === 'comment' || args[0] === 'api' ? TIMEOUT : null))
+  const r = state.write(e, '.', 'comment', 1, COMMENT)
+  assert.equal(r.code, 1)
+  assert.match(r.out, /posting state unknown/)
+  assert.match(r.out, /look at the Issue before trying again/)
+})
+
+test('an authentication failure is a plain failure, not read back (#49)', () => {
+  const e = ghAnswers(repo(), args => (args[1] === 'comment' ? { code: 4, stdout: '', stderr: '' } : null))
+  assert.deepEqual(state.write(e, '.', 'comment', 1, COMMENT), { code: 1, out: 'comment failed (gh exit 4)' })
+  assert.equal(e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'api').length, 0)
+})
+
+test('a new Issue gh reports as failed but GitHub has is not created again (#49)', () => {
+  const body = '## 문제\nx\n\n## 수용 기준\n- [ ] a\n'
+  const listed = answer(JSON.stringify([{ title: 'T2', body, url: 'https://github.com/o/r/issues/9', createdAt: new Date().toISOString() }]))
+  const e = ghAnswers(repo(), args => (args[1] === 'create' ? TIMEOUT : args[1] === 'list' ? listed : null))
+  const r = state.write(e, '.', 'create', undefined, body, 'T2')
+  assert.equal(r.code, 0, r.out)
+  assert.match(r.out, /issues\/9/)
+  assert.equal(sent(e, 'create'), 1)
+})
+
+test('flush marks a post it could not confirm, and the next flush checks it before posting (#49)', () => {
+  const root = repo({ mode: 'interactive', pendingPosts: [{ op: 'comment', issue: 1, text: COMMENT }] })
+  let e = ghAnswers(root, args => (args[1] === 'comment' || args[0] === 'api' ? TIMEOUT : null))
+  let r = state.flush(e, '.')
+  assert.equal(r.code, 1)
+  assert.match(r.out, /posting state unknown/)
+  const [left] = ledgerOf(root).pendingPosts
+  assert.ok(left.unconfirmed && !left.claimed, JSON.stringify(left))
+  e = ghAnswers(root, args => (args[0] === 'api' ? withComment(COMMENT) : null))
+  r = state.flush(e, '.')
+  assert.equal(r.code, 0, r.out)
+  assert.match(r.out, /already on GitHub/)
+  assert.equal(sent(e, 'comment'), 0)
+  assert.deepEqual(ledgerOf(root).pendingPosts, [])
+})
+
+test('an unconfirmed post GitHub does not have is posted by the next flush (#49)', () => {
+  const root = repo({ mode: 'interactive', pendingPosts: [{ id: 'u', op: 'comment', issue: 1, text: COMMENT, unconfirmed: { at: Date.now() } }] })
+  const e = env(root)
+  assert.equal(state.flush(e, '.').code, 0)
+  assert.equal(sent(e, 'comment'), 1)
+  assert.deepEqual(ledgerOf(root).pendingPosts, [])
+})

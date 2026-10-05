@@ -436,6 +436,45 @@ test('locked tests are protected on both hosts while the Issue ledger says so, a
   assert.equal(edit('Edit', { file_path: file }), '')
 })
 
+test('a write after a cd that surely moved the shell is judged in that folder (#53)', () => {
+  const d = gitRepo('fix/7-x', { tests: ['tests/**'] })
+  const ledgerFile = path.join(d, '.work', 'devflow', 'i7', 'ledger.json')
+  fs.mkdirSync(path.dirname(ledgerFile), { recursive: true })
+  fs.writeFileSync(ledgerFile, JSON.stringify({ stage: 'build', testsLocked: { at: 'abc1234' } }))
+  // Another repository in the temp folder, as the #50 verifier used: its .devflow.json and tests are not this lock's.
+  const other = path.join(path.dirname(d), path.basename(d) + '-other')
+  fs.mkdirSync(other)
+  const o = other.split(path.sep).join('/')
+  const here = d.split(path.sep).join('/')
+  const sib = '../' + path.basename(other)
+  const run = c => decision(hook.handle(pre(d, c)))
+  for (const c of [
+    `cd "${o}" && echo '{}' > .devflow.json`,
+    `cd ${o} && printf x > .devflow.json && rm -f tests/a.test.js`,
+    `(cd "${o}" && cat > .devflow.json <<'EOF'\n{}\nEOF\n)`,
+    `cd ${sib} && echo x > .devflow.json`,
+    `Set-Location '${o}' && Set-Content .devflow.json x`,
+    `cd "${o}" && bash -c "echo x > .devflow.json"`,
+  ]) assert.equal(run(c), undefined, c)
+  for (const c of [
+    `cd "${o}"; echo x > .devflow.json`, // the cd may have failed
+    `cd "${o}" || echo x > .devflow.json`,
+    `true | cd "${o}" && echo x > .devflow.json`, // a cd in a pipeline runs in a subshell
+    `(cd "${o}") && echo x > .devflow.json`,
+    `timeout 5 cd "${o}" && echo x > .devflow.json`, // not the shell's own cd
+    `cd "${o}" && cd "${here}" && rm tests/a.test.js`,
+    `cd "${o}" && cd - && rm tests/a.test.js`,
+    `cd "${o}" && popd && rm tests/a.test.js`,
+    `cd "${o}" && eval "cd ${here}" && rm tests/a.test.js`,
+    `cd "${o}" && bash -c "cd ${here} && rm tests/a.test.js"`,
+    `cd "$X" && echo x > .devflow.json`,
+    `cmd /c "cd ${o} && echo x > .devflow.json"`, // cmd does not change drives on cd
+    'cd tests && rm a.test.js', // followed into the repository too
+    'cd ./tests && rm a.test.js',
+    `true || cd "${o}" && echo x > .devflow.json`, // the cd may be skipped
+  ]) assert.equal(run(c), 'deny', c)
+})
+
 test('a block on an Issue branch is logged by a fixed id and the decision is unchanged', () => {
   const d = gitRepo('feat/7-x')
   const plain = dir(true)
@@ -625,6 +664,21 @@ test('a folder link to a network path inside the gitdir is not followed (2026-10
   assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
   assert.equal(hook.localPath(path.join(d, 'l', 'HEAD')), false)
   assert.equal(hook.localPath(path.join(d, '.devflow.json')), true)
+})
+
+test('a chain of links is judged by every link in it, up to a limit (#53)', t => {
+  const d = dir(true)
+  const bs = String.fromCharCode(92)
+  const link = (name, to) => fs.symlinkSync(to, path.join(d, name), 'dir')
+  try { link('net', bs + bs + 'devflow-no-such-host' + bs + 'share') } catch { return t.skip('folder symlinks need privileges here') }
+  link('via', path.join(d, 'net'))
+  link('rel', 'via')
+  assert.equal(hook.localPath(path.join(d, 'via', 'HEAD')), false, 'a local link to a link to a share')
+  assert.equal(hook.localPath(path.join(d, 'rel', 'HEAD')), false, 'the same through a relative link')
+  link('l0', path.join(d, 'sub'))
+  for (let i = 1; i <= 8; i++) link(`l${i}`, `l${i - 1}`)
+  assert.equal(hook.localPath(path.join(d, 'l1', 'x')), true, 'a short local chain')
+  assert.equal(hook.localPath(path.join(d, 'l8', 'x')), false, 'a chain past the limit counts as remote')
 })
 
 test('an unreadable profile applies the same repair exception to shell and edit writes', () => {

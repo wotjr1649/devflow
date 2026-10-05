@@ -901,7 +901,8 @@ test('an entry-point deadline is logged to the input worktree even from a subfol
   fs.mkdirSync(cwd)
   fs.writeFileSync(path.join(input, 'heavy.sh'), 'echo ok\n'.repeat(8000))
   const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
-    cwd: parent, input: pre(cwd, 'bash ../heavy.sh;'.repeat(15000)), encoding: 'utf8', timeout: 9000,
+    // Above the hook's own bound: 5 s of analysis, 3 s of logging and two process starts (#53).
+    cwd: parent, input: pre(cwd, 'bash ../heavy.sh;'.repeat(15000)), encoding: 'utf8', timeout: 13000,
   })
   assert.equal(r.status, 0)
   assert.equal(decision(r.stdout), 'deny')

@@ -359,3 +359,48 @@ test('files .gitattributes keeps as CRLF are not CRLF findings', () => {
   // eol=lf stores notes.md with LF; the CRLF left in the working tree is a warning since #23.
   assert.ok(lines.some(l => l.startsWith('WARN docs: notes.md: CRLF in the working tree only')))
 })
+
+// Issue #52: dropping the profile's tests key while they are locked must not switch the check off.
+test('the profile changed while tests are locked fails, even with its tests key removed (#52)', () => {
+  const d = repo({ ...GOOD, '.devflow.json': '{ "tests": ["tests/**"] }\n', 'tests/a.test.js': 'ok\n' })
+  git(d, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'a')
+  git(d, 'switch', '-q', '-c', 'fix/5-x')
+  const at = git(d, 'rev-parse', '--short', 'HEAD').stdout.trim()
+  const ledger = path.join(d, '.work/devflow/i5/ledger.json')
+  fs.mkdirSync(path.dirname(ledger), { recursive: true })
+  fs.writeFileSync(ledger, JSON.stringify({ testsLocked: { at } }))
+  fs.writeFileSync(path.join(d, '.devflow.json'), '{}\n')
+  assert.ok(failures(d).includes(`FAIL tests: .devflow.json changed while tests are locked (since ${at})`), failures(d).join('\n'))
+})
+
+test('a file doctor cannot read is reported by name instead of ending doctor (#52)', () => {
+  const d = repo({ ...GOOD, 'notes.md': '# n\n' })
+  const read = fs.readFileSync
+  fs.readFileSync = (p, ...a) => {
+    if (String(p).endsWith('notes.md')) throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+    return read(p, ...a)
+  }
+  let lines
+  try {
+    lines = findings(d)
+  } finally {
+    fs.readFileSync = read
+  }
+  assert.ok(lines.includes('FAIL read: notes.md cannot be read (EBUSY)'), lines.join('\n'))
+})
+
+test("doctor's git calls have a time limit (#52)", () => {
+  const cp = require('child_process')
+  const spawn = cp.spawnSync
+  const limits = []
+  cp.spawnSync = (cmd, args, opts) => { if (cmd === 'git') limits.push(opts && opts.timeout); return spawn(cmd, args, opts) }
+  const id = require.resolve('../bin/devflow-doctor')
+  delete require.cache[id]
+  try {
+    require('../bin/devflow-doctor').doctor(repo())
+  } finally {
+    cp.spawnSync = spawn
+    delete require.cache[id]
+  }
+  assert.ok(limits.length && limits.every(t => t > 0), JSON.stringify(limits))
+})

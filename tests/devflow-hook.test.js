@@ -1029,3 +1029,38 @@ test('SessionEnd leaves a sessions file behind a linked Issue folder alone (2026
   assert.equal(hook.handle(event('SessionEnd', root, { session_id: SID }), noGit), '')
   assert.equal(fs.readFileSync(path.join(outside, 'sessions.json'), 'utf8'), body)
 })
+
+// Issue #52: outside a devflow repository the hook does nothing, so it must not deny for its own reasons there either.
+test('outside a devflow repository PreToolUse starts no analyzer and allows (#52)', () => {
+  const d = dir(false)
+  const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
+    cwd: d, input: pre(d, 'gh issue close 1'), encoding: 'utf8', timeout: 8000, env: { ...process.env, DEVFLOW_HOOK_TIMING: '1' },
+  })
+  assert.equal(r.status, 0)
+  assert.equal(r.stdout.trim(), '')
+  assert.doesNotMatch(r.stderr, /analyzer-start/)
+})
+
+test('late input from a project without devflow ends with no output; from a devflow project it is still denied (#52)', async () => {
+  const head = (cwd, rest = '"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"gh issue close 1"') =>
+    `{"session_id":"s","cwd":${JSON.stringify(cwd)},${rest}`
+  const outside = await startHook(head(dir(false)))
+  assert.equal(outside.killed, false)
+  assert.equal(outside.out.trim(), '')
+  assert.equal(decision((await startHook(head(dir(true)))).out.trim()), 'deny')
+  // A cwd that appears only inside the tool input says nothing about where the session runs.
+  const nested = `{"hook_event_name":"PreToolUse","tool_name":"mcp__x__y","tool_input":{"cwd":${JSON.stringify(dir(false))},"a":"`
+  assert.equal(decision((await startHook(nested)).out.trim()), 'deny')
+})
+
+test('while tests are locked the profile is locked too, so dropping its tests key cannot lift the lock (#52)', () => {
+  const g = gitRepo('fix/7-x', { tests: ['tests/**'] })
+  const ledger = path.join(g, '.work', 'devflow', 'i7', 'ledger.json')
+  fs.mkdirSync(path.dirname(ledger), { recursive: true })
+  fs.writeFileSync(ledger, JSON.stringify({ stage: 'build', testsLocked: { at: 'abc1234' } }))
+  const edit = file => hook.handle(event('PreToolUse', g, { tool_name: 'Edit', tool_input: { file_path: file } }))
+  assert.equal(decision(edit(path.join(g, '.devflow.json'))), 'deny')
+  assert.equal(decision(hook.handle(pre(g, 'echo {} > .devflow.json'))), 'deny')
+  fs.writeFileSync(ledger, JSON.stringify({ stage: 'build' }))
+  assert.equal(edit(path.join(g, '.devflow.json')), '', 'unlocked: the profile is editable')
+})

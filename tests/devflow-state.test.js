@@ -596,6 +596,25 @@ test('mode autonomous makes the queue key in the interactive turn, before a sand
   assert.match(fs.readFileSync(path.join(home, 'queue.key'), 'utf8'), /^[0-9a-f]{64}$/)
 })
 
+test('a new ledger started autonomous through ledger-update makes the queue key too', () => {
+  const home = path.join(tmpdir('devflow-home-'), 'fresh')
+  const root = repo()
+  const r = withHome(home, () => state.main(['ledger-update', '1'], () => '{"mode":"autonomous","stage":"build"}', env(root), '.'))
+  assert.equal(r.code, 0, r.out)
+  assert.match(fs.readFileSync(path.join(home, 'queue.key'), 'utf8'), /^[0-9a-f]{64}$/)
+  assert.match(withHome('rel', () => state.main(['ledger-update', '1'], () => '{"mode":"autonomous"}', env(root), '.')).out, /could not queue its posts/)
+})
+
+test('flush without a GitHub origin refuses before calling any post foreign', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text: checkpoint('x') }]) } })
+  const e = env(root)
+  const run = e.run
+  e.run = (cmd, args, opts) => (cmd === 'git' && args.join(' ') === 'remote get-url origin' ? { code: 2, stdout: '', stderr: '' } : run(cmd, args, opts))
+  assert.deepEqual(state.flush(e, '.'), { code: 1, out: 'refused: not a devflow repository with a GitHub origin' })
+  assert.deepEqual(guardLines(root), [])
+  assert.equal(ghWrites(e).length, 0)
+})
+
 test('a relative DEVFLOW_HOME, which would put the key in the repository, is refused', () => {
   const root = repo({ ledger: { stage: 'build', mode: 'interactive' } })
   const r = withHome('.devflow', () => state.main(['mode', '1', 'autonomous'], () => 'away', env(root), '.'))

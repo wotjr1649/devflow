@@ -1023,8 +1023,8 @@ const KEY_SHAPE = /^[0-9a-f]{64}$/
 // Queueing runs unattended, maybe in a sandbox that cannot write outside the workspace, so mode autonomous makes the key
 // first, in the interactive turn.
 const NO_KEY = () => `no queue key at ${queueKeyFile() || 'DEVFLOW_HOME, which must be an absolute path'}; it is made on first use ` +
-  'and must stay a plain file of 64 hex characters, and a sandbox that cannot write there needs it made beforehand by ' +
-  'devflow-state mode <issue> autonomous'
+  'and must stay a plain file of 64 hex characters, and a sandbox that cannot write there needs it made beforehand, in ' +
+  'an interactive turn, by devflow-state mode <issue> autonomous or a ledger-update that sets mode autonomous'
 function queueKey(create) {
   const file = queueKeyFile()
   if (!file) return null
@@ -1386,6 +1386,8 @@ const REMOVE_WAIT_MS = 10000
 function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   const ctx = repoContext(env, cwd)
   if (!ctx || !ctx.branchIssue) return { code: 1, out: 'refused: no devflow Issue branch' }
+  // Posts are marked for the repository origin names, so without one none could be checked.
+  if (!ctx.repo) return { code: 1, out: 'refused: not a devflow repository with a GitHub origin' }
   const n = ctx.branchIssue
   if (legacyOf(ctx, n)) return LEGACY(n)
   const by = token()
@@ -1414,7 +1416,8 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   if (claim.result === 'nokey') return { code: 1, out: `refused: nothing was posted, since no queued post can be checked: ${NO_KEY()}` }
   if (claim.result.unsigned) {
     return guarded(ctx, { code: 1, guard: 'state-unsigned-post', out: `refused: queued posts ${claim.result.unsigned.join(', ')} were not ` +
-      'queued by devflow-state on this machine for this repository (or were queued before posts were marked), so nothing ' +
+      'queued by devflow-state on this machine for this repository (or were queued before posts were marked or before ' +
+      'origin changed), so nothing ' +
       `was posted; read them with devflow-state pending, post any you still want yourself, then take each out: devflow-state pending drop ${n} <id> < reason` })
   }
   const posts = claim.ledger ? claim.ledger.pendingPosts : []
@@ -1559,6 +1562,8 @@ function command(argv, stdin, env, cwd) {
       if (patch && typeof patch === 'object' && 'pendingPosts' in patch) {
         return { code: 1, out: 'refused: pendingPosts changes only through devflow-state (flush, pending drop)' }
       }
+      // A new ledger can start autonomous here, so this makes the queue key as mode autonomous does.
+      if (patch.mode === 'autonomous' && !queueKey(true)) return { code: 1, out: `refused: the unattended run could not queue its posts: ${NO_KEY()}` }
       // notes only grow: replacing them would drop another session's lines and the reasons tests were unlocked (Issue #20).
       const r = updateLedger(ctx.store, n, ledger => {
         if ('mode' in patch && fs.existsSync(ledgerPath(ctx.store, n))) {

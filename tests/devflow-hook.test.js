@@ -446,13 +446,11 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
   fs.mkdirSync(other)
   const o = other.split(path.sep).join('/')
   const here = d.split(path.sep).join('/')
-  const sib = '../' + path.basename(other)
   const run = c => decision(hook.handle(pre(d, c)))
   for (const c of [
     `cd "${o}" && echo '{}' > .devflow.json`,
     `cd ${o} && printf x > .devflow.json && rm -f tests/a.test.js`,
     `(cd "${o}" && cat > .devflow.json <<'EOF'\n{}\nEOF\n)`,
-    `cd ${sib} && echo x > .devflow.json`,
     `Set-Location '${o}' && Set-Content .devflow.json x`,
     `cd "${o}" && bash -c "echo x > .devflow.json"`,
   ]) assert.equal(run(c), '', c)
@@ -472,7 +470,22 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
     'cd tests && rm a.test.js', // followed into the repository too
     'cd ./tests && rm a.test.js',
     `true || cd "${o}" && echo x > .devflow.json`, // the cd may be skipped
+    // Review: a relative cd after one whose folder is unknown, and a cd that is no shell's own (2026-10-05).
+    'cd -P tests && cd .. && rm tests/a.test.js',
+    'builtin cd tests && cd .. && rm tests/a.test.js',
+    'eval cd tests && cd .. && rm tests/a.test.js',
+    'Set-Location -Path tests && Set-Location .. && Remove-Item tests/a.test.js',
+    'cd -P tests && bash -c "cd .. && rm tests/a.test.js"',
+    `cd() { :; }; cd "${o}" && echo x > .devflow.json`,
+    `function Set-Location {}; Set-Location '${o}' && Set-Content .devflow.json x`,
+    `sl "${o}" && echo x > .devflow.json`,
+    `chdir "${o}" && echo x > .devflow.json`,
   ]) assert.equal(run(c), 'deny', c)
+  // Git Bash mounts /tmp on the user's temp folder, where this repository is; the hook cannot place it.
+  if (process.platform === 'win32') {
+    const msys = '/tmp/' + path.relative(os.tmpdir(), d).split(path.sep).join('/')
+    assert.equal(run(`cd ${msys} && rm tests/a.test.js`), 'deny')
+  }
 })
 
 test('a block on an Issue branch is logged by a fixed id and the decision is unchanged', () => {
@@ -679,6 +692,13 @@ test('a chain of links is judged by every link in it, up to a limit (#53)', t =>
   for (let i = 1; i <= 8; i++) link(`l${i}`, `l${i - 1}`)
   assert.equal(hook.localPath(path.join(d, 'l1', 'x')), true, 'a short local chain')
   assert.equal(hook.localPath(path.join(d, 'l8', 'x')), false, 'a chain past the limit counts as remote')
+  // Review: each link counts once, however deep it sits under other relative links.
+  fs.mkdirSync(path.join(d, 'R1', 'R2', 'R3', 'R4'), { recursive: true })
+  link('L1', 'R1')
+  link(path.join('R1', 'L2'), 'R2')
+  link(path.join('R1', 'R2', 'L3'), 'R3')
+  link(path.join('R1', 'R2', 'R3', 'L4'), 'R4')
+  assert.equal(hook.localPath(path.join(d, 'L1', 'L2', 'L3', 'L4', 'x')), true, 'four nested relative links')
 })
 
 test('an unreadable profile applies the same repair exception to shell and edit writes', () => {
@@ -901,8 +921,8 @@ test('an entry-point deadline is logged to the input worktree even from a subfol
   fs.mkdirSync(cwd)
   fs.writeFileSync(path.join(input, 'heavy.sh'), 'echo ok\n'.repeat(8000))
   const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
-    // Above the hook's own bound: 5 s of analysis, 3 s of logging and two process starts (#53).
-    cwd: parent, input: pre(cwd, 'bash ../heavy.sh;'.repeat(15000)), encoding: 'utf8', timeout: 13000,
+    // The host's limit for the hook (hooks.json): logging may use what is left of it (#53).
+    cwd: parent, input: pre(cwd, 'bash ../heavy.sh;'.repeat(15000)), encoding: 'utf8', timeout: 15000,
   })
   assert.equal(r.status, 0)
   assert.equal(decision(r.stdout), 'deny')

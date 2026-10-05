@@ -455,7 +455,7 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
     `cd ${sib} && echo x > .devflow.json`,
     `Set-Location '${o}' && Set-Content .devflow.json x`,
     `cd "${o}" && bash -c "echo x > .devflow.json"`,
-  ]) assert.equal(run(c), undefined, c)
+  ]) assert.equal(run(c), '', c)
   for (const c of [
     `cd "${o}"; echo x > .devflow.json`, // the cd may have failed
     `cd "${o}" || echo x > .devflow.json`,

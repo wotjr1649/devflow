@@ -648,7 +648,8 @@ function lockedTests(root) {
   if (!t) return []
   const ledgerAbs = path.join(t.root, '.work', 'devflow', `i${t.issue}`, 'ledger.json')
   const ledgerFile = path.relative(root, ledgerAbs).split(path.sep).join('/')
-  const locked = [...globs, ...(ledgerFile.startsWith('..') ? [] : [ledgerFile])]
+  // The profile is locked with them: dropping its "tests" key would lift the lock (Issue #52).
+  const locked = [...globs, '.devflow.json', ...(ledgerFile.startsWith('..') ? [] : [ledgerFile])]
   // From a linked worktree the ledger lies outside the root, where the path globs do not reach; edit tools check it here.
   locked.ledger = ledgerAbs
   try {
@@ -658,8 +659,11 @@ function lockedTests(root) {
     return locked
   }
 }
-const testLocked = (root, r) => blocked(root, 'test-locked', `devflow: ${r} is a test file, locked for this fix. Fix the code, ` +
-  'not the test. If the test itself is wrong, say why and unlock it: devflow-state tests <issue> unlock < reason.')
+const testLocked = (root, r) => blocked(root, 'test-locked', r === '.devflow.json'
+  ? 'devflow: .devflow.json is locked with the tests for this fix. To change it, say why and unlock first: devflow-state ' +
+    'tests <issue> unlock < reason.'
+  : `devflow: ${r} is a test file, locked for this fix. Fix the code, not the test. If the test itself is wrong, say why ` +
+    'and unlock it: devflow-state tests <issue> unlock < reason.')
 
 const PROTECTED = 'write to protected path '
 const PROFILE_UNREADABLE = 'unreadable profile'
@@ -993,6 +997,19 @@ function readStdin() {
   })
 }
 
+// Outside a devflow repository the analysis allows everything, so the hook neither starts it nor denies for its own
+// reasons there: no deadline or late-input denial in a project that does not use devflow (Issue #52). Only a local
+// folder is looked at; a network folder could hold the lookup open, and is left to the bounded analyzer.
+const outsideDevflow = cwd => typeof cwd === 'string' && cwd !== '' && localPath(cwd) && !devflowRoot(cwd)
+// The session's folder from input that stopped arriving: the top-level "cwd", which both hosts send before the tool
+// input. A "cwd" inside the tool input names nothing about the session, so one seen after "tool_input" is not used.
+function arrivedCwd(raw) {
+  const m = /[{,]\s*"cwd"\s*:\s*("(?:[^"\\]|\\.)*")/.exec(raw)
+  const tool = raw.indexOf('"tool_input"')
+  if (!m || (tool >= 0 && tool < m.index)) return null
+  try { return JSON.parse(m[1]) } catch { return null }
+}
+
 // Output is written synchronously before exiting: the process exits on purpose while stdin may still be open.
 const emit = text => { if (text) fs.writeSync(1, text + '\n') }
 
@@ -1003,7 +1020,7 @@ async function main(inProcess = false) {
   if (!complete) {
     // The analyzer and the logger exit non-zero, so the parent falls back to its own denial.
     if (inProcess) process.exit(1)
-    if (!/"hook_event_name"\s*:\s*"(?!PreToolUse")[A-Za-z]+"/.test(raw)) emit(deny(INPUT_LATE))
+    if (!/"hook_event_name"\s*:\s*"(?!PreToolUse")[A-Za-z]+"/.test(raw) && !outsideDevflow(arrivedCwd(raw))) emit(deny(INPUT_LATE))
     process.exit(0)
   }
   let out
@@ -1011,6 +1028,8 @@ async function main(inProcess = false) {
   try { input = JSON.parse(raw) } catch {}
   if (typeof inProcess === 'string' && ANALYSIS_FAILURES[inProcess]) {
     out = blocked(devflowRoot(input?.cwd || process.cwd()), inProcess, ANALYSIS_FAILURES[inProcess])
+  } else if (input?.hook_event_name === 'PreToolUse' && !inProcess && outsideDevflow(input.cwd || process.cwd())) {
+    out = ''
   } else if (input?.hook_event_name === 'PreToolUse' && !inProcess) {
     // A timer in the analyzer cannot interrupt synchronous parsing or a blocked file read. Keep those in a child
     // with a deadline shorter than the host's: a killed or failed analyzer produces a denial, never an empty result.

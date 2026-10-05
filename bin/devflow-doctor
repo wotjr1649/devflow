@@ -54,9 +54,11 @@ const tokens = s => {
 }
 const slug = h => h.trim().toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s/g, '-')
 
+// A git that does not answer within the limit counts as a failed call, so a hung git cannot hold the gate (Issue #52).
+const GIT_TIMEOUT_MS = 30000
 function git(root, args) {
   // core.quotePath=false: git otherwise quotes non-ASCII names, which then match no file on disk.
-  const r = spawnSync('git', ['-C', root, '-c', 'core.quotePath=false', ...args], { encoding: 'utf8', windowsHide: true })
+  const r = spawnSync('git', ['-C', root, '-c', 'core.quotePath=false', ...args], { encoding: 'utf8', windowsHide: true, timeout: GIT_TIMEOUT_MS })
   return r.status === 0 ? r.stdout : null
 }
 
@@ -78,7 +80,16 @@ function doctor(dir, { only } = {}) {
   if (top === null) return { lines: [`FAIL repository: ${dir} is not a git work tree`], failures: 1 }
   const root = top.trim()
   const at = p => path.join(root, p)
-  const read = p => fs.readFileSync(at(p), 'utf8')
+  // A file that cannot be read (locked by another program on Windows, no permission) is a failure named by its path,
+  // not an exception that ends doctor without saying which file (Issue #52).
+  const read = p => {
+    try {
+      return fs.readFileSync(at(p), 'utf8')
+    } catch (e) {
+      fail('read', `${p} cannot be read (${e.code || e.message})`)
+      return ''
+    }
+  }
   const listed = only || (git(root, ['ls-files', '-co', '--exclude-standard']) || '').split('\n')
   const files = listed.filter(f => f && isFile(at(f)))
 
@@ -272,8 +283,10 @@ function doctor(dir, { only } = {}) {
   }
 
   // Tests locked for a fix (Issue #20): any test file that differs from the locked commit, committed, edited or new, is
-  // reported here, which catches the shell edits the hook could not see.
-  if (!only && Array.isArray(tests) && tests.length) {
+  // reported here, which catches the shell edits the hook could not see. The ledger is read even when the profile lists
+  // no tests now: dropping the key while they are locked is reported, not taken as no lock (Issue #52).
+  const configured = Array.isArray(tests) && tests.length > 0
+  if (!only) {
     const state = require('./devflow-state')
     const ctx = state.repoContext(state.realEnv, root)
     let ledger = null
@@ -282,10 +295,10 @@ function doctor(dir, { only } = {}) {
       ledger = ctx && ctx.issue ? state.readLedger(ctx.store, ctx.issue) : null
     } catch {
       unread = true
-      fail('tests', `the ledger of Issue #${ctx.issue} cannot be read, so whether the tests are locked is unknown`)
+      if (configured) fail('tests', `the ledger of Issue #${ctx.issue} cannot be read, so whether the tests are locked is unknown`)
     }
     // No ledger file: a new Issue branch has none until its first write, but deleting it must not drop the check unseen (#28).
-    if (!unread && !ledger && ctx && ctx.issue) warn('tests', `Issue #${ctx.issue} has no ledger, so whether its tests are locked is unknown`)
+    if (configured && !unread && !ledger && ctx && ctx.issue) warn('tests', `Issue #${ctx.issue} has no ledger, so whether its tests are locked is unknown`)
     const since = ledger && ledger.testsLocked && String(ledger.testsLocked.at || '')
     if (ledger && ledger.testsLocked && !since) fail('tests', 'the tests are locked at no commit')
     else if (since && !/^[0-9a-f]{4,40}$/.test(since)) fail('tests', `the ledger's testsLocked.at "${since}" is not a commit`)
@@ -296,7 +309,7 @@ function doctor(dir, { only } = {}) {
       else {
         const untracked = (git(root, ['ls-files', '-o', '--exclude-standard']) || '').split('\n')
         const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
-        const hits = [...new Set([...changed.split('\n'), ...untracked].filter(f => f && tests.some(g => matchesGlob(fold(f), fold(g)))))].sort()
+        const hits = [...new Set([...changed.split('\n'), ...untracked].filter(f => f && (f === '.devflow.json' || (configured && tests.some(g => matchesGlob(fold(f), fold(g)))))))].sort()
         for (const f of hits) fail('tests', `${f} changed while tests are locked (since ${since})`)
       }
     }

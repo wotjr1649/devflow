@@ -875,8 +875,37 @@ function nextBody(op, body, text, writer) {
   return body
 }
 
+// gh can fail after GitHub took the post: a timeout, a connection dropped before the answer (Issue #49). A comment or a
+// new Issue posted twice is a public duplicate, so such a failure is read back first: found means posted, missing means
+// failed, unreadable means unknown. The other writes set a value and may simply run again. gh's exit code 4 is an
+// authentication failure: nothing was sent, so nothing is read back.
+const READ_BACK = new Set(['comment', 'create'])
+const READ_BACK_SKEW_MS = 5 * 60000
+function postedAlready(ctx, op, n, text, title, since) {
+  const same = s => String(s || '').replace(/\r\n/g, '\n').trim() === String(text).replace(/\r\n/g, '\n').trim()
+  const after = at => Date.parse(at) >= since - READ_BACK_SKEW_MS
+  if (op === 'comment') {
+    const got = fetchIssue(ctx, n)
+    if (got.error) return null
+    const hit = ((got.issue.comments && got.issue.comments.nodes) || [])
+      .find(c => c && WRITERS.has(c.authorAssociation) && same(c.body) && after(c.createdAt))
+    return hit ? hit.url : false
+  }
+  const r = ctx.env.run('gh', ['issue', 'list', '-R', ctx.repo, '--author', '@me', '--state', 'all', '--limit', '20',
+    '--json', 'title,body,url,createdAt'], { cwd: ctx.root })
+  if (r.code !== 0) return null
+  try {
+    const hit = JSON.parse(r.stdout).find(i => i && i.title === title && same(i.body) && after(i.createdAt))
+    return hit ? hit.url : false
+  } catch {
+    return null
+  }
+}
+const UNKNOWN = (op, code) => `${op}: posting state unknown (gh exit ${code}, and reading the Issue back failed); look at the Issue before trying again`
+
 function post(ctx, op, n, text, title) {
   const gh = (args, input) => ctx.env.run('gh', args, { cwd: ctx.root, input })
+  const since = Date.now()
   let r
   if (op === 'check') {
     const got = fetchIssue(ctx, n)
@@ -919,6 +948,11 @@ function post(ctx, op, n, text, title) {
     r = gh(['issue', 'close', String(n), '-R', ctx.repo])
   } else {
     r = gh(['issue', op, String(n), '-R', ctx.repo])
+  }
+  if (r.code !== 0 && READ_BACK.has(op) && r.code !== 4) {
+    const url = postedAlready(ctx, op, n, text, title, since)
+    if (url) return { code: 0, out: `${url} (gh exit ${r.code}, but the ${op} is on GitHub)` }
+    if (url === null) return { code: 1, out: UNKNOWN(op, r.code), unconfirmed: { at: since } }
   }
   return r.code === 0 ? { code: 0, out: r.stdout.trim() || `${op} #${n} done` } : { code: 1, out: `${op} failed (gh exit ${r.code})` }
 }
@@ -1257,13 +1291,29 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   let posted = 0
   let failed = false
   let stuck = null
+  let unsure = null
   // Posts go in order and stop at the first failure: a later intent would renumber the criteria a failed check names.
   // A posted item still in the queue would post again, so one that cannot be removed stops the flush too.
   for (const p of posts) {
-    const r = write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true })
+    // A post an earlier flush could not confirm is read back before it is sent: it may be on GitHub already (#49).
+    let r = null
+    if (p.unconfirmed && READ_BACK.has(p.op)) {
+      const url = postedAlready(ctx, p.op, p.issue, p.text, p.title, Number(p.unconfirmed.at) || 0)
+      if (url) r = { code: 0, out: `${p.op} (${p.id}) was already on GitHub: ${url}` }
+      else if (url === null) {
+        r = { code: 1, out: `${p.op} (${p.id}): posting state still unknown (reading the Issue back failed)`, unconfirmed: p.unconfirmed }
+      }
+    }
+    if (!r) r = write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true })
     out.push(r.out)
     if (r.code !== 0) {
-      out.push(`flush stopped at ${p.op} (${p.id}); fix the cause, or take it out: devflow-state pending drop ${p.issue} ${p.id} < reason`)
+      if (r.unconfirmed) {
+        unsure = { id: p.id, at: r.unconfirmed.at }
+        out.push(`flush stopped at ${p.op} (${p.id}); if the Issue has it, take it out: devflow-state pending drop ${p.issue} ${p.id} ` +
+          '--posted < reason; otherwise flush again, which reads it back before posting')
+      } else {
+        out.push(`flush stopped at ${p.op} (${p.id}); fix the cause, or take it out: devflow-state pending drop ${p.issue} ${p.id} < reason`)
+      }
       failed = true
       break
     }
@@ -1276,9 +1326,12 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   if (failed || stuck) {
     // What was not posted goes back unclaimed for the next flush; an unremoved item keeps its claim, so no flush
     // posts it again before someone removes it.
+    // One whose posting is unknown keeps a mark, so the next flush reads it back before sending it (#49).
     const back = tryUpdate(l => notAList(l) ? { result: 'notlist' } : ({
-      ledger: { ...l, pendingPosts: queueOf(l).map(q =>
-        (q.claimed && q.claimed.by === by && !(stuck && q.id === stuck.id) ? (({ claimed, ...rest }) => rest)(q) : q)) },
+      ledger: { ...l, pendingPosts: queueOf(l).map(q => {
+        const left = q.claimed && q.claimed.by === by && !(stuck && q.id === stuck.id) ? (({ claimed, ...rest }) => rest)(q) : q
+        return unsure && q.id === unsure.id ? { ...left, unconfirmed: { at: unsure.at } } : left
+      }) },
     }))
     if (stuck) out.push(`posted ${stuck.op} (${stuck.id}) but could not remove it from the queue; remove it with devflow-state pending drop ${stuck.issue} ${stuck.id} --posted < reason before the next flush, or it posts again in ${CLAIM_MS / 60000} min`)
     if (!back.ok) out.push(`the queue stays claimed for ${CLAIM_MS / 60000} min`)

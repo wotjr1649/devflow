@@ -48,7 +48,8 @@ test('a test changed since the lock fails the gate on the Issue branch, by commi
   const at = git(d, 'rev-parse', '--short', 'HEAD').stdout.trim()
   const ledger = path.join(d, '.work/devflow/i5/ledger.json')
   fs.mkdirSync(path.dirname(ledger), { recursive: true })
-  fs.writeFileSync(ledger, JSON.stringify({ testsLocked: { at } }))
+  // Since #50 a lock carries its failing evidence; doctor reads only the commit.
+  fs.writeFileSync(ledger, JSON.stringify({ testsLocked: { at, failing: { command: 'node t.js', exit: 1 } } }))
   assert.deepEqual(failures(d), [], 'nothing changed since the lock')
   fs.writeFileSync(path.join(d, 'tests/a.test.js'), 'changed\n')
   fs.writeFileSync(path.join(d, 'tests/b.test.js'), 'new\n')

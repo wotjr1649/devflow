@@ -448,6 +448,36 @@ test('without a command a lock takes only checkable evidence: a CI run of this r
   assert.equal(lock('rebase').code, 0)
   assert.deepEqual(ledger().testsLocked.failing, { ci: 'https://github.com/o/r/actions/runs/37241236301', rebased: true })
   assert.match(state.main(['ledger-update', '1'], () => '{"testsFailing":{"ci":"x"}}', e, '.').out, /testsFailing changes only through/)
+  // Review: only an unlock for a rebase keeps the evidence; a test rewritten or added after any other unlock is seen failing again.
+  state.main(['tests', '1', 'unlock'], () => 'a reproduction test for a review finding', e, '.')
+  assert.equal(ledger().testsFailing, undefined)
+  assert.equal(lock('rebase').code, 1)
+  assert.equal(ledger().testsLocked, undefined)
+})
+
+test('a lock without a GitHub origin is refused with a reason, not an exception, and a rebase relock still works (#50)', () => {
+  const root = repo({ ledger: { stage: 'build', notes: [], testsFailing: { command: 'node t.js', exit: 1 } } })
+  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
+  const e = env(root)
+  const real = e.run
+  e.run = (cmd, args, opts) => (cmd === 'git' && args[0] === 'remote' ? { code: 2, stdout: '', stderr: '' } : real(cmd, args, opts))
+  const lock = input => state.main(['tests', '1', 'lock'], () => input, e, '.')
+  const r = lock('https://github.com/o/r/actions/runs/1')
+  assert.equal(r.code, 2)
+  assert.doesNotMatch(r.out, /Cannot read|TypeError/)
+  assert.equal(lock('rebase').code, 0)
+})
+
+test('the test command runs in the folder devflow-state was called from, where the hook resolved its paths (#50)', () => {
+  const root = repo({ ledger: { stage: 'build', notes: [] } })
+  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
+  const e = env(root)
+  const sub = path.join(root, 'tests')
+  fs.mkdirSync(sub)
+  let ranIn = null
+  e.exec = (cmd, args, opts) => { ranIn = opts.cwd; return { code: 1 } }
+  assert.equal(state.main(['tests', '1', 'lock', '--', 'node', 'a.test.js'], () => '', e, sub).code, 0)
+  assert.equal(ranIn, sub)
 })
 
 test('metric eval records passed/total per host with the revision it ran on, under the lock, keeping the other metrics (#27, #50)', () => {

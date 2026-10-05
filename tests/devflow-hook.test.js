@@ -1074,4 +1074,21 @@ test('the command after "devflow-state tests <n> lock --" is checked by the guar
     assert.equal(hook.handle(pre(d, `${lead} tests 1 lock -- node --test tests/a.test.js`)), '', lead)
   }
   assert.ok(check('node bin/devflow-state tests 1 lock -- gh issue close 1', d))
+  // Review: spellings the shell reads as the same words, and devflow-state named more than once.
+  for (const cmd of [
+    "node bin/devflow-state te''sts 1 lock -- rm -rf _ref/docs",
+    'node bin/devflow-state tests 1 l\\ock -- rm -rf _ref/docs',
+    'node -r ./bin/devflow-state bin/devflow-state tests 1 lock -- rm -rf _ref/docs',
+    "node bin/devflow-st''ate tests 1 lock -- rm -rf _ref/docs",
+  ]) assert.equal(decision(hook.handle(pre(d, cmd))), 'deny', cmd)
+})
+
+// Issue #50: a lock now carries its evidence; the hook still reads it as locked.
+test('a lock with its failing evidence still protects the tests (#50)', () => {
+  const d = gitRepo('fix/7-x', { tests: ['tests/**'] })
+  const ledgerFile = path.join(d, '.work', 'devflow', 'i7', 'ledger.json')
+  fs.mkdirSync(path.dirname(ledgerFile), { recursive: true })
+  fs.writeFileSync(ledgerFile, JSON.stringify({ stage: 'build', testsLocked: { at: 'abc1234', failing: { command: 'node t.js', exit: 1 } } }))
+  const out = hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, 'tests', 'a.test.js') } }))
+  assert.match(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /locked/)
 })

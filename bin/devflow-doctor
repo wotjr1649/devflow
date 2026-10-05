@@ -54,14 +54,19 @@ const tokens = s => {
 }
 const slug = h => h.trim().toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s/g, '-')
 
-// A git that does not answer within the limit ends doctor with a failure that names it, so a hung git can neither hold
-// the gate nor pass it with checks that saw an empty file list (Issue #52).
+// A git run that does not complete (no answer within the limit, output past the buffer, no git) ends doctor with a
+// failure that names it, so it can neither hold the gate nor pass it with checks that saw an empty list (Issue #52). A
+// git that runs and exits non-zero is an answer: null, which each caller reads.
 const GIT_TIMEOUT_MS = 30000
-class GitTimeout extends Error {}
+class GitFailed extends Error {}
 function git(root, args) {
   // core.quotePath=false: git otherwise quotes non-ASCII names, which then match no file on disk.
-  const r = spawnSync('git', ['-C', root, '-c', 'core.quotePath=false', ...args], { encoding: 'utf8', windowsHide: true, timeout: GIT_TIMEOUT_MS })
-  if (r.error && r.error.code === 'ETIMEDOUT') throw new GitTimeout(`git ${args.join(' ')} did not finish within ${GIT_TIMEOUT_MS / 1000} s`)
+  const r = spawnSync('git', ['-C', root, '-c', 'core.quotePath=false', ...args],
+    { encoding: 'utf8', windowsHide: true, timeout: GIT_TIMEOUT_MS, maxBuffer: 256 * 1024 * 1024 })
+  if (r.error) {
+    throw new GitFailed(r.error.code === 'ETIMEDOUT' ? `git ${args.join(' ')} did not finish within ${GIT_TIMEOUT_MS / 1000} s`
+      : `git ${args.join(' ')} failed (${r.error.code || r.error.message})`)
+  }
   return r.status === 0 ? r.stdout : null
 }
 
@@ -79,7 +84,7 @@ function doctor(dir, opts) {
   try {
     return checks(dir, opts)
   } catch (e) {
-    if (!(e instanceof GitTimeout)) throw e
+    if (!(e instanceof GitFailed)) throw e
     return { lines: [`FAIL git: ${e.message}`, '1 failures'], failures: 1 }
   }
 }
@@ -300,7 +305,13 @@ function checks(dir, { only } = {}) {
   const configured = Array.isArray(tests) && tests.length > 0
   if (!only) {
     const state = require('./devflow-state')
-    const ctx = state.repoContext(state.realEnv, root)
+    // The lookup runs git through devflow-state, whose own limit turns a hung git into an error code; that too ends doctor.
+    const env = { ...state.realEnv, run: (cmd, args, o) => {
+      const r = state.realEnv.run(cmd, args, o)
+      if (typeof r.code === 'string') throw new GitFailed(`${cmd} ${args.join(' ')} failed (${r.code})`)
+      return r
+    } }
+    const ctx = state.repoContext(env, root)
     let ledger = null
     let unread = false
     try {

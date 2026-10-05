@@ -238,6 +238,8 @@
   [app/voice_owner.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/tui/src/app/voice_owner.rs)는 새 thread를
   시작하고 이전 thread에 `thread_unsubscribe`를 보낸다. 구독 해제는 즉시 SessionEnd를 실행하는 종료가 아니다
   ([현재 훅 문서](https://learn.chatgpt.com/docs/hooks#sessionend)). 새 SessionStart 입력에는 이전 thread id가 없다.
+  같은 날 명시 인계 시험에서는 새 TUI thread가 `note` 후 `release`를 성공시킨 뒤 `/clear`했고,
+  그 thread의 항목이 없어졌으며 별도로 작업 중인 세션의 항목은 남았다. 직접 `/clear` 시험과 구분한다.
   0.144 이하에는 이 이벤트가 없고, 훅 파일의 모르는
   이벤트 키는 무시된다(`HookEventsToml`에 `deny_unknown_fields`가 없다).
 - SessionStart 매처는 `startup|resume|clear|compact`다. 출력 맥락의 양은 `additionalContextLimit`로 제한한다.

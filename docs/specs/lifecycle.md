@@ -32,7 +32,10 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 | 11 | learn 회고 | 교훈을 알맞은 곳에 둠 | 아래 "회고와 기억" | 교훈이 있을 때만 | 라우터 reference, 둘 곳이 에이전트가 읽는 파일이면 writing-for-agents |
 
 ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 쓰고 Issue를 닫는다. 브랜치를 지운 뒤에는 그 Issue에
-쓸 수 없으므로, cleanup은 장부에만 남긴다.
+쓸 수 없으므로, cleanup과 그 뒤의 learn은 장부에만 남긴다.
+
+표의 에이전트 역할은 [호스트별 역할](orchestration.md#모델과-effort)을 따른다. 설계·계획 검토는 Claude의 reviewer,
+Codex의 메인이 맡는다.
 
 ## 경로별 단계
 
@@ -61,7 +64,7 @@ ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 �
 |---|---|---|
 | 자기 변경의 버그, 검사 실패, verify 미달 | build | 아니요 |
 | 리뷰 발견 사항 | build → verify → 범위를 좁힌 재리뷰([재검증](orchestration.md#리뷰)) | 아니요 |
-| 통합 중 CI 실패 | build | 아니요 |
+| 통합 중 CI 실패 | 조기 종료한 Issue를 다시 열고 상태를 build로 되돌림 | 아니요 |
 | 계획이 틀림(파일, 순서, interface), 설계는 유효 | plan → ready, 비공개 계획을 그 자리에서 고침 | 아니요 |
 | 설계 가정이 깨짐(새 제약, 접근 방식 불가) | design → plan → ready, 오래 남을 결정은 결정 기록 | 사용자만 정할 결정이면 예 |
 | 요구사항이나 수용 기준이 바뀜(측정 미달 뒤 포함, 원래 기준과 결과는 체크포인트에) | discover 또는 start, 사용자가 확인한 intent를 `devflow-state intent`로 교체 | 예 |

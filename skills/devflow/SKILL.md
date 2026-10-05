@@ -67,10 +67,10 @@ takes it from [perspectives](references/perspectives.md). Bringing a project up 
 
 ## Moving
 
-A stage is done when its condition in [단계](../../docs/specs/lifecycle.md#단계) holds. Then update the ledger and
+A stage is done when its condition in [단계](../../docs/specs/lifecycle.md#단계) holds. Before an Issue exists (discover or spike), keep the draft and evidence
+in chat; the following updates apply to tracked work. Update the ledger and
 the state block's "단계" line together; moving between build and verify inside the task loop changes the ledger
-only, as does cleanup after ship ([lifecycle](../../docs/specs/lifecycle.md#단계)); after branch deletion, record
-learn in the ledger too. New information sends the work back by [되돌아가기](../../docs/specs/lifecycle.md#되돌아가기), which also says
+only, as do cleanup and the following learn after ship ([lifecycle](../../docs/specs/lifecycle.md#단계)). New information sends the work back by [되돌아가기](../../docs/specs/lifecycle.md#되돌아가기), which also says
 when to ask the user.
 
 After compaction or `/clear`, call this skill again and reread the current stage's reference: called skills are

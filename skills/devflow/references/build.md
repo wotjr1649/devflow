@@ -1,5 +1,8 @@
 # Build
 
+On an Issue-free spike, finish with the throwaway experiment and its evidence in chat; the Issue, ledger,
+commit and mode steps below apply only to tracked work.
+
 Done when every task in the plan (on the bounded path, the one change) is committed with the checks that execute it
 passing, and the ledger holds the last commit and the next task.
 

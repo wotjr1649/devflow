@@ -42,7 +42,9 @@ disappear later, and `devflow-state` writes an Issue only from its branch. Rules
    tree: the host writes subagent records late, so a delegation still running adds records before the saved `until`.
 5. Post the ship checkpoint with the line from `devflow-metrics <issue> --line --until <the saved until>`, replace the
    state block with `단계: done` and `남음: push 확인, 로컬 브랜치 정리`, and close the Issue.
-6. Integrate. If the push is refused, switch back to the Issue branch, reopen the Issue and set the state back: a failed
-   check returns to build, anything else to ship.
+6. Integrate. If a required integration check fails (including CI after a successful push), or the push is refused,
+   return to the Issue branch, reopen a prematurely closed Issue and restore its state: a failed check returns to
+   build, anything else to ship.
 
-Cleanup is recorded in the ledger only, and deletes the branch only once the remote default branch contains its tip.
+Cleanup is recorded in the ledger only. `workspace-cleanup` owns integration proof, including squash/rebase
+equivalence, and non-forcing deletion; a refused deletion retains the branch.

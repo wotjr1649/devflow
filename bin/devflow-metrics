@@ -415,9 +415,11 @@ async function codex({ ctx, dir, issue, until }) {
 function readLedger(ctx, issue) {
   // The main work tree first: a copy left in a worktree by an older devflow is read only when the main tree has none.
   for (const root of [ctx.mainRoot, ctx.root]) {
-    const p = path.join(root, '.work', 'devflow', `i${issue}`, 'ledger.json')
-    // A ledger committed as a link could point anywhere; only a plain file is read.
-    try { if (fs.lstatSync(p).isFile()) return JSON.parse(fs.readFileSync(p, 'utf8')) } catch {}
+    // Share the plain-file and size checks with state and hooks; unreadable input supplies no manual metrics.
+    try {
+      const ledger = require('./devflow-state').readLedger(root, issue)
+      if (ledger !== null) return ledger
+    } catch { return null }
   }
   return null
 }

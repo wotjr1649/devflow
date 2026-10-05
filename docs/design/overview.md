@@ -25,7 +25,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 | 전역 지침 | 안전·권한 | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | 안내 |
 | 프로젝트 AGENTS.md | 사실·명령·문서 지도·경계 | CLAUDE.md가 없으면 직접 로드 | 로드 | 안내 |
 | 스킬 | 절차 | 플러그인 `skills/` | 같은 폴더 | 안내 |
-| 에이전트 | 격리된 작업, 도구 제한 | 플러그인 `agents/` | 내장 explorer·worker | 도구 제한은 Claude만 강제. Codex는 read-only 지정이 적용되지 않아 지시로 지킨다 |
+| 에이전트 | 격리된 작업, 도구 제한 | 플러그인 `agents/` | 내장 explorer·worker | Claude reviewer는 읽기 도구만 제공. 셸 도구가 있는 보고 역할과 Codex의 보고 전용은 지시이며 파일 시스템 격리가 아니다 |
 | 훅 | 행동 시점 게이트 | `hooks/hooks.json` | `hooks/hooks.json` | 가드레일. Claude Code는 훅의 오류·시간 초과를 통과시키므로 devflow의 PreToolUse는 분석이 길어지면 스스로 거부한다 |
 | 스크립트 | 검사·분석 | `bin/` | 스킬이 경로로 실행 | 결정적 |
 | git hook·CI | 최종 관문 | 공통 | 공통 | 결정적 |

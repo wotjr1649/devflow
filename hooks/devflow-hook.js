@@ -88,7 +88,7 @@ function substitutions(text) {
 
 // Splits shell text into simple commands. Bash rules first; PowerShell and cmd differ mostly in ways that only
 // make this see more, not less. Substitutions, process substitutions and heredoc bodies are kept for a closer look.
-function parse(src, blockComments = false) {
+function parse(src, powershell = false) {
   const cmds = []
   const nested = []
   const docs = []
@@ -150,14 +150,10 @@ function parse(src, blockComments = false) {
       }
     } else if (/\s/.test(c)) {
       push()
-    } else if (blockComments && c === '<' && n === '#') {
+    } else if (powershell && c === '<' && n === '#') {
       push()
-      let depth = 1
-      for (i += 2; i < src.length && depth; i++) {
-        if (src[i] === '<' && src[i + 1] === '#') { depth++; i++ }
-        else if (src[i] === '#' && src[i + 1] === '>') { depth--; i++ }
-      }
-      i--
+      const close = src.indexOf('#>', i + 2)
+      i = close < 0 ? src.length : close + 1
     } else if (c === '#' && !w) {
       while (i + 1 < src.length && src[i + 1] !== '\n') i++
     } else if (c === '<' && n === '<') {
@@ -188,7 +184,7 @@ function parse(src, blockComments = false) {
     } else if (c === ';' || c === '&' || c === '(' || c === ')') {
       end(false, c === '&' && n === '&' ? '&&' : c)
       if ((c === '&' && n === '&') || (c === ';' && n === ';')) i++
-    } else if (c === '$' && n === "'") {
+    } else if (!powershell && c === '$' && n === "'") {
       const s = start()
       let j = i + 2
       for (; j < src.length && src[j] !== "'"; j++) if (src[j] === '\\') j++
@@ -582,18 +578,18 @@ function cwdsAlong(cmds, start, narrow) {
 }
 
 // ctx.cwds holds the folders the command being checked may run in; text it runs (a script, a substitution) starts there.
-function analyze(src, ctx, depth = 0, cmdShell = false, blockComments = false) {
+function analyze(src, ctx, depth = 0, cmdShell = false, powershell = false) {
   if (!src) return null
   if (depth > MAX_DEPTH) return 'command nested too deeply to check'
   if (HTTP_ISSUES.test(src) && HTTP_WRITE.test(src)) return 'direct GitHub API Issue write'
   if (HTTP_GRAPHQL.test(src) && /\bmutation\b/i.test(src)) return 'direct GitHub GraphQL mutation'
-  // PowerShell block comments can hide the rest of a line from the Bash-first reader. Check both interpretations:
-  // removing comments globally would instead hide commands Bash really executes between the comment markers.
-  if (!blockComments && src.includes('<#')) {
+  // Shell-specific quotes and comments can hide writes from the other reading. PowerShell block comments end at
+  // the first #>, and its single quotes do not use ANSI-C backslash escapes. Keep the Bash reading too.
+  if (!powershell && (src.includes('<#') || src.includes("$'"))) {
     const hit = analyze(src, ctx, depth, cmdShell, true)
     if (hit) return hit
   }
-  const { cmds, nested } = parse(src, blockComments)
+  const { cmds, nested } = parse(src, powershell)
   const outer = ctx.cwds
   // Anything else turns narrowing off for the rest of the command, the text it runs included: a definition there may
   // be exported to it, and a substitution is read after the list's folders are worked out. A program counts by its

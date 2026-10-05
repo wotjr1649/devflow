@@ -23,7 +23,9 @@ if [ -z "$verify" ]; then
   echo "pre-push: .devflow.json has no verify command; push blocked" >&2
   exit 1
 fi
-if ! out=$(sh -c "$verify" 2>&1); then
+# Git exports the pushing worktree context; checks create other repositories, so do not pass that context on.
+local_env=$(git rev-parse --local-env-vars) || exit 1
+if ! out=$(unset $local_env; sh -c "$verify" 2>&1); then
   printf '%s\n' "$out" >&2
   echo "pre-push: verify failed ($verify); push blocked" >&2
   exit 1

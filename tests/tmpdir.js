@@ -5,6 +5,9 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
+// A test fixture must not inherit a real repository from a git hook or its caller (#53).
+for (const key of Object.keys(process.env)) if (key.startsWith('GIT_')) delete process.env[key]
+
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-test-'))
 process.on('exit', () => {
   try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 }) } catch {}

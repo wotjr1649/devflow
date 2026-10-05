@@ -499,8 +499,10 @@ const CWD_CHANGERS = new Set([...CD, 'chdir', 'sl', 'popd', 'pop-location', ...E
 // A folder a cd reaches from wherever the shell stands. On Windows only a drive or share path: Git Bash mounts /tmp
 // and / on other folders.
 const fixedFolder = t => (process.platform === 'win32' ? /^([A-Za-z]:[\\/]|[\\/]{2})/.test(nativePath(t)) : t.startsWith('/'))
-// Text that defines a function or alias may give cd another meaning.
+// Text that defines a function or alias may give cd another meaning, and so may what a command it runs reads in: a
+// sourced file, an eval, a module, or bash's enable -n cd. The hook reads those too late or not at all.
 const REDEFINES = /\(\s*\)|\bfunction\b|\b(alias|set-alias|new-alias)\b/i
+const DEFINERS = new Set([...EVALS, ...SOURCERS, 'enable', 'import-module', 'ipmo'])
 
 // The folders each command of a list may run in, from those in start (Issue #53). A command joined by && to a cd that
 // surely moved the shell runs only there, so a write into another repository is not judged as one into this one;
@@ -517,7 +519,9 @@ function cwdsAlong(cmds, start, narrow) {
     const at = here
     const names = cmd.words.map(w => baseName(w.raw))
     const to = cmd.words[1]
-    if (cmd.words.length === 2 && CD.has(names[0]) && !to.dynamic && !/^[-~]/.test(to.text) && !cmd.seps.includes('|')) {
+    // The bare name only: a path or an extension (/usr/bin/cd, ./cd.cmd) runs a program, which cannot move the shell.
+    if (cmd.words.length === 2 && CD.has(cmd.words[0].raw.toLowerCase()) && !to.dynamic && !/^[-~]/.test(to.text) &&
+      !cmd.seps.includes('|')) {
       const readings = pathsOf(to)
       const moved = here.flatMap(c => readings.map(t => path.resolve(c, nativePath(t))))
       const sure = narrow && !cmd.seps.includes('||') && readings.every(fixedFolder)
@@ -538,7 +542,8 @@ function analyze(src, ctx, depth = 0, cmdShell = false) {
   const { cmds, nested } = parse(src)
   const outer = ctx.cwds
   // A definition holds for the rest of the command, including the text it runs.
-  if (REDEFINES.test(src)) ctx.redefined = true
+  const leadName = c => { const names = c.words.map(w => baseName(w.raw)); return names[leadOf(c.words, names)] }
+  if (REDEFINES.test(src) || cmds.some(c => DEFINERS.has(leadName(c)))) ctx.redefined = true
   const { each, seen } = cwdsAlong(cmds, outer || [ctx.cwd], !cmdShell && !ctx.redefined)
   try {
     // A substitution's place in the list is not kept, so it may run in any of the folders.

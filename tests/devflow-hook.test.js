@@ -807,10 +807,33 @@ test('backslash paths inside a script handed to a shell, decoy scripts, and path
   // Another drive or a share is outside the repository, whatever the protected globs say. The drive is assembled so the
   // source holds no absolute path (doctor's local-path check).
   const drive = ['C', ':'].join('')
-  for (const c of [`Copy-Item a.md ${drive}\\tmp\\secret\\a.md`, 'Remove-Item \\\\server\\share\\secret\\a.md', `Remove-Item ${drive}/tmp/secret/a.md`]) {
-    assert.equal(hook.handle(pre(d, c, 'PowerShell')), '', c)
-  }
+  // A drive letter with forward slashes names a drive only on Windows; elsewhere it is a relative path inside the
+  // repository and stays checked.
+  const outside = [`Copy-Item a.md ${drive}\\tmp\\secret\\a.md`, 'Remove-Item \\\\server\\share\\secret\\a.md',
+    ...(process.platform === 'win32' ? [`Remove-Item ${drive}/tmp/secret/a.md`] : [])]
+  for (const c of outside) assert.equal(hook.handle(pre(d, c, 'PowerShell')), '', c)
   assert.equal(decision(hook.handle(pre(d, 'Remove-Item .\\secret\\a.md', 'PowerShell'))), 'deny')
+})
+
+test('Windows spellings of a path inside the repository stay inside it, and shares are not read (#48 security review)', { skip: process.platform !== 'win32' }, () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const inside = path.join(d, '_ref', 'a.md')
+  const share = `\\\\localhost\\${inside[0]}$${inside.slice(2)}`
+  for (const p of [`\\\\?\\${inside}`, `\\\\.\\${inside}`, share, `\\\\?\\UNC\\localhost\\${inside[0]}$${inside.slice(2)}`]) {
+    assert.equal(decision(hook.handle(pre(d, `Remove-Item ${p}`, 'PowerShell'))), 'deny', p)
+  }
+  // A script on a share is not opened to look inside it: opening it would reach the server (and offer it credentials).
+  const seen = []
+  const stat = fs.statSync
+  fs.statSync = (p, ...a) => { seen.push(String(p)); return stat(p, ...a) }
+  try {
+    check('& \\\\nohost.devflow.invalid\\share\\x.ps1', d)
+    check('pwsh -File \\\\nohost.devflow.invalid\\share\\x.ps1', d)
+  } finally {
+    fs.statSync = stat
+  }
+  assert.deepEqual(seen.filter(p => /^[\\/]{2}/.test(p)), [])
 })
 
 test('an entry-point deadline is logged to the input worktree even from a subfolder', () => {

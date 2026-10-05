@@ -483,7 +483,7 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
   ]) assert.equal(run(c), 'deny', c)
   // Git Bash mounts /tmp on the user's temp folder, where this repository is; the hook cannot place it.
   if (process.platform === 'win32') {
-    const msys = '/tmp/' + path.relative(os.tmpdir(), d).split(path.sep).join('/')
+    const msys = '/tmp/' + path.relative(path.dirname(tmpdir.root), d).split(path.sep).join('/')
     assert.equal(run(`cd ${msys} && rm tests/a.test.js`), 'deny')
   }
 })

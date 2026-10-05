@@ -1,4 +1,4 @@
-# Runs doctor and the tests on Linux and macOS for information; the integration gate is the local pre-push hook (ADR-0004).
+# Runs doctor and tests on Linux and macOS; required paths and integration gates: docs/specs/repository.md.
 name: test
 # Any push: devflow pushes main, and an Issue branch only to see this run before integrating.
 on:

@@ -28,18 +28,19 @@
   Codex 훅에는 exec form(`args`)이 없고 Windows 셸도 정해져 있지 않으므로, 셸이 해석할 문법이 없는
   `node -e "require(process.env.CLAUDE_PLUGIN_ROOT+'/...').main()"`을 두 호스트에 같이 쓴다.
 - 명령 텍스트를 읽는 훅은 경계가 아니다. 실행 중에 조립한 단어, 훅이 풀지 않는 인코딩, 다른 언어의 HTTP 호출은
-  지나간다(Claude Code 권한 문서도 Bash 규칙을 같은 이유로 경계가 아니라고 한다). 네이티브 Windows에는 OS sandbox가
-  없으므로, 그 너머는 막지 못하고 닿는 범위는 그 OS 사용자가 읽을 수 있는 GitHub 자격 증명이 정한다
+  지나간다(Claude Code 권한 문서도 Bash 규칙을 같은 이유로 경계가 아니라고 한다). 이 명령 파서는 OS sandbox를
+  대신하지 못한다. Windows sandbox의 지원 범위는 [host-facts](../../research/host-facts.md#codex)를 따른다.
+  닿는 범위는 호스트 권한과 GitHub 자격 증명의 범위에 달려 있다
   ([ADR-0014](ADR-0014-gh-token-scope.md)).
 - 공개되기 전 마지막 관문은 git pre-push 훅이다. doctor(문서 검사를 흡수했다)와 테스트를 돌린다. 설치는 소유자 지시로 한다.
   devflow 저장소는 추적되는 `.githooks/pre-push`로 설치했다. CI 없는 통합에서는 이 관문이 커밋별
   검사 기록을 대신한다. 지시문으로 쓰게 한 검사 줄은 커밋마다 빠지곤 했기 때문이다(사용자 결정). devflow 저장소는
-  2026-10-03부터 main push마다 GitHub Actions로 Linux·macOS에서 같은 검사를 돌린다. 정보용이라 통합을 막지 않고,
-  관문은 그대로 pre-push다. 시험이 Windows에서만 돌았기 때문이다(#30, 사용자 결정).
+  처음의 main push·정보용 CI 결정은 #51에서 개정했다. 모든 push에서 실행하며, 변경 경로별 필수 여부와
+  Issue 브랜치 정리는 [repository](../../specs/repository.md#통합과-ci)가 소유한다. 로컬 관문과 CI는 서로 대체하지 않는다.
 - 트리거 eval은 스킬 목록(frontmatter의 호출 필드, 스킬 구성, eval 사례)이 바뀔 때만 돌린다. eval 실행은 격리되어 대상
   플러그인만 로드되고 호스트는 스킬 목록만 보고 호출을 정하므로, 본문·references·훅·AGENTS.md의 변경은 결과를 바꾸지 않는다.
   eval이 문제를 잡은 것은 #1의 description 변경뿐이었고, 본문만 바뀐 #6과 #8은 결과가 같았다. 결과 eval은 장치가 없어
-  사이클마다 생략을 물었으므로 조건에서 뺐다. 기준은 [lifecycle](../../specs/lifecycle.md#eval)에 있다. (사용자 결정, #11)
+  사이클마다 생략을 물었으므로 조건에서 뺐다. 기준은 [eval](../../specs/eval.md#eval)에 있다. (사용자 결정, #11)
 
 ## 결과
 

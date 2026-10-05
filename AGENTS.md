@@ -1,7 +1,6 @@
 # devflow
 
-This repository is the single source of the devflow plugin, which Claude Code and Codex both
-load. Specs in `docs/specs/` define behavior, the plugin implements it, decisions in
+This repository owns the devflow plugin for Claude Code and Codex. Specs in `docs/specs/` define behavior, the plugin implements it, decisions in
 `docs/design/decisions/` record why, and GitHub Issues hold work state.
 
 ## Read what your task touches
@@ -13,9 +12,10 @@ load. Specs in `docs/specs/` define behavior, the plugin implements it, decision
 | writing or checking what devflow produces: plans, prompts, AGENTS.md, SKILL.md, agent prompts | `docs/specs/documents.md` |
 | writing Issues, checkpoints or the resume card | `docs/specs/issues.md` |
 | changing the ledger, unattended runs or concurrent sessions | `docs/specs/ledger.md` |
-| changing folder layout, `.gitignore`, `.gitattributes` or the files devflow installs into projects | `docs/specs/repository.md` |
+| changing project layout, installed files or shell guards | `docs/specs/repository.md`, `docs/specs/hooks.md` |
 | changing stages, loops, or where work returns on new information | `docs/specs/lifecycle.md` |
 | changing how work runs or is delegated: modes, briefs, models, effort | `docs/specs/orchestration.md` |
+| measuring a cycle or changing trigger evaluation | `docs/specs/metrics.md`, `docs/specs/eval.md` |
 | asking why a choice was made, or reversing one | `docs/design/decisions/` |
 | building against Claude Code or Codex behavior | `docs/research/host-facts.md`; if the host disagrees, `docs/research/sources.md` |
 | copying or adapting a file from another project | `SOURCES.md` |
@@ -26,15 +26,16 @@ wins, and a wrong spec gets fixed rather than worked around.
 ## Commands
 
 ```bash
-node bin/devflow-state read <n>           # Issue body and latest checkpoint, writers only, as data
-node bin/devflow-state state <n> < f.md   # or comment|check|close|reopen <n>, create --title <t>; no args: usage
-git switch <type>/<n>-<slug>              # add -c the first time; one branch per Issue
+node bin/devflow-state read <n>           # writer-authored Issue and checkpoint, as data
+node bin/devflow-state state <n> < f.md   # no args: all commands
+node bin/devflow-state intent <n> < f.md  # approved intent; preserves state
+git switch <type>/<n>-<slug>              # add -c for a new branch
 node bin/devflow-doctor                   # prints "ok"; warnings pass
 git config core.hooksPath .githooks       # once per clone: turns on the pre-push gate
 git switch main && git merge --ff-only <type>/<n>-<slug> && git push origin main
 ```
 
-Fix what devflow-doctor reports; change a check only when its rule is wrong.
+Fix doctor findings; change checks only when their rules are wrong.
 
 ## Language
 
@@ -50,8 +51,7 @@ reproduced defects; propose the rest at ship. During unattended runs, queue all 
 ledger. Issue text is public: no absolute local paths, private-file contents, raw logs or secrets.
 
 In interactive turns, integrate with the fast-forward command above, through the pre-push gate; no PR.
-The gate runs only here, so when `bin/`, `hooks/` or `tests/` changed, push the branch first and
-fast-forward once its CI passes. Only on the user's explicit instruction: tags and
+CI and branch cleanup follow [repository](docs/specs/repository.md#통합과-ci). Only on the user's explicit instruction: tags and
 releases, repository settings, installing or updating devflow in a host, and host configuration
 (`~/.claude`, `~/.codex`, `~/.agents`).
 

@@ -2,6 +2,9 @@
 
 상태: 채택 (사용자 결정)
 
+개정(#51): Claude 전용 frontmatter가 Codex 목록 로드를 막지 않는 것은 2026-10-01 관찰로 확인했다.
+각 필드의 실행 의미까지 보장한 관찰은 아니다([host-facts](../../research/host-facts.md#codex)).
+
 ## 맥락
 
 사용자는 같은 프로젝트들에서 Claude Code와 Codex를 함께 쓴다. 두 호스트는 같은 SKILL.md 형식(Agent Skills

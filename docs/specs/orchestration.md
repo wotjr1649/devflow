@@ -177,7 +177,9 @@ Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔�
 | 한 파일 안의 기계적 변경이고 `highRisk` 경로가 아님 | diff | 작업별 리뷰를 생략. 최종 리뷰가 확인한다 |
 
 이 표와 승격 밖의 route(다른 역할의 effort 정의, 훅 강제, 선언형 route)는 보류다. 다시 볼 조건은
-[ADR-0017](../design/decisions/ADR-0017-drop-m4-defer-route.md)에 있다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선하므로, 같은 조건을 그 값으로 적용한다.
+[ADR-0017](../design/decisions/ADR-0017-drop-m4-defer-route.md)에 있다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선한다. 다만 호스트의 현재 도구 지침이 지정 권한을
+제한할 수 있으므로 그 지침을 먼저 따른다. 표의 값이 실제로 적용되는지는 실행 기록으로 확인하고, 확인하지 못하면
+미확인으로 남긴다([ADR-0017](../design/decisions/ADR-0017-drop-m4-defer-route.md)).
 Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이전트의 `sandbox_mode`는 부모 sandbox를 좁히지 못한다
 ([host-facts](../research/host-facts.md#codex)).
 

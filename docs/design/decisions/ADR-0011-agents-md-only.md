@@ -2,6 +2,9 @@
 
 상태: 채택 (사용자 결정)
 
+개정(#51): 아래 compact 재주입의 불확실성은 해소됐다. 내장 `agents-md` 플러그인이 컨텍스트를 만들 때마다
+상위 AGENTS.md를 다시 로드한다. 하위 파일의 로드 조건은 [host-facts](../../research/host-facts.md)가 구분한다.
+
 ## 맥락
 
 - Claude Code는 2.1.277부터 CLAUDE.md가 없으면 AGENTS.md를 직접 읽는다. Codex는 처음부터 AGENTS.md를 읽는다.

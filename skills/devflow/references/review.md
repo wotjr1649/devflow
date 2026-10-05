@@ -29,7 +29,7 @@ disappear later, and `devflow-state` writes an Issue only from its branch. Rules
    action, and any intervention not yet counted, with `metric` on the card's `Tool:` command.
 2. Run the project's `verify` gate, and on the Issue branch `devflow-doctor` where `.devflow.json` lists `tests`.
    Any `tests unlocked` line in the ledger's notes goes into the ship checkpoint with its reason.
-3. Decide the trigger eval by [eval](../../../docs/specs/lifecycle.md#eval): `git diff --name-status <base>..HEAD -- skills
+3. Decide the trigger eval by [eval](../../../docs/specs/eval.md#eval): `git diff --name-status <base>..HEAD -- skills
    evals/trigger` shows added, deleted or renamed skills and any changed eval case, and `git diff -U0 <base>..HEAD --
    'skills/*/SKILL.md'` shows changed frontmatter lines. When it is due, ask the user to run it in their terminal, since
    it cannot authenticate inside a session, with `--no-publish` as in that command, so the report stays local. Record

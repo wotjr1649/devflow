@@ -3,6 +3,9 @@
 상태: 채택 (사용자 결정). 개정: 카드가 있어도 새 작업 요청은 development-start가 받고 경로를 가른다
 ([ADR-0018](ADR-0018-new-work-goes-to-development-start.md), #45).
 
+개정(#51): 단계는 11개와 종료 상태 `done`이다. 아래의 12개 표기는 잘못된 수치였으며
+현재 계약은 [lifecycle](../../specs/lifecycle.md#단계)을 따른다.
+
 ## 맥락
 
 - 처음 안은 라우터 하나가 모든 단계 내용을 references로 흡수하는 것이었다.

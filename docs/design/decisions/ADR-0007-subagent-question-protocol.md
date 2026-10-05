@@ -2,6 +2,9 @@
 
 상태: 채택 (사용자 결정)
 
+개정(#51): Codex의 같은 에이전트 후속 작업 수신은 2026-10-01 관찰로 확인했다.
+실행 중 동기식 질문을 보장한다는 뜻은 아니다([host-facts](../../research/host-facts.md#codex)).
+
 ## 맥락
 
 - Claude Code는 서브에이전트에서 `AskUserQuestion`을 제거한다.

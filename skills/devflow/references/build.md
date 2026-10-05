@@ -26,6 +26,10 @@ passing, and the ledger holds the last commit and the next task.
 
 ## Delegating (M2, M3)
 
+In interactive M2, the main agent may make a one- or two-line edit describable in one sentence and record it in the
+ledger; a new delegation costs more than the edit. Unattended work keeps a fresh context for every task
+([execution modes](../../../docs/specs/orchestration.md#실행-모드)).
+
 In M2 and M3 each task gets a narrow review before the next starts: the `reviewer` with `model: sonnet`, given
 that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it.
 

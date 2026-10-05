@@ -54,9 +54,10 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 - **Claude Workflows**: devflow는 배포하지 않고 실행 모드로도 두지 않는다. 사용자가 devflow 밖에서 직접 실행한다
   ([ADR-0017](decisions/ADR-0017-drop-m4-defer-route.md))
 - **훅**: 재개 카드(SessionStart), Issue 쓰기 차단과 보호 경로 차단(PreToolUse), 자율 모드 전용 계속(Stop),
-  지침 파일 편집 시 감사, 세션이 끝날 때 해제(SessionEnd, 돌지 않으면 30분 만료), 공개 전 관문(git pre-push)
+  시험 잠금과 분석 시간 제한, 지침 파일 편집 시 감사, 세션이 끝날 때 해제(SessionEnd, 돌지 않으면 30분 만료), 공개 전 관문(git pre-push)
 - **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드), `devflow-doctor`(구조·문서 감사),
   `devflow-metrics`(세션 기록에서 사이클 지표, 읽기 전용), `devflow-install-check`(배포 worktree와 설치본이 `main`과 같은지).
+  `devflow-codex-eval`은 설치된 스킬의 수동 트리거 평가를 실행한다([eval](../specs/eval.md)).
   리뷰에 넘기는 BASE..HEAD diff 파일(`review-package`)은 스크립트 없이 라우터의 review reference가 `git diff`로 만든다
 - **템플릿과 eval**: Issue intent, REVIEW.md, AGENTS.md, ignore·attributes 블록, 트리거 eval
 

@@ -2,6 +2,9 @@
 
 상태: 채택. Issue #38. 2026-10-04. 격리 모드는 #39에서 실제 CODEX_HOME 모드로 대체됐다(맨 아래 절).
 
+개정(#51): 아래 격리·guard·전용 CODEX_HOME·옵션 설명은 결정 이력이다. #39에서 superseded됐으며
+현재 실행 조건과 옵션은 [eval](../../specs/eval.md#codex-트리거-eval)이 소유한다.
+
 ## 결정과 이유
 
 Claude의 24개 프롬프트·grader를 유지하며 Codex에서도 호출 여부를 기록한다. #36은 세 양성·한 중립 사례에서
@@ -77,7 +80,7 @@ native plugin 활성화 설정과 guard 신뢰 기록을 유지하고 app-server
 codex exec의 작업 완료·workspace diff·verifier·사용량을 수집한다. 기존 24개 grader의 SKILL.md 읽기 판정은 제공하지 않으므로
 이번 트리거 평가의 실행기를 대체하지 않는다. 활성 플러그인과 실제 실행기를 구분해 보고한다.
 
-반복 횟수·전역 지침 모드는 명시적 옵션으로 선택한다([eval 계약](../../specs/lifecycle.md#codex-트리거-eval)).
+반복 횟수·전역 지침 모드는 명시적 옵션으로 선택한다([eval 계약](../../specs/eval.md#codex-트리거-eval)).
 각 반복은 독립된 시도이고 실패·invalid를 대체하는 재시도가 아니다. 원본 전역 지침은 참조만 하고,
 실행 중 변경 및 이어가기에서 조건이 달라지는 것을 거부한다. 전역 지침 유지나 플러그인 비활성화로
 Windows 파일 접근 경계가 생기지는 않으므로 모델 호출 전 OS 사전 검사 조건을 유지한다.

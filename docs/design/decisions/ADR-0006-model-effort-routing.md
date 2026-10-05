@@ -5,6 +5,9 @@ Opus `medium`(승격 시 `high`)으로, 보안 리뷰 기본을 `xhigh`에서 `h
 이어서 정의를 도구·effort 기준 6개로 합치고, Codex 탐색·요약을 Luna `high` 기본으로 바꿨다(설계 검토 반영, 사용자 결정).
 표 밖으로 route를 넓히는 일은 [ADR-0017](ADR-0017-drop-m4-defer-route.md)에서 보류했다(#41).
 
+개정(#51): 아래 파일럿 질문 중 Luna `xhigh` 지원은 2026-10-01 `debug models`로 확인했다.
+품질·승격 비용은 별도 측정 대상이다([host-facts](../../research/host-facts.md#codex)).
+
 ## 맥락
 
 - Opus 5.5와 Sonnet 5.5는 Claude Code에서 기본 effort가 `medium`이다. Opus 5.5의 `medium`은 코딩에서 Opus 5의

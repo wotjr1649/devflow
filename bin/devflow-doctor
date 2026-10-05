@@ -54,11 +54,14 @@ const tokens = s => {
 }
 const slug = h => h.trim().toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s/g, '-')
 
-// A git that does not answer within the limit counts as a failed call, so a hung git cannot hold the gate (Issue #52).
+// A git that does not answer within the limit ends doctor with a failure that names it, so a hung git can neither hold
+// the gate nor pass it with checks that saw an empty file list (Issue #52).
 const GIT_TIMEOUT_MS = 30000
+class GitTimeout extends Error {}
 function git(root, args) {
   // core.quotePath=false: git otherwise quotes non-ASCII names, which then match no file on disk.
   const r = spawnSync('git', ['-C', root, '-c', 'core.quotePath=false', ...args], { encoding: 'utf8', windowsHide: true, timeout: GIT_TIMEOUT_MS })
+  if (r.error && r.error.code === 'ETIMEDOUT') throw new GitTimeout(`git ${args.join(' ')} did not finish within ${GIT_TIMEOUT_MS / 1000} s`)
   return r.status === 0 ? r.stdout : null
 }
 
@@ -72,7 +75,16 @@ const isFile = p => {
 
 // Checks the repository at dir. With only (paths relative to the root), checks just those files and the rules about
 // instruction files, which is what the hook needs after an edit.
-function doctor(dir, { only } = {}) {
+function doctor(dir, opts) {
+  try {
+    return checks(dir, opts)
+  } catch (e) {
+    if (!(e instanceof GitTimeout)) throw e
+    return { lines: [`FAIL git: ${e.message}`, '1 failures'], failures: 1 }
+  }
+}
+
+function checks(dir, { only } = {}) {
   const out = []
   const fail = (area, msg) => out.push(`FAIL ${area}: ${msg}`)
   const warn = (area, msg) => out.push(`WARN ${area}: ${msg}`)
@@ -295,7 +307,8 @@ function doctor(dir, { only } = {}) {
       ledger = ctx && ctx.issue ? state.readLedger(ctx.store, ctx.issue) : null
     } catch {
       unread = true
-      if (configured) fail('tests', `the ledger of Issue #${ctx.issue} cannot be read, so whether the tests are locked is unknown`)
+      // A ledger that cannot be read fails whether or not the profile lists tests: dropping the key must not hide it (#52).
+      fail('tests', `the ledger of Issue #${ctx.issue} cannot be read, so whether the tests are locked is unknown`)
     }
     // No ledger file: a new Issue branch has none until its first write, but deleting it must not drop the check unseen (#28).
     if (configured && !unread && !ledger && ctx && ctx.issue) warn('tests', `Issue #${ctx.issue} has no ledger, so whether its tests are locked is unknown`)

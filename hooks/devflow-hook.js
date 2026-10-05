@@ -998,8 +998,10 @@ function readStdin() {
 }
 
 // Outside a devflow repository the analysis allows everything, so the hook neither starts it nor denies for its own
-// reasons there: no deadline or late-input denial in a project that does not use devflow (Issue #52). Only a local
-// folder is looked at; a network folder could hold the lookup open, and is left to the bounded analyzer.
+// reasons there: no deadline or late-input denial in a project that does not use devflow (Issue #52). A folder spelled
+// as a share (\\host or //host) is left to the bounded analyzer. A share mounted as a drive or a path looks local: if it
+// stops answering, this lookup waits until the host's timeout and the host lets the call through, a recorded limit
+// (docs/specs/repository.md, the owner's decision).
 const outsideDevflow = cwd => typeof cwd === 'string' && cwd !== '' && localPath(cwd) && !devflowRoot(cwd)
 // The session's folder from input that stopped arriving: the top-level "cwd", which both hosts send before the tool
 // input. A "cwd" inside the tool input names nothing about the session, so one seen after "tool_input" is not used.

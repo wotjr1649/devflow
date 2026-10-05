@@ -450,7 +450,7 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
   for (const c of [
     `cd "${o}" && echo '{}' > .devflow.json`,
     `cd ${o} && printf x > .devflow.json && rm -f tests/a.test.js`,
-    `(cd "${o}" && cat > .devflow.json <<'EOF'\n{}\nEOF\n)`,
+    `cd "${o}" && echo '{"tests":["t/**"]}' > .devflow.json`,
     `Set-Location '${o}' && Set-Content .devflow.json x`,
     `cd "${o}" && git add .devflow.json && node x.js > .devflow.json`,
   ]) assert.equal(run(c), '', c)
@@ -500,6 +500,14 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
     `Set-Location '${o}' && Invoke-Command { Set-Location '${here}' } && Set-Content .devflow.json x`,
     `cd ${o}<-> && echo x > .devflow.json`,
     `cd "${o}" && bash -c "echo x > .devflow.json"`, // a shell may read definitions its parent exported
+    // Fourth re-review: text a shell splits otherwise than the parser, a provider drive, and a script named like a program.
+    `echo() cd ${here}; cd "${o}" && echo && printf x > .devflow.json`,
+    `New-Item function:Set-Location -Value x; Set-Location '${o}' && Set-Content .devflow.json x`,
+    `cd ${here.slice(0, -1)}\`${here.slice(-1)} && Set-Content .devflow.json x`,
+    `Write-Output \`\ncd "${o}" && Set-Content .devflow.json x`,
+    `Set-Location '${o}' && ./echo.ps1 && Set-Content .devflow.json x`,
+    'pushd tests > /dev/null && rm a.test.js',
+    'cd tests 2>/dev/null && rm a.test.js',
   ]) assert.equal(run(c), 'deny', c)
   // Git Bash mounts /tmp on the user's temp folder, where this repository is; the hook cannot place it.
   if (process.platform === 'win32') {

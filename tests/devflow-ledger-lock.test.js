@@ -472,10 +472,14 @@ test('a comment gh reports as failed but GitHub has is not posted again (#49)', 
 })
 
 test('a failed comment GitHub lacks stays a plain failure; one that cannot be read back is reported unknown (#49)', () => {
-  let e = ghAnswers(repo(), args => (args[1] === 'comment' ? TIMEOUT : null))
-  assert.deepEqual(state.write(e, '.', 'comment', 1, COMMENT), { code: 1, out: 'comment failed (gh exit ETIMEDOUT)' })
-  e = ghAnswers(repo(), args => (args[1] === 'comment' ? TIMEOUT : args[0] === 'api' ? withComment(COMMENT, new Date(Date.now() - 3600e3).toISOString()) : null))
+  const FAILED = { code: 1, stdout: '', stderr: '' }
+  let e = ghAnswers(repo(), args => (args[1] === 'comment' ? FAILED : null))
+  assert.deepEqual(state.write(e, '.', 'comment', 1, COMMENT), { code: 1, out: 'comment failed (gh exit 1)' })
+  e = ghAnswers(repo(), args => (args[1] === 'comment' ? FAILED : args[0] === 'api' ? withComment(COMMENT, new Date(Date.now() - 3600e3).toISOString()) : null))
   assert.equal(state.write(e, '.', 'comment', 1, COMMENT).code, 1, 'an hour-old identical comment is not this one')
+  // A gh killed by the time limit may have sent the post, and GitHub may not show it yet: missing is unknown then (review).
+  e = ghAnswers(repo(), args => (args[1] === 'comment' ? TIMEOUT : null))
+  assert.match(state.write(e, '.', 'comment', 1, COMMENT).out, /posting state unknown/)
   e = ghAnswers(repo(), args => (args[1] === 'comment' || args[0] === 'api' ? TIMEOUT : null))
   const r = state.write(e, '.', 'comment', 1, COMMENT)
   assert.equal(r.code, 1)
@@ -521,4 +525,30 @@ test('an unconfirmed post GitHub does not have is posted by the next flush (#49)
   assert.equal(state.flush(e, '.').code, 0)
   assert.equal(sent(e, 'comment'), 1)
   assert.deepEqual(ledgerOf(root).pendingPosts, [])
+})
+
+test('flush reads a post back only for this branch Issue; a ledger issue value never reaches gh as is (#49 security review)', () => {
+  const root = repo({ mode: 'interactive', pendingPosts: [{ id: 'x', op: 'comment', issue: '@secret.txt', text: COMMENT, unconfirmed: { at: Date.now() } }] })
+  const e = env(root)
+  assert.equal(state.flush(e, '.').code, 1)
+  assert.deepEqual(e.calls.filter(c => c.cmd === 'gh' && c.args.some(a => String(a).includes('@secret'))), [])
+})
+
+test('an unconfirmed mark that is not a past time stops the flush at that post instead of guessing (#49 review)', () => {
+  for (const at of ['soon', Date.now() + 3600e3]) {
+    const root = repo({ mode: 'interactive', pendingPosts: [{ id: 'u', op: 'comment', issue: 1, text: COMMENT, unconfirmed: { at } }] })
+    const e = env(root)
+    const r = state.flush(e, '.')
+    assert.equal(r.code, 1, JSON.stringify(at))
+    assert.match(r.out, /unconfirmed mark/)
+    assert.equal(sent(e, 'comment'), 0)
+    assert.equal(ledgerOf(root).pendingPosts.length, 1)
+  }
+})
+
+test('a timed-out flush post GitHub does not show yet is marked, not posted blind by the next flush (#49 review)', () => {
+  const root = repo({ mode: 'interactive', pendingPosts: [{ op: 'comment', issue: 1, text: COMMENT }] })
+  const e = ghAnswers(root, args => (args[1] === 'comment' ? TIMEOUT : null))
+  assert.equal(state.flush(e, '.').code, 1)
+  assert.ok(ledgerOf(root).pendingPosts[0].unconfirmed)
 })

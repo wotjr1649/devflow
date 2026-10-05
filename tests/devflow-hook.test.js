@@ -694,11 +694,11 @@ test('a chain of links is judged by every link in it, up to a limit (#53)', t =>
   assert.equal(hook.localPath(path.join(d, 'l8', 'x')), false, 'a chain past the limit counts as remote')
   // Review: each link counts once, however deep it sits under other relative links.
   fs.mkdirSync(path.join(d, 'R1', 'R2', 'R3', 'R4'), { recursive: true })
-  link('L1', 'R1')
-  link(path.join('R1', 'L2'), 'R2')
-  link(path.join('R1', 'R2', 'L3'), 'R3')
-  link(path.join('R1', 'R2', 'R3', 'L4'), 'R4')
-  assert.equal(hook.localPath(path.join(d, 'L1', 'L2', 'L3', 'L4', 'x')), true, 'four nested relative links')
+  link('N1', 'R1')
+  link(path.join('R1', 'N2'), 'R2')
+  link(path.join('R1', 'R2', 'N3'), 'R3')
+  link(path.join('R1', 'R2', 'R3', 'N4'), 'R4')
+  assert.equal(hook.localPath(path.join(d, 'N1', 'N2', 'N3', 'N4', 'x')), true, 'four nested relative links')
 })
 
 test('an unreadable profile applies the same repair exception to shell and edit writes', () => {

@@ -1256,3 +1256,16 @@ test('a lock with its failing evidence still protects the tests (#50)', () => {
   const out = hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, 'tests', 'a.test.js') } }))
   assert.match(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /locked/)
 })
+
+test('zsh last-pipeline cd writes where the parser includes a candidate (#53 follow-up)', t => {
+  if (spawnSync('zsh', ['--version'], {timeout: 5000}).status !== 0) return t.skip('zsh unavailable')
+  const cwd = dir(true)
+  const command = 'true | cd sub; printf x > pipeline-proof.txt'
+  const r = spawnSync('zsh', ['-f', '-c', command], {cwd, encoding: 'utf8', timeout: 10000})
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(fs.readFileSync(path.join(cwd, 'sub', 'pipeline-proof.txt'), 'utf8'), 'x')
+  const targets = []
+  hook.issueWrite(command, {cwd, env: noAliases, protect: ts => {targets.push(...ts.map(t => t.path)); return null}})
+  assert.ok(targets.includes(path.join(cwd, 'sub', 'pipeline-proof.txt')))
+  assert.ok(targets.includes(path.join(cwd, 'pipeline-proof.txt')))
+})

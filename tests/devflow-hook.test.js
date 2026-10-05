@@ -81,6 +81,19 @@ test('PowerShell comment and quote readings do not hide trailing redirects (#53 
     'the first #> ends the block comment; the remaining # starts a line comment')
 })
 
+test('PowerShell literal backslashes and backtick escapes retain redirects (#53 quote review)', () => {
+  const cwd = dir(true)
+  for (const src of [
+    String.raw`echo "\" > probe.txt #"`,
+    String.raw`echo $'a' "\" > probe.txt #"`,
+    String.raw`echo arg\ > probe.txt`,
+  ]) {
+    const targets = []
+    hook.issueWrite(src, {cwd, env: noAliases, protect: ts => {targets.push(...ts.map(t => t.path)); return null}})
+    assert.ok(targets.includes(path.join(cwd, 'probe.txt')), src)
+  }
+})
+
 test('a pipeline cd contributes a possible working directory without discarding the original (#53 follow-up)', () => {
   const cwd = dir(true)
   const targets = []

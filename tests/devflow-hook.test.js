@@ -508,6 +508,8 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
     `Set-Location '${o}' && ./echo.ps1 && Set-Content .devflow.json x`,
     'pushd tests > /dev/null && rm a.test.js',
     'cd tests 2>/dev/null && rm a.test.js',
+    // Fifth re-review: a provider path spelled with quotes inside the word.
+    `New-Item fun'ction:Set-Location' -Value x; Set-Location '${o}' && Set-Content .devflow.json x`,
   ]) assert.equal(run(c), 'deny', c)
   // Git Bash mounts /tmp on the user's temp folder, where this repository is; the hook cannot place it.
   if (process.platform === 'win32') {

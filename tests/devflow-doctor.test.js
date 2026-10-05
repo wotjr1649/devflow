@@ -433,3 +433,33 @@ test('an unreadable ledger fails doctor even when the profile lists no tests (#5
   fs.writeFileSync(ledger, '{ broken')
   assert.ok(failures(d).includes('FAIL tests: the ledger of Issue #5 cannot be read, so whether the tests are locked is unknown'), failures(d).join('\n'))
 })
+
+// Any git run that fails to complete - not only a timeout - ends doctor by name, including the git calls the test-lock
+// check makes through devflow-state (#52 re-review).
+function doctorWith(fake, d) {
+  const cp = require('child_process')
+  const spawn = cp.spawnSync
+  cp.spawnSync = (cmd, args, opts) => fake(cmd, args, opts) || spawn(cmd, args, opts)
+  const ids = ['../bin/devflow-doctor', '../bin/devflow-state'].map(m => require.resolve(m))
+  ids.forEach(id => delete require.cache[id])
+  try {
+    return require('../bin/devflow-doctor').doctor(d)
+  } finally {
+    cp.spawnSync = spawn
+    ids.forEach(id => delete require.cache[id])
+  }
+}
+const failed = code => ({ status: null, stdout: '', stderr: '', error: Object.assign(new Error(code), { code }) })
+
+test('git output too large for the buffer fails doctor instead of an empty file list (#52 re-review)', () => {
+  const r = doctorWith((cmd, args) => (cmd === 'git' && args.includes('ls-files') ? failed('ENOBUFS') : null), repo())
+  assert.ok(r.failures > 0 && r.lines.some(l => /^FAIL git: git .*ls-files.* failed \(ENOBUFS\)$/.test(l)), r.lines.join('\n'))
+})
+
+test("a git timeout in the test-lock check's repository lookup fails doctor (#52 re-review)", () => {
+  const d = repo({ ...GOOD, '.devflow.json': '{ "tests": ["tests/**"] }\n', 'tests/a.test.js': 'ok\n' })
+  git(d, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'a')
+  git(d, 'switch', '-q', '-c', 'fix/5-x')
+  const r = doctorWith((cmd, args) => (cmd === 'git' && args.includes('--show-current') ? failed('ETIMEDOUT') : null), d)
+  assert.ok(r.failures > 0 && r.lines.some(l => /^FAIL git: git .*--show-current.* failed \(ETIMEDOUT\)$/.test(l)), r.lines.join('\n'))
+})

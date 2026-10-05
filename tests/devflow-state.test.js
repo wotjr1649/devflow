@@ -450,15 +450,22 @@ test('without a command a lock takes only checkable evidence: a CI run of this r
   assert.match(state.main(['ledger-update', '1'], () => '{"testsFailing":{"ci":"x"}}', e, '.').out, /testsFailing changes only through/)
 })
 
-test('metric eval records passed/total under the lock and keeps the other metrics (#27)', () => {
-  const root = repo({ ledger: { metrics: { interventions: 2 }, notes: [], stage: 'ship' } })
+test('metric eval records passed/total per host with the revision it ran on, under the lock, keeping the other metrics (#27, #50)', () => {
+  // A ledger from before #50 holds one result, which was the Claude run.
+  const root = repo({ ledger: { metrics: { interventions: 2, eval: { passed: 40, total: 41 } }, notes: [], stage: 'ship' } })
   const e = env(root)
-  assert.deepEqual(state.main(['metric', '1', 'eval', '41/41'], () => 'trigger eval after a description change', e, '.'), { code: 0, out: 'eval 41/41' })
-  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  assert.deepEqual(ledger.metrics, { interventions: 2, eval: { passed: 41, total: 41 } })
-  assert.equal(ledger.notes[ledger.notes.length - 1], 'eval 41/41: trigger eval after a description change')
-  for (const v of ['42/41', 'x/2', '1/0', '']) assert.equal(state.main(['metric', '1', 'eval', v], () => 'n', e, '.').code, 2, v)
-  assert.equal(state.main(['metric', '1', 'eval', '1/2'], () => ' ', e, '.').code, 2, 'a note is required')
+  const ev = (score, ...a) => state.main(['metric', '1', 'eval', score, ...a], () => 'trigger eval after a description change', e, '.')
+  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  assert.deepEqual(ev('28/29', '--host', 'codex', '--rev', 'def5678'), { code: 0, out: 'eval codex 28/29 @def5678' })
+  assert.deepEqual(ledger().metrics, { interventions: 2, eval: { claude: { passed: 40, total: 41 }, codex: { passed: 28, total: 29, rev: 'def5678' } } })
+  assert.deepEqual(ev('41/41', '--host', 'claude', '--rev', 'abc1234'), { code: 0, out: 'eval claude 41/41 @abc1234' })
+  assert.deepEqual(ledger().metrics.eval, { claude: { passed: 41, total: 41, rev: 'abc1234' }, codex: { passed: 28, total: 29, rev: 'def5678' } })
+  assert.equal(ledger().notes.at(-1), 'eval claude 41/41 @abc1234: trigger eval after a description change')
+  for (const v of ['42/41', 'x/2', '1/0', '']) assert.equal(ev(v, '--host', 'claude', '--rev', 'abc1234').code, 2, v)
+  assert.equal(ev('1/2').code, 2, 'the host and revision are required')
+  assert.equal(ev('1/2', '--host', 'gemini', '--rev', 'abc1234').code, 2)
+  assert.equal(ev('1/2', '--host', 'codex', '--rev', 'HEAD').code, 2, 'a commit id, not a name that moves')
+  assert.equal(state.main(['metric', '1', 'eval', '1/2', '--host', 'codex', '--rev', 'abc1234'], () => ' ', e, '.').code, 2, 'a note is required')
 })
 
 test('pending drop takes one queued post out with its reason, only in an interactive turn and never under a live flush (#27)', () => {

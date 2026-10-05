@@ -362,9 +362,10 @@ test('report holds integers only, sums the ledger, and the public line has a fix
   const { report } = await measure(root, { claude, codex })
   const leaves = (o, at = '') => Object.entries(o).flatMap(([k, v]) => (v && typeof v === 'object' ? leaves(v, `${at}${k}.`) : [[at + k, v]]))
   for (const [k, v] of leaves(report)) assert.ok(Number.isInteger(v), `${k} is not an integer`)
-  assert.equal(report.schema, 2)
+  assert.equal(report.schema, 3)
   assert.equal(report.activeMinutes, 2, 'claude 90 s and codex 30 s overlap into one 90 s span')
-  assert.deepEqual(report.manual, { interventions: 2, filterFalsePositives: 1, guardBlocks: 0, counts: { fix: 2, promote: 0, continue: 2 }, eval: { passed: 5, total: 6 } })
+  assert.deepEqual(report.manual, { interventions: 2, filterFalsePositives: 1, guardBlocks: 0, counts: { fix: 2, promote: 0, continue: 2 },
+    eval: { claude: { passed: 5, total: 6 }, codex: { passed: 0, total: 0 } } }, 'a ledger from before #50 holds the Claude result')
   assert.equal(metrics.line(report),
     '- 측정(v2): calls 2, inputUncached 41, cacheRead 70, cacheWrite 5, output 10, tools 1, subagents 0, activeMinutes 2, interventions 2, filterFalsePositives 1, guardBlocks 0')
 })
@@ -542,4 +543,14 @@ test('any turn_duration ends the running turn, and a long gap restarts it (2026-
     cl.assistant(330, { id: 'm3', ...on }),
   ])
   assert.deepEqual((await measure(root, { claude: home })).c.intervals.main, [[ms(300), ms(330)]])
+})
+
+// Issue #50: each host's trigger eval is kept apart; the revision stays in the ledger and the public checkpoint line.
+test('report keeps the trigger eval per host (#50)', async () => {
+  const root = gitRepo()
+  write(path.join(root, '.work', 'devflow', 'i4', 'ledger.json'), [{
+    metrics: { eval: { claude: { passed: 29, total: 29, rev: 'abc1234' }, codex: { passed: 27, total: 29, rev: 'def5678' } } },
+  }])
+  const { report } = await measure(root, { claude: tmp('dfm-c-'), codex: tmp('dfm-x-') })
+  assert.deepEqual(report.manual.eval, { claude: { passed: 29, total: 29 }, codex: { passed: 27, total: 29 } })
 })

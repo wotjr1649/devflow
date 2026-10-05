@@ -6,6 +6,7 @@ const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
 const crypto = require('crypto')
+const os = require('os')
 // Windows looks for git.exe and gh.exe in the working folder before PATH; a cloned repository must not supply them.
 if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
 
@@ -1008,6 +1009,42 @@ const NOT_A_LIST = "refused: the ledger's pendingPosts is not a list; a person f
 const notAList = ledger => ledger.pendingPosts !== undefined && ledger.pendingPosts !== null &&
   (!Array.isArray(ledger.pendingPosts) || ledger.pendingPosts.some(p => !p || typeof p !== 'object'))
 const queueOf = ledger => (Array.isArray(ledger.pendingPosts) ? ledger.pendingPosts : [])
+// The ledger is a working-tree file a clone or an unpacked archive can bring along, queue and all. So each queued post
+// carries an HMAC under a key kept outside every repository (DEVFLOW_HOME, else ~/.devflow), and flush posts nothing
+// while the queue holds a post without a matching one.
+const queueKeyFile = () => path.join(process.env.DEVFLOW_HOME || path.join(os.homedir(), '.devflow'), 'queue.key')
+const KEY_SHAPE = /^[0-9a-f]{64}$/
+function queueKey(create) {
+  const file = queueKeyFile()
+  for (let i = 0; i < 2; i++) {
+    try {
+      const st = fs.lstatSync(file)
+      if (!st.isFile() || st.size !== 64) return null
+      const key = fs.readFileSync(file, 'utf8')
+      return KEY_SHAPE.test(key) ? key : null
+    } catch (err) {
+      if (err.code !== 'ENOENT' || !create) return null
+    }
+    // Written whole under another name and linked into place, so a second process never reads half a key or replaces
+    // the one the first already signed with.
+    const tmp = `${file}.${token()}`
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+      fs.writeFileSync(tmp, crypto.randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 })
+      fs.linkSync(tmp, file)
+    } catch (err) {
+      if (err.code !== 'EEXIST') return null
+    } finally {
+      try { fs.rmSync(tmp, { force: true }) } catch {}
+    }
+  }
+  return null
+}
+const macOf = (key, p) => crypto.createHmac('sha256', key)
+  .update(JSON.stringify([p.id, p.op, p.issue, p.title ?? null, p.text ?? null, p.at ?? null])).digest('hex')
+const signedWith = (key, p) => !!key && typeof p.mac === 'string' && KEY_SHAPE.test(p.mac) &&
+  crypto.timingSafeEqual(Buffer.from(p.mac), Buffer.from(macOf(key, p)))
+const POST_ID = /^[\w-]{1,64}$/
 const ZERO = Symbol('nothing to undo')
 const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.store, n))
 
@@ -1062,7 +1099,10 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
     if (op === 'check' && queued.some(p => p.op === 'intent' && p.issue === n)) {
       return { result: { code: 1, out: 'refused: a queued intent renumbers the criteria; check after it is posted', guard: 'state-check-after-intent' } }
     }
-    const pendingPosts = [...queued, { id: token(), op, issue: n, title, text, at: new Date().toISOString() }]
+    const key = queueKey(true)
+    if (!key) return { result: { code: 1, out: `refused: no queue key could be read or made at ${queueKeyFile()}; it must be a plain file of 64 hex characters` } }
+    const post = { id: token(), op, issue: n, title, text, at: new Date().toISOString() }
+    const pendingPosts = [...queued, { ...post, mac: macOf(key, post) }]
     return { ledger: { ...ledger, pendingPosts }, result: { code: 0, out: `queued ${op} for the next interactive turn (${pendingPosts.length} pending)${unread}` } }
   }
   // An interactive write only reads the ledger, so it needs no lock and a folder that cannot take one does not stop it.
@@ -1336,10 +1376,15 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   if (legacyOf(ctx, n)) return LEGACY(n)
   const by = token()
   const now = Date.now()
+  const key = queueKey(false)
   const claim = updateLedger(ctx.store, n, ledger => {
     // Queued posts wait for a person: an unattended run cannot flush its own queue.
     if (ledger.mode === 'autonomous') return { result: 'autonomous' }
     if (notAList(ledger)) return { result: 'notlist' }
+    // A post this machine did not queue stops the whole flush; each gets an id a person can drop it by.
+    const named = queueOf(ledger).map(p => (typeof p.id === 'string' && POST_ID.test(p.id) ? p : { ...p, id: token() }))
+    const unsigned = named.filter(p => !signedWith(key, p)).map(p => p.id)
+    if (unsigned.length) return { ledger: { ...ledger, pendingPosts: named }, result: { unsigned } }
     const queued = queueOf(ledger)
     // A claim dated ahead of now is void: it would hold the queue for as long as the date says.
     if (queued.some(p => p.claimed && now - p.claimed.at < CLAIM_MS && p.claimed.at <= now + 60000)) return { result: 'busy' }
@@ -1350,6 +1395,10 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   if (claim.result === 'autonomous') return guarded(ctx, { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn', guard: 'state-autonomous-flush' })
   if (claim.result === 'busy') return { code: 1, out: 'refused: another flush is posting this queue; try again later' }
   if (claim.result === 'notlist') return { code: 1, out: NOT_A_LIST }
+  if (claim.result.unsigned) {
+    return guarded(ctx, { code: 1, guard: 'state-unsigned-post', out: `refused: queued posts ${claim.result.unsigned.join(', ')} were not ` +
+      `queued by devflow-state on this machine, so nothing was posted; read them with devflow-state pending, then take each out: devflow-state pending drop ${n} <id> < reason` })
+  }
   const posts = claim.ledger ? claim.ledger.pendingPosts : []
   const out = []
   const tryUpdate = fn => {
@@ -1570,4 +1619,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { running, mainTree, legacyOf, INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { queueKey, macOf, running, mainTree, legacyOf, INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

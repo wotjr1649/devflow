@@ -68,6 +68,11 @@ function env(root, { data = issue(), gh = null, log = ok(''), branch = BRANCH, h
 }
 
 const ghWrites = e => e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue')
+// Posts as devflow-state queues them on this machine: each with an id and the mark its queue key gives it.
+const signed = posts => posts.map((p, i) => {
+  const post = { id: String(i).padStart(16, '0'), ...p }
+  return { ...post, mac: state.macOf(state.queueKey(true), post) }
+})
 
 test('card shows the writer state block as data with the latest checkpoint', () => {
   const out = state.card(env(repo()), '.')
@@ -290,7 +295,7 @@ test('write and flush refuse gh issue commands devflow-state does not offer (202
     assert.match(state.write(e, '.', op, 1, '', undefined, { flushing: true }).out, /not a devflow-state write/)
     assert.equal(ghWrites(e).length, 0, op)
   }
-  const root = repo({ ledger: { mode: 'interactive', pendingPosts: [{ op: 'lock', issue: 1 }] } })
+  const root = repo({ ledger: { mode: 'interactive', pendingPosts: signed([{ op: 'lock', issue: 1 }]) } })
   const e = env(root)
   assert.equal(state.flush(e, '.').code, 1)
   assert.equal(ghWrites(e).length, 0)
@@ -517,6 +522,44 @@ test('pending drop takes one queued post out with its reason, only in an interac
   // Unattended runs leave the queue to the person, as flush does.
   fs.writeFileSync(path.join(root, '.work/devflow/i1/ledger.json'), JSON.stringify({ ...ledger(), mode: 'autonomous' }))
   assert.match(drop('x', '1', 'p2').out, /interactive/)
+})
+
+// The ledger is a working-tree file, so a cloned or unpacked repository can bring a queue of its own: flush posts only
+// what devflow-state queued with this machine's key, and nothing at all while anything else is in the queue.
+test('flush posts nothing while the queue holds a post devflow-state did not queue on this machine', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: [
+    { op: 'comment', issue: 1, text: checkpoint('brought along') },
+    { id: 'p2', op: 'comment', issue: 1, text: checkpoint('forged'), at: '2026-10-01T00:00:00Z', mac: 'ab'.repeat(32) }] } })
+  const e = env(root)
+  const flushed = state.flush(e, '.')
+  assert.equal(flushed.code, 1)
+  assert.match(flushed.out, /not queued by devflow-state on this machine/)
+  assert.match(flushed.out, /p2/)
+  assert.equal(ghWrites(e).length, 0)
+  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-unsigned-post'])
+  // Each one has an id to drop it by, and none is left claimed.
+  const left = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8')).pendingPosts
+  assert.equal(left.length, 2)
+  assert.ok(left.every(p => typeof p.id === 'string' && p.id && !p.claimed))
+  assert.match(flushed.out, new RegExp(left[0].id))
+})
+
+test('a post queued in an unattended run carries this machine\'s key and flushes', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'autonomous' } })
+  const e = env(root)
+  assert.match(state.write(e, '.', 'comment', 1, checkpoint('queued')).out, /^queued comment/)
+  const key = fs.readFileSync(path.join(process.env.DEVFLOW_HOME, 'queue.key'), 'utf8')
+  assert.match(key, /^[0-9a-f]{64}$/)
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const queued = JSON.parse(fs.readFileSync(file, 'utf8'))
+  assert.match(queued.pendingPosts[0].mac, /^[0-9a-f]{64}$/)
+  // A queued post whose text changed afterwards no longer matches its mark.
+  fs.writeFileSync(file, JSON.stringify({ ...queued, mode: 'interactive', pendingPosts: [{ ...queued.pendingPosts[0], text: checkpoint('changed') }] }))
+  assert.match(state.flush(e, '.').out, /not queued by devflow-state on this machine/)
+  fs.writeFileSync(file, JSON.stringify({ ...queued, mode: 'interactive' }))
+  const flushed = state.flush(e, '.')
+  assert.equal(flushed.code, 0, flushed.out)
+  assert.equal(ghWrites(e).length, 1)
 })
 
 test('ledger-update leaves pendingPosts to devflow-state and keeps running delegations (#27)', () => {
@@ -799,7 +842,7 @@ test('a queue with a non-object item is not a list either, and pending says so (
 })
 
 test('flush does not write over a queue a person broke while it was posting (#35 review)', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: [{ id: 'p1', op: 'comment', issue: 1, text: checkpoint('x') }] } })
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: signed([{ id: 'p1', op: 'comment', issue: 1, text: checkpoint('x') }]) } })
   const file = path.join(root, '.work/devflow/i1/ledger.json')
   // While the post is out, the ledger's queue is hand-edited into something that is not a list.
   const e = env(root)

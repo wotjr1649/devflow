@@ -10,6 +10,9 @@ process.on('exit', () => {
   try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 }) } catch {}
 })
 
+// devflow-state keeps its queue key under DEVFLOW_HOME; tests, and the processes they start, use one in here instead.
+process.env.DEVFLOW_HOME = path.join(root, 'home')
+
 const tmpdir = prefix => fs.mkdtempSync(path.join(root, prefix))
 tmpdir.root = root
 module.exports = tmpdir

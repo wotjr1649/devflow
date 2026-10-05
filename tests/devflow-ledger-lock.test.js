@@ -50,6 +50,12 @@ function env(root, { gh = null, vars = {}, branch = BRANCH } = {}) {
   }
 }
 
+// Posts as devflow-state queues them on this machine: each with an id and the mark its queue key gives it.
+const signed = posts => posts.map((p, i) => {
+  const post = { id: String(i).padStart(16, '0'), ...p }
+  return { ...post, mac: state.macOf(state.queueKey(true), post) }
+})
+
 const dir = root => path.join(root, '.work', 'devflow', 'i1')
 const ledgerOf = root => JSON.parse(fs.readFileSync(path.join(dir(root), 'ledger.json'), 'utf8'))
 const lockFile = root => path.join(dir(root), 'ledger.lock')
@@ -223,9 +229,9 @@ test('a held lock refuses metric and note with a fixed guard id', () => {
 })
 
 test('flush claims the whole queue: a queue another flush claimed is left to it', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: [
+  const root = repo({ mode: 'interactive', pendingPosts: signed([
     { id: 'a', op: 'comment', issue: 1, text: '### Checkpoint build — x\n- y', claimed: { by: 'other', at: Date.now() } },
-  ] })
+  ]) })
   const e = env(root)
   const r = state.flush(e, '.')
   assert.equal(r.code, 1)
@@ -237,10 +243,10 @@ test('flush claims the whole queue: a queue another flush claimed is left to it'
 test('flush posts two same-millisecond items once each and an expired claim again', () => {
   const at = new Date().toISOString()
   const text = '### Checkpoint build — x\n- y'
-  const root = repo({ mode: 'interactive', pendingPosts: [
+  const root = repo({ mode: 'interactive', pendingPosts: signed([
     { op: 'comment', issue: 1, text, at }, { op: 'comment', issue: 1, text, at },
     { id: 'c', op: 'comment', issue: 1, text, at, claimed: { by: 'dead', at: Date.now() - 11 * 60000 } },
-  ] })
+  ]) })
   const e = env(root)
   assert.equal(state.flush(e, '.').code, 0)
   assert.equal(ghWrites(e).length, 3)
@@ -249,7 +255,7 @@ test('flush posts two same-millisecond items once each and an expired claim agai
 
 test('a failed post keeps it and the later items unclaimed for the next flush', () => {
   const text = '### Checkpoint build — x\n- y'
-  const root = repo({ mode: 'interactive', pendingPosts: [{ op: 'comment', issue: 1, text }, { op: 'comment', issue: 1, text }] })
+  const root = repo({ mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text }, { op: 'comment', issue: 1, text }]) })
   const e = env(root, { gh: { code: 1, stdout: '', stderr: '' } })
   assert.equal(state.flush(e, '.').code, 1)
   const left = ledgerOf(root).pendingPosts
@@ -328,7 +334,7 @@ test('the resume card warns about another active session and not about its own',
 // interactive writes; odd locks and claims; validated and capped session warnings; subagents share the session.
 test('a post whose removal cannot take the lock stops the flush and says so', () => {
   const text = '### Checkpoint build — x\n- y'
-  const root = repo({ mode: 'interactive', pendingPosts: [{ op: 'comment', issue: 1, text }, { op: 'comment', issue: 1, text }] })
+  const root = repo({ mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text }, { op: 'comment', issue: 1, text }]) })
   const e = env(root)
   const run0 = e.run
   e.run = (cmd, args, opts) => {
@@ -365,7 +371,7 @@ test('a lock that is not a file is refused as unsafe; a lock from the future is 
   fs.utimesSync(lockFile(root), later, later)
   assert.equal(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } })).ok, true)
   const text = '### Checkpoint build — x\n- y'
-  const root2 = repo({ mode: 'interactive', pendingPosts: [{ id: 'a', op: 'comment', issue: 1, text, claimed: { by: 'x', at: Date.now() + 3600000 } }] })
+  const root2 = repo({ mode: 'interactive', pendingPosts: signed([{ id: 'a', op: 'comment', issue: 1, text, claimed: { by: 'x', at: Date.now() + 3600000 } }]) })
   assert.equal(state.flush(env(root2), '.').code, 0)
 })
 
@@ -504,7 +510,7 @@ test('a new Issue gh reports as failed but GitHub has is not created again (#49)
 })
 
 test('flush marks a post it could not confirm, and the next flush checks it before posting (#49)', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: [{ op: 'comment', issue: 1, text: COMMENT }] })
+  const root = repo({ mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text: COMMENT }]) })
   let e = ghAnswers(root, args => (args[1] === 'comment' || args[0] === 'api' ? TIMEOUT : null))
   let r = state.flush(e, '.')
   assert.equal(r.code, 1)
@@ -520,7 +526,7 @@ test('flush marks a post it could not confirm, and the next flush checks it befo
 })
 
 test('an unconfirmed post GitHub does not have is posted by the next flush (#49)', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: [{ id: 'u', op: 'comment', issue: 1, text: COMMENT, unconfirmed: { at: Date.now() } }] })
+  const root = repo({ mode: 'interactive', pendingPosts: signed([{ id: 'u', op: 'comment', issue: 1, text: COMMENT, unconfirmed: { at: Date.now() } }]) })
   const e = env(root)
   assert.equal(state.flush(e, '.').code, 0)
   assert.equal(sent(e, 'comment'), 1)
@@ -528,7 +534,7 @@ test('an unconfirmed post GitHub does not have is posted by the next flush (#49)
 })
 
 test('flush reads a post back only for this branch Issue; a ledger issue value never reaches gh as is (#49 security review)', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: [{ id: 'x', op: 'comment', issue: '@secret.txt', text: COMMENT, unconfirmed: { at: Date.now() } }] })
+  const root = repo({ mode: 'interactive', pendingPosts: signed([{ id: 'x', op: 'comment', issue: '@secret.txt', text: COMMENT, unconfirmed: { at: Date.now() } }]) })
   const e = env(root)
   assert.equal(state.flush(e, '.').code, 1)
   assert.deepEqual(e.calls.filter(c => c.cmd === 'gh' && c.args.some(a => String(a).includes('@secret'))), [])
@@ -536,7 +542,7 @@ test('flush reads a post back only for this branch Issue; a ledger issue value n
 
 test('an unconfirmed mark that is not a past time stops the flush at that post instead of guessing (#49 review)', () => {
   for (const at of ['soon', Date.now() + 3600e3]) {
-    const root = repo({ mode: 'interactive', pendingPosts: [{ id: 'u', op: 'comment', issue: 1, text: COMMENT, unconfirmed: { at } }] })
+    const root = repo({ mode: 'interactive', pendingPosts: signed([{ id: 'u', op: 'comment', issue: 1, text: COMMENT, unconfirmed: { at } }]) })
     const e = env(root)
     const r = state.flush(e, '.')
     assert.equal(r.code, 1, JSON.stringify(at))
@@ -547,7 +553,7 @@ test('an unconfirmed mark that is not a past time stops the flush at that post i
 })
 
 test('a timed-out flush post GitHub does not show yet is marked, not posted blind by the next flush (#49 review)', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: [{ op: 'comment', issue: 1, text: COMMENT }] })
+  const root = repo({ mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text: COMMENT }]) })
   const e = ghAnswers(root, args => (args[1] === 'comment' ? TIMEOUT : null))
   assert.equal(state.flush(e, '.').code, 1)
   assert.ok(ledgerOf(root).pendingPosts[0].unconfirmed)

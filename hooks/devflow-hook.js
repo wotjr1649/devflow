@@ -50,7 +50,14 @@ const flatten = ws => ws.flatMap(w => (w.dynamic ? [w] : w.text.split(/\s+/).fil
 // PowerShell and cmd separate paths with a backslash, which the Bash reading drops as an escape (Issue #48). The hook
 // cannot tell which shell runs the text (Codex sends pwsh commands as Bash), so a word used as a path counts in both
 // readings: the Bash one, and the raw word without quotes with its backslashes as separators.
-const pathsOf = w => (w.raw.includes('\\') ? [w.text, w.raw.replace(/["']/g, '').replace(/\\/g, '/')] : [w.text])
+const readingsOf = w => (w.raw.includes('\\') ? [w.text, w.raw.replace(/["']/g, '')] : [w.text])
+const pathsOf = w => {
+  const [bash, win] = readingsOf(w)
+  if (win === undefined) return [bash]
+  const p = win.replace(/\\/g, '/')
+  // Off Windows, a drive or share path names no file in the repository.
+  return process.platform !== 'win32' && /^([A-Za-z]:|\/\/)/.test(p) ? [bash] : [bash, p]
+}
 
 // The $(...) and `...` bodies in text the shell expands whatever quotes it holds (an unquoted heredoc body).
 function substitutions(text) {
@@ -354,32 +361,38 @@ function ghWrite(args, ctx, depth) {
 function shellWrite(cmd, k, ctx, depth) {
   const name = baseName(cmd.words[k].raw)
   const args = cmd.words.slice(k + 1)
-  const texts = from => args.slice(from).map(a => a.text).join(' ')
+  // A script handed to the shell, in both readings when a word holds a backslash: the inner shell may be one that keeps
+  // it as a path separator (Issue #48).
+  const texts = from => {
+    const ws = args.slice(from)
+    const bash = ws.map(a => a.text).join(' ')
+    return ws.some(a => a.raw.includes('\\')) ? [bash, ws.map(a => readingsOf(a).at(-1)).join(' ')] : [bash]
+  }
   // Every script the command could run is checked: the -c/-Command text wherever it sits and the first operand when
   // it names a file. Telling an option's value from the script operand needs each shell's option table; checking all
   // candidates needs none, and a later "-c" or an unknown option cannot hide either one.
   const scripts = []
   const files = []
-  if (EVALS.has(name)) scripts.push(texts(0))
+  if (EVALS.has(name)) scripts.push(...texts(0))
   else if (name === 'cmd') {
     const j = args.findIndex(a => /^\/[ck]$/i.test(a.text))
-    if (j >= 0) scripts.push(texts(j + 1))
+    if (j >= 0) scripts.push(...texts(j + 1))
   } else if (SOURCERS.has(name)) {
     if (args[0]) files.push(...pathsOf(args[0]))
   } else if (PWSH.has(name)) {
     let bare = null
     args.forEach((a, i) => {
       const t = a.text
-      if (/^-(c|com\w*)$/i.test(t)) scripts.push(texts(i + 1))
+      if (/^-(c|com\w*)$/i.test(t)) scripts.push(...texts(i + 1))
       else if (/^-(e|ec|en\w*)$/i.test(t) && args[i + 1]) scripts.push(Buffer.from(args[i + 1].text, 'base64').toString('utf16le'))
       else if (/^-f(ile)?$/i.test(t) && args[i + 1]) files.push(...pathsOf(args[i + 1]))
       else if (bare === null && !t.startsWith('-') && (name === 'powershell' || pathsOf(a).some(p => isFile(path.resolve(ctx.cwd, p))))) bare = i
     })
     // Windows PowerShell 5.1 reads a bare argument as -Command; PowerShell 7 reads it as -File.
-    if (bare !== null) name === 'powershell' ? scripts.push(texts(bare)) : files.push(...pathsOf(args[bare]))
+    if (bare !== null) name === 'powershell' ? scripts.push(...texts(bare)) : files.push(...pathsOf(args[bare]))
   } else {
     args.forEach((a, i) => {
-      if (/^-[A-Za-z]*c[A-Za-z]*$/.test(a.text) && args[i + 1]) scripts.push(args[i + 1].text)
+      if (/^-[A-Za-z]*c[A-Za-z]*$/.test(a.text) && args[i + 1]) scripts.push(...readingsOf(args[i + 1]))
     })
     // The first operand that is a file: an option's value (-o pipefail, --rcfile x) is passed over unless it is one.
     const operand = args.find(a => !/^[-+]/.test(a.text) && pathsOf(a).some(p => isFile(path.resolve(ctx.cwd, p))))
@@ -441,10 +454,12 @@ function checkCommand(cmd, ctx, depth) {
   if (words[lead].dynamic && words.some(w => /^(issue|api)$/i.test(w.text))) return 'command name built at run time with Issue words'
   if (PRINTERS.has(names[lead])) return null
   if (/\.(sh|bash|ps1|cmd|bat)$/i.test(words[lead].text) || /^\.{0,2}[\\/]/.test(words[lead].text)) {
-    const body = pathsOf(words[lead]).map(p => readScript(ctx.cwd, p)).find(Boolean) || ''
-    if (/^#!.*\b(sh|bash|zsh|pwsh)\b|^(?!#!)/.test(body) && !body.includes('\0')) {
-      const r = analyze(body, ctx, depth + 1)
-      if (r) return r
+    // Every reading that names a script is checked: a file under one reading's name must not hide the other's.
+    for (const body of pathsOf(words[lead]).map(p => readScript(ctx.cwd, p)).filter(Boolean)) {
+      if (/^#!.*\b(sh|bash|zsh|pwsh)\b|^(?!#!)/.test(body) && !body.includes('\0')) {
+        const r = analyze(body, ctx, depth + 1)
+        if (r) return r
+      }
     }
   }
   for (let k = lead; k < words.length; k++) {
@@ -573,7 +588,9 @@ const matchesGlob = (file, glob) => (path.posix.matchesGlob ? path.posix.matches
 const nativePath = f => (process.platform === 'win32' ? f.replace(/^\/(?:cygdrive\/)?([a-zA-Z])(?=\/|$)/, '$1:') : f)
 
 function relativeTo(root, cwd, files, { keepRoot = false } = {}) {
-  return files.map(f => path.relative(root, path.resolve(cwd, nativePath(f))).split(path.sep).join('/'))
+  return files.map(f => path.relative(root, path.resolve(cwd, nativePath(f))))
+    // On Windows a path on another drive or share comes back absolute: it is outside the root too.
+    .filter(r => !path.isAbsolute(r)).map(r => r.split(path.sep).join('/'))
     .map(r => (keepRoot && r === '' ? '.' : r)).filter(r => r && !r.startsWith('..'))
 }
 

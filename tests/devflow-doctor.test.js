@@ -404,3 +404,32 @@ test("doctor's git calls have a time limit (#52)", () => {
   }
   assert.ok(limits.length && limits.every(t => t > 0), JSON.stringify(limits))
 })
+
+test('a git that does not answer in time fails doctor by name instead of passing with checks skipped (#52 review)', () => {
+  const cp = require('child_process')
+  const spawn = cp.spawnSync
+  cp.spawnSync = (cmd, args, opts) => (cmd === 'git' && args.includes('ls-files')
+    ? { status: null, stdout: '', stderr: '', error: Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }) }
+    : spawn(cmd, args, opts))
+  const id = require.resolve('../bin/devflow-doctor')
+  delete require.cache[id]
+  let r
+  try {
+    r = require('../bin/devflow-doctor').doctor(repo())
+  } finally {
+    cp.spawnSync = spawn
+    delete require.cache[id]
+  }
+  assert.ok(r.failures > 0, r.lines.join('\n'))
+  assert.ok(r.lines.some(l => /^FAIL git: git .*ls-files.* did not finish within \d+ s$/.test(l)), r.lines.join('\n'))
+})
+
+test('an unreadable ledger fails doctor even when the profile lists no tests (#52 review)', () => {
+  const d = repo({ ...GOOD, '.devflow.json': '{}\n' })
+  git(d, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'a')
+  git(d, 'switch', '-q', '-c', 'fix/5-x')
+  const ledger = path.join(d, '.work/devflow/i5/ledger.json')
+  fs.mkdirSync(path.dirname(ledger), { recursive: true })
+  fs.writeFileSync(ledger, '{ broken')
+  assert.ok(failures(d).includes('FAIL tests: the ledger of Issue #5 cannot be read, so whether the tests are locked is unknown'), failures(d).join('\n'))
+})

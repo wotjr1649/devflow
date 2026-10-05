@@ -53,6 +53,28 @@ test('follows what the command runs to the Issue write', () => {
   for (const c of writes) assert.ok(check(c), c)
 })
 
+test('shell-specific quotes and block comments keep following writes visible (#53 follow-up)', () => {
+  const root = dir(true)
+  fs.writeFileSync(path.join(root, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  for (const src of [
+    'echo x <# comment #> > _ref/x',
+    'echo x <# outer <# inner #> end #> > _ref/x',
+    String.raw`printf %s $'it\'s' > _ref/x`,
+    String.raw`echo x > $'\x5fref/x'`,
+    String.raw`echo x > $'\137ref/x'`,
+  ]) assert.equal(decision(hook.handle(pre(root, src))), 'deny', src)
+  assert.equal(hook.handle(pre(root, `echo '<# not a comment #>' > safe.txt`)), '')
+  assert.ok(check('echo x <#\ngh issue close 1\n#>', root), 'the Bash reading must also be checked')
+})
+
+test('a pipeline cd contributes a possible working directory without discarding the original (#53 follow-up)', () => {
+  const cwd = dir(true)
+  const targets = []
+  hook.issueWrite('true | cd sub && echo x > file', { cwd, env: noAliases, protect: ts => { targets.push(...ts.map(t => t.path)); return null } })
+  assert.ok(targets.includes(path.join(cwd, 'sub', 'file')), 'zsh and Bash lastpipe can change the parent shell folder')
+  assert.ok(targets.includes(path.join(cwd, 'file')), 'other shells run cd in a child process')
+})
+
 test('does not read quoted text and data as commands', () => {
   const allowed = [
     'git commit -m "gh issue comment docs"',

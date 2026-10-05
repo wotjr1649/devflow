@@ -1064,3 +1064,14 @@ test('while tests are locked the profile is locked too, so dropping its tests ke
   fs.writeFileSync(ledger, JSON.stringify({ stage: 'build' }))
   assert.equal(edit(path.join(g, '.devflow.json')), '', 'unlocked: the profile is editable')
 })
+
+// Issue #50: the command a test lock runs is checked like any other command.
+test('the command after "devflow-state tests <n> lock --" is checked by the guard (#50)', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  for (const lead of ['node bin/devflow-state', 'node "/plugin/bin/devflow-state"']) {
+    assert.equal(decision(hook.handle(pre(d, `${lead} tests 1 lock -- rm -rf _ref/docs`))), 'deny', lead)
+    assert.equal(hook.handle(pre(d, `${lead} tests 1 lock -- node --test tests/a.test.js`)), '', lead)
+  }
+  assert.ok(check('node bin/devflow-state tests 1 lock -- gh issue close 1', d))
+})

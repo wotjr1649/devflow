@@ -373,8 +373,10 @@ test('tests lock records the commit, unlock needs a reason and leaves it in note
   const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
   assert.match(run('', 'lock').out, /no "tests" globs in \.devflow\.json/, 'off unless the project lists its tests')
   fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
-  assert.deepEqual(run('', 'lock'), { code: 0, out: 'tests locked at abc1234' })
-  assert.deepEqual(ledger().testsLocked, { at: 'abc1234' })
+  // Since #50 a lock needs evidence that the test failed: here, the test command run by the lock itself.
+  e.exec = () => ({ code: 1 })
+  assert.deepEqual(state.main(['tests', '1', 'lock', '--', 'node', 't.js'], () => '', e, '.'), { code: 0, out: 'tests locked at abc1234 (seen failing: node t.js, exit 1)' })
+  assert.deepEqual(ledger().testsLocked, { at: 'abc1234', failing: { command: 'node t.js', exit: 1 } })
   assert.equal(run('  ', 'unlock').code, 2, 'unlock needs a reason')
   assert.deepEqual(run('the test asserted the old message', 'unlock'), { code: 0, out: 'tests unlocked' })
   assert.equal(ledger().testsLocked, undefined)
@@ -397,6 +399,55 @@ test('tests lock records the commit, unlock needs a reason and leaves it in note
   const refused = state.main(['tests', '1', 'lock'], () => '', dirty, '.')
   assert.equal(refused.code, 1)
   assert.match(refused.out, /commit the test files first/)
+})
+
+// Issue #50: a lock needs evidence that the reproduction test failed before the fix.
+test('a lock runs the test command and locks only when it fails; a passing or unrunnable command is refused (#50)', () => {
+  const root = repo({ ledger: { stage: 'build', notes: [] } })
+  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
+  const e = env(root)
+  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  const lock = (...cmd) => state.main(['tests', '1', 'lock', '--', ...cmd], () => '', e, '.')
+  e.exec = () => ({ code: 0 })
+  assert.match(lock('node', 'a.test.js').out, /passed/)
+  e.exec = () => ({ code: 'ENOENT' })
+  assert.match(lock('npm', 'test').out, /did not run \(ENOENT\)/)
+  assert.equal(ledger().testsLocked, undefined)
+  const runs = []
+  e.exec = (cmd, args, opts) => { runs.push([cmd, ...args]); return { code: 1 } }
+  assert.equal(lock('node', '--test', 'tests/a.test.js').code, 0)
+  assert.deepEqual(runs, [['node', '--test', 'tests/a.test.js']])
+  assert.deepEqual(ledger().testsLocked.failing, { command: 'node --test tests/a.test.js', exit: 1 })
+  assert.equal(ledger().notes.at(-1), 'tests locked at abc1234: seen failing: node --test tests/a.test.js (exit 1)')
+  // Already locked: nothing runs, the lock stays where it was.
+  assert.match(lock('node', 'x.js').out, /already locked at abc1234/)
+  assert.equal(runs.length, 1)
+  // A command that changes the test files proves nothing about the committed test.
+  state.main(['tests', '1', 'unlock'], () => 'a new reproduction test for a review finding', e, '.')
+  const real = e.run
+  e.exec = () => { e.run = (cmd, args, opts) => (cmd === 'git' && args[0] === 'status' ? ok(' M tests/a.test.js\n') : real(cmd, args, opts)); return { code: 1 } }
+  assert.match(lock('node', 'a.js').out, /changed the test files/)
+  e.run = real
+  assert.equal(ledger().testsLocked, undefined)
+})
+
+test('without a command a lock takes only checkable evidence: a CI run of this repository, or rebase after an earlier failing lock (#50)', () => {
+  const root = repo({ ledger: { stage: 'build', notes: [] } })
+  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
+  const e = env(root)
+  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
+  const lock = input => state.main(['tests', '1', 'lock'], () => input, e, '.')
+  assert.equal(lock('').code, 2)
+  assert.equal(lock('I ran it and it failed').code, 2)
+  assert.equal(lock('https://github.com/other/repo/actions/runs/123').code, 2)
+  assert.equal(lock('rebase').code, 1, 'no earlier failing lock to carry')
+  assert.equal(lock('https://github.com/o/r/actions/runs/37241236301 macOS and Linux only').code, 0)
+  assert.deepEqual(ledger().testsLocked.failing, { ci: 'https://github.com/o/r/actions/runs/37241236301' })
+  state.main(['tests', '1', 'unlock'], () => 'rebase', e, '.')
+  assert.deepEqual(ledger().testsFailing, { ci: 'https://github.com/o/r/actions/runs/37241236301' }, 'unlock keeps the evidence for a relock')
+  assert.equal(lock('rebase').code, 0)
+  assert.deepEqual(ledger().testsLocked.failing, { ci: 'https://github.com/o/r/actions/runs/37241236301', rebased: true })
+  assert.match(state.main(['ledger-update', '1'], () => '{"testsFailing":{"ci":"x"}}', e, '.').out, /testsFailing changes only through/)
 })
 
 test('metric eval records passed/total under the lock and keeps the other metrics (#27)', () => {

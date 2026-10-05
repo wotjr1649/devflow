@@ -757,6 +757,33 @@ test('PowerShell content parameters cannot hide the actual write path', () => {
   assert.equal(run('Set-Content -LiteralPath .devflow.json -Value "{}"'), '')
 })
 
+// Issue #48: PowerShell and cmd separate paths with a backslash, which the Bash reading drops as an escape. Codex sends
+// pwsh commands as Bash, so a path word is checked in both readings.
+test('backslash paths count as paths: protected folders, locked tests and scripts (#48)', () => {
+  const d = dir(true)
+  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  for (const tool of ['PowerShell', 'Bash']) {
+    for (const c of ['Remove-Item -Recurse .\\_ref\\docs', 'Set-Content _ref\\a.md x', 'Remove-Item -Recurse "_ref\\docs"',
+      'Set-Content -Path .\\_ref\\a.md -Value x', 'rm -rf _ref\\docs', 'echo x > _ref\\a.md', 'Copy-Item a.md _ref\\a.md']) {
+      assert.equal(decision(hook.handle(pre(d, c, tool))), 'deny', `${tool}: ${c}`)
+    }
+  }
+  // The Bash reading still holds where no backslash path is protected.
+  assert.equal(hook.handle(pre(d, 'rm -rf build\\ dir')), '')
+  assert.equal(hook.handle(pre(d, 'echo a\\ b > out.txt')), '')
+  fs.mkdirSync(path.join(d, 'scripts'))
+  fs.writeFileSync(path.join(d, 'scripts', 'post.ps1'), 'gh issue close 1\n')
+  assert.ok(check('& .\\scripts\\post.ps1', d))
+  assert.ok(check('.\\scripts\\post.ps1', d))
+  assert.ok(check('pwsh -File scripts\\post.ps1', d))
+  const g = gitRepo('fix/7-x', { tests: ['tests/**'] })
+  const ledger = path.join(g, '.work', 'devflow', 'i7', 'ledger.json')
+  fs.mkdirSync(path.dirname(ledger), { recursive: true })
+  fs.writeFileSync(ledger, JSON.stringify({ stage: 'build', testsLocked: { at: 'abc1234' } }))
+  assert.equal(decision(hook.handle(pre(g, 'Set-Content tests\\a.test.js y', 'PowerShell'))), 'deny')
+  assert.equal(decision(hook.handle(pre(g, 'Remove-Item .\\tests\\a.test.js'))), 'deny')
+})
+
 test('an entry-point deadline is logged to the input worktree even from a subfolder', () => {
   const parent = gitRepo('fix/8-other')
   const input = gitRepo('fix/7-deadline')

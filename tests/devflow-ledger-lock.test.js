@@ -53,7 +53,7 @@ function env(root, { gh = null, vars = {}, branch = BRANCH } = {}) {
 // Posts as devflow-state queues them on this machine: each with an id and the mark its queue key gives it.
 const signed = posts => posts.map((p, i) => {
   const post = { id: String(i).padStart(16, '0'), ...p }
-  return { ...post, mac: state.macOf(state.queueKey(true), post) }
+  return { ...post, mac: state.macOf(state.queueKey(true), 'o/r', post) }
 })
 
 const dir = root => path.join(root, '.work', 'devflow', 'i1')

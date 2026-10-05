@@ -69,10 +69,16 @@ function env(root, { data = issue(), gh = null, log = ok(''), branch = BRANCH, h
 
 const ghWrites = e => e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue')
 // Posts as devflow-state queues them on this machine: each with an id and the mark its queue key gives it.
-const signed = posts => posts.map((p, i) => {
+const signed = (posts, repo = 'o/r') => posts.map((p, i) => {
   const post = { id: String(i).padStart(16, '0'), ...p }
-  return { ...post, mac: state.macOf(state.queueKey(true), post) }
+  return { ...post, mac: state.macOf(state.queueKey(true), repo, post) }
 })
+// Runs fn with DEVFLOW_HOME set to home, then puts the test folder's back.
+const withHome = (home, fn) => {
+  const was = process.env.DEVFLOW_HOME
+  process.env.DEVFLOW_HOME = home
+  try { return fn() } finally { process.env.DEVFLOW_HOME = was }
+}
 
 test('card shows the writer state block as data with the latest checkpoint', () => {
   const out = state.card(env(repo()), '.')
@@ -560,6 +566,49 @@ test('a post queued in an unattended run carries this machine\'s key and flushes
   const flushed = state.flush(e, '.')
   assert.equal(flushed.code, 0, flushed.out)
   assert.equal(ghWrites(e).length, 1)
+})
+
+test('a post marked for another repository is not posted here, as in a work tree copied into a fork', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text: checkpoint('x') }], 'o/other') } })
+  const e = env(root)
+  assert.match(state.flush(e, '.').out, /not queued by devflow-state on this machine for this repository/)
+  assert.equal(ghWrites(e).length, 0)
+})
+
+test('without a readable key flush posts nothing and leaves the queue as it was, not calling it foreign', () => {
+  const posts = signed([{ op: 'comment', issue: 1, text: checkpoint('x') }])
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: posts } })
+  const e = env(root)
+  const r = withHome(tmpdir('devflow-nohome-'), () => state.flush(e, '.'))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /no queued post can be checked: no queue key at /)
+  assert.doesNotMatch(r.out, /pending drop/)
+  assert.equal(ghWrites(e).length, 0)
+  assert.deepEqual(guardLines(root), [])
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8')).pendingPosts, posts)
+})
+
+test('mode autonomous makes the queue key in the interactive turn, before a sandboxed run would need it', () => {
+  const home = path.join(tmpdir('devflow-home-'), 'fresh')
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive' } })
+  const r = withHome(home, () => state.main(['mode', '1', 'autonomous'], () => 'away', env(root), '.'))
+  assert.equal(r.code, 0, r.out)
+  assert.match(fs.readFileSync(path.join(home, 'queue.key'), 'utf8'), /^[0-9a-f]{64}$/)
+})
+
+test('a relative DEVFLOW_HOME, which would put the key in the repository, is refused', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive' } })
+  const r = withHome('.devflow', () => state.main(['mode', '1', 'autonomous'], () => 'away', env(root), '.'))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /DEVFLOW_HOME, which must be an absolute path/)
+  assert.equal(withHome('.devflow', () => state.queueKey(true)), null)
+  assert.equal(fs.existsSync(path.join(root, '.devflow')), false)
+  assert.equal(fs.existsSync('.devflow'), false)
+})
+
+test('pending drop treats a claim dated ahead of now as void, as flush does', () => {
+  const root = repo({ ledger: { stage: 'build', mode: 'interactive', notes: [], pendingPosts: [{ id: 'p1', op: 'comment', issue: 1, claimed: { by: 'f', at: Date.now() + 3600e3 } }] } })
+  assert.deepEqual(state.main(['pending', 'drop', '1', 'p1'], () => 'brought along', env(root), '.'), { code: 0, out: 'pending 0' })
 })
 
 test('ledger-update leaves pendingPosts to devflow-state and keeps running delegations (#27)', () => {

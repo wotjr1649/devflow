@@ -1011,11 +1011,23 @@ const notAList = ledger => ledger.pendingPosts !== undefined && ledger.pendingPo
 const queueOf = ledger => (Array.isArray(ledger.pendingPosts) ? ledger.pendingPosts : [])
 // The ledger is a working-tree file a clone or an unpacked archive can bring along, queue and all. So each queued post
 // carries an HMAC under a key kept outside every repository (DEVFLOW_HOME, else ~/.devflow), and flush posts nothing
-// while the queue holds a post without a matching one.
-const queueKeyFile = () => path.join(process.env.DEVFLOW_HOME || path.join(os.homedir(), '.devflow'), 'queue.key')
+// while the queue holds a post without a matching one. The mark covers the repository too, so a copy of the work tree in
+// a fork does not post there.
+const queueKeyFile = () => {
+  const home = process.env.DEVFLOW_HOME
+  // A relative value would put the key in whatever folder this runs in, a repository included.
+  if (home && !path.isAbsolute(home)) return null
+  return path.join(home || path.join(os.homedir(), '.devflow'), 'queue.key')
+}
 const KEY_SHAPE = /^[0-9a-f]{64}$/
+// Queueing runs unattended, maybe in a sandbox that cannot write outside the workspace, so mode autonomous makes the key
+// first, in the interactive turn.
+const NO_KEY = () => `no queue key at ${queueKeyFile() || 'DEVFLOW_HOME, which must be an absolute path'}; it is made on first use ` +
+  'and must stay a plain file of 64 hex characters, and a sandbox that cannot write there needs it made beforehand by ' +
+  'devflow-state mode <issue> autonomous'
 function queueKey(create) {
   const file = queueKeyFile()
+  if (!file) return null
   for (let i = 0; i < 2; i++) {
     try {
       const st = fs.lstatSync(file)
@@ -1040,10 +1052,10 @@ function queueKey(create) {
   }
   return null
 }
-const macOf = (key, p) => crypto.createHmac('sha256', key)
-  .update(JSON.stringify([p.id, p.op, p.issue, p.title ?? null, p.text ?? null, p.at ?? null])).digest('hex')
-const signedWith = (key, p) => !!key && typeof p.mac === 'string' && KEY_SHAPE.test(p.mac) &&
-  crypto.timingSafeEqual(Buffer.from(p.mac), Buffer.from(macOf(key, p)))
+const macOf = (key, repo, p) => crypto.createHmac('sha256', key)
+  .update(JSON.stringify([repo, p.id, p.op, p.issue, p.title ?? null, p.text ?? null, p.at ?? null])).digest('hex')
+const signedWith = (key, repo, p) => typeof p.mac === 'string' && KEY_SHAPE.test(p.mac) &&
+  crypto.timingSafeEqual(Buffer.from(p.mac), Buffer.from(macOf(key, repo, p)))
 const POST_ID = /^[\w-]{1,64}$/
 const ZERO = Symbol('nothing to undo')
 const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.store, n))
@@ -1100,9 +1112,9 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
       return { result: { code: 1, out: 'refused: a queued intent renumbers the criteria; check after it is posted', guard: 'state-check-after-intent' } }
     }
     const key = queueKey(true)
-    if (!key) return { result: { code: 1, out: `refused: no queue key could be read or made at ${queueKeyFile()}; it must be a plain file of 64 hex characters` } }
+    if (!key) return { result: { code: 1, out: `refused: ${NO_KEY()}` } }
     const post = { id: token(), op, issue: n, title, text, at: new Date().toISOString() }
-    const pendingPosts = [...queued, { ...post, mac: macOf(key, post) }]
+    const pendingPosts = [...queued, { ...post, mac: macOf(key, ctx.repo, post) }]
     return { ledger: { ...ledger, pendingPosts }, result: { code: 0, out: `queued ${op} for the next interactive turn (${pendingPosts.length} pending)${unread}` } }
   }
   // An interactive write only reads the ledger, so it needs no lock and a folder that cannot take one does not stop it.
@@ -1173,7 +1185,8 @@ function pendingDrop(env, cwd, n, id, reason, { posted = false } = {}) {
     if (!hit) return { result: ZERO }
     // A fresh claim means a flush may be posting it right now; only one flush reported as posted but unremoved goes.
     const at = hit.claimed && (typeof hit.claimed.at === 'number' ? hit.claimed.at : Date.parse(hit.claimed.at))
-    if (!posted && Number.isFinite(at) && Date.now() - at < CLAIM_MS) {
+    // A claim dated ahead of now is void, as flush holds it.
+    if (!posted && Number.isFinite(at) && Date.now() - at < CLAIM_MS && at <= Date.now() + 60000) {
       return { result: { refused: `refused: ${id} is claimed by a flush that may still post it; if that flush reported it posted but not removed, add --posted` } }
     }
     const pendingPosts = queued.filter(p => p !== hit)
@@ -1242,6 +1255,7 @@ function mode(env, cwd, n, value, reason) {
   const ctx = repoContext(env, cwd)
   const no = ledgerGate(ctx, n, 'mode changes', { append: true })
   if (no) return no
+  if (value === 'autonomous' && !queueKey(true)) return { code: 1, out: `refused: the unattended run could not queue its posts: ${NO_KEY()}` }
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
     if ((ledger.mode === 'autonomous' ? 'autonomous' : 'interactive') === value) return { result: ZERO }
@@ -1381,9 +1395,11 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
     // Queued posts wait for a person: an unattended run cannot flush its own queue.
     if (ledger.mode === 'autonomous') return { result: 'autonomous' }
     if (notAList(ledger)) return { result: 'notlist' }
+    // Without the key nothing can be checked, and that says nothing about the posts, so they are left as they are.
+    if (!key && queueOf(ledger).length) return { result: 'nokey' }
     // A post this machine did not queue stops the whole flush; each gets an id a person can drop it by.
     const named = queueOf(ledger).map(p => (typeof p.id === 'string' && POST_ID.test(p.id) ? p : { ...p, id: token() }))
-    const unsigned = named.filter(p => !signedWith(key, p)).map(p => p.id)
+    const unsigned = named.filter(p => !signedWith(key, ctx.repo, p)).map(p => p.id)
     if (unsigned.length) return { ledger: { ...ledger, pendingPosts: named }, result: { unsigned } }
     const queued = queueOf(ledger)
     // A claim dated ahead of now is void: it would hold the queue for as long as the date says.
@@ -1395,9 +1411,11 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
   if (claim.result === 'autonomous') return guarded(ctx, { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn', guard: 'state-autonomous-flush' })
   if (claim.result === 'busy') return { code: 1, out: 'refused: another flush is posting this queue; try again later' }
   if (claim.result === 'notlist') return { code: 1, out: NOT_A_LIST }
+  if (claim.result === 'nokey') return { code: 1, out: `refused: nothing was posted, since no queued post can be checked: ${NO_KEY()}` }
   if (claim.result.unsigned) {
     return guarded(ctx, { code: 1, guard: 'state-unsigned-post', out: `refused: queued posts ${claim.result.unsigned.join(', ')} were not ` +
-      `queued by devflow-state on this machine, so nothing was posted; read them with devflow-state pending, then take each out: devflow-state pending drop ${n} <id> < reason` })
+      'queued by devflow-state on this machine for this repository (or were queued before posts were marked), so nothing ' +
+      `was posted; read them with devflow-state pending, post any you still want yourself, then take each out: devflow-state pending drop ${n} <id> < reason` })
   }
   const posts = claim.ledger ? claim.ledger.pendingPosts : []
   const out = []

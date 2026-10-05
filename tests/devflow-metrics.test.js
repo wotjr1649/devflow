@@ -168,6 +168,36 @@ test('a ledger that is a link is not read', async t => {
   assert.equal(metrics.readLedger(metrics.context(root), 4), null)
 })
 
+// The limit applies in bytes to both current and legacy ledger locations.
+test('metrics reads ledgers only through the bounded ledger contract (#55)', t => {
+  const mainRoot = tmp('dfm-ledger-main-')
+  const root = tmp('dfm-ledger-legacy-')
+  const ctx = { mainRoot, root }
+  const limit = 1 << 20
+  for (const base of [mainRoot, root]) {
+    const file = path.join(base, '.work', 'devflow', 'i4', 'ledger.json')
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const json = JSON.stringify({ metrics: { interventions: 7 }, note: '가' })
+    const bytes = Buffer.byteLength(json)
+    for (const size of [limit - 1, limit]) {
+      fs.writeFileSync(file, json + ' '.repeat(size - bytes))
+      assert.equal(metrics.readLedger(ctx, 4).metrics.interventions, 7)
+    }
+    fs.appendFileSync(file, ' ')
+    let reads = 0
+    const read = fs.readFileSync
+    const spy = t.mock.method(fs, 'readFileSync', function (p, ...args) {
+      if (p === file) reads++
+      return read.call(this, p, ...args)
+    })
+    const result = metrics.readLedger(ctx, 4)
+    spy.mock.restore()
+    assert.equal(reads, 0, 'an oversized ledger must be refused before reading its bytes')
+    assert.equal(result, null, 'an oversized ledger is not measurement input')
+    fs.unlinkSync(file)
+  }
+})
+
 test('claude does not follow a linked subagents folder', async () => {
   const root = gitRepo()
   const home = tmp('dfm-c-')

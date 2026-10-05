@@ -10,7 +10,8 @@
 ## 결정
 
 - 저장소 라이선스는 Apache-2.0이다. 저작권 고지는 `NOTICE`, 출처 기록은 `SOURCES.md`에 둔다.
-- 이 저장소의 통합 방식은 `main` 직접 통합이다. Issue 브랜치를 fast-forward로 `main`에 합치고 `main`만 push하며, PR은 쓰지 않는다. push 시점은 전역 상시 허가를 따른다.
+- 이 저장소의 통합 방식은 `main` 직접 통합이다. Issue 브랜치를 fast-forward로 `main`에 합치고 PR은 쓰지 않는다.
+  push 순서와 CI 관문은 [통합과 CI](../../specs/repository.md#통합과-ci)를 따른다(아래 변경 이력).
 
 ## 결과
 
@@ -32,3 +33,5 @@
   드러났다. 그 부분은 MIT로 남고 원문은 `LICENSES/`에 둔다. Apache-2.0은 소유자가 바꾼 부분에만 적용된다(#26).
 - 2026-10-03: main push 뒤 Linux·macOS에서 검사를 돌리는 정보용 GitHub Actions를 더했다. PR은 여전히 쓰지 않고, 통합은
   pre-push 관문을 지난 fast-forward다(#30, 사용자 결정).
+- 2026-10-06: #51의 선행 브랜치 CI 관문을 반영한다. 최초의 `main`만 push·정보용 CI 결정은 실행 코드 변경에
+  대해서는 대체되었다. 적용 조건과 순서는 [통합과 CI](../../specs/repository.md#통합과-ci)가 정한다.

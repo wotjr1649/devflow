@@ -30,8 +30,8 @@ In interactive M2, the main agent may make a one- or two-line edit describable i
 ledger; a new delegation costs more than the edit. Unattended work keeps a fresh context for every task
 ([execution modes](../../../docs/specs/orchestration.md#실행-모드)).
 
-In M2 and M3 each task gets a narrow review before the next starts: the `reviewer` with `model: sonnet`, given
-that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it.
+In M2 and M3 each task gets a narrow review before the next starts: the host-specific task-review role from
+[roles](../../../docs/specs/orchestration.md#모델과-effort), given that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it.
 
 M3 (Claude only) launches the implementers in the background with the Agent tool's `isolation: "worktree"` on each call,
 never in the agent definition, which would put M2 in worktrees too. Those worktrees start from the remote default branch,

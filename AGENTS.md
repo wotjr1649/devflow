@@ -60,7 +60,6 @@ projects' private instructions, and link to articles instead of copying them.
 
 ## Gotchas
 
-- Project instructions live only in this file. A `CLAUDE.md`, `.claude/CLAUDE.md` or
-  `CLAUDE.local.md` here or in a parent directory makes Claude Code stop reading AGENTS.md while
-  Codex keeps reading it; `/init` and CLAUDE.md skills create one.
+- Project instructions live only here. A project or parent `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md`
+  suppresses AGENTS.md in Claude Code; global `~/.claude/CLAUDE.md` is exempt. Codex still reads AGENTS.md.
 - `.gitattributes` keeps text LF despite `core.autocrlf=true`; leave line endings to git.

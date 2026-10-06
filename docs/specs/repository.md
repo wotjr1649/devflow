@@ -219,6 +219,7 @@ minor를 올린다. 일반 Issue 통합은 버전을 바꾸지 않는다. 1.0 �
 devflow 저장소 안의 두 catalog는 `devflow-local`이라는 개발용 이름으로 유지한다. 정상 배포는 공통 원격 marketplace를
 쓴다. 로컬 시험용 marketplace에는 비공개 파일이 없는 별도 worktree를 쓰고, 설치본은 태그나 시험 커밋의 추적 파일과
 대조한다. 옛 설치에서 옮길 때 새 설치와 Codex 훅 신뢰를 확인한 뒤 옛 플러그인을 비활성화한다. 다른 플러그인과 설정은 보존한다.
+공통 catalog의 local 등록은 [marketplace](https://github.com/wotjr1649/marketplace)의 갱신 절차를 따른다.
 
 ## 릴리스와 롤백
 

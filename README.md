@@ -51,6 +51,8 @@ codex plugin add devflow@wotjr1649
 Start a new session after updating. A new tag or GitHub Release alone does not change the catalog; the publisher
 updates both catalog entries after the release passes validation. The plugin manifest version must also change for
 Claude Code to replace its cached copy. See [release and rollback](docs/specs/repository.md#릴리스와-롤백).
+If Codex registers a local checkout of the shared catalog, use the
+[local catalog update procedure](https://github.com/wotjr1649/marketplace#codex에-로컬-catalog-checkout을-등록한-경우).
 
 From a checkout of this repository, compare an installed copy with its release tag using
 `node bin/devflow-install-check --ref v0.2.0 <installed-plugin-directory>`. It checks tracked files; separately check

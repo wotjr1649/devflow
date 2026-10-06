@@ -59,9 +59,10 @@ From a checkout of this repository, compare an installed copy with its release t
 for unexpected files left in an installation.
 
 For local development, this repository's catalogs are named `devflow-local`, with the identifier
-`devflow@devflow-local`. Use a separate clean deploy worktree when registering a local marketplace: Claude loads
-local files in place, and Codex can copy ignored private files. This development path is not the release channel
-([host-facts](docs/research/host-facts.md), [ADR-0020](docs/design/decisions/ADR-0020-publisher-marketplace-releases.md)).
+`devflow@devflow-local`. Codex installs from that catalog; Claude Code can load the same clean worktree directly
+with `--plugin-dir`, displayed as `devflow@inline`. See the [local development runbook](docs/local-development.md)
+for isolated profiles, startup, source and cache updates, and verification. This development path is not the
+release channel ([distribution contract](docs/specs/repository.md#배포)).
 
 ## Prerequisites and limits
 

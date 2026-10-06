@@ -59,7 +59,8 @@ reference). 첫 실사용은 #28이다([ADR-0015](../design/decisions/ADR-0015-p
 확장자·줄 수보다 의미로 고른다. 계약을 유지하는 오탈자·링크·문구 정리는 M0다. AGENTS.md·SKILL.md도 같다.
 지침의 실행 흐름·권한·공개 범위·신뢰 경계·검사 관문을 바꾸면 M1 이상이며 [신뢰 경계 설계 리뷰](#리뷰)도 적용한다.
 
-메인이 BASE..HEAD와 미커밋 변경을 수용 기준과 대조한다. 별도 설계 문서·review-package·리뷰어는 요구하지 않는다.
+메인이 BASE..HEAD와 staged·unstaged·untracked 변경을 수용 기준과 대조한다. 필요한 ignored 입력은 경로로 지정한다.
+설계 문서·review-package·리뷰어는 생략한다.
 [경로별 단계](lifecycle.md#경로별-단계), Issue·장부·[ship 측정](metrics.md#범위)은 유지하고,
 통합은 [필수·정보용 CI 구분](repository.md#통합과-ci)을 따른다.
 

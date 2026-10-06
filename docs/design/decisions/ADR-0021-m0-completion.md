@@ -13,7 +13,7 @@ Markdown 지침이 실행 판단을 바꾸는 devflow에서는 확장자만으�
 - 새 모드 없이 [M0의 의미 기준과 마무리](../../specs/orchestration.md#m0의-적용과-마무리)를 명확히 한다.
   M0는 단계 생략이 아니며, 지침의 실행·권한·공개·신뢰·검사 규칙 변경을 단순 문구 정리와 구분한다.
 - [통합과 CI](../../specs/repository.md#통합과-ci)의 필수·정보용 구분을 그대로 적용한다.
-  허용된 local-merge 경로에 원격 작업 브랜치 push나 정보용 CI 대기를 추가하지 않는다.
+  필수 CI 대상이 아닌 local-merge 변경에만 원격 작업 브랜치 push·정보용 CI 대기를 추가하지 않는다. 다른 필수 관문은 유지한다.
 - Issue 브랜치의 검사와 main pre-push, Issue·장부·측정·ship 기록은 유지한다.
   main에는 Issue 장부가 없어 pre-push만으로 시험 잠금 검사를 대체할 수 없다.
 - ship 자동화, 검사 관문 변경, 측정 생략은 이번에 하지 않는다.

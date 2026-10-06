@@ -17,36 +17,49 @@ verify, and backs its rules with scripts, hooks and CI rather than prose alone.
 
 ## Install
 
-Claude Code loads the local plugin in place; Codex copies it into its cache, including ignored files. Install
-from a separate deploy worktree at a commit of `main` so unfinished edits and private working files stay out ([ADR-0002](docs/design/decisions/ADR-0002-repository-root-is-plugin-root.md)).
-Installing and updating are the owner's call. Host behaviour behind each step:
-[host-facts](docs/research/host-facts.md).
+Install `devflow@wotjr1649` from the publisher's shared
+[marketplace](https://github.com/wotjr1649/marketplace). Its two host catalogs point at the same release tag in this
+repository. Installation and updates are owner actions; see the [distribution contract](docs/specs/repository.md#배포).
 
-First install:
-
-```bash
-git worktree add --detach ../devflow-deploy main
-```
-
-- Claude Code: add `../devflow-deploy` as a marketplace and install `devflow@devflow` from it with `/plugin`, then run
-  `/reload-plugins` in an open session. Claude loads the plugin from that folder.
-- Codex: `codex plugin marketplace add <path to devflow-deploy>`, then `codex plugin add devflow@devflow`. Codex copies
-  the plugin into `~/.codex/plugins/cache/devflow/devflow/<version>/`; start a new session and trust its hooks.
-
-Update to the current `main`, then check that every file `main` tracks is the same in both copies (files left over in a
-copy, such as a skill `main` removed, are not checked):
+Claude Code:
 
 ```bash
-git -C ../devflow-deploy checkout --detach main
-codex plugin add devflow@devflow < /dev/null
-version=$(node -p "require('../devflow-deploy/.codex-plugin/plugin.json').version")
-node bin/devflow-install-check --ref main ../devflow-deploy ~/.codex/plugins/cache/devflow/devflow/"$version"
+claude plugin marketplace add wotjr1649/marketplace
+claude plugin install devflow@wotjr1649
 ```
 
-Claude picks up edits to the plugin with `/reload-plugins`; each hook call starts a new `node` process that loads the
-hook script (`hooks/hooks.json`), so a script change applies at once.
-Codex does not ask to trust the hooks again when only the hook scripts change; the trust is recorded per entry of
-`hooks/hooks.json`.
+Codex:
+
+```bash
+codex plugin marketplace add wotjr1649/marketplace
+codex plugin add devflow@wotjr1649
+```
+
+Start a new session after installation. In Codex, review and trust this plugin's hooks in `/hooks`; installation
+alone does not trust them. When migrating from `devflow@devflow`, confirm the new installation and hook trust before
+disabling the old plugin to avoid missing guards or running duplicate hooks. Keep other plugins enabled.
+
+To update after the publisher advances the release tag in the catalog:
+
+```bash
+claude plugin marketplace update wotjr1649
+claude plugin update devflow@wotjr1649
+codex plugin marketplace upgrade wotjr1649
+codex plugin add devflow@wotjr1649
+```
+
+Start a new session after updating. A new tag or GitHub Release alone does not change the catalog; the publisher
+updates both catalog entries after the release passes validation. The plugin manifest version must also change for
+Claude Code to replace its cached copy. See [release and rollback](docs/specs/repository.md#릴리스와-롤백).
+
+From a checkout of this repository, compare an installed copy with its release tag using
+`node bin/devflow-install-check --ref v0.2.0 <installed-plugin-directory>`. It checks tracked files; separately check
+for unexpected files left in an installation.
+
+For local development, this repository's catalogs are named `devflow-local`, with the identifier
+`devflow@devflow-local`. Use a separate clean deploy worktree when registering a local marketplace: Claude loads
+local files in place, and Codex can copy ignored private files. This development path is not the release channel
+([host-facts](docs/research/host-facts.md), [ADR-0020](docs/design/decisions/ADR-0020-publisher-marketplace-releases.md)).
 
 ## Prerequisites and limits
 
@@ -62,7 +75,7 @@ Codex does not ask to trust the hooks again when only the hook scripts change; t
   then use `/clear`. Clearing alone can leave the previous session's warning until expiry.
 
 Version changes happen only during an explicitly requested release; see [version policy](docs/specs/repository.md#버전).
-The update commands above use Bash syntax. Installing, trusting hooks and updating a host remain owner actions.
+Installing, trusting hooks and updating a host remain owner actions.
 
 ## License
 

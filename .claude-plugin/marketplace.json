@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "devflow",
-  "description": "devflow plugin for Claude Code and Codex.",
+  "name": "devflow-local",
+  "description": "Local development catalog for devflow. Releases are distributed through wotjr1649/marketplace.",
   "owner": {
     "name": "wotjr1649",
     "url": "https://github.com/wotjr1649"

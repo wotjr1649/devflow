@@ -1,6 +1,6 @@
 # ADR-0002: 저장소 루트를 플러그인 루트로
 
-상태: 채택 (사용자 결정)
+상태: 채택 (사용자 결정). 로컬 배포 방식은 [ADR-0020](ADR-0020-publisher-marketplace-releases.md)으로 대체됨.
 
 ## 맥락
 
@@ -23,6 +23,8 @@
   Claude에서는 작업 중 편집이 다른 세션에 즉시 적용되는 것을 피하고, Codex에서는 ignore된 비공개 폴더까지 캐시로
   복사되는 것을 피한다([host-facts](../../research/host-facts.md)). 배포 worktree에는 비공개 작업을 두지 않는다.
   Claude에서 세션 하나만 시험할 때는 `--plugin-dir`을 쓴다.
+- 개정(#56): 위 로컬 배포는 개발·시험 경로로 남기고 catalog 이름을 `devflow-local`로 바꾼다. 기본 배포는
+  제작자 공통 원격 marketplace에서 릴리스 태그를 설치한다([ADR-0020](ADR-0020-publisher-marketplace-releases.md)).
 - docs와 evals도 플러그인에 함께 포함된다. 개인용이라 감수한다.
 
 ## 다시 볼 조건

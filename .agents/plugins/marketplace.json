@@ -1,7 +1,7 @@
 {
-  "name": "devflow",
+  "name": "devflow-local",
   "interface": {
-    "displayName": "devflow"
+    "displayName": "devflow local development"
   },
   "plugins": [
     {

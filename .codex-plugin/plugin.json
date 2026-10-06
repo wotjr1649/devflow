@@ -1,6 +1,6 @@
 {
   "name": "devflow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "An Issue-driven development loop for Claude Code and Codex: resume from Issues, delegate reads and checks, back rules with hooks.",
   "author": {
     "name": "wotjr1649",

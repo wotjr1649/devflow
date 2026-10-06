@@ -993,9 +993,8 @@ function postRelation(ctx, text, { verifyOnly = false } = {}) {
   if (after.error) return unknown()
   const observed = result(after)
   if (observed) return observed
-  // A completed rejection is a failure; a timeout or a success without an observable relation is uncertain.
-  return typeof r.code === 'number' && r.code !== 0
-    ? { code: 1, out: `${label}: add failed (gh exit ${r.code})` } : unknown()
+  // Even gh exit 1 can mean a response was lost after acceptance; no observed relation is not proof of failure.
+  return unknown()
 }
 
 function listSubIssues(env, cwd, n) {

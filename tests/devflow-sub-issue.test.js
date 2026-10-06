@@ -221,6 +221,18 @@ test('unknown queued POST can later be confirmed without another POST', () => {
   assert.equal(f.ledger().pendingPosts.length, 0)
 })
 
+test('a numeric gh failure with no observed parent remains unknown and cannot be posted again by flush', () => {
+  const f = fixture({ mode: 'autonomous', postCode: 1, afterParent: null })
+  f.invoke('add', '294', '320')
+  f.interactive()
+  const first = state.flush(f.e, f.root)
+  assert.equal(first.code, 1)
+  assert.match(first.out, /unknown/)
+  assert.ok(f.ledger().pendingPosts[0].unconfirmed)
+  assert.equal(state.flush(f.e, f.root).code, 1)
+  assert.equal(f.writes().length, 1)
+})
+
 test('list collects only bounded metadata across pages', () => {
   const node = number => ({ number, repository: { nameWithOwner: 'o/r' } })
   const f = fixture({ pages: [

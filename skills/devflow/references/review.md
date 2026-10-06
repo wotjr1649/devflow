@@ -10,8 +10,7 @@ and verify and a narrowed re-review passed. `pr-review-workflow` runs the review
   verification output): the reviewer's Glob cannot find it.
 - A reviewer, verifier or implementer started in the background goes into the ledger's `running` with `running <issue>
   add <label>` and comes out with `running <issue> done <label>` when its result arrives or it fails or stops.
-- In M0 the main session rereads the diff against the criteria instead; the change was small enough to say in one
-  sentence.
+- For M0, use [applicability and completion](../../../docs/specs/orchestration.md#m0의-적용과-마무리).
 - A change to a `.devflow.json` `highRisk` path also gets the security perspective from [perspectives](perspectives.md).
 - Fix findings that change behaviour or break a requirement; a reviewer asked to find something finds something, and
   fixing every remark over-builds the change. Record the disposition of each finding in the checkpoint.
@@ -28,6 +27,7 @@ disappear later, and `devflow-state` writes an Issue only from its branch. Rules
 1. Read the cycle's guard blocks (`guard-events.jsonl` beside the ledger). Count each one that stopped a legitimate
    action, and any intervention not yet counted, with `metric` on the card's `Tool:` command.
 2. Run the project's `verify` gate, and on the Issue branch `devflow-doctor` where `.devflow.json` lists `tests`.
+   Main's pre-push cannot replace this ledger-aware check ([integration](../../../docs/specs/repository.md#통합과-ci)).
    Any `tests unlocked` line in the ledger's notes goes into the ship checkpoint with its reason.
 3. Decide the trigger eval by [eval](../../../docs/specs/eval.md#eval): `git diff --name-status <base>..HEAD -- skills
    evals/trigger` shows added, deleted or renamed skills and any changed eval case, and `git diff -U0 <base>..HEAD --

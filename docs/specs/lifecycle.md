@@ -25,8 +25,8 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 | 4 | plan 계획 | 작업별 파일, 순서, interfaces, 증명, 위험 | 비공개 계획과 공개 요약 | 계획이 작성됨 | 라우터 reference |
 | 5 | ready 구현 가능성 확인 | [계획 품질](orchestration.md#계획) 점검, 전제(의존성, 도구, 권한, 검사 명령) 확인, 실행 모드 선택 | go 또는 no-go 체크포인트 | go | 라우터 reference. 계획이 `highRisk` 경로를 건드리거나 작업이 5개 이상이면 reviewer(설계 관점)가 한 번 검토 |
 | 6 | build 구현 | 모드별 실행, 실패 테스트 확인, 작업 단위 커밋 | 커밋 | 계획의 작업이 끝남 | 라우터 reference, 구현 에이전트 |
-| 7 | verify 검증 | 수용 기준을 실제로 실행해 확인, verifier가 새 컨텍스트에서 동작 확인 | 검증 증거 | 기준마다 실행 증거가 있음 | 라우터 reference, verifier |
-| 8 | review 리뷰 | 새 컨텍스트 리뷰, 발견 사항 처리 | 발견 사항과 처리 | 정확성·요구사항 결함이 없음 | pr-review-workflow |
+| 7 | verify 검증 | 수용 기준을 실제로 실행해 확인, [실행 모드](orchestration.md#실행-모드)에 따른 동작 확인 | 검증 증거 | 기준마다 실행 증거가 있음 | 라우터 reference, 모드에 따른 verifier |
+| 8 | review 리뷰 | [실행 모드](orchestration.md#실행-모드)에 따른 최종 검토, 발견 사항 처리 | 발견 사항과 처리 | 정확성·요구사항 결함이 없음 | pr-review-workflow |
 | 9 | ship 통합 | 통합 방식에 따른 push·PR·CI·머지, Issue 완료와 후속 Issue | 통합된 기본 브랜치, 종료된 Issue | 통합과 종료를 확인함 | pr-review-workflow |
 | 10 | cleanup 정리 | 브랜치와 worktree 정리 | 정리 기록 | 정리 완료 | workspace-cleanup |
 | 11 | learn 회고 | 교훈을 알맞은 곳에 둠 | 아래 "회고와 기억" | 교훈이 있을 때만 | 라우터 reference, 둘 곳이 에이전트가 읽는 파일이면 writing-for-agents |

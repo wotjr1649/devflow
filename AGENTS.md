@@ -1,7 +1,7 @@
 # devflow
 
-This repository owns the devflow plugin for Claude Code and Codex. Specs in `docs/specs/` define behavior, the plugin implements it, decisions in
-`docs/design/decisions/` record why, and GitHub Issues hold work state.
+devflow is a Claude Code and Codex plugin. `docs/specs/` defines behavior; code implements it,
+`docs/design/decisions/` records why, and GitHub Issues track work.
 
 ## Read what your task touches
 
@@ -13,6 +13,7 @@ This repository owns the devflow plugin for Claude Code and Codex. Specs in `doc
 | writing Issues, checkpoints or the resume card | `docs/specs/issues.md` |
 | changing the ledger, unattended runs or concurrent sessions | `docs/specs/ledger.md` |
 | changing project layout, installed files or shell guards | `docs/specs/repository.md`, `docs/specs/hooks.md` |
+| setting up or testing a local development plugin | `docs/local-development.md` |
 | changing stages, loops, or where work returns on new information | `docs/specs/lifecycle.md` |
 | changing how work runs or is delegated: modes, briefs, models, effort | `docs/specs/orchestration.md` |
 | measuring a cycle or changing trigger evaluation | `docs/specs/metrics.md`, `docs/specs/eval.md` |

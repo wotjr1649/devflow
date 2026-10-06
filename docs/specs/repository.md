@@ -195,19 +195,21 @@ Issue 형식은 doctor가 검사하지 않고, `devflow-state`가 쓸 때 검사
 
 ## 통합과 CI
 
-devflow 저장소의 CI는 모든 push에서 Linux·macOS, Node 22·24로 같은 `verify`를 실행한다.
-통합할 변경(BASE..HEAD)에 `bin/`, `hooks/`, `tests/`가 포함되면 Issue 브랜치를 먼저 push하고 그 HEAD의
-CI 전부가 통과한 뒤 main에 fast-forward한다. 누락·취소·건너뜀·다른 커밋의 실행은 통과 증거가 아니다.
-그 밖의 변경에서 CI는 정보용이고, 로컬 pre-push의 `verify` 통과가 통합 관문이다. 작업 트리와 검사 대상 커밋이
-같아야 하며 실패한 관문을 우회하지 않는다. 통합 뒤 원격 main과 결과를 확인하고, 병합된 Issue 브랜치는 로컬·원격과
-worktree를 정리한다. 태그·릴리스·호스트 설치는 별도 사용자 지시가 필요하다.
+CI는 push마다 Linux·macOS, Node 22·24로 `verify`를 실행한다. BASE..HEAD에 `bin/`, `hooks/`, `tests/`가
+있으면 Issue 브랜치 push 후 그 HEAD의 CI 전부 통과 시 main에 fast-forward한다.
+누락·취소·건너뜀·다른 커밋은 통과가 아니다. 그 밖의 CI는 정보용으로 실행하되 local-merge에 원격 Issue 브랜치
+push·완료 대기는 요구하지 않는다. 별도 필수 관문은 따른다.
+
+통합 전 [ship 준비](../../skills/devflow/references/review.md#before-integrating)를 마친다.
+로컬 pre-push의 `verify`가 통합 관문이다. 검사 커밋·작업 트리는 일치해야 하며 관문 우회는 금지다.
+통합 뒤 원격 main·결과를 확인하고 병합된 로컬·원격 브랜치·worktree를 정리한다. 태그·릴리스·호스트 설치는 별도 사용자 지시가 필요하다.
 
 ## 버전
 
 두 플러그인 매니페스트의 `version`은 같아야 하며 `tests/devflow-config.test.js`가 검사한다.
 사용자가 릴리스를 지시할 때만 `0.y.z`를 올린다. 기능·동작 변경은 minor, 수정은 patch이며 한 릴리스에 섞이면
-minor를 올린다. 일반 Issue 통합은 버전을 바꾸지 않는다. 1.0 전환은 별도 결정이고, 태그·릴리스 노트·배포는
-릴리스 작업에서만 한다. 설치 경로와 실행기는 매니페스트의 버전을 읽어 사용한다.
+minor를 올린다. 일반 Issue 통합은 버전을 유지한다. 1.0 전환은 별도 결정이며 태그·노트·배포는 릴리스에서만 한다.
+설치 경로와 실행기는 매니페스트 버전을 읽는다.
 
 ## 배포
 

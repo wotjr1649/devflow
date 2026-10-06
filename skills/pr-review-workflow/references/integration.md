@@ -7,4 +7,7 @@ Apply the repository's distinction between required and informational CI; devflo
 
 Pre-merge refresh base/head/rules/CI/approvals/threads; guard expected head or hold races. Use project merge method without bypass; verify resulting commit and required post-merge checks.
 
+For devflow's local-merge path, use the [informational CI conditions](../../../docs/specs/repository.md#통합과-ci)
+without adding a task-branch push or CI completion wait. Keep the Issue-branch checks and required gates.
+
 After a verified merge, follow the [cleanup handoff](cleanup.md); merged task branches and worktrees are removed, not only assessed. Review-only never enters cleanup.

@@ -141,7 +141,8 @@ function repoContext(env, cwd) {
   if (!fs.existsSync(path.join(root, '.devflow.json'))) return null
   const git = (...args) => env.run('git', args, { cwd: root }).stdout.trim()
   const branch = git('branch', '--show-current')
-  const origin = /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?$/.exec(git('remote', 'get-url', 'origin'))
+  const origin = /^(?:https?:\/\/github\.com\/|(?:ssh|git):\/\/(?:git@)?github\.com\/|git@github\.com:)([\w.-]+\/[\w.-]+?)(?:\.git)?$/i
+    .exec(git('remote', 'get-url', 'origin'))
   const issueOf = b => { const m = /^[^/]+\/(\d+)-/.exec(b || ''); return m ? Number(m[1]) : null }
   // The Issue folder lives in the main work tree, whichever worktree this is (Issue #14). A linked worktree on a branch
   // that is no Issue branch works for the main tree's Issue, as the hook decides.

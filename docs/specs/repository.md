@@ -212,8 +212,8 @@ minor를 올린다. 일반 Issue 통합은 버전을 바꾸지 않는다. 1.0 �
 ## 배포
 
 공통 공개 marketplace는 [wotjr1649/marketplace](https://github.com/wotjr1649/marketplace)이고 이름은 `wotjr1649`다.
-플러그인 이름은 `devflow`, 설치 식별자는 `devflow@wotjr1649`다. 플러그인 루트는 유지한다. Claude의 `.claude-plugin/marketplace.json`은 `github` 또는 HTTPS `url` 소스, Codex의
-`.agents/plugins/marketplace.json`은 `url` 소스로 `wotjr1649/devflow`의 같은 `v0.y.z` 태그를 가리킨다.
+플러그인 이름은 `devflow`, 설치 식별자는 `devflow@wotjr1649`다. 플러그인 루트는 유지한다. Claude의 `.claude-plugin/marketplace.json`과 Codex의
+`.agents/plugins/marketplace.json`은 HTTPS `url` 소스로 `wotjr1649/devflow`의 같은 `v0.y.z` 태그를 가리킨다.
 버전은 플러그인 매니페스트에서 읽는다. 다른 플러그인은 자신의 저장소와 태그를 가리키는 항목으로 추가한다.
 
 devflow 저장소 안의 두 catalog는 `devflow-local`이라는 개발용 이름으로 유지한다. 정상 배포는 공통 원격 marketplace를

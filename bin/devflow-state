@@ -40,6 +40,8 @@ const USAGE = `usage: devflow-state <command>
   check <n> <k>...            mark acceptance criteria k (1-based boxes GitHub renders under "## 수용 기준") as done
   close <n> | reopen <n>
   create --title <t> < body   a new Issue in the Issue template; "## 수용 기준" needs plain "- [ ]" criteria
+  sub-issue add <parent> <child> | sub-issue list <parent>
+                              add a same-repository relationship or list its numbers; never replace a parent
   ledger [n]                  print the ledger
   ledger-update [n] < json    replace the top-level keys given in a JSON object
   note <n> < line             append one line to the ledger's notes
@@ -60,7 +62,8 @@ const USAGE = `usage: devflow-state <command>
                               --undo takes one back (never below 0)
   metric <n> eval <passed>/<total> --host claude|codex --rev <commit> < note
                               record the cycle's trigger eval result
-Issue writes go only to the branch's Issue (create excepted), and text with local paths, secrets, hidden
+Issue text writes go only to the branch's Issue (create excepted); sub-issue add records its explicit targets
+under the working Issue. Commands and queue signatures do not grant authority. Text with local paths, secrets, hidden
 characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.
 Ledger writes off an Issue branch (cleanup on main) take the Issue number; note and metric need its ledger
 to exist. A detached HEAD writes no ledger.`
@@ -567,6 +570,9 @@ function refusal(op, text, title) {
   const no = (guard, out) => ({ guard, out })
   const found = leaks([title, text].filter(Boolean).join('\n'))
   if (found.length) return no('state-leak', `refused: ${op} text contains ${found.join(', ')}`)
+  if (op === 'sub-issue-add' && (title !== undefined || !relationOf(text))) {
+    return no('state-sub-issue-args', 'refused: a sub-issue relationship needs a canonical v1 pair of different Issue numbers')
+  }
   if (op === 'comment' && !isCheckpoint(text)) {
     return no('state-checkpoint-shape', `refused: a checkpoint is "### Checkpoint <stage> — <summary>" and at most ${MAX_CHECKPOINT_LINES - 1} "- " lines`)
   }
@@ -911,7 +917,116 @@ function postedAlready(ctx, op, n, text, title, since) {
 }
 const UNKNOWN = (op, code) => `${op}: posting state unknown (gh exit ${code}); look at the Issue before trying again`
 
-function post(ctx, op, n, text, title) {
+const positiveInt = n => Number.isSafeInteger(n) && n > 0
+const relationOf = text => {
+  try {
+    const pair = JSON.parse(text)
+    return Array.isArray(pair) && pair.length === 3 && pair[0] === 1 && pair.slice(1).every(positiveInt) &&
+      pair[1] !== pair[2] && JSON.stringify(pair) === text ? pair.slice(1) : null
+  } catch { return null }
+}
+const RELATION_QUERY = 'query($o:String!,$r:String!,$p:Int!,$c:Int!){repository(owner:$o,name:$r){nameWithOwner ' +
+  'parent:issue(number:$p){number fullDatabaseId} child:issue(number:$c){number fullDatabaseId parent{number repository{nameWithOwner}}}}}'
+const SUB_ISSUES_QUERY = 'query($o:String!,$r:String!,$n:Int!,$after:String){repository(owner:$o,name:$r){nameWithOwner ' +
+  'issue(number:$n){number subIssues(first:100,after:$after){nodes{number repository{nameWithOwner}} pageInfo{hasNextPage endCursor}}}}}'
+const relationRepo = ctx => ctx && /^[\w.-]+\/[\w.-]+$/.test(ctx.repo || '') &&
+  ctx.repo.split('/').every(s => s !== '.' && s !== '..')
+const sameRepo = (got, wanted) => typeof got === 'string' && got.toLowerCase() === wanted.toLowerCase()
+
+// Read only fixed metadata: a missing parent is meaningful only in a complete, validated Issue response.
+function relationRead(ctx, query, fields) {
+  if (!relationRepo(ctx)) return { error: 'refused: not a devflow repository with a valid GitHub origin' }
+  const [owner, repo] = ctx.repo.split('/')
+  const r = ctx.env.run('gh', ['api', '--hostname', 'github.com', 'graphql', '-f', `query=${query}`,
+    '-f', `o=${owner}`, '-f', `r=${repo}`, ...fields], { cwd: ctx.root })
+  if (r.code !== 0) return { error: `sub-issue lookup failed (gh exit ${r.code})` }
+  try {
+    const value = JSON.parse(r.stdout)
+    if (value.errors !== undefined && (!Array.isArray(value.errors) || value.errors.length)) throw new Error('GraphQL errors')
+    const data = value.data.repository
+    if (!data || !sameRepo(data.nameWithOwner, ctx.repo)) throw new Error('repository mismatch')
+    return { data }
+  } catch { return { error: 'sub-issue lookup returned incomplete or mismatched data' } }
+}
+
+function relationLookup(ctx, p, c) {
+  const got = relationRead(ctx, RELATION_QUERY, ['-F', `p=${p}`, '-F', `c=${c}`])
+  if (got.error) return got
+  const { parent, child } = got.data
+  const id = issue => {
+    const s = String(issue?.fullDatabaseId ?? '')
+    return /^[1-9]\d*$/.test(s) && positiveInt(Number(s)) ? Number(s) : null
+  }
+  const previous = child?.parent
+  if (!parent || parent.number !== p || !id(parent) || !child || child.number !== c || !id(child) ||
+    (previous !== null && (!previous || !positiveInt(previous.number) ||
+      typeof previous.repository?.nameWithOwner !== 'string'))) {
+    return { error: 'sub-issue targets are missing, not Issues, or returned incomplete data' }
+  }
+  return { childId: id(child), previous }
+}
+
+function postRelation(ctx, text, { verifyOnly = false } = {}) {
+  const [p, c] = relationOf(text)
+  const label = `${ctx.repo}: #${p} -> #${c}`
+  const unknown = () => ({ code: 1, out: `${label}: posting state unknown; inspect the relationship before a new add`,
+    unconfirmed: { at: Date.now() } })
+  const result = got => {
+    if (!got.previous) return null
+    return got.previous.number === p && sameRepo(got.previous.repository.nameWithOwner, ctx.repo)
+      ? { code: 0, out: `${label}: relationship confirmed` }
+      : { code: 1, out: `${label}: refused, the child already has another parent` }
+  }
+  const before = relationLookup(ctx, p, c)
+  if (before.error) return verifyOnly ? unknown() : { code: 1, out: before.error }
+  const existing = result(before)
+  if (existing) return existing
+  if (verifyOnly) return unknown()
+  // An explicit, narrow relationship exception; body writes still target only the branch's Issue.
+  const r = ctx.env.run('gh', ['api', '--hostname', 'github.com', '--method', 'POST',
+    `repos/${ctx.repo}/issues/${p}/sub_issues`, '-H', 'Accept: application/vnd.github+json',
+    '-H', 'X-GitHub-Api-Version: 2026-03-10', '--input', '-'], {
+    cwd: ctx.root, input: JSON.stringify({ sub_issue_id: before.childId, replace_parent: false }),
+  })
+  if (r.code === 4) return { code: 1, out: `${label}: add failed (authentication)` }
+  const after = relationLookup(ctx, p, c)
+  if (after.error) return unknown()
+  const observed = result(after)
+  if (observed) return observed
+  // A completed rejection is a failure; a timeout or a success without an observable relation is uncertain.
+  return typeof r.code === 'number' && r.code !== 0
+    ? { code: 1, out: `${label}: add failed (gh exit ${r.code})` } : unknown()
+}
+
+function listSubIssues(env, cwd, n) {
+  const ctx = repoContext(env, cwd)
+  let cursor = null
+  const cursors = new Set(), numbers = new Set()
+  // ponytail: ten pages of 100 metadata nodes; report failure rather than silently truncate larger lists.
+  for (let page = 0; page < 10; page++) {
+    const got = relationRead(ctx, SUB_ISSUES_QUERY, ['-F', `n=${n}`, ...(cursor ? ['-f', `after=${cursor}`] : [])])
+    if (got.error) return { code: 1, out: got.error }
+    const issue = got.data.issue, list = issue?.subIssues
+    if (issue?.number !== n || !Array.isArray(list?.nodes) || list.nodes.length > 100 ||
+      typeof list.pageInfo?.hasNextPage !== 'boolean') return { code: 1, out: 'sub-issue list returned incomplete data' }
+    for (const item of list.nodes) {
+      if (!positiveInt(item?.number) || !sameRepo(item.repository?.nameWithOwner, ctx.repo) || numbers.has(item.number)) {
+        return { code: 1, out: 'sub-issue list returned mismatched or duplicate targets' }
+      }
+      numbers.add(item.number)
+    }
+    if (!list.pageInfo.hasNextPage) return { code: 0, out: `${ctx.repo}: #${n} sub-issues ${JSON.stringify([...numbers])}` }
+    cursor = list.pageInfo.endCursor
+    if (typeof cursor !== 'string' || !cursor || cursor.length > 4096 || cursors.has(cursor)) {
+      return { code: 1, out: 'sub-issue list cursor made no valid progress' }
+    }
+    cursors.add(cursor)
+  }
+  return { code: 1, out: 'sub-issue list exceeds ten pages; no complete list was returned' }
+}
+
+function post(ctx, op, n, text, title, opts = {}) {
+  if (op === 'sub-issue-add') return postRelation(ctx, text, opts)
   const gh = (args, input) => ctx.env.run('gh', args, { cwd: ctx.root, input })
   const since = Date.now()
   let r
@@ -969,7 +1084,7 @@ function post(ctx, op, n, text, title) {
 
 // Writes run only in interactive turns; an autonomous ledger queues them for the next one.
 // Only the commands devflow-state offers reach gh, queued ones included.
-const WRITE_OPS = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'create'])
+const WRITE_OPS = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'create', 'sub-issue-add'])
 
 // A refusal carries a guard id; it is logged to the branch's Issue and dropped from the result.
 // Logged under the branch's Issue; off an Issue branch under n, and only when n's folder exists, so a refusal for a
@@ -1078,10 +1193,13 @@ function shipMissing(text, ledger) {
   return need.filter(([, re]) => !ls.some(l => re.test(l.trim()))).map(([name]) => name).join(', ')
 }
 
-function attempt(ctx, op, n, text, title, { flushing = false }) {
+function attempt(ctx, op, n, text, title, { flushing = false, verifyOnly = false } = {}) {
   if (!ctx || !ctx.repo) return { code: 1, out: 'refused: not a devflow repository with a GitHub origin' }
   if (op !== 'create' && n !== ctx.branchIssue) {
     return { code: 1, out: `refused: writes go only to the branch's Issue #${ctx.branchIssue ?? '?'}`, guard: 'state-other-issue' }
+  }
+  if (op === 'sub-issue-add' && (!positiveInt(ctx.branchIssue) || !relationRepo(ctx))) {
+    return { code: 1, out: 'refused: sub-issue add needs an Issue branch and a valid GitHub origin', guard: 'state-sub-issue-scope' }
   }
   if (op !== 'create' && legacyOf(ctx, n)) return LEGACY(n)
   const why = refusal(op, text, title)
@@ -1134,7 +1252,7 @@ function attempt(ctx, op, n, text, title, { flushing = false }) {
   }
   const queued = owner && peek.mode === 'autonomous' && !flushing ? updateLedger(ctx.store, owner, decide) : { ok: true, result: decide(peek).result }
   if (!queued.ok) return LOCKED(owner, queued.why)
-  return queued.result || post(ctx, op, n, text, title)
+  return queued.result || post(ctx, op, n, text, title, { verifyOnly })
 }
 
 // Adds one to a manual metric and appends its note in one step, so an agent never rewrites the ledger by hand to count.
@@ -1440,6 +1558,12 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
     // The ledger is a working-tree file: only this branch's Issue is read back (any other is refused by write below), and
     // a mark that is not a past time is not guessed at.
     let r = null
+    if (p.unconfirmed && p.op === 'sub-issue-add') {
+      const at = p.unconfirmed.at
+      r = !Number.isFinite(at) || at <= 0 || at > now + 60000
+        ? { code: 1, out: `sub-issue-add (${p.id}): invalid unconfirmed mark; inspect the relationship` }
+        : write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true, verifyOnly: true })
+    }
     if (p.unconfirmed && READ_BACK.has(p.op)) {
       const at = p.unconfirmed.at
       if (!Number.isFinite(at) || at <= 0 || at > now + 60000) {
@@ -1495,11 +1619,11 @@ function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
 
 // Writes that count as this session's activity (Issue #10). After one succeeds, it is recorded and the other sessions
 // that wrote to the same Issue in the last 30 minutes are named; without an id of its own a session cannot tell.
-const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'ledger-update', 'metric', 'note', 'running', 'mode', 'tests', 'flush'])
+const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'sub-issue', 'ledger-update', 'metric', 'note', 'running', 'mode', 'tests', 'flush'])
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
   const r = command(argv, stdin, env, cwd)
   const me = sessionId(env.vars)
-  if (r.code !== 0 || !ACTIVITY.has(argv[0]) || !me) return r
+  if (r.code !== 0 || !ACTIVITY.has(argv[0]) || (argv[0] === 'sub-issue' && argv[1] !== 'add') || !me) return r
   const ctx = repoContext(env, cwd)
   const n = /^\d+$/.test(argv[1] || '') ? Number(argv[1]) : ctx && ctx.issue
   if (!ctx || !n) return r
@@ -1521,6 +1645,16 @@ function command(argv, stdin, env, cwd) {
       }
     case 'read':
       return read(env, cwd, num(rest[0]))
+    case 'sub-issue': {
+      const number = s => /^[1-9]\d*$/.test(s || '') && positiveInt(Number(s)) ? Number(s) : null
+      const [op, parent, child] = rest
+      if (op === 'list' && rest.length === 2 && number(parent)) return listSubIssues(env, cwd, number(parent))
+      if (op === 'add' && rest.length === 3 && number(parent) && number(child)) {
+        const ctx = repoContext(env, cwd)
+        return write(env, cwd, 'sub-issue-add', ctx?.branchIssue, JSON.stringify([1, number(parent), number(child)]))
+      }
+      return { code: 2, out: 'usage: devflow-state sub-issue add <parent> <child> | sub-issue list <parent>' }
+    }
     case 'state':
     case 'comment':
       return num(rest[0]) ? write(env, cwd, cmd, num(rest[0]), input()) : { code: 2, out: `usage: devflow-state ${cmd} <issue> < text` }

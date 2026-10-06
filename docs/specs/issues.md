@@ -24,6 +24,21 @@ Issue를 읽고 쓰는 방법, Issue 본문과 체크포인트의 형식, 재개
   HTML 주석, 보이지 않는 문자, 길이 상한을 검사하고, 걸리면 보내지 않는다. gh가 실패라고 해도 댓글과 새 Issue는 게시됐을 수 있으므로 다시 읽어 확인하고, 있으면 게시된 것으로 본다. 읽지 못하거나, gh가 시간 제한으로 끊겼는데 아직 보이지 않으면 "게시 여부 미확인"으로 알린다(인증 실패는 그대로 실패, #49). 이 스크립트를 거치지 않는 Issue 쓰기(셸·PowerShell 도구의
   `gh issue`·`gh api`·GitHub API 요청과 셸·`eval`·heredoc·스크립트 파일·`gh` 별칭을 거친 같은 명령, GitHub MCP의 Issue 쓰기
   도구)는 PreToolUse 훅이 막는다. 훅은 명령 텍스트를 읽는 가드레일이라 실행 중에 조립한 명령과 공유 경로(`\\server\…`)로 적은 스크립트는 지나갈 수 있다.
+- 관계: `sub-issue add <부모번호> <자식번호>`는 현재 GitHub origin의 같은 저장소에서 한 관계를 추가한다. Issue 브랜치가
+  필요하고 기록·대기열은 그 작업 Issue에 귀속되지만, 부모·자식은 브랜치 번호와 달라도 된다. 이 예외는 관계 추가뿐이며
+  본문·댓글·종료의 기존 대상 제한을 바꾸지 않는다. 명령·브랜치·HMAC은 권한이 아니므로 실행과 flush 모두 요청·지침에서
+  해당 관계의 권한을 별도로 확인한다. 번호는 양의 안전한 정수의 십진 표기이며, 추가 인수·저장소·endpoint·내부 ID 입력은 받지 않는다.
+  고정 GraphQL query의 저장소·번호·`fullDatabaseId`와 nullable `parent`를 검사한다. errors·부분 응답·null 대상(PR·접근 불가 포함)은
+  쓰지 않는다. 같은 부모면 쓰기 없이 성공, 다른 부모면 거부한다. REST POST의 `replace_parent`는 false이며 부모 교체·해제·정렬·
+  다른 저장소 연결은 제공하지 않는다. 계층 순환·한도는 서버가 거부하며, 조회와 POST 사이의 외부 변경을 잠그지는 못한다.
+  POST 뒤 관계를 다시 조회하고 원하는 부모가 관찰된 때만 완료로 보고한다. 시간 초과·조회 실패·성공 응답 뒤 관계 부재는 미확인이다.
+  `sub-issue-add` 대기 항목은 기존 서명의 `text`에 canonical `[1,부모,자식]`을 담고, 무인 실행에서는 API를 부르지 않는다.
+  flush는 다시 검사하며 미확인 항목은 이후에도 조회만 한다. 관계가 확인되지 않으면 남겨 두고, 사람이 결과를 확인해
+  `pending drop`으로 제거한 뒤 필요할 때 새 add를 실행한다. 서명은 사용자 승인·옛 항목 재생을 보장하지 않는다.
+  `sub-issue list <부모번호>`는 번호 목록만 조회하며 페이지당 100개·10페이지까지 검사한다. 저장소 불일치·중복 번호·부분 응답·
+  cursor 무진전·한도 초과는 실패이며 불완전한 목록을 성공으로 출력하지 않는다. 목록과 완료는 조회 시점의 관찰이다.
+  API 근거: [GraphQL Issue](https://docs.github.com/en/graphql/reference/issues#issue),
+  [REST sub-issues](https://docs.github.com/en/rest/issues/sub-issues). 결정은 [ADR-0022](../design/decisions/ADR-0022-sub-issue-writes.md).
 - 무인 구간(장부의 `mode`가 `autonomous`일 때, [자율 실행](ledger.md#자율-실행))에서는 어떤 Issue 쓰기도 하지 않고 장부에 쌓는다. 다음 대화형 턴에 사용자가 보고
   게시한다. 소유자의 전역 지침이 외부에 공유되는 효과를 대화형 턴에서만 허용하기 때문이다. 쌓인 intent는 게시할 때의 본문으로
   체크를 옮기므로 해제 결과는 flush 출력에 나오고, 그 뒤에 쌓는 check는 번호가 달라지므로 거부한다. 같은 이유로 flush는 첫 실패에서 멈추고, check가 대기 중이면 intent를 바로

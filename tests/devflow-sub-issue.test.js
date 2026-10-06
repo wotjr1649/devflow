@@ -109,6 +109,24 @@ test('existing parent is compared by repository and number without replacement',
   }
 })
 
+test('origin host must be exactly GitHub rather than a matching substring', () => {
+  for (const origin of ['https://evilgithub.com/o/r.git', 'https://example.com/github.com/o/r.git',
+    'file:///some/github.com/o/r.git', 'https://github.com@other.example/o/r.git']) {
+    const f = fixture({ origin })
+    assert.equal(state.repoContext(f.e, f.root).repo, null)
+    assert.equal(f.invoke('add', '294', '320').code, 1)
+    assert.equal(f.e.calls.filter(c => c.cmd === 'gh').length, 0)
+  }
+})
+
+test('origin parsing preserves HTTPS and standard GitHub SSH clone forms', () => {
+  for (const origin of ['https://github.com/o/r.git', 'https://github.com/o/r',
+    'git@github.com:o/r.git', 'ssh://git@github.com/o/r.git', 'git://github.com/o/r.git']) {
+    const f = fixture({ origin })
+    assert.equal(state.repoContext(f.e, f.root).repo, 'o/r')
+  }
+})
+
 test('null, partial, malformed and mismatched metadata never becomes a write', () => {
   const alter = [
     v => ({ ...v, errors: [{ message: 'partial failure' }] }),

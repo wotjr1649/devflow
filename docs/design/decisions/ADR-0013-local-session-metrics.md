@@ -24,7 +24,7 @@
 - 범위는 Issue 브랜치에 있던 레코드다. 브랜치는 호스트마다 다른 곳에서 읽는다.
   - Claude: 레코드의 `gitBranch`
   - Codex: 작업 트리의 HEAD reflog
-- 측정은 ship에서 통합하기 전에 Issue 브랜치에서 한다. 라우터의 review reference가 그 단계를 안내한다.
+- 측정은 ship에서 통합하기 전에 Issue 브랜치에서 한다. 라우터의 ship reference가 그 단계를 안내한다(#64).
 
 ## 결과
 

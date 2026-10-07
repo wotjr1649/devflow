@@ -55,7 +55,7 @@ If Codex registers a local checkout of the shared catalog, use the
 [local catalog update procedure](https://github.com/wotjr1649/marketplace#codex에-로컬-catalog-checkout을-등록한-경우).
 
 From a checkout of this repository, compare an installed copy with its release tag using
-`node bin/devflow-install-check --ref v0.2.0 <installed-plugin-directory>`. It checks tracked files; separately check
+`node bin/devflow-install-check --ref v0.3.0 <installed-plugin-directory>`. It checks tracked files; separately check
 for unexpected files left in an installation.
 
 For local development, this repository's catalogs are named `devflow-local`, with the identifier

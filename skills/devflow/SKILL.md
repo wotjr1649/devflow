@@ -56,8 +56,8 @@ The path (spike, bounded, architectural) is the ledger's `path`; when it is unse
 [경로별 단계](../../docs/specs/lifecycle.md#경로별-단계), take the heavier path when unsure, and record it.
 
 Stages with an owner skill are entered by calling that skill by name, which also brings its text back after
-compaction: start - `development-start`; review and ship - `pr-review-workflow`, after reading
-[review](references/review.md) for what devflow hands the reviewer; cleanup - `workspace-cleanup`.
+compaction: start - `development-start`; review and ship - `pr-review-workflow`, which selects
+[review](references/review.md) or [ship](references/ship.md) for that phase; cleanup - `workspace-cleanup`.
 
 Every other stage has a reference to read when the work enters it: [discover](references/discover.md),
 [design](references/design.md), [plan](references/plan.md), [ready](references/ready.md), [build](references/build.md),

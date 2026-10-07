@@ -9,6 +9,10 @@ Every file in this repository that is derived from another project has a row her
 
 ## Patterns without copied text
 
+Issue #64 moves devflow's ship sequence from `skills/devflow/references/review.md` to `ship.md` and updates the
+router and PR workflow pointers. The seven skill entrypoints and their descriptions remain; the existing source
+attributions and licenses below still apply. Required ignored review inputs now explicitly include local plans and work specs.
+
 These parts are devflow's own text. They take ideas from the projects below and copy no passage, so they have no row
 above; they are listed so the ideas can be traced.
 

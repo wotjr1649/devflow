@@ -119,7 +119,7 @@ Claude 결과로 읽는다. 출력은 정수만 담으므로 `rev`는 장부와 
 - 보존: 주 작업 트리([Issue 폴더](repository.md#issue-폴더))의 `artifacts/metrics/i<issue>.json`이다. 에이전트가 명령의
   출력을 그대로 저장한다. 비공개이고 worktree를 지우거나 Issue가 닫혀도 남는다. 기준값도 같은 폴더에 둔다.
 - 공개: `--line`의 줄을 ship 체크포인트에 넣는다. 이 체크포인트와 상태 done, Issue 종료는 Issue 브랜치에서 통합하기 전에
-  한다. `devflow-state`는 Issue를 그 브랜치에서만 쓰기 때문이다. 순서는 라우터의 review reference가 안내한다.
+  한다. `devflow-state`는 Issue를 그 브랜치에서만 쓰기 때문이다. 순서는 라우터의 ship reference가 안내한다.
 - 장부와 체크포인트는 보존 파일을 가리키고 값을 다시 계산하지 않는다.
 
 ## 수집 명령의 경계

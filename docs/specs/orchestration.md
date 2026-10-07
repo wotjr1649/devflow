@@ -97,8 +97,9 @@ rounds of review or changes outside the listed files; mention anything worth doi
 
 BASE는 위임하기 전에 기록한다. `HEAD~1`로 대신하면 커밋이 여러 개인 작업의 앞부분이 리뷰에서 빠진다.
 
-git이 무시하는 입력(비공개 시험, 검증 출력)은 지시서에 경로로 적는다. 리뷰어의 Glob은 무시된 파일을 찾지 못해, 경로가
-없으면 없다고 잘못 보고한다(#24). 백그라운드로 띄운 위임은 장부의 `running`에
+git이 무시하는 계획·작업 spec·시험·출력은 지시서에 경로와 읽을 부분을 적는다.
+Glob에 없더라도 경로를 직접 읽고, 필수 누락은 검토 한계로 보고한다(#24).
+백그라운드 위임은 장부의 `running`에
 올린다([작업 장부 키](ledger.md#작업-장부-키)).
 
 ## 서브에이전트의 질문

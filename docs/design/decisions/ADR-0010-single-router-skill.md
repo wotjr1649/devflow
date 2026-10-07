@@ -6,6 +6,10 @@
 개정(#51): 단계는 11개와 종료 상태 `done`이다. 아래의 12개 표기는 잘못된 수치였으며
 현재 계약은 [lifecycle](../../specs/lifecycle.md#단계)을 따른다.
 
+개정(#64): 진입점 7개는 유지하고, review·ship의 devflow 전용 실행 순서를 각 단계 reference로 분리한다.
+`pr-review-workflow`는 필요한 단계 reference와 일반 관문을 선택한다. review 파일에 ship 순서를 섞거나
+completion에서 별도 순서를 정의하지 않도록 책임을 나눈다. 규칙의 소유자는 기존 specs다.
+
 ## 맥락
 
 - 처음 안은 라우터 하나가 모든 단계 내용을 references로 흡수하는 것이었다.

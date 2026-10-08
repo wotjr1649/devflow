@@ -17,7 +17,7 @@ Reconcile fresh state before each mutation and preserve others' changes. Where a
 In a repository with `.devflow.json`, the requested phase selects the devflow procedure: review/fixes uses
 [review](../devflow/references/review.md); integration or tracking completion uses [ship](../devflow/references/ship.md).
 Read the selected reference and the common gates needed for this phase together. The reference owns the sequence and
-does not call this skill back. Review-only ends with its findings; it does not enter ship or cleanup. After compaction
+does not call this skill back. After compaction
 or a phase change, reopen the current phase's reference; an earlier read is not the current state.
 
 Without `.devflow.json`, use the common procedure below; no devflow card or ledger is required.
@@ -28,4 +28,4 @@ Common gates and procedures:
 - Explicit tracking completion: [completion](references/completion.md).
 - Cleanup, including merged branches and worktrees after a verified merge: [cleanup handoff](references/cleanup.md).
 
-Report identity, observed/unrun checks, findings, artifacts and next/pending steps separately for each phase.
+Report each phase once: identity, observed/unrun checks, findings, artifacts and next/pending steps; group shared evidence and limits.

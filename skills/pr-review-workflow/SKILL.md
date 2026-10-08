@@ -7,11 +7,8 @@ description: Use when preparing a PR, resolving its review findings, checking CI
 
 Requested phase only. Review-only ends with findings: no edits, posting, tracking completion or cleanup. Tags, releases and package publication are separate work.
 
-Open linked or supplied file paths directly; resolve relative links from the file containing them. Use discovery only
-when the path is unknown or a direct read fails, since listings can omit ignored inputs. Group independent reads of
-the diff, required inputs, project configuration and phase references in one tool turn where supported. Read only
-the linked section of a longer contract when it settles the question. Reuse unchanged inputs already read in this
-phase; refresh changed inputs and mutable state before acting.
+Open supplied or linked paths directly, resolving links relative to their source. Discover unknown or failed paths,
+since listings can omit ignored inputs.
 
 Resolve root/changes/base/head/remote/project contracts; preserve unrelated work. Map PR/MR to platform. Use project checks/severity; campaign rules only when assigned. Absent rules: proportionate checks, stated uncertainty, no invented gates. Absent remote metadata: local drafts bound to available diff.
 

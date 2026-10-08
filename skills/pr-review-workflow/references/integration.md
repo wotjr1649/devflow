@@ -1,10 +1,6 @@
 # Integration
 
-Apply [rules](../SKILL.md) and [review](review.md). Project template: problem/outcome, scope/exclusions, acceptance/checks/limits; link Issues/completed subsets, leaving remnants open.
-
-For a read-only PR readiness report without `.devflow.json`, give one readiness verdict and one entry per applicable gate:
-supplied claim, observed or missing evidence, and required recheck. Avoid repeating these in separate evidence, limits and next-step lists.
-Keep revision, check provenance, unread-input reasons and blockers visible; finish with the next allowed action.
+Apply [rules](../SKILL.md) and [review](review.md). When drafting a PR description, follow the project's template and link Issues/completed subsets, leaving remnants open.
 
 Apply the current repository's distinction between required and informational CI. In a repository with `.devflow.json`,
 devflow owns it in [repository](../../../docs/specs/repository.md#통합과-ci); otherwise use that project's policy.

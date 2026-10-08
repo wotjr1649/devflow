@@ -2,6 +2,10 @@
 
 Apply [rules](../SKILL.md) and [review](review.md). Project template: problem/outcome, scope/exclusions, acceptance/checks/limits; link Issues/completed subsets, leaving remnants open.
 
+For a read-only PR readiness report without `.devflow.json`, give one readiness verdict and one entry per applicable gate:
+supplied claim, observed or missing evidence, and required recheck. Avoid repeating these in separate evidence, limits and next-step lists.
+Keep revision, check provenance, unread-input reasons and blockers visible; finish with the next allowed action.
+
 Apply the current repository's distinction between required and informational CI. In a repository with `.devflow.json`,
 devflow owns it in [repository](../../../docs/specs/repository.md#통합과-ci); otherwise use that project's policy.
 Required CI/protection/approval/thread gates cannot be replaced by local tests/templates; a missing/stale/skipped/cancelled run is NOT_VERIFIED, and so is a PR on which no check ran at all (path filters, no triggered workflow): "every check passes" over zero checks verifies nothing, so run the checks locally and record them in the PR before it counts. A repository with no CI configured records its checks by passing a documented local gate hook (such as a tracked pre-push that runs them); without such a hook, record the local checks in the PR or the integration commit. Bind CI to repo/workflow/run/attempt/event/base/head/checkout and synthetic/head/post-merge type; refresh changed candidates, reject unrelated runs.

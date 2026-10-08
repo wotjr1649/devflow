@@ -14,13 +14,12 @@ Resolve root/changes/base/head/remote/project contracts; preserve unrelated work
 
 Reconcile fresh state before each mutation and preserve others' changes. Where authority is missing, prepare a reviewed draft naming the missing effect. Keep raw or private evidence out of what you publish. Read back state/links; reconcile uncertainty before retries, recording partial success without repeating it.
 
-In a repository with `.devflow.json`, the requested phase selects the devflow procedure: review/fixes uses
-[review](../devflow/references/review.md); integration or tracking completion uses [ship](../devflow/references/ship.md).
-Read the selected reference and the common gates needed for this phase together. The reference owns the sequence and
-does not call this skill back. After compaction
-or a phase change, reopen the current phase's reference; an earlier read is not the current state.
+In a repository with `.devflow.json`, review/fixes reads [devflow review](../devflow/references/review.md) and
+[common review](references/review.md) together; integration or tracking completion reads [ship](../devflow/references/ship.md)
+and the common gates below for that phase. The devflow reference owns the sequence and does not call this skill back.
+After compaction or a phase change, reopen the current phase's reference; an earlier read is not the current state.
 
-Without `.devflow.json`, use the common procedure below; no devflow card or ledger is required.
+The common gates below apply with and without `.devflow.json`; without it, no devflow card or ledger is required.
 
 Common gates and procedures:
 - Review/fixes: [review](references/review.md).

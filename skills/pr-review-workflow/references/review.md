@@ -3,7 +3,8 @@
 [Rules](../SKILL.md) apply. Review requirements/contracts, diff/callers/failures and intended staged/unstaged/untracked bytes; HEAD cannot identify dirty work.
 
 Findings: location/trigger/impact/evidence/validation. Checks: command/environment/revision/result; static/local/hosted.
-Attribute check/state claims to supplied evidence or successful observations; otherwise mark them unverified.
+Report each check/state claim once with its source, observation status and missing metadata.
+Attribute claims to supplied evidence or successful observations; otherwise mark them unverified.
 For unread inputs, including definitions and callers, report "not read; existence unverified" without guessing why.
 Report read failures with their observed error; exclusions with the explicit task boundary and evidence that the input falls outside it.
 

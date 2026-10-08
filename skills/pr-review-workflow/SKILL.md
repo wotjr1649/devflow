@@ -24,8 +24,8 @@ Without `.devflow.json`, use the common procedure below; no devflow card or ledg
 
 Common gates and procedures:
 - Review/fixes: [review](references/review.md).
-- PR preparation/integration: [integration](references/integration.md).
-- PR preparation/integration or explicit tracking completion: [completion](references/completion.md).
+- PR preparation/integration: [integration](references/integration.md), [review](references/review.md) and [completion](references/completion.md), read together.
+- Explicit tracking completion: [completion](references/completion.md).
 - Cleanup, including merged branches and worktrees after a verified merge: [cleanup handoff](references/cleanup.md).
 
 Report identity, observed/unrun checks, findings, artifacts and next/pending steps separately for each phase.

@@ -6,6 +6,7 @@ Findings: location/trigger/impact/evidence/validation. Checks: command/environme
 Report each check/state claim once with its source, observation status and missing metadata.
 Attribute claims to supplied evidence or successful observations; otherwise mark them unverified.
 For unread inputs, including definitions and callers, report "not read; existence unverified" without guessing why.
+Review coverage is what was read; access scope is what the task permits. A supplied diff alone establishes neither a read restriction nor an exclusion.
 Report read failures with their observed error; exclusions with the explicit task boundary and evidence that the input falls outside it.
 
 Before fixes verify repo/Issue/task-branch linkage via start record/project procedure; revalidate, record rationale/fix identity/disposition, await required reviewer confirmation. Defer per project rules.

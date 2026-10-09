@@ -2,7 +2,7 @@
 
 [Rules](../SKILL.md) apply. Review requirements/contracts, diff/callers/failures.
 
-For a supplied diff, report static coverage of its bytes. For direct working-tree review, read intended staged/unstaged/untracked bytes; HEAD and status listings alone do not establish them. Attribute working-tree state to supplied Git evidence or successful Git commands; otherwise report it unverified. Coverage is what was read; access scope is what the task permits. A supplied diff alone establishes neither a read restriction nor an exclusion.
+For a supplied diff, report static coverage of its bytes. For direct working-tree review, read intended staged/unstaged/untracked bytes; HEAD and status listings alone do not establish them. Attribute working-tree state to supplied Git evidence or successful Git commands; otherwise report it unverified. Coverage records reads, next actions select work, and the task defines access scope. A supplied diff alone establishes neither a read restriction nor an exclusion.
 
 Findings: location/trigger/impact/evidence/validation. Checks: command/environment/revision/result; static/local/hosted.
 Report each check/state claim once with its source, observation status and missing metadata.

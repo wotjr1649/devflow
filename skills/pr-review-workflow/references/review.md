@@ -5,10 +5,10 @@
 For a supplied diff, report static coverage of its bytes. For direct working-tree review, read intended staged/unstaged/untracked bytes; HEAD and status listings alone do not establish them. Attribute working-tree state to supplied Git evidence or successful Git commands; otherwise report it unverified. Coverage records reads, next actions select work, and the task defines access scope. A supplied diff alone establishes neither a read restriction nor an exclusion.
 
 Findings: location/trigger/impact/evidence/validation. Checks: command/environment/revision/result; static/local/hosted.
-Report each check/state claim once with its source, observation status and missing metadata.
+Report each check/state claim once with its source path or explicit task root/alias, observation status and missing metadata; mark unresolved material paths unverified.
 Attribute claims to supplied evidence or successful observations; otherwise mark them unverified.
 Keep supplied or successfully read task acceptance criteria with their source. Report behavior-specific criteria separately when not supplied, not read, or failed to read; knowing a criterion does not establish that it is met.
-Report declarations, behavioral meaning and callers by their own evidence; unverified meaning or unread callers do not make a read declaration unread. Names or declaration values alone do not establish runtime effects. For unread content, report "not read; existence unverified" without guessing why.
+Report declarations, behavioral meaning and callers by their own evidence; unverified meaning or unread callers do not make a read declaration unread. Names or declaration values alone do not establish runtime effects. For unread content, report known provision separately from unread status, and leave existence unverified only where evidence does not establish it. Do not guess why it was unread.
 Report read failures with their observed error; exclusions with the explicit task boundary and evidence that the input falls outside it.
 
 Before fixes verify repo/Issue/task-branch linkage via start record/project procedure; revalidate, record rationale/fix identity/disposition, await required reviewer confirmation. Defer per project rules.

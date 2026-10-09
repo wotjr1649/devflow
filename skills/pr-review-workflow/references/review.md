@@ -8,7 +8,7 @@ Findings: location/trigger/impact/evidence/validation. Checks: command/environme
 Report each check/state claim once with its source, observation status and missing metadata.
 Attribute claims to supplied evidence or successful observations; otherwise mark them unverified.
 Keep supplied or successfully read task acceptance criteria with their source. Report behavior-specific criteria separately when not supplied, not read, or failed to read; knowing a criterion does not establish that it is met.
-For other unread inputs, including definitions and callers, report "not read; existence unverified" without guessing why.
+Report declarations, behavioral meaning and callers by their own evidence; unverified meaning or unread callers do not make a read declaration unread. For unread content, report "not read; existence unverified" without guessing why.
 Report read failures with their observed error; exclusions with the explicit task boundary and evidence that the input falls outside it.
 
 Before fixes verify repo/Issue/task-branch linkage via start record/project procedure; revalidate, record rationale/fix identity/disposition, await required reviewer confirmation. Defer per project rules.

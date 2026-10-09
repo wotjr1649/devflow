@@ -195,7 +195,7 @@ Issue 형식은 doctor가 검사하지 않고, `devflow-state`가 쓸 때 검사
 
 ## 통합과 CI
 
-devflow CI는 push마다 Linux·macOS, Node 22·24로 `verify`를 실행한다. BASE..HEAD에 `bin/`, `hooks/`, `tests/`가
+이 저장소 CI는 push마다 Linux·macOS, Node 22·24로 `verify`를 실행한다. BASE..HEAD에 `bin/`, `hooks/`, `tests/`가
 있으면 Issue 브랜치 push 후 그 HEAD의 CI 전부 통과 시 main에 fast-forward한다.
 누락·취소·건너뜀·다른 커밋은 통과가 아니다. 그 밖은 정보용 CI다. local-merge에 원격 Issue 브랜치
 push·완료 대기는 불필요하나 CI 실행·별도 필수 관문은 유지한다.

@@ -2,9 +2,9 @@
 
 Apply [rules](../SKILL.md) and [review](review.md). When drafting a PR description, follow the project's template and link Issues/completed subsets, leaving remnants open.
 
-Apply the target repository's distinction between required and informational CI. In a repository with `.devflow.json`,
-devflow owns it in [repository](../../../docs/specs/repository.md#통합과-ci); otherwise use that project's supplied or observed policy.
-The plugin's own repository contract establishes no target gate by itself.
+Keep supplied or observed target required checks required. Resolve informational CI and hook roles from that target's established policy.
+`.devflow.json` selects the devflow sequence; its presence does not adopt the plugin repository's CI paths, matrix or hook implementation.
+[Repository](../../../docs/specs/repository.md#통합과-ci) defines the plugin repository's policy; apply it to another target only where that target explicitly adopts it.
 Required CI/protection/approval/thread gates cannot be replaced by local tests/templates. Missing/stale/skipped/cancelled required runs are NOT_VERIFIED.
 Zero reported checks do not prove that no CI is required; distinguish no configured CI from configured CI with no run.
 Verify local checks against the current candidate and follow only recording requirements established for the target repository.
@@ -14,8 +14,7 @@ Bind CI to repo/workflow/run/attempt/event/base/head/checkout and synthetic/head
 
 Pre-merge refresh base/head/rules/CI/approvals/threads; guard expected head or hold races. Use project merge method without bypass; verify resulting commit and required post-merge checks.
 
-In a repository with `.devflow.json`, only when devflow's [integration rules](../../../docs/specs/repository.md#통합과-ci)
-classify BASE..HEAD CI as informational, omit an optional task-branch push or CI completion wait. Required CI paths and other required gates
-take precedence; keep the Issue-branch checks.
+Omit an optional task-branch push or CI completion wait only for CI established as informational by the target policy.
+Keep required CI, other established gates and the Issue-branch checks.
 
 After a verified merge, follow the [cleanup handoff](cleanup.md); merged task branches and worktrees are removed, not only assessed. Review-only never enters cleanup.

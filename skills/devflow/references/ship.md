@@ -6,7 +6,8 @@ Apply the common [integration](../../pr-review-workflow/references/integration.m
 A review-only request ends in review; enter ship only for the requested integration or completion work.
 
 Ship measures, records and closes on the Issue branch before it integrates: worktree reflogs and old host records
-disappear later, and `devflow-state` writes an Issue only from its branch. Rules: [metrics](../../../docs/specs/metrics.md).
+disappear later, and `devflow-state` writes an Issue only from its branch. Read [metrics](../../../docs/specs/metrics.md)
+separately when its rules are needed; reuse complete returned rules and fetch only missing content if a response is incomplete.
 
 1. Read the cycle's guard blocks (`guard-events.jsonl` beside the ledger). Count each one that stopped a legitimate
    action, and any intervention not yet counted, with `metric` on the card's `Tool:` command.

@@ -37,7 +37,7 @@ function startupError(stderr, replacements) {
 
 async function run(executable) {
   assert.equal(process.platform, 'linux', 'LINUX_ONLY')
-  assert.ok(path.isAbsolute(executable) && fs.statSync(executable).isFile())
+  assert.ok(path.isAbsolute(executable) && fs.lstatSync(executable).isFile())
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-native-'))
   const project = path.join(base, 'project'), plugin = path.join(base, 'plugin')
   const home = path.join(base, 'home'), outside = path.join(base, 'outside')
@@ -58,7 +58,7 @@ async function run(executable) {
   const link = path.join(project, 'outside-link')
   fs.symlinkSync(sentinel, link)
   assert.equal(fs.readFileSync(link, 'utf8'), secretFreeText)
-  const profile = { id: 'i68-read', filesystem: { ':root': 'deny', ':minimal': 'read', [project]: 'read', [plugin]: 'read' }, network: { enabled: false } }
+  const profile = { id: 'i68-read', filesystem: { ':root': 'deny', ':minimal': 'read', [executable]: 'read', [project]: 'read', [plugin]: 'read' }, network: { enabled: false } }
   const rules = Object.entries(profile.filesystem).map(([key, value]) => JSON.stringify(key) + '=' + JSON.stringify(value)).join(',')
   const args = ['app-server', '--stdio', '-c', 'default_permissions="i68-read"', '-c', 'approval_policy="never"', '-c', 'permissions.i68-read={filesystem={' + rules + '},network={enabled=false}}']
   const env = { PATH: '/usr/bin:/bin', HOME: home, CODEX_HOME: path.join(home, 'codex'), XDG_CONFIG_HOME: path.join(home, '.config'), TMPDIR: path.join(base, 'tmp'), LANG: 'C.UTF-8' }
@@ -152,7 +152,7 @@ async function run(executable) {
   }
   const groupClosed = !groupExists()
   if (serverExit !== 0) failure ||= 'SERVER_EXIT_NONZERO'
-  const evidence = { kind: 'native Linux sandbox; not model dispatch, plugin loading, hook or performance proof', status: passed(rows, closed, groupClosed, failure) ? 'PASS' : 'BLOCKED', failure, startupError: rows.length ? null : startupError(stderrText, [[base, '<fixture>'], [path.dirname(executable), '<vendor>']]), version: version.stdout.trim(), commandErrors, policy: { root: 'deny', minimal: 'read', readableFixtureRoots: 2, network: false }, rows, serverClosed: closed, processGroupClosed: groupClosed, serverExit, stdoutBytes, stderrBytes, rpcMethods: methods, nativeInferenceCalls: 0, credentialsInherited: false }
+  const evidence = { kind: 'native Linux sandbox; not model dispatch, plugin loading, hook or performance proof', status: passed(rows, closed, groupClosed, failure) ? 'PASS' : 'BLOCKED', failure, startupError: rows.length ? null : startupError(stderrText, [[base, '<fixture>'], [path.dirname(executable), '<vendor>']]), version: version.stdout.trim(), commandErrors, policy: { root: 'deny', minimal: 'read', readableFixtureRoots: 2, readableRuntimeFiles: 1, network: false }, rows, serverClosed: closed, processGroupClosed: groupClosed, serverExit, stdoutBytes, stderrBytes, rpcMethods: methods, nativeInferenceCalls: 0, credentialsInherited: false }
   console.log('DEVFLOW_NATIVE_CI_EVIDENCE=' + JSON.stringify(evidence))
   return evidence
 }

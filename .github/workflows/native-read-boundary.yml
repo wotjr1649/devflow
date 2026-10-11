@@ -1,0 +1,24 @@
+# Issue #68 model-free Linux compatibility check; no deployment or model credentials.
+name: native-read-boundary
+on:
+  push:
+    branches: [test/68-native-ci-boundary]
+permissions:
+  contents: read
+jobs:
+  boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Verify and prepare pinned native binaries
+        run: |
+          python3 tests/ci/install-codex.test.py
+          env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP/i68-install-home" python3 tests/ci/install-codex.py "$RUNNER_TEMP/i68-codex"
+      - name: Run native sandbox controls without inference
+        run: node tests/ci/codex-native-boundary.cjs "$RUNNER_TEMP/i68-codex/codex"

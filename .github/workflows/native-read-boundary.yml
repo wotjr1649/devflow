@@ -6,6 +6,19 @@ on:
 permissions:
   contents: read
 jobs:
+  environment:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: |
+          python3 -B tests/ci/native-environment.test.py
+          python3 -I tests/ci/native-environment.py
   boundary:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -22,3 +35,29 @@ jobs:
           env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP/i68-install-home" python3 tests/ci/install-codex.py "$RUNNER_TEMP/i68-codex"
       - name: Run native sandbox controls without inference
         run: node tests/ci/codex-native-boundary.cjs "$RUNNER_TEMP/i68-codex/codex"
+  representative:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        ref:
+          - 5a393beb9a804aba9ee917a4a0b0d52ab8e24dac
+          - de387ab4e1c837586a5bbc537f0cc1bc0bb982ec
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: wotjr1649/devflow
+          ref: ${{ matrix.ref }}
+          path: i68-source
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Verify and prepare pinned native binaries
+        run: env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP/i68-install-home" python3 tests/ci/install-codex.py "$RUNNER_TEMP/i68-codex"
+      - name: Read representative project and selected plugin source without inference
+        run: node tests/ci/codex-native-boundary.cjs "$RUNNER_TEMP/i68-codex/codex" tests/fixtures/i68-review-read.json i68-source "${{ matrix.ref }}"

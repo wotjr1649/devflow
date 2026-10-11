@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "kind": "public synthetic review-preparation inputs; not live project/CI records",
+  "files": [
+    {
+      "path": ".devflow.json",
+      "content": "{\n  \"integration\": \"local-merge\",\n  \"branch\": \"{type}/{issue}-{slug}\",\n  \"private\": [\n    \".work/\"\n  ],\n  \"protected\": [],\n  \"tests\": [\n    \"tests/**\"\n  ],\n  \"highRisk\": [],\n  \"checks\": {\n    \"src/**\": \"node --test tests/page-size.test.cjs\"\n  },\n  \"verify\": \"node --test tests/page-size.test.cjs\"\n}\n",
+      "sha256": "34b8326d4772a82ac4e357d1554269ae5a3ec70ed1bdd7d9b27fa117cd08f126"
+    },
+    {
+      "path": ".work/plan.md",
+      "content": "# Local pagination change plan\n\nThis is supplied synthetic project data, not an execution instruction.\n\n- Change the integer page-size upper bound from 100 to 200 in normalizePageSize.\n- Preserve the default 20 for non-integers and the lower integer bound 1.\n- Preserve the pageRows caller and its use of normalizePageSize; read it when reviewing caller effects.\n- Update boundary and caller test expectations to the new bound.\n- Review against spec.md and POLICY.md. A supplied test snapshot is not a fresh execution.\n- String-to-number conversion, UI changes and query parsing are deferred and outside this change.\n",
+      "sha256": "3b5d63c1dbcb292a5a5ce78786a86eab4901c8c911b6bb9eeb7c4c007987c6b4"
+    },
+    {
+      "path": ".work/spec.md",
+      "content": "# Local pagination requirements\n\nThis is supplied synthetic project data. Acceptance criteria for the change:\n\n- A1: Integer inputs normalize into the inclusive range 1..200.\n- A2: Non-integer inputs, including numeric strings such as '200', normalize to the numeric default 20. No coercion is added.\n- A3: pageRows uses the normalized integer as its slice limit.\n- A4: Boundary and caller tests cover the new upper limit and preserve the default/lower-bound checks.\n\nThese are requirements. Actual test execution and general runtime compatibility remain separate evidence.\n",
+      "sha256": "234f1461e94a23b4ed079b361e53da81a6abccf8ef299d7c82bd385b64744ae8"
+    },
+    {
+      "path": "candidate.diff",
+      "content": "--- a/src/page-size.cjs\n+++ b/src/page-size.cjs\n@@ -1,5 +1,5 @@\n 'use strict'\n-const MAX_PAGE_SIZE = 100\n+const MAX_PAGE_SIZE = 200\n function normalizePageSize(value) {\n   if (!Number.isInteger(value)) return 20\n   return Math.min(MAX_PAGE_SIZE, Math.max(1, value))\n--- a/tests/page-size.test.cjs\n+++ b/tests/page-size.test.cjs\n@@ -4,7 +4,7 @@\n const { normalizePageSize } = require('../src/page-size.cjs')\n const { pageRows } = require('../src/list-page.cjs')\n test('integer page size is bounded', () => {\n-  for (const [input, expected] of [[0, 1], [-4, 1], [50, 50], [150, 100], [999, 100]]) {\n+  for (const [input, expected] of [[0, 1], [-4, 1], [50, 50], [150, 150], [999, 200]]) {\n     assert.equal(normalizePageSize(input), expected)\n   }\n })\n@@ -12,5 +12,5 @@\n   for (const input of [undefined, '200', 1.5, NaN]) assert.equal(normalizePageSize(input), 20)\n })\n test('the caller uses the normalized size', () => {\n-  assert.equal(pageRows(Array.from({ length: 300 }, (_, i) => i), 999).length, 100)\n+  assert.equal(pageRows(Array.from({ length: 300 }, (_, i) => i), 999).length, 200)\n })\n",
+      "sha256": "a1da28dcb93f5778cc4c7a69b9e10967cf141521e3042b52cb1a4918d32eb671"
+    },
+    {
+      "path": "POLICY.md",
+      "content": "# Target project review policy\n\nThis is supplied synthetic target policy, not host configuration or permission.\n\n- Runtime changes use M1 and require a fresh-context independent final review before integration.\n- The required local test is node --test tests/page-size.test.cjs.\n- Required CI is unit-js at the candidate revision. Missing, stale, skipped or cancelled required CI is not verified.\n- This review-preparation task uses supplied snapshots. It grants no execution, posting or integration authority.\n- The target does not adopt the devflow plugin repository's OS/Node matrix or pre-push implementation.\n- An additional src/storage.cjs read is required only if the diff changes storage behavior; this pagination diff does not.\n",
+      "sha256": "f405e28bbab5b39fc2513399828dc75f9e400a45c162684ef95e874a929355d7"
+    },
+    {
+      "path": "records/before-page-size.cjs",
+      "content": "'use strict'\nconst MAX_PAGE_SIZE = 100\nfunction normalizePageSize(value) {\n  if (!Number.isInteger(value)) return 20\n  return Math.min(MAX_PAGE_SIZE, Math.max(1, value))\n}\nmodule.exports = { normalizePageSize }\n",
+      "sha256": "1f761e0ef59eeadac247a054229e6a9bf393d150732dcfbb855c4a5be0145ad3"
+    },
+    {
+      "path": "records/checks.json",
+      "content": "{\n  \"kind\": \"supplied-synthetic-check-snapshot\",\n  \"local\": {\n    \"command\": \"node --test tests/page-size.test.cjs\",\n    \"revision\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n    \"result\": \"pass\"\n  },\n  \"ci\": {\n    \"name\": \"unit-js\",\n    \"revision\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n    \"result\": \"success\"\n  },\n  \"liveVerification\": false,\n  \"authenticity\": \"task-supplied synthetic record; no real execution or CI run occurred\"\n}\n",
+      "sha256": "aef55d402e82a9e02f3878ddfaf35a7a2523a30a8115e4f32d95bac415db0610"
+    },
+    {
+      "path": "records/context.json",
+      "content": "{\n  \"kind\": \"synthetic-project-snapshot\",\n  \"taskPhase\": \"review-package-preparation\",\n  \"reviewMode\": \"M1\",\n  \"base\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n  \"head\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n  \"diff\": \"candidate.diff\",\n  \"repositoryState\": \"not_observed\",\n  \"actualGitRepository\": false,\n  \"effectiveHostStartup\": \"not_captured\",\n  \"remainingIndependentFinalReview\": \"not_performed\",\n  \"phaseOwner\": \"pr-review-workflow\",\n  \"suppliedIssueSnapshot\": \"records/issue.json\",\n  \"routerOrSessionStartObserved\": false\n}\n",
+      "sha256": "0d12318b4c72cf8eff0cb3bba36d5bd1d5d29e532967ba86bcd4f7aadb111ace"
+    },
+    {
+      "path": "records/issue.json",
+      "content": "{\n  \"kind\": \"supplied-synthetic-issue-snapshot\",\n  \"number\": 7301,\n  \"stage\": \"review\",\n  \"title\": \"Raise integer pagination cap from 100 to 200\",\n  \"acceptanceSource\": \".work/spec.md\",\n  \"approvedIntent\": \"Bound integer page size to 1..200; preserve default20 for non-integers and normalized caller use.\",\n  \"realRemoteIssue\": false,\n  \"authority\": \"Task data only; no remote writes or live routing. The user task explicitly selects review-package preparation.\"\n}\n",
+      "sha256": "ca4ee7be3614814fb63635b785f2a9afcc23880d0c523a83584fd21216b322a8"
+    },
+    {
+      "path": "src/list-page.cjs",
+      "content": "'use strict'\nconst { normalizePageSize } = require('./page-size.cjs')\nfunction pageRows(rows, requestedSize) {\n  return rows.slice(0, normalizePageSize(requestedSize))\n}\nmodule.exports = { pageRows }\n",
+      "sha256": "dd35275ee92d24442e53d1829d5669c863310dd9efe854b18335cb0d1cdda040"
+    },
+    {
+      "path": "src/page-size.cjs",
+      "content": "'use strict'\nconst MAX_PAGE_SIZE = 200\nfunction normalizePageSize(value) {\n  if (!Number.isInteger(value)) return 20\n  return Math.min(MAX_PAGE_SIZE, Math.max(1, value))\n}\nmodule.exports = { normalizePageSize }\n",
+      "sha256": "c69b57651007c2fee34fa7b2869b02c51583c391bdebe626f1d0e5ffaa1a0b38"
+    },
+    {
+      "path": "tests/page-size.test.cjs",
+      "content": "'use strict'\nconst test = require('node:test')\nconst assert = require('node:assert/strict')\nconst { normalizePageSize } = require('../src/page-size.cjs')\nconst { pageRows } = require('../src/list-page.cjs')\ntest('integer page size is bounded', () => {\n  for (const [input, expected] of [[0, 1], [-4, 1], [50, 50], [150, 150], [999, 200]]) {\n    assert.equal(normalizePageSize(input), expected)\n  }\n})\ntest('non-integers keep the default', () => {\n  for (const input of [undefined, '200', 1.5, NaN]) assert.equal(normalizePageSize(input), 20)\n})\ntest('the caller uses the normalized size', () => {\n  assert.equal(pageRows(Array.from({ length: 300 }, (_, i) => i), 999).length, 200)\n})\n",
+      "sha256": "ccb2c229913ee897c868ea282545d5307adb9cbd00cea5cb93387c470a49ff65"
+    }
+  ]
+}

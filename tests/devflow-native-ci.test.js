@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { readReceipt, writeReceipt, passed, caseIds } = require('./ci/codex-native-boundary.cjs')
+const { readReceipt, writeReceipt, passed, caseIds, startupError } = require('./ci/codex-native-boundary.cjs')
 
 test('native CI receipts reject execution errors, empty reads and unrelated negative errors', () => {
   assert.equal(readReceipt('source', { exitCode: 0, stdout: '', stderr: '' }, 'source\n', true, '/fixture/source').pass, false)
@@ -27,4 +27,10 @@ test('aggregate cannot pass with missing cases, process uncertainty or bootstrap
   assert.equal(passed(rows, true, true, 'RPC_ERROR'), false)
   assert.equal(passed([{ pass: false }, ...rows.slice(1)], true, true, null), false)
   assert.equal(passed(rows.map(() => rows[0]), true, true, null), false)
+})
+
+test('startup diagnostics select one bounded error and replace fixture/vendor paths', () => {
+  assert.equal(startupError('warning\nError: cannot open /fixture/db\nmore data', [['/fixture', '<fixture>']]), 'Error: cannot open <fixture>/db')
+  assert.equal(startupError('unrecognized log', []), null)
+  assert.equal(startupError('Error: ' + 'x'.repeat(1000), []).length, 500)
 })

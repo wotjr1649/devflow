@@ -27,6 +27,13 @@ function passed(rows, serverClosed, groupClosed, failure) {
   return !failure && serverClosed && groupClosed && rows.length === caseIds.length &&
     rows.every((row, index) => row.id === caseIds[index] && row.pass)
 }
+function startupError(stderr, replacements) {
+  const line = stderr.split(/\r?\n/).find(line => /^(?:Error|error):/.test(line))
+  if (!line) return null
+  let message = line.replace(/[\u0000-\u001f\u007f]/g, '')
+  for (const [value, label] of replacements) message = message.split(value).join(label)
+  return message.slice(0, 500)
+}
 
 async function run(executable) {
   assert.equal(process.platform, 'linux', 'LINUX_ONLY')
@@ -35,6 +42,7 @@ async function run(executable) {
   const project = path.join(base, 'project'), plugin = path.join(base, 'plugin')
   const home = path.join(base, 'home'), outside = path.join(base, 'outside')
   for (const dir of [project, plugin, home, outside, path.join(base, 'tmp')]) fs.mkdirSync(dir)
+  fs.mkdirSync(path.join(home, 'codex'))
   fs.mkdirSync(path.join(project, '.work'))
   const normal = [
     ['source', path.join(project, 'source.cjs'), 'module.exports = 100\n'],
@@ -58,7 +66,7 @@ async function run(executable) {
   assert.equal(version.status, 0, 'VERSION_FAILED')
   assert.equal(version.stdout.trim(), 'codex-cli 0.162.1', 'VERSION_MISMATCH')
   const child = cp.spawn(executable, args, { env, cwd: project, detached: true, stdio: ['pipe', 'pipe', 'pipe'] })
-  let closed = false, serverExit = null, failure = null, stdoutBytes = 0, stderrBytes = 0, id = 0, text = ''
+  let closed = false, serverExit = null, failure = null, stdoutBytes = 0, stderrBytes = 0, id = 0, text = '', stderrText = ''
   const pending = new Map(), methods = [], rows = []
   function fail(reason) {
     failure ||= reason
@@ -100,7 +108,11 @@ async function run(executable) {
   child.stdout.on('end', () => {
     try { text += decoder.decode(); if (text.trim()) fail('PARTIAL_PROTOCOL') } catch { fail('INVALID_UTF8') }
   })
-  child.stderr.on('data', bytes => { stderrBytes += bytes.length; if (stderrBytes > 1024 * 1024) fail('STDERR_BOUND') })
+  child.stderr.on('data', bytes => {
+    stderrBytes += bytes.length
+    if (stderrText.length < 4000) stderrText += bytes.toString('utf8')
+    if (stderrBytes > 1024 * 1024) fail('STDERR_BOUND')
+  })
   child.on('error', () => fail('SPAWN_FAILED'))
   child.stdin.on('error', () => fail('STDIN_FAILED'))
   child.on('close', code => { closed = true; serverExit = code; if (pending.size) fail('SERVER_CLOSED_BEFORE_RESPONSE') })
@@ -136,9 +148,9 @@ async function run(executable) {
   }
   const groupClosed = !groupExists()
   if (serverExit !== 0) failure ||= 'SERVER_EXIT_NONZERO'
-  const evidence = { kind: 'native Linux sandbox; not model dispatch, plugin loading, hook or performance proof', status: passed(rows, closed, groupClosed, failure) ? 'PASS' : 'BLOCKED', failure, version: version.stdout.trim(), policy: { root: 'deny', minimal: 'read', readableFixtureRoots: 2, network: false }, rows, serverClosed: closed, processGroupClosed: groupClosed, serverExit, stdoutBytes, stderrBytes, rpcMethods: methods, nativeInferenceCalls: 0, credentialsInherited: false }
+  const evidence = { kind: 'native Linux sandbox; not model dispatch, plugin loading, hook or performance proof', status: passed(rows, closed, groupClosed, failure) ? 'PASS' : 'BLOCKED', failure, startupError: rows.length ? null : startupError(stderrText, [[base, '<fixture>'], [path.dirname(executable), '<vendor>']]), version: version.stdout.trim(), policy: { root: 'deny', minimal: 'read', readableFixtureRoots: 2, network: false }, rows, serverClosed: closed, processGroupClosed: groupClosed, serverExit, stdoutBytes, stderrBytes, rpcMethods: methods, nativeInferenceCalls: 0, credentialsInherited: false }
   console.log('DEVFLOW_NATIVE_CI_EVIDENCE=' + JSON.stringify(evidence))
   return evidence
 }
-module.exports = { readReceipt, writeReceipt, passed, caseIds }
+module.exports = { readReceipt, writeReceipt, passed, caseIds, startupError }
 if (require.main === module) run(process.argv[2]).then(evidence => { if (evidence.status !== 'PASS') process.exitCode = 1 }).catch(() => { console.error('DEVFLOW_NATIVE_CI_STARTUP_FAILED'); process.exitCode = 1 })

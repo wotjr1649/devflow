@@ -67,7 +67,7 @@ async function run(executable) {
   assert.equal(version.stdout.trim(), 'codex-cli 0.162.1', 'VERSION_MISMATCH')
   const child = cp.spawn(executable, args, { env, cwd: project, detached: true, stdio: ['pipe', 'pipe', 'pipe'] })
   let closed = false, serverExit = null, failure = null, stdoutBytes = 0, stderrBytes = 0, id = 0, text = '', stderrText = ''
-  const pending = new Map(), methods = [], rows = []
+  const pending = new Map(), methods = [], rows = [], commandErrors = []
   function fail(reason) {
     failure ||= reason
     for (const item of pending.values()) item.reject(new Error(reason))
@@ -122,7 +122,11 @@ async function run(executable) {
     child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n')
     const profiles = await request('permissionProfile/list', { cwd: project })
     assert.ok(profiles.data.some(p => p.id === profile.id && p.allowed), 'PROFILE_NOT_ACCEPTED')
-    const execute = command => request('command/exec', { command, cwd: project, permissionProfile: profile.id, timeoutMs: 10000, outputBytesCap: 10000 })
+    const execute = async command => {
+      const result = await request('command/exec', { command, cwd: project, permissionProfile: profile.id, timeoutMs: 10000, outputBytesCap: 10000 })
+      if (result.exitCode !== 0) commandErrors.push({ tool: path.basename(command[0]), stderrBytes: Buffer.byteLength(result.stderr || ''), normalizedStderrSha256: digest((result.stderr || '').split(base).join('<fixture>').split(path.dirname(executable)).join('<vendor>')), error: startupError('Error: ' + (result.stderr || ''), [[base, '<fixture>'], [path.dirname(executable), '<vendor>']]) })
+      return result
+    }
     for (const [name, file, expected] of normal) rows.push(readReceipt(name, await execute(['/usr/bin/cat', '--', file]), expected, true, file))
     for (const [name, file] of [['outside', sentinel], ['symlink', link], ['parent-path', project + '/../outside/sentinel.txt']]) {
       assert.equal(fs.readFileSync(file, 'utf8'), secretFreeText)
@@ -148,7 +152,7 @@ async function run(executable) {
   }
   const groupClosed = !groupExists()
   if (serverExit !== 0) failure ||= 'SERVER_EXIT_NONZERO'
-  const evidence = { kind: 'native Linux sandbox; not model dispatch, plugin loading, hook or performance proof', status: passed(rows, closed, groupClosed, failure) ? 'PASS' : 'BLOCKED', failure, startupError: rows.length ? null : startupError(stderrText, [[base, '<fixture>'], [path.dirname(executable), '<vendor>']]), version: version.stdout.trim(), policy: { root: 'deny', minimal: 'read', readableFixtureRoots: 2, network: false }, rows, serverClosed: closed, processGroupClosed: groupClosed, serverExit, stdoutBytes, stderrBytes, rpcMethods: methods, nativeInferenceCalls: 0, credentialsInherited: false }
+  const evidence = { kind: 'native Linux sandbox; not model dispatch, plugin loading, hook or performance proof', status: passed(rows, closed, groupClosed, failure) ? 'PASS' : 'BLOCKED', failure, startupError: rows.length ? null : startupError(stderrText, [[base, '<fixture>'], [path.dirname(executable), '<vendor>']]), version: version.stdout.trim(), commandErrors, policy: { root: 'deny', minimal: 'read', readableFixtureRoots: 2, network: false }, rows, serverClosed: closed, processGroupClosed: groupClosed, serverExit, stdoutBytes, stderrBytes, rpcMethods: methods, nativeInferenceCalls: 0, credentialsInherited: false }
   console.log('DEVFLOW_NATIVE_CI_EVIDENCE=' + JSON.stringify(evidence))
   return evidence
 }

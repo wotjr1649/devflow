@@ -35,6 +35,7 @@ const CONTENT_WRITES = new Set(['set-content', 'sc', 'add-content', 'ac', 'out-f
 const GIT_WRITES = new Set(['rm', 'mv', 'checkout', 'restore', 'clean'])
 const SCRIPT_FLAG =/^(-[A-Za-z]*c[A-Za-z]*|-com\w*|-e|-ec|-en\w*|\/[ck])$/i
 const HTTP_GRAPHQL = /api\.github\.com\/graphql/i
+const SHELL_AMBIGUITY = 'shell ambiguity: possible PowerShell here-string; the execution shell is not identified'
 const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
@@ -629,7 +630,10 @@ function issueWrite(command, { cwd = process.cwd(), env = state.realEnv, protect
   // Leave a second for the child to return before the outer deadline, including after a slow alias lookup.
   const ctx = { cwd, env, protect, aliasMap: undefined, deadline }
   if (Array.isArray(command)) return checkCommand({ words: command.map(word), stdin: [], redirects: [], pipedFrom: null }, ctx, 0)
-  return analyze(String(command || ''), ctx)
+  const src = String(command || '')
+  const kind = analyze(src, ctx)
+  // Codex supplies no shell identity: keep the denial, but do not claim literal-looking data is a proven write (#69).
+  return kind === 'command name built at run time with Issue words' && /^[ \t]*@'\r?\n/.test(src) ? SHELL_AMBIGUITY : kind
 }
 
 // The paths a simple command writes, each marked deep when the command can change everything under it (rm -rf,
@@ -1100,6 +1104,9 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       }
       if (kind.startsWith(PROTECTED)) {
         return blocked(root, 'protected-path', `devflow: ${kind.slice(PROTECTED.length)} is a protected path in .devflow.json; leave it as it is.`)
+      }
+      if (kind === SHELL_AMBIGUITY) {
+        return blocked(root, 'issue-write', `devflow: cannot establish command safety. Blocked: ${kind}. The other shell readings must remain checked.`)
       }
       return blocked(root, 'issue-write', `devflow: Issue writes go through devflow-state (${[...state.WRITE_OPS].join(', ')}), which filters ` +
         `paths, secrets and length before posting. Blocked: ${kind}.`)

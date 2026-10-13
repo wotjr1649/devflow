@@ -1,7 +1,7 @@
 # Review
 
 Done when the review found no defect that affects correctness or the requirements, or each one went back through build
-and verify and a narrowed re-review passed. `pr-review-workflow` runs the review; this is what devflow hands it.
+and verify and a narrowed re-review passed. Apply the common [review](../../pr-review-workflow/references/review.md) gates.
 
 - From M1 up the final review runs in a fresh context: the `reviewer` agent, or in Codex a worker told to report only.
   Write the package first: `git diff <base>..HEAD > .work/devflow/i<issue>/review-package.diff`, with the ledger's

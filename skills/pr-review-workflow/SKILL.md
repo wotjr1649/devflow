@@ -11,15 +11,13 @@ Resolve root/changes/base/head/remote/project contracts; preserve unrelated work
 
 Reconcile fresh state before each mutation and preserve others' changes. Where authority is missing, prepare a reviewed draft naming the missing effect. Keep raw or private evidence out of what you publish. Read back state/links; reconcile uncertainty before retries, recording partial success without repeating it.
 
-With `.devflow.json`, first read devflow's phase sequence: [review](../devflow/references/review.md) for
-review/fixes; [ship](../devflow/references/ship.md) for integration/tracking completion. It never calls this skill back.
-After compaction or phase changes, reopen the current phase's reference; earlier reads are not current state.
-Then use the common gates below as needed. Otherwise use them directly; no devflow card/ledger is required.
-
-Common gates and procedures:
-- Review/fixes: [review](references/review.md).
-- PR preparation/integration: [integration](references/integration.md), [completion](references/completion.md).
-- Explicit tracking completion: [completion](references/completion.md).
+Select references for the requested work:
+- Review/fixes: [devflow review](../devflow/references/review.md) with `.devflow.json`; otherwise [common review](references/review.md).
+- PR drafting: [integration](references/integration.md), [completion](references/completion.md).
+- Integration or explicit tracking completion: [devflow ship](../devflow/references/ship.md) with `.devflow.json`; otherwise integration and completion for integration, completion alone for tracking.
 - Cleanup, including merged branches/worktrees after verified merge: [cleanup handoff](references/cleanup.md).
+
+After compaction or phase changes, reopen the current phase's reference; earlier reads are not current state.
+Without `.devflow.json`, no devflow card/ledger is required.
 
 Report identity, observed/unrun checks, findings, artifacts and next/pending steps separately for each phase.

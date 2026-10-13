@@ -11,18 +11,15 @@ Resolve root/changes/base/head/remote/project contracts; preserve unrelated work
 
 Reconcile fresh state before each mutation and preserve others' changes. Where authority is missing, prepare a reviewed draft naming the missing effect. Keep raw or private evidence out of what you publish. Read back state/links; reconcile uncertainty before retries, recording partial success without repeating it.
 
-In a repository with `.devflow.json`, the requested phase selects the devflow procedure: review/fixes uses
-[review](../devflow/references/review.md); integration or tracking completion uses [ship](../devflow/references/ship.md).
-Read the selected reference for the sequence, then the common gates below as that phase needs them. The reference
-does not call this skill back. Review-only ends with its findings; it does not enter ship or cleanup. After compaction
-or a phase change, reopen the current phase's reference; an earlier read is not the current state.
-
-Without `.devflow.json`, use the common procedure below; no devflow card or ledger is required.
+With `.devflow.json`, first read devflow's phase sequence: [review](../devflow/references/review.md) for
+review/fixes; [ship](../devflow/references/ship.md) for integration/tracking completion. It never calls this skill back.
+After compaction or phase changes, reopen the current phase's reference; earlier reads are not current state.
+Then use the common gates below as needed. Otherwise use them directly; no devflow card/ledger is required.
 
 Common gates and procedures:
 - Review/fixes: [review](references/review.md).
-- PR preparation/integration: [integration](references/integration.md).
-- PR preparation/integration or explicit tracking completion: [completion](references/completion.md).
-- Cleanup, including merged branches and worktrees after a verified merge: [cleanup handoff](references/cleanup.md).
+- PR preparation/integration: [integration](references/integration.md), [completion](references/completion.md).
+- Explicit tracking completion: [completion](references/completion.md).
+- Cleanup, including merged branches/worktrees after verified merge: [cleanup handoff](references/cleanup.md).
 
 Report identity, observed/unrun checks, findings, artifacts and next/pending steps separately for each phase.

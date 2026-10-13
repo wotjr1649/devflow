@@ -2,7 +2,7 @@
 
 [Rules](../SKILL.md) apply. Review requirements/contracts, diff/callers/failures and intended staged/unstaged/untracked bytes; HEAD cannot identify dirty work.
 
-Findings: location/trigger/impact/evidence/validation. Checks: command/environment/revision/result; static/local/hosted.
+Findings: location/trigger/impact/evidence/validation. For each check, including this review, report its kind (static/local/hosted), command or read method, environment (host/tool), revision and result.
 
 Before fixes verify repo/Issue/task-branch linkage via start record/project procedure; revalidate, record rationale/fix identity/disposition, await required reviewer confirmation. Defer per project rules.
 

@@ -148,7 +148,7 @@ try {
 ### Windows 셸과 읽기 출력
 
 TUI를 연 터미널이 PowerShell 7이어도 모델의 도구가 같은 셸을 선택했다는 증거는 아니다.
-Codex의 `exec_command`에서는 `shell`에 확인한 `pwsh.exe` 경로를 명시하고, 시험 시작 시
+Codex의 `exec_command`에서는 `shell`에 확인한 `pwsh.exe` 경로와 `login=false`를 명시하고, 시험 시작 시
 `$PSVersionTable.PSVersion.Major`가 `7`인지 확인한다. 자식 셸을 확인하지 못한 실행은 PowerShell 7 검증으로 기록하지 않는다.
 
 파일의 UTF-8 디코딩과 명령 출력의 인코딩은 별도 경계다. 이 기기의 Codex TUI에서 한글 링크 앵커가

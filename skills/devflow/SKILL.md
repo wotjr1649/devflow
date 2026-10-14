@@ -57,7 +57,7 @@ The path (spike, bounded, architectural) is the ledger's `path`; when it is unse
 
 Stages with an owner skill are entered by calling that skill by name, which also brings its text back after
 compaction: start - `development-start`; review and ship - `pr-review-workflow`, which selects
-[review](references/review.md) or [ship](references/ship.md) for that phase; cleanup - `workspace-cleanup`.
+[review](../pr-review-workflow/references/review.md) or [ship](references/ship.md) for that phase; cleanup - `workspace-cleanup`.
 
 Every other stage has a reference to read when the work enters it: [discover](references/discover.md),
 [design](references/design.md), [plan](references/plan.md), [ready](references/ready.md), [build](references/build.md),

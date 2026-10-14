@@ -12,7 +12,7 @@ Resolve root/changes/base/head/remote/project contracts; preserve unrelated work
 Reconcile fresh state before each mutation and preserve others' changes. Where authority is missing, prepare a reviewed draft naming the missing effect. Keep raw or private evidence out of what you publish. Read back state/links; reconcile uncertainty before retries, recording partial success without repeating it.
 
 Select references for the requested work:
-- Review/fixes: [devflow review](../devflow/references/review.md) with `.devflow.json`; otherwise [common review](references/review.md).
+- Review/fixes: [review](references/review.md).
 - PR drafting: [integration](references/integration.md), [completion](references/completion.md).
 - Integration or explicit tracking completion: [devflow ship](../devflow/references/ship.md) with `.devflow.json`; otherwise integration and completion for integration, completion alone for tracking.
 - Cleanup, including merged branches/worktrees after verified merge: [cleanup handoff](references/cleanup.md).

@@ -1,14 +1,7 @@
-# Integration
+Apply [review](review.md), project template: problem/outcome, scope/exclusions, acceptance/checks/limits, Issue/completed-subset links; leave remnants open.
 
-Apply [rules](../SKILL.md) and [review](review.md). Project template: problem/outcome, scope/exclusions, acceptance/checks/limits; link Issues/completed subsets, leaving remnants open.
+Follow project CI policy ([devflow](../../../docs/specs/repository.md#통합과-ci)). Missing/stale/skipped/cancelled required CI is NOT_VERIFIED. Local checks/templates replace no required CI/protection/approval/thread gate. Zero checks: NOT_VERIFIED until local checks pass with PR evidence. No CI: pass documented local gate hook or record checks in PR/integration commit.
 
-Apply the repository's distinction between required and informational CI; devflow owns it in
-[repository](../../../docs/specs/repository.md#통합과-ci). Required CI/protection/approval/thread gates cannot be replaced by local tests/templates; a missing/stale/skipped/cancelled run is NOT_VERIFIED, and so is a PR on which no check ran at all (path filters, no triggered workflow): "every check passes" over zero checks verifies nothing, so run the checks locally and record them in the PR before it counts. A repository with no CI configured records its checks by passing a documented local gate hook (such as a tracked pre-push that runs them); without such a hook, record the local checks in the PR or the integration commit. Bind CI to repo/workflow/run/attempt/event/base/head/checkout and synthetic/head/post-merge type; refresh changed candidates, reject unrelated runs.
+Bind CI to repo/workflow/run/attempt/event/base/head/checkout and synthetic/head/post-merge type; reject unrelated runs. Refresh base/head/rules/CI/approvals/threads; guard expected head or hold races. Merge by project method without bypass; verify result/required post-merge checks.
 
-Pre-merge refresh base/head/rules/CI/approvals/threads; guard expected head or hold races. Use project merge method without bypass; verify resulting commit and required post-merge checks.
-
-Only when devflow's [integration rules](../../../docs/specs/repository.md#통합과-ci) classify BASE..HEAD CI as
-informational, omit an optional task-branch push or CI completion wait. Required CI paths and other required gates
-take precedence; keep the Issue-branch checks.
-
-After a verified merge, follow the [cleanup handoff](cleanup.md); merged task branches and worktrees are removed, not only assessed. Review-only never enters cleanup.
+Devflow informational BASE..HEAD CI: skip optional push/wait; keep Issue-branch checks. After verified merge, [cleanup](cleanup.md).

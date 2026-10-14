@@ -1,5 +1,1 @@
-# Cleanup handoff
-
-Cleanup is owned by the `workspace-cleanup` skill. Call it by name and apply it before assessment or removal. If unavailable, retain targets and report the missing capability; do not install it or improvise removal. Review-only does not enter cleanup.
-
-For integration/post-merge, pass verified root/base/head/merge identity, post-merge evidence, target scope and exact authority; it refreshes mutable facts. Missing post-merge evidence permits assessment, not dependent deletion. Independent tracking work continues. Record returned per-target outcomes; handoff is not completion.
+Call `workspace-cleanup`; pass verified root/base/head/merge, post-merge evidence, scope/authority. Await/record results. If unavailable retain targets/report it; no installation/improvised removal. Independent tracking continues.

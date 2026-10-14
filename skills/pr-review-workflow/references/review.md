@@ -1,6 +1,6 @@
 Review requirements/contracts, diff/callers/failures and intended staged/unstaged/untracked bytes; HEAD omits dirty work.
 
-Findings: location/trigger/impact/evidence/validation. Report your own review's kind (static/local/hosted), command or read method, environment (host/tool), revision and result; report the same for every other check. Conclude only from reviewed evidence.
+Findings: location/trigger/impact/evidence/validation. For each check, including this review, report its kind (static/local/hosted), command or read method, environment (host/tool), revision and result. Conclude only from reviewed evidence.
 
 Before fixes verify repo/Issue/branch linkage via start/project procedure; recheck findings, record rationale/fix identity/dispositions, await required reviewer confirmation; defer by project rules.
 

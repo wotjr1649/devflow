@@ -208,7 +208,9 @@
   관측 출력은 원문을 CP949로 인코딩한 뒤 UTF-8로 디코딩한 결과와 일치했다. 이 기록은 손상 형태를 확인한 것이며,
   실제 자식 셸 버전과 인코딩을 선택한 프로세스는 포착하지 못했다. 명시적 PowerShell 7.6.6의
   `Get-Content -Raw -Encoding utf8 | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii` 로컬 대조에서는
-  ASCII 출력의 JSON 디코딩 결과가 원문과 일치했다. TUI 도구 경로의 검증을 대신하지 않는다
+  ASCII 출력의 JSON 디코딩 결과가 원문과 일치했다. 이어서 일반 TUI의 `exec_command`에 같은 `pwsh.exe`와
+  `login=false`를 명시한 진단에서 자식 셸 major 7과 원문 전체 일치를 확인했다. 별도 M0 리뷰의 필수11개 파일도
+  같은 전달 방식으로 원문과 일치했다. 이 환경 교정을 스킬 자체의 효율 개선으로 계산하지 않는다
   (2026-10-14, #68; [시험 절차](../local-development.md#windows-셸과-읽기-출력)).
 
 **플러그인**

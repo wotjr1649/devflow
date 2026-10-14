@@ -161,8 +161,8 @@ Get-Content -LiteralPath '<읽을 파일의 절대 경로>' -Raw -Encoding utf8 
     ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii
 ```
 
-이 방식의 명시적 PowerShell 7 로컬 대조는 통과했다. 일반 TUI 도구 경로에서의 확인은 별도이며,
-콘솔 설정 변경이나 sandbox·훅 완화로 대체하지 않는다. 버전 비교에서는 양쪽에 같은 읽기 조건을 적용하고,
+이 방식은 명시적 PowerShell 7 로컬 대조와 Codex 0.162.1 일반 TUI의 원문 대조를 통과했다(2026-10-14).
+새 환경의 확인을 콘솔 설정 변경이나 sandbox·훅 완화로 대체하지 않는다. 버전 비교에서는 양쪽에 같은 읽기 조건을 적용하고,
 그 조건을 준비한 효과와 스킬 변경의 효과를 구분한다.
 
 ### 파일과 로딩 출처

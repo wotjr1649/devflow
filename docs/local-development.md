@@ -2,7 +2,8 @@
 
 Codex와 Claude Code는 같은 깨끗한 worktree의 커밋을 시험한다. Codex는 그 파일을 설치 캐시로 복사하고,
 Claude Code는 `--plugin-dir`로 폴더를 직접 로딩한다. 두 호스트의 시험 프로필은 한 번 준비한 뒤 재사용한다.
-이 안내는 PowerShell과 저장소 주 작업 트리 루트를 기준으로 한다.
+이 안내는 PowerShell 7과 저장소 주 작업 트리 루트를 기준으로 한다. Windows 실제 백엔드 시험은
+PowerShell 7로만 진행하며 Windows PowerShell 5는 검증 범위에서 제외한다.
 
 ## 실행 위치와 표시
 
@@ -143,6 +144,26 @@ try {
 소스 SHA와 캐시 내용을 대조한다. 실사용 프로필에서 개발용 `plugin add`를 실행하지 않는다.
 
 ## 설치와 동작 검증
+
+### Windows 셸과 읽기 출력
+
+TUI를 연 터미널이 PowerShell 7이어도 모델의 도구가 같은 셸을 선택했다는 증거는 아니다.
+Codex의 `exec_command`에서는 `shell`에 확인한 `pwsh.exe` 경로를 명시하고, 시험 시작 시
+`$PSVersionTable.PSVersion.Major`가 `7`인지 확인한다. 자식 셸을 확인하지 못한 실행은 PowerShell 7 검증으로 기록하지 않는다.
+
+파일의 UTF-8 디코딩과 명령 출력의 인코딩은 별도 경계다. 이 기기의 Codex TUI에서 한글 링크 앵커가
+깨진 출력이 관찰됐다([호스트 관찰](research/host-facts.md#codex)). 깨진 출력을 원문을 읽었다는 증거나
+정확성·효율 비교의 통과 근거로 쓰지 않는다. 파일 읽기의 비ASCII 출력이 보존되지 않는 경로는 다음 방식으로
+JSON 문자열을 전달하고, 디코딩한 내용과 원문을 대조한다.
+
+```powershell
+Get-Content -LiteralPath '<읽을 파일의 절대 경로>' -Raw -Encoding utf8 |
+    ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii
+```
+
+이 방식의 명시적 PowerShell 7 로컬 대조는 통과했다. 일반 TUI 도구 경로에서의 확인은 별도이며,
+콘솔 설정 변경이나 sandbox·훅 완화로 대체하지 않는다. 버전 비교에서는 양쪽에 같은 읽기 조건을 적용하고,
+그 조건을 준비한 효과와 스킬 변경의 효과를 구분한다.
 
 ### 파일과 로딩 출처
 

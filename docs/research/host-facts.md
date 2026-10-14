@@ -204,6 +204,12 @@
 - Git Bash에서 `codex exec`는 stdin이 열려 있으면 시작하지 않고 기다릴 수 있다. `< /dev/null`로 닫는다.
 - 이 기기의 pwsh 7은 외부 명령의 출력을 변수나 파이프로 받을 때 콘솔 인코딩(`ks_c_5601-1987`)으로 읽어 UTF-8 한글이
   깨진다. 직접 출력은 그대로다. 받아야 하면 먼저 `[Console]::OutputEncoding = [Text.UTF8Encoding]::new()`를 둔다(2026-10-01).
+- Codex 0.162.1 일반 TUI의 `Get-Content` 읽기에서도 원본은 정상인 한글 링크 앵커가 출력에서 손상됐다.
+  관측 출력은 원문을 CP949로 인코딩한 뒤 UTF-8로 디코딩한 결과와 일치했다. 이 기록은 손상 형태를 확인한 것이며,
+  실제 자식 셸 버전과 인코딩을 선택한 프로세스는 포착하지 못했다. 명시적 PowerShell 7.6.6의
+  `Get-Content -Raw -Encoding utf8 | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii` 로컬 대조에서는
+  ASCII 출력의 JSON 디코딩 결과가 원문과 일치했다. TUI 도구 경로의 검증을 대신하지 않는다
+  (2026-10-14, #68; [시험 절차](../local-development.md#windows-셸과-읽기-출력)).
 
 **플러그인**
 - `.codex-plugin/plugin.json`에 `skills`, `hooks`, `interface`를 둔다.

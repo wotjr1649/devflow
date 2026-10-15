@@ -180,6 +180,11 @@ function skillSnapshot(dir) {
   return hash.digest('hex')
 }
 
+// The skills link the plugin-root references (#74), so both folders must match the repository.
+function installedHash(repoRoot, installedRoot) {
+  return ['skills', 'references'].map(d => checkInstalled(path.join(repoRoot, d), path.join(installedRoot, d))).join(':')
+}
+
 function checkInstalled(repoSkills, installedSkills) {
   const expected = skillSnapshot(repoSkills)
   if (skillSnapshot(installedSkills) !== expected) throw new Error('The installed devflow skills differ from this repository; update the installed copy before measuring')
@@ -298,7 +303,7 @@ async function main(args) {
   const current = {
     version: runLocal(['--version'], { cwd: ROOT, env }).trim(),
     runnerHash: crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),
-    sourceHash: checkInstalled(path.join(ROOT, 'skills'), skillRoot),
+    sourceHash: installedHash(ROOT, path.dirname(skillRoot)),
     globalInstructionsHash: globalInstructionsHash(home),
   }
   checkOutsideRepo(taskRoot())
@@ -361,5 +366,5 @@ async function main(args) {
   if (!report.complete || report.summary.invalid || !report.summary.thresholdPassed) process.exitCode = 1
 }
 
-module.exports = { parseTrace, loadCases, score, parseArgs, summarize, cleanEnv, preflight, execute, execArgs, skillSnapshot, checkInstalled, caseDir, taskRoot, preflightArgs, checkOutsideRepo, globalInstructionsHash, continuation, continuationConditions, expandCases }
+module.exports = { parseTrace, loadCases, score, parseArgs, summarize, cleanEnv, preflight, execute, execArgs, skillSnapshot, checkInstalled, installedHash, caseDir, taskRoot, preflightArgs, checkOutsideRepo, globalInstructionsHash, continuation, continuationConditions, expandCases }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

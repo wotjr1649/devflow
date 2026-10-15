@@ -3,7 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, expandCases, continuationConditions, execArgs, skillSnapshot, checkInstalled, caseDir, taskRoot, preflightArgs, checkOutsideRepo } = require('../bin/devflow-codex-eval')
+const { parseTrace, loadCases, score, parseArgs, summarize, continuation, execute, cleanEnv, expandCases, continuationConditions, execArgs, skillSnapshot, checkInstalled, installedHash, caseDir, taskRoot, preflightArgs, checkOutsideRepo } = require('../bin/devflow-codex-eval')
 const tmpdir = require('./tmpdir')
 const skillRoot = ['C:', 'eval', 'home', 'skills'].join('/')
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/codex-eval', name + '.jsonl'), 'utf8').replaceAll('EVAL_SKILLS', skillRoot)
@@ -187,6 +187,20 @@ test('the installed skills must be the repository skills, byte for byte (#39)', 
   fs.writeFileSync(path.join(installed, 'grilling', 'references', 'a.md'), 'ref')
   fs.writeFileSync(path.join(installed, 'grilling', 'extra.md'), 'x')
   assert.throws(() => checkInstalled(repo, installed), /installed/)
+})
+
+test('the installed plugin must match the skills and the plugin-root references they link (#74)', () => {
+  const repo = tmpdir('codex-eval-repo-root-')
+  const installed = tmpdir('codex-eval-installed-root-')
+  for (const dir of [repo, installed]) {
+    fs.mkdirSync(path.join(dir, 'skills', 'devflow'), { recursive: true })
+    fs.mkdirSync(path.join(dir, 'references'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'skills', 'devflow', 'SKILL.md'), 'body')
+    fs.writeFileSync(path.join(dir, 'references', 'ship.md'), 'ship')
+  }
+  assert.equal(installedHash(repo, installed), `${skillSnapshot(path.join(repo, 'skills'))}:${skillSnapshot(path.join(repo, 'references'))}`)
+  fs.writeFileSync(path.join(installed, 'references', 'ship.md'), 'changed')
+  assert.throws(() => installedHash(repo, installed), /installed/)
 })
 
 test('a case keeps its command strings, and a file written into its folder makes it invalid (#39)', async () => {

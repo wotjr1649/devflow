@@ -110,6 +110,12 @@ test('a plugin repository budgets its root references like skill references; oth
   const big = '가'.repeat(5200) + '\n'
   assert.ok(has(repo({ ...GOOD, '.claude-plugin/plugin.json': '{ "name": "x" }\n', 'references/big.md': big }), /^FAIL docs: references\/big\.md: ~\d+ tokens, budget 5000$/))
   assert.ok(!has(repo({ ...GOOD, 'references/big.md': big }), /references\/big\.md: ~\d+ tokens/))
+  // `only` checks a few files, but the repository is a plugin by its manifest on disk, whichever host it serves.
+  for (const manifest of ['.claude-plugin/plugin.json', '.codex-plugin/plugin.json']) {
+    const lines = doctor(repo({ ...GOOD, [manifest]: '{ "name": "x" }\n', 'references/big.md': big }), { only: ['references/big.md'] }).lines
+    assert.ok(lines.some(l => /^FAIL docs: references\/big\.md: ~\d+ tokens, budget 5000$/.test(l)), manifest)
+  }
+  assert.ok(!doctor(repo({ ...GOOD, 'references/big.md': big }), { only: ['references/big.md'] }).lines.some(l => /references\/big\.md: ~\d+ tokens/.test(l)))
 })
 
 test('a private AGENTS.md is not required, and must not be tracked (#23)', () => {

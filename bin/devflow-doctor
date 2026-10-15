@@ -260,7 +260,7 @@ function checks(dir, { only } = {}) {
     if (!anchorCache.has(f)) anchorCache.set(f, new Set(read(f).split('\n').filter(l => /^#{1,6} /.test(l)).map(l => slug(l.replace(/^#+ /, '')))))
     return anchorCache.get(f)
   }
-  const isPlugin = files.includes('.claude-plugin/plugin.json') || files.includes('.codex-plugin/plugin.json')
+  const isPlugin = isFile(at('.claude-plugin/plugin.json')) || isFile(at('.codex-plugin/plugin.json'))
   for (const f of files) {
     if (f === 'LICENSE' || /\.(png|jpe?g|gif|ico|zip|gz)$/.test(f) || binary.has(f) || isPrivate(f)) continue
     const text = read(f)

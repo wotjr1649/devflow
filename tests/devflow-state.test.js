@@ -826,7 +826,10 @@ test('the ledger spec and unattended skill describe the mode command (#32)', () 
   assert.match(autonomous, /devflow-state mode <n> autonomous < 이유/)
   assert.match(autonomous, /devflow-state mode <n> interactive < 이유/)
   assert.match(autonomous, /stdin의 첫 줄/)
-  const unattended = skill.split('## Unattended work')[1].split('## Stage and path')[0]
+  // The router points to references/sessions.md for mode switches, which holds the commands (#74).
+  assert.match(skill, /\[sessions\]\(\.\.\/\.\.\/references\/sessions\.md\)[^]*?switching unattended mode/)
+  const sessions = fs.readFileSync(path.join(__dirname, '../references/sessions.md'), 'utf8')
+  const unattended = sessions.split('## Unattended work')[1].split('## Changed requirements')[0]
   assert.match(unattended, /mode <issue> autonomous < reason/)
   assert.match(unattended, /mode <issue> interactive < reason/)
   assert.match(unattended, /first line of stdin/)

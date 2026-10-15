@@ -14,7 +14,9 @@
   "interface": {
     "displayName": "devflow",
     "shortDescription": "Issue-driven development loop",
+    "longDescription": "devflow ties each task to a GitHub Issue and resumes it from the Issue's state and checkpoints. A router skill picks the lifecycle stage (discover, design, plan, build, verify, review, ship, learn), delegates reads and checks to fresh-context agents, and lifecycle hooks back key rules such as protected paths, test locks and Issue writes through one tool. Companion skills cover starting work, PR review and integration, workspace cleanup, decision interviews, prompt generation and writing for agents.",
     "developerName": "wotjr1649",
-    "category": "Productivity"
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read", "Write"]
   }
 }

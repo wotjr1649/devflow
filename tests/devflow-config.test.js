@@ -17,3 +17,9 @@ test('both plugin manifests carry the same release version (#51)', () => {
   assert.match(claude, /^0\.\d+\.\d+$/)
   assert.equal(manifest('.codex').version, claude)
 })
+
+test('the Codex manifest describes devflow for a marketplace listing (#74)', () => {
+  const ui = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.codex-plugin/plugin.json'), 'utf8')).interface
+  assert.ok(typeof ui.longDescription === 'string' && ui.longDescription.length > ui.shortDescription.length)
+  assert.ok(Array.isArray(ui.capabilities) && ui.capabilities.length > 0)
+})

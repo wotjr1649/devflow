@@ -1,10 +1,10 @@
 Review requirements/contracts, diff/callers/failures and intended staged/unstaged/untracked bytes; HEAD omits dirty work.
 
-Findings: location/trigger/impact/evidence/validation. For each check, including this review, report its kind (static/local/hosted), command or read method, environment (host/tool), revision and result. Conclude only from reviewed evidence.
+Findings: location/trigger/impact/evidence/validation. Conclude only from reviewed evidence.
 
 Before fixes verify repo/Issue/branch linkage via start/project procedure; recheck findings, record rationale/fix identity/dispositions, await required reviewer confirmation; defer by project rules.
 
-Independent review follows semantic impact, not size/extension, within authority. Supply scope/acceptance/contracts/diff/base/head/checks/unrun checks/reference identity; no verdict. Record reviewer/revision. Non-executing=STATIC_REVIEW; author rechecks/relays replace neither independence nor formal approval.
+Independent review follows semantic impact, not size/extension, within authority. Supply scope/acceptance/contracts/diff/base/head/checks/unrun checks/reference identity; no verdict. Record reviewer/revision. A review that runs nothing is STATIC_REVIEW. The author's recheck or relay is neither independent review nor formal approval.
 
 ## With `.devflow.json`
 

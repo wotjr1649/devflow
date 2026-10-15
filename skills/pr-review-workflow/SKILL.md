@@ -19,6 +19,6 @@ Select references for the requested work:
 
 After compaction or phase changes, reopen the current phase's reference.
 
-Report identity, checks, findings, artifacts and next/pending steps per phase; each check, including your own assessment, on one line:
-`<check>: kind <static|local|hosted>; method <command or how you read>; environment <host program>, <tool>; revision <rev>; result <outcome> (observed by me|supplied|unknown)`
-Mark tracker states the same way. Say "not run by me" for checks you did not run and "not supplied" for evidence not given, never "never ran" or "does not exist". Attribute to a source only requirements its words state, and quote them. Name the action each prerequisite gates.
+Report identity, findings, artifacts and next/pending steps per phase, and each check on one line:
+`<check>: kind <static|local|hosted>; method <command or how you read>; environment <Claude Code or Codex>, <tool>; revision <rev>; result <outcome> (observed by me|supplied|unknown)`
+Mark tracker states likewise. Copy supplied values as given; write "not supplied" for anything not given and "not run by me" for checks you did not run, never "never ran" or "does not exist". Attribute to a source only requirements its words state, quoting them. Name the action each prerequisite gates.

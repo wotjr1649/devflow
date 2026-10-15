@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: Route Issue-tracked work in a repository with .devflow.json to its lifecycle stage. Use to continue the Issue a [devflow] resume card shows, after /clear or compaction, when a stage's work is done, or when new information may send the work back to an earlier stage. Not for starting new work, which development-start takes.
+description: Route Issue-tracked work in a repository with .devflow.json to its lifecycle stage. Use when continuing the Issue a [devflow] resume card shows, after /clear or compaction, when a stage's work is done, or when new information may send the work back to an earlier stage. Not for starting new work, which development-start takes.
 ---
 
 # devflow

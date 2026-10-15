@@ -11,7 +11,7 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
   확인되지 않은 일은 discover로 보낸다([ADR-0018](../design/decisions/ADR-0018-new-work-goes-to-development-start.md)).
 - 담당 스킬이 있는 단계는 그 스킬을 이름으로 부르고, 없는 단계는 라우터의 단계 reference를 읽는다.
 - review·ship은 `pr-review-workflow`를 진입점으로 유지한다. devflow 전용 순서는 공통
-  [review](../../skills/pr-review-workflow/references/review.md)의 조건부 절과 라우터의 [ship](../../references/ship.md)이 소유한다.
+  [review](../../skills/pr-review-workflow/references/review.md)가 가리키는 [devflow review](../../references/review.md)와 [ship](../../references/ship.md)이 소유한다.
   일반 PR 관문은 담당 스킬의 references를 적용하며, review-only는 ship·cleanup으로 확대하지 않는다.
 - 단계를 옮길 때 장부와 Issue 현재 상태의 "단계"를 바꾼다. 작업 루프 안에서 build와 verify를 오가는 것은 장부에만
   적는다.

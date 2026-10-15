@@ -31,10 +31,10 @@ passing, and the ledger holds the last commit and the next task.
 
 In interactive M2, the main agent may make a one- or two-line edit describable in one sentence and record it in the
 ledger; a new delegation costs more than the edit. Unattended work keeps a fresh context for every task
-([execution modes](../../../docs/specs/orchestration.md#실행-모드)).
+([execution modes](../docs/specs/orchestration.md#실행-모드)).
 
 In M2 and M3 each task gets a narrow review before the next starts: the host-specific task-review role from
-[roles](../../../docs/specs/orchestration.md#모델과-effort), given that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it.
+[roles](../docs/specs/orchestration.md#모델과-effort), given that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it.
 
 M3 (Claude only) launches the implementers in the background with the Agent tool's `isolation: "worktree"` on each call,
 never in the agent definition, which would put M2 in worktrees too. Those worktrees start from the remote default branch,
@@ -45,13 +45,13 @@ cycle: removing a worktree removes its reflog, which the measurement reads. Crea
 rewritten the shared `core.hooksPath` to an absolute path; doctor accepts that as the same gate.
 
 The main session keeps decisions, Issue writes, integration and the ledger; a subagent gets one task through a brief
-in the shape of [위임 지시서](../../../docs/specs/orchestration.md#위임-지시서). Models and effort come from
-[모델과 effort](../../../docs/specs/orchestration.md#모델과-effort). A subagent that ends with `NEEDS_DECISION` is
-resumed after the main session decides, as in [서브에이전트의 질문](../../../docs/specs/orchestration.md#서브에이전트의-질문).
+in the shape of [위임 지시서](../docs/specs/orchestration.md#위임-지시서). Models and effort come from
+[모델과 effort](../docs/specs/orchestration.md#모델과-effort). A subagent that ends with `NEEDS_DECISION` is
+resumed after the main session decides, as in [서브에이전트의 질문](../docs/specs/orchestration.md#서브에이전트의-질문).
 
 ## Failures
 
-Follow [수정 루프](../../../docs/specs/orchestration.md#수정-루프): an unclear cause goes to diagnosis first, the
+Follow [수정 루프](../docs/specs/orchestration.md#수정-루프): an unclear cause goes to diagnosis first, the
 implementer fixes a task at most twice, then one promotion, then the main session takes it or reports the blocker.
 Count them in the ledger's `counts` for the task and add a `notes` line with the reason. A plan that turns out wrong goes back to plan; a broken
 design assumption goes back to design.

@@ -1239,7 +1239,7 @@ function attempt(ctx, op, n, text, title, { flushing = false, verifyOnly = false
   // Queueing is decided again under the lock. A new Issue from a branch without one has no ledger yet.
   const peek = owner && issueDirOk(ctx.store, owner) ? readLedger(ctx.store, owner) || {} : {}
   const short = op === 'comment' && shipMissing(text, peek)
-  if (short) return { code: 1, guard: 'state-ship-lines', out: `refused: the ship checkpoint has no ${short} line (skills/devflow/references/review.md, Before integrating)` }
+  if (short) return { code: 1, guard: 'state-ship-lines', out: `refused: the ship checkpoint has no ${short} line (references/ship.md, step 5)` }
   // A queued post whose body rule fails would only show at flush, after the unattended run reported it queued, and would
   // hold every later post (Issue #31). The Issue is read now, outside the ledger lock; decide replays the queue on it under
   // the lock. When it cannot be read (an offline run), the post queues unchecked and flush checks it, as before.

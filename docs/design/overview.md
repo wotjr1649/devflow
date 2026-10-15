@@ -45,7 +45,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 ## 구성
 
 - **스킬 7개**
-  - `devflow`: 라우터. 담당 스킬이 없는 단계와 표준 적용은 references로 둔다.
+  - `devflow`: 라우터. 담당 스킬이 없는 단계와 표준 적용은 플러그인 루트의 [`references/`](../../references/)에 둔다. 여러 스킬이 함께 쓰는 생명주기 문서이기 때문이다([ADR-0023](decisions/ADR-0023-shared-lifecycle-references.md)).
   - 생명주기 스킬: `development-start`, `pr-review-workflow`, `workspace-cleanup`
   - 보조 스킬: `grilling`, `writing-for-agents`, `prompt-generator`
   - 근거: [ADR-0010](decisions/ADR-0010-single-router-skill.md), [ADR-0009](decisions/ADR-0009-auto-invoked-support-skills.md)

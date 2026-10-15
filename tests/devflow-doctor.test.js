@@ -106,6 +106,12 @@ test('a skill reference over 5000 tokens fails the budget (#27)', () => {
   assert.ok(has(repo({ ...GOOD, 'skills/x/references/big.md': '가'.repeat(5200) + '\n' }), /^FAIL docs: skills\/x\/references\/big\.md: ~\d+ tokens, budget 5000$/))
 })
 
+test('a plugin repository budgets its root references like skill references; other repositories do not (#74)', () => {
+  const big = '가'.repeat(5200) + '\n'
+  assert.ok(has(repo({ ...GOOD, '.claude-plugin/plugin.json': '{ "name": "x" }\n', 'references/big.md': big }), /^FAIL docs: references\/big\.md: ~\d+ tokens, budget 5000$/))
+  assert.ok(!has(repo({ ...GOOD, 'references/big.md': big }), /references\/big\.md: ~\d+ tokens/))
+})
+
 test('a private AGENTS.md is not required, and must not be tracked (#23)', () => {
   const { 'AGENTS.md': agents, ...rest } = GOOD
   const profile = '{ "integration": "pr-ci", "agentsMd": "private" }\n'

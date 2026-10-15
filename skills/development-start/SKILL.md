@@ -7,7 +7,7 @@ description: Use when asked to start a change - a feature, fix or refactor - bef
 
 Apply at task/scope/branch transitions. Analysis/review alone creates no Issue or branch.
 
-In a repository with `.devflow.json`, classify the path first ([경로별 단계](../../docs/specs/lifecycle.md#경로별-단계)): a spike, or work whose problem and acceptance the user has not confirmed, goes to the devflow router's [discover](../devflow/references/discover.md) reference before any Issue; the rest starts here.
+In a repository with `.devflow.json`, classify the path first ([경로별 단계](../../docs/specs/lifecycle.md#경로별-단계)): a spike, or work whose problem and acceptance the user has not confirmed, goes to the devflow router's [discover](../../references/discover.md) reference before any Issue; the rest starts here.
 
 Read the project contracts relevant to this task. Changes require an Issue; repository changes, including docs, require a dedicated branch. Use project base/naming/checks. Resolve material conflicts without discarding work.
 

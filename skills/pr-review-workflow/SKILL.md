@@ -14,7 +14,7 @@ Reconcile fresh state before each mutation. Where authority is missing, prepare 
 Select references for the requested work:
 - Review/fixes: [review](references/review.md).
 - PR drafting: [integration](references/integration.md), [completion](references/completion.md).
-- Integration or explicit tracking completion: [devflow ship](../devflow/references/ship.md) with `.devflow.json`; otherwise integration and completion for integration, completion alone for tracking.
+- Integration or explicit tracking completion: [devflow ship](../../references/ship.md) with `.devflow.json`; otherwise integration and completion for integration, completion alone for tracking.
 - Cleanup, including merged branches/worktrees: [cleanup](references/cleanup.md).
 
 After compaction or phase changes, reopen the current phase's reference.

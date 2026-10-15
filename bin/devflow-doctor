@@ -21,8 +21,9 @@ const INSTRUCTION_SWITCHES = ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // specs is the folder of devflow-style contracts, or null when the project keeps none (profile `"specs": false`).
 const FOLDS_CASE = process.platform === 'win32' || process.platform === 'darwin'
-const budgets = specs => [[/^AGENTS\.md$/, 1000], ...(specs ? [[new RegExp(`^${escapeRe(specs)}/.+\\.md$`, FOLDS_CASE ? 'i' : ''), 5000]] : []), [/(^|\/)SKILL\.md$/, 5000],
-  [/(^|\/)skills\/[^/]+\/references\/.+\.md$/, 5000]]
+// A plugin repository (one with a host manifest) keeps shared skill references at its root, under the same budget (#74).
+const budgets = (specs, isPlugin) => [[/^AGENTS\.md$/, 1000], ...(specs ? [[new RegExp(`^${escapeRe(specs)}/.+\\.md$`, FOLDS_CASE ? 'i' : ''), 5000]] : []), [/(^|\/)SKILL\.md$/, 5000],
+  [/(^|\/)skills\/[^/]+\/references\/.+\.md$/, 5000], ...(isPlugin ? [[/^references\/.+\.md$/, 5000]] : [])]
 const PROMPT_BUDGET = 500
 const INTEGRATIONS = ['pr-ci', 'local-merge', 'push-on-request']
 const MAX_LINES_PER_RULE = 3
@@ -259,6 +260,7 @@ function checks(dir, { only } = {}) {
     if (!anchorCache.has(f)) anchorCache.set(f, new Set(read(f).split('\n').filter(l => /^#{1,6} /.test(l)).map(l => slug(l.replace(/^#+ /, '')))))
     return anchorCache.get(f)
   }
+  const isPlugin = files.includes('.claude-plugin/plugin.json') || files.includes('.codex-plugin/plugin.json')
   for (const f of files) {
     if (f === 'LICENSE' || /\.(png|jpe?g|gif|ico|zip|gz)$/.test(f) || binary.has(f) || isPrivate(f)) continue
     const text = read(f)
@@ -274,7 +276,7 @@ function checks(dir, { only } = {}) {
       for (const n of hits.slice(0, MAX_LINES_PER_RULE)) fail('docs', `${f}:${n}: ${rule}`)
       if (hits.length > MAX_LINES_PER_RULE) fail('docs', `${f}: ${rule} on ${hits.length - MAX_LINES_PER_RULE} more lines`)
     }
-    for (const [re, max] of budgets(insideFolder(specsDir) ? specsDir : null)) if (re.test(f) && tokens(text) > max) fail('docs', `${f}: ~${tokens(text)} tokens, budget ${max}`)
+    for (const [re, max] of budgets(insideFolder(specsDir) ? specsDir : null, isPlugin)) if (re.test(f) && tokens(text) > max) fail('docs', `${f}: ~${tokens(text)} tokens, budget ${max}`)
     if (!f.endsWith('.md')) continue
     for (const m of text.replace(/```[\s\S]*?```/g, '').matchAll(/\]\(([^)\s]+)\)/g)) {
       if (/^[a-z]+:/i.test(m[1])) continue

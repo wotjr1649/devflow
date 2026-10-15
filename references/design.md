@@ -9,11 +9,11 @@ bounded path, in a design note on the architectural one.
   `docs/design/decisions/`.
 - On the architectural path, review the design before plan with the design perspective from
   [perspectives](perspectives.md): Claude uses `reviewer`; in Codex the main session performs it
-  ([roles](../../../docs/specs/orchestration.md#모델과-effort)).
+  ([roles](../docs/specs/orchestration.md#모델과-effort)).
 - A design that moves a trust boundary - loosening a filter that guards public text, or taking paths, permissions or
   write targets from repository files, git metadata or tool output - gets that review on any path, with the reviewing agent
   trying to break it; check each bypass it claims with the real renderer or command
-  ([리뷰](../../../docs/specs/orchestration.md#리뷰)).
+  ([리뷰](../docs/specs/orchestration.md#리뷰)).
 - Call `grilling` for decisions only the user can make; the rest is yours.
 - If the design turns out to touch one or two files with no interface change, move to the bounded path and add a `notes`
   line with the reason. Hidden complexity moves the other way.

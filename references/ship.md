@@ -1,19 +1,19 @@
 # Ship
 
 Done when the project's integration and completion gates pass and the resulting commit and Issue status are verified.
-Apply the common [integration](../../pr-review-workflow/references/integration.md) and
-[completion](../../pr-review-workflow/references/completion.md) gates; this reference owns the devflow-specific order.
+Apply the common [integration](../skills/pr-review-workflow/references/integration.md) and
+[completion](../skills/pr-review-workflow/references/completion.md) gates; this reference owns the devflow-specific order.
 A review-only request ends in review; enter ship only for the requested integration or completion work.
 
 Ship measures, records and closes on the Issue branch before it integrates: worktree reflogs and old host records
-disappear later, and `devflow-state` writes an Issue only from its branch. Rules: [metrics](../../../docs/specs/metrics.md).
+disappear later, and `devflow-state` writes an Issue only from its branch. Rules: [metrics](../docs/specs/metrics.md).
 
 1. Read the cycle's guard blocks (`guard-events.jsonl` beside the ledger). Count each one that stopped a legitimate
    action, and any intervention not yet counted, with `metric` on the card's `Tool:` command.
 2. Run the project's `verify` gate, and on the Issue branch `devflow-doctor` where `.devflow.json` lists `tests`.
-   Main's pre-push cannot replace this ledger-aware check ([integration](../../../docs/specs/repository.md#통합과-ci)).
+   Main's pre-push cannot replace this ledger-aware check ([integration](../docs/specs/repository.md#통합과-ci)).
    Any `tests unlocked` line in the ledger's notes goes into the ship checkpoint with its reason.
-3. Decide the trigger eval by [eval](../../../docs/specs/eval.md#eval): `git diff --name-status <base>..HEAD -- skills
+3. Decide the trigger eval by [eval](../docs/specs/eval.md#eval): `git diff --name-status <base>..HEAD -- skills
    evals/trigger` shows added, deleted or renamed skills and any changed eval case, and `git diff -U0 <base>..HEAD --
    'skills/*/SKILL.md'` shows changed frontmatter lines. When it is due, ask the user to run it in their terminal, since
    it cannot authenticate inside a session, with `--no-publish` as in that command, so the report stays local. Record

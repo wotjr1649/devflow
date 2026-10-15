@@ -20,5 +20,5 @@ Select references for the requested work:
 After compaction or phase changes, reopen the current phase's reference.
 
 Report identity, findings, artifacts and next/pending steps per phase, and each check on one line; your own work is a check only in review:
-`<check>: kind <static|local|hosted>; method <command or how you read>; environment <Claude Code or Codex>, <tool>; revision <rev>; result <outcome> (observed by me|supplied|unknown)`
-Supplied checks copy supplied values instead, with "not supplied" for gaps. Write "not run by me" for your unrun checks, never "never ran" or "does not exist". Attribute only requirements a source states, quoting it. Name the action each prerequisite gates.
+`<check>: kind <kind>; method <method>; environment <environment>; revision <rev>; result <outcome> (observed by me|supplied|unknown)`
+Copy supplied values as given, with "not supplied" for gaps. Write "not run by me" for your unrun checks, never "never ran" or "does not exist". Attribute only requirements a source states, quoting it. Name the action each prerequisite gates.

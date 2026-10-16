@@ -1,6 +1,6 @@
 Review requirements/contracts, diff/callers/failures and intended staged/unstaged/untracked bytes; HEAD omits dirty work.
 
-Findings: location/trigger/impact/evidence/validation. Conclude only from reviewed evidence.
+Findings: location/trigger/impact/evidence/validation; with none, name the reviewed file scope. Conclude only from reviewed evidence.
 
 Before fixes verify repo/Issue/branch linkage via start/project procedure; recheck findings, record rationale/fix identity/dispositions, await required reviewer confirmation; defer by project rules.
 

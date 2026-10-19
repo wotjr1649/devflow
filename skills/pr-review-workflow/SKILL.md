@@ -17,6 +17,11 @@ References by phase (reopen the current one after compaction or a phase change):
 - Integration or its readiness: [devflow ship](../../references/ship.md) with `.devflow.json`; otherwise integration plus completion. Tracking alone: completion.
 - Cleanup, merged branches/worktrees too: [cleanup](references/cleanup.md).
 
-Report identity, findings, artifacts and next/pending steps per phase, and each check on one line; your own work is a check only in review:
+Report identity, findings, artifacts and next/pending steps per phase, and each check on one line, covering every supplied check state relevant to that phase (including not configured); your own work is a check only in review:
 `<check>: kind <kind>; method <method>; environment <environment>; revision <rev>; result <outcome> (observed by me|supplied|unknown)`
-Copy supplied values as given and attribute each claim to its actual source file/field. Report gaps as "not supplied" or "unknown", read failures as unreadable, and your unrun checks as "not run by me"; these establish no other actor's history or file absence. Attribute only requirements a source states, quoting it.
+Keep each fact with its provenance throughout the report, including the opening and tracker state: observed by me (method), supplied (source file/field), or unknown.
+Preserve supplied values and use supplied check results when assessing criteria, retaining conflicts; "not run by me" does not erase a recorded result.
+
+Report missing inputs as "not supplied" or "unknown", failed reads as "unreadable", and your unrun checks as "not run by me"; none establishes file absence or another actor's history. Report "not configured" only when supplied evidence establishes that status for the named component; an omitted field alone is not specified in the supplied configuration.
+
+Attribute only stated requirements, quoting exact source spans including punctuation.

@@ -21,8 +21,6 @@ devflow가 프로젝트에 설치하고 `devflow-doctor`가 검사하는 구조,
 └── _ref/                      읽기 전용 참조 (ignore)
 ```
 
-AGENTS.md를 비공개로 운영하는 프로젝트는 AGENTS.md를 ignore에 추가하고, 그 사실을 `.devflow.json`에 적는다.
-
 ### Issue 폴더
 
 Issue 폴더(`.work/devflow/i<issue>/`: 장부, 차단 기록, 세션 기록, 잠금)는 주 작업 트리에 둔다(#14). worktree를 지워도
@@ -56,8 +54,7 @@ CLAUDE.local.md
 # <<< devflow
 ```
 
-비공개 경로가 이미 git에 추적되고 있으면 블록이 있어도 막지 못한다. doctor는 `git ls-files`로 이 경우를 찾아
-실패로 보고한다.
+블록은 이미 추적되는 비공개 경로를 막지 못한다(doctor가 `git ls-files`로 찾아 실패로 보고).
 
 ## .gitattributes 기본값
 
@@ -85,6 +82,7 @@ CLAUDE.local.md
 
 ## Commands
 - 빌드·테스트 명령과 정상 출력 예시. 경로별 검사는 .devflow.json의 checks
+- (선택) 검사 단계·확대 조건, 새 테스트를 남길 기준·위치, 영역별 검증 문서
 
 ## Boundaries
 - 묻지 않고: 로컬 빌드·테스트, 자기 변경으로 생긴 실패 수정과 재실행, 작업 브랜치 커밋
@@ -95,7 +93,7 @@ CLAUDE.local.md
 ```
 
 - 에이전트가 읽는 글이라 영어로 쓴다([documents](documents.md#에이전트가-읽는-글)). doctor는 `## Commands`와
-  `## Boundaries`를 필수 절로 본다.
+  `## Boundaries`를 필수 절로 본다. `(선택)`은 필수 관문·실패 재현 시험을 대신하지 않는다.
 
 - 한 페이지를 넘기지 않는다. 사용자 전역 지침의 내용은 다시 적지 않는다.
 - **권한 문장은 AGENTS.md에 둔다.** 예: "이 저장소 Issue의 현재 상태 블록과 체크포인트는 묻지 않고 갱신한다."
@@ -142,13 +140,15 @@ doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다. 
 ```
 
 훅의 프로필 읽기, 분석 시간 제한, 셸 쓰기 대상 판정과 한계는 [hooks](hooks.md)가 정한다.
+`checks`(build가 고르는 지도, 실행기 없음), `verify`(통합 관문), `tests`(재현 시험 잠금), `highRisk`(설계·보안
+리뷰)는 테스트 유지 기준이 아니다.
 
 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업 트리가 깨끗하고 push하는 커밋이 HEAD일 때만 `verify`를
 돌리고, 실패하면 push를 막는다. ref 삭제만 하는 push에는 검사할 커밋이 없으므로 돌리지 않는다(#53). 검사 자식에게는 Git이 넘긴 저장소 지정 환경을 제거해, 임시 저장소 검사가 실제 저장소를 바꾸지 않게 한다. 이 관문이 통합 때의 검사 기록을 대신한다. CI의 필수 여부는 프로젝트가 정한다. devflow 자체의 기준은 [통합과 CI](#통합과-ci)를 따른다. 훅을 켜는 `git config core.hooksPath .githooks`는
 클론마다 하고(호스트 설정이 아닌 저장소 설정이지만 훅을 켜는 일이라 소유자 지시로 한다), 훅이 꺼진 클론에서는 통합
 커밋에 검사 줄을 쓴다.
 
-`integration` 값은 `pr-ci`, `local-merge`, `push-on-request` 중 하나다. AGENTS.md를 비공개로 운영하면
+`integration` 값은 `pr-ci`, `local-merge`, `push-on-request` 중 하나다. AGENTS.md를 비공개로 운영하면 ignore에 추가하고
 `"agentsMd": "private"`을 적는다. 그러면 AGENTS.md는 필수 경로가 아니고, 추적되면 실패다. `private`는 기본 목록을 대신하는
 경로 접두어 목록(저장소 안, `/`로 구분)이고, 비우면 doctor가 경고한다. 다른 저장소에 맞추는 값(#23):
 
@@ -191,8 +191,6 @@ Issue 형식은 doctor가 검사하지 않고, `devflow-state`가 쓸 때 검사
 | 잠긴 시험 | `tests`를 잠근 Issue 브랜치에서, 잠근 커밋 뒤로 바뀌거나 새로 생긴 시험 파일 |
 | 로컬 문서 | 크기 예산, 이름 규칙 |
 
-같은 스크립트를 스킬(분석), 훅(편집 직후 알림), CI나 git pre-push 훅(실패 처리)이 함께 쓴다.
-
 ## 통합과 CI
 
 devflow CI는 push마다 Linux·macOS, Node 22·24로 `verify`를 실행한다. BASE..HEAD에 `bin/`, `hooks/`, `tests/`가
@@ -202,7 +200,7 @@ push·완료 대기는 불필요하나 CI 실행·별도 필수 관문은 유지
 
 통합 전 [ship](lifecycle.md#단계)의 검사·기록을 마친다.
 로컬 pre-push의 `verify`가 통합 관문이다. 검사 커밋·작업 트리는 일치해야 하며 관문 우회는 금지다.
-통합 뒤 원격 main·결과를 확인하고 병합된 로컬·원격 브랜치·worktree를 정리한다. 태그·릴리스·호스트 설치는 별도 사용자 지시가 필요하다.
+통합 뒤 원격 main·결과를 확인하고 병합된 로컬·원격 브랜치·worktree를 정리한다. 태그·릴리스·호스트 설치는 별도 사용자 지시로 한다.
 
 ## 버전
 
@@ -216,7 +214,7 @@ minor를 올린다. 일반 Issue 통합은 버전을 유지한다. 1.0 전환은
 공통 공개 marketplace는 [wotjr1649/marketplace](https://github.com/wotjr1649/marketplace)이고 이름은 `wotjr1649`다.
 플러그인 이름은 `devflow`, 설치 식별자는 `devflow@wotjr1649`다. 플러그인 루트는 유지한다. Claude의 `.claude-plugin/marketplace.json`과 Codex의
 `.agents/plugins/marketplace.json`은 HTTPS `url` 소스로 `wotjr1649/devflow`의 같은 `v0.y.z` 태그를 가리킨다.
-버전은 플러그인 매니페스트에서 읽는다. 다른 플러그인은 자신의 저장소와 태그를 가리키는 항목으로 추가한다.
+다른 플러그인은 자신의 저장소와 태그를 가리키는 항목으로 추가한다.
 
 devflow 저장소 안의 두 catalog는 `devflow-local`이라는 개발용 이름으로 유지한다. 배포는 공통 catalog를 원격 또는 local clone으로 등록한다.
 로컬 시험용 marketplace에는 비공개 파일이 없는 별도 worktree를 쓰고, 설치본은 태그나 시험 커밋의 추적 파일과
@@ -224,7 +222,7 @@ devflow 저장소 안의 두 catalog는 `devflow-local`이라는 개발용 이�
 
 ## 릴리스와 롤백
 
-사용자가 지시한 릴리스는 다음 순서로 진행한다.
+사용자가 지시한 릴리스는 이 순서로 한다.
 
 1. 두 매니페스트 버전을 [버전 정책](#버전)에 따라 올리고 검사·리뷰·[통합 관문](#통합과-ci)을 통과해 main에 통합한다.
 2. 원격 main과 통합 커밋을 확인하고 그 커밋에 경량 `v0.y.z` 태그를 만들고 push한다. 같은 이름의 태그가 있으면 재작성하지 않는다.

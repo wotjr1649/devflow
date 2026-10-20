@@ -37,6 +37,8 @@ const USAGE = `usage: devflow-state <command>
                               replace the body above the state block once the user approved it; "## 수용 기준" is
                               required, and checks stay only on criteria whose text is unchanged
   comment <n> < checkpoint    "### Checkpoint <stage> — <summary>", then at most 9 lines starting "- "
+  remark <n> < text           a plain remark on an existing Issue of this repository, from any branch; never a
+                              checkpoint, never read as state, interactive turns only
   check <n> <k>...            mark acceptance criteria k (1-based boxes GitHub renders under "## 수용 기준") as done
   close <n> | reopen <n>
   create --title <t> < body   a new Issue in the Issue template; "## 수용 기준" needs plain "- [ ]" criteria
@@ -62,7 +64,7 @@ const USAGE = `usage: devflow-state <command>
                               --undo takes one back (never below 0)
   metric <n> eval <passed>/<total> --host claude|codex --rev <commit> < note
                               record the cycle's trigger eval result
-Issue text writes go only to the branch's Issue (create excepted); sub-issue add records its explicit targets
+Issue text writes go only to the branch's Issue (create and remark excepted); sub-issue add records its explicit targets
 under the working Issue. Commands and queue signatures do not grant authority. Text with local paths, secrets, hidden
 characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.
 Ledger writes off an Issue branch (cleanup on main) take the Issue number; note and metric need its ledger
@@ -577,6 +579,12 @@ function refusal(op, text, title) {
   if (op === 'comment' && !isCheckpoint(text)) {
     return no('state-checkpoint-shape', `refused: a checkpoint is "### Checkpoint <stage> — <summary>" and at most ${MAX_CHECKPOINT_LINES - 1} "- " lines`)
   }
+  if (op === 'remark') {
+    if (!text.trim()) return no('state-remark-shape', 'refused: a remark needs text')
+    if (text.length > MAX_BODY_CHARS) return no('state-remark-shape', `refused: a remark is over ${MAX_BODY_CHARS} characters`)
+    // The same normalization read applies, so a remark is never taken for the target's latest checkpoint.
+    if (isCheckpoint(stripHidden(text).trim())) return no('state-remark-checkpoint', 'refused: a remark is not a checkpoint; checkpoints go to the branch\'s Issue with comment')
+  }
   if (op === 'check' && !/^\d+( \d+)*$/.test(text)) return no('state-check-args', 'refused: check takes the Issue number and criterion numbers')
   if (op === 'state') {
     const ls = lines(text)
@@ -894,12 +902,12 @@ function nextBody(op, body, text, writer) {
 // new Issue posted twice is a public duplicate, so such a failure is read back first: found means posted, missing means
 // failed, unreadable means unknown. The other writes set a value and may simply run again. gh's exit code 4 is an
 // authentication failure: nothing was sent, so nothing is read back.
-const READ_BACK = new Set(['comment', 'create'])
+const READ_BACK = new Set(['comment', 'remark', 'create'])
 const READ_BACK_SKEW_MS = 5 * 60000
 function postedAlready(ctx, op, n, text, title, since) {
   const same = s => String(s || '').replace(/\r\n/g, '\n').trim() === String(text).replace(/\r\n/g, '\n').trim()
   const after = at => Date.parse(at) >= since - READ_BACK_SKEW_MS
-  if (op === 'comment') {
+  if (op === 'comment' || op === 'remark') {
     const got = fetchIssue(ctx, n)
     if (got.error) return null
     const hit = ((got.issue.comments && got.issue.comments.nodes) || [])
@@ -1059,7 +1067,7 @@ function post(ctx, op, n, text, title, opts = {}) {
       ...(carried.unread ? [`the previous "## 수용 기준" was missing or not plain, so none of its ${carried.unread} checked boxes carried over; check again with evidence`] : []),
     ]
     if (r.code === 0 && notes.length) return { code: 0, out: [r.stdout.trim() || `intent #${n} done`, ...notes].join('\n') }
-  } else if (op === 'comment') {
+  } else if (op === 'comment' || op === 'remark') {
     r = gh(['issue', 'comment', String(n), '-R', ctx.repo, '--body-file', '-'], text.trim() + '\n')
   } else if (op === 'create') {
     r = gh(['issue', 'create', '-R', ctx.repo, '--title', title, '--body-file', '-'], text)
@@ -1084,7 +1092,7 @@ function post(ctx, op, n, text, title, opts = {}) {
 
 // Writes run only in interactive turns; an autonomous ledger queues them for the next one.
 // Only the commands devflow-state offers reach gh, queued ones included.
-const WRITE_OPS = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'create', 'sub-issue-add'])
+const WRITE_OPS = new Set(['state', 'intent', 'comment', 'remark', 'check', 'close', 'reopen', 'create', 'sub-issue-add'])
 
 // A refusal carries a guard id; it is logged to the branch's Issue and dropped from the result.
 // Logged under the branch's Issue; off an Issue branch under n, and only when n's folder exists, so a refusal for a
@@ -1178,7 +1186,36 @@ const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.store, n))
 function write(env, cwd, op, n, text = '', title, opts = {}) {
   if (!WRITE_OPS.has(op)) return { code: 1, out: `refused: ${op} is not a devflow-state write` }
   const ctx = repoContext(env, cwd)
+  if (op === 'remark') return guarded(ctx, remark(ctx, n, text), n)
   return guarded(ctx, attempt(ctx, op, n, text, title, opts))
+}
+
+// A remark (Issue #77) is a plain comment on any existing Issue of this repository: no checkpoint, so read and the card
+// never take it for state, and no queue. Only the caller's work Issue decides whether this is an unattended run; the
+// target's ledger belongs to whoever works on it and is never read. Without a work Issue (main) the turn counts as
+// interactive, which nothing here can prove. The supported target is no authority to post.
+function remark(ctx, n, text) {
+  if (!ctx || !ctx.repo) return { code: 1, out: 'refused: not a devflow repository with a GitHub origin' }
+  const why = refusal('remark', text)
+  if (why) return { code: 1, ...why }
+  if (ctx.issue) {
+    let own
+    try {
+      own = issueDirOk(ctx.store, ctx.issue) ? readLedger(ctx.store, ctx.issue) || {} : null
+    } catch {
+      own = null
+    }
+    if (!own) return { code: 1, out: `refused: Issue #${ctx.issue}'s ledger cannot be read, so whether this run is unattended is unknown`, guard: 'state-ledger-unsafe' }
+    if (own.mode === 'autonomous') {
+      return { code: 1, out: `refused: a remark is posted only in an interactive turn; Issue #${ctx.issue}'s ledger is autonomous`, guard: 'state-remark-unattended' }
+    }
+  }
+  const got = fetchIssue(ctx, n)
+  if (got.error) return { code: 1, out: got.error }
+  const r = post(ctx, 'remark', n, text)
+  if (r.code !== 0) return r
+  const title = WRITERS.has(got.issue.authorAssociation) ? clip(stripHidden(got.issue.title || ''), 80) : '(title withheld)'
+  return { code: 0, out: `${ctx.repo}#${n} (${String(got.issue.state || '').toLowerCase()}) ${title}: ${r.out}` }
 }
 
 // The lines a ship checkpoint carries (Issue #50): whether the trigger eval ran, the measurement, and any test unlock.
@@ -1658,6 +1695,8 @@ function command(argv, stdin, env, cwd) {
     case 'state':
     case 'comment':
       return num(rest[0]) ? write(env, cwd, cmd, num(rest[0]), input()) : { code: 2, out: `usage: devflow-state ${cmd} <issue> < text` }
+    case 'remark':
+      return num(rest[0]) && rest.length === 1 ? write(env, cwd, 'remark', num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state remark <issue> < text' }
     case 'check': {
       const ks = rest.slice(1)
       return num(rest[0]) && ks.length && ks.every(k => num(k)) ? write(env, cwd, 'check', num(rest[0]), ks.join(' '))

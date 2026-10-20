@@ -499,6 +499,21 @@ test('an authentication failure is a plain failure, not read back (#49)', () => 
   assert.equal(e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'api').length, 0)
 })
 
+test('a remark gh reports as failed but GitHub has is not posted again; an auth failure is not read back (#77)', () => {
+  const REMARK = '분석 의견'
+  let e = ghAnswers(repo(), args => (args[1] === 'comment' ? TIMEOUT : args[0] === 'api' ? withComment(REMARK + '\n') : null))
+  let r = state.write(e, '.', 'remark', 1, REMARK)
+  assert.equal(r.code, 0, r.out)
+  assert.match(r.out, /issuecomment-7 \(gh exit ETIMEDOUT, but the remark is on GitHub\)/)
+  assert.equal(sent(e, 'comment'), 1)
+  e = ghAnswers(repo(), args => (args[1] === 'comment' ? TIMEOUT : null))
+  assert.match(state.write(e, '.', 'remark', 1, REMARK).out, /posting state unknown/)
+  e = ghAnswers(repo(), args => (args[1] === 'comment' ? { code: 4, stdout: '', stderr: '' } : null))
+  r = state.write(e, '.', 'remark', 1, REMARK)
+  assert.match(r.out, /remark failed \(gh exit 4\)/)
+  assert.equal(e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'api').length, 1, 'only the lookup before posting')
+})
+
 test('a new Issue gh reports as failed but GitHub has is not created again (#49)', () => {
   const body = '## 문제\nx\n\n## 수용 기준\n- [ ] a\n'
   const listed = answer(JSON.stringify([{ title: 'T2', body, url: 'https://github.com/o/r/issues/9', createdAt: new Date().toISOString() }]))

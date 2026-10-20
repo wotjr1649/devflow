@@ -68,8 +68,7 @@ CLAUDE.local.md
 
 - Windows의 `core.autocrlf=true`가 있어도 저장소 안에서는 LF로 맞춘다. 훅 스크립트와 shebang이 이에 의존한다.
 - gitattributes는 `{a,b}` 확장을 지원하지 않는다. 확장자마다 한 줄씩 쓴다.
-- 생성물은 프로젝트별로 `linguist-generated -diff`를 붙인다. 리뷰 화면에서 구분되고, 에이전트의 `git diff` 출력이
-  줄어든다.
+- 생성물에는 `linguist-generated -diff`를 붙여 리뷰 화면에서 구분하고 에이전트의 diff를 줄인다.
 - 릴리스 아카이브에서 빼려면 `export-ignore`를 붙인다. 디렉터리는 `/dir/** export-ignore` 형식으로 쓴다.
 
 ## 프로젝트 AGENTS.md 형식
@@ -191,6 +190,8 @@ Issue 형식은 doctor가 검사하지 않고, `devflow-state`가 쓸 때 검사
 | 잠긴 시험 | `tests`를 잠근 Issue 브랜치에서, 잠근 커밋 뒤로 바뀌거나 새로 생긴 시험 파일 |
 | 로컬 문서 | 크기 예산, 이름 규칙 |
 
+doctor는 스킬(분석)·편집 직후 훅(알림)·pre-push·CI(실패)가 쓴다.
+
 ## 통합과 CI
 
 devflow CI는 push마다 Linux·macOS, Node 22·24로 `verify`를 실행한다. BASE..HEAD에 `bin/`, `hooks/`, `tests/`가
@@ -229,7 +230,7 @@ devflow 저장소 안의 두 catalog는 `devflow-local`이라는 개발용 이�
    pre-push는 태그도 HEAD와 같아야 허용하므로 경량 태그를 쓴다.
 3. 태그를 검증하고 해당 버전의 GitHub Release에 변경·검증·제약을 적는다. 버전·태그·릴리스 대상 커밋이 일치해야 한다.
 4. 공통 marketplace의 두 항목을 같은 새 태그로 바꾸고 manifest 검증 후 게시한다. catalog 자체의 main은 갱신하며,
-   플러그인 소스는 릴리스 태그로 고정한다. 새 태그 게시만으로 사용자가 갱신되지는 않는다.
+   플러그인 소스는 릴리스 태그로 고정한다.
 5. 두 호스트에서 marketplace를 갱신하고 플러그인을 설치·업데이트한다([명령](../../README.md#install)). 새 세션의
    구성요소·훅 신뢰와 설치 파일을 태그에 대조한다. 자동 업데이트는 사용자가 호스트에서 별도로 설정한다.
 

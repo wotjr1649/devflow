@@ -1196,6 +1196,11 @@ function write(env, cwd, op, n, text = '', title, opts = {}) {
 // interactive, which nothing here can prove. The supported target is no authority to post.
 function remark(ctx, n, text) {
   if (!ctx || !ctx.repo) return { code: 1, out: 'refused: not a devflow repository with a GitHub origin' }
+  // A detached HEAD may be an Issue branch mid-rebase in an unattended run, and a task worktree's delegate posts nothing
+  // (docs/specs/repository.md): neither has a work Issue whose ledger could vouch for the turn.
+  if (!ctx.branch) return { code: 1, out: 'refused: a remark needs a branch, not a detached HEAD', guard: 'state-detached' }
+  if (ctx.linked && !ctx.branchIssue) return { code: 1, out: 'refused: a task worktree posts no Issue text; the main session does', guard: 'state-other-issue' }
+  if (ctx.issue && legacyOf(ctx, ctx.issue)) return LEGACY(ctx.issue)
   const why = refusal('remark', text)
   if (why) return { code: 1, ...why }
   if (ctx.issue) {
@@ -1212,6 +1217,10 @@ function remark(ctx, n, text) {
   }
   const got = fetchIssue(ctx, n)
   if (got.error) return { code: 1, out: got.error }
+  // A transferred Issue answers under its new repository; the remark must stay in this one.
+  if (!String(got.issue.url || '').toLowerCase().startsWith(`https://github.com/${ctx.repo.toLowerCase()}/issues/`)) {
+    return { code: 1, out: `refused: Issue #${n} does not resolve to an Issue of ${ctx.repo}`, guard: 'state-remark-repo' }
+  }
   const r = post(ctx, 'remark', n, text)
   if (r.code !== 0) return r
   const title = WRITERS.has(got.issue.authorAssociation) ? clip(stripHidden(got.issue.title || ''), 80) : '(title withheld)'

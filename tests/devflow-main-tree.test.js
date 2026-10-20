@@ -184,20 +184,46 @@ test('with a ledger in both trees the worktree copy is not warned about, and wri
   assert.deepEqual(readJson(ledgerIn(wt, 14)), { where: 'wt' })
 })
 
-test('a remark from a task worktree follows the main tree Issue ledger, not the target one (#77)', () => {
-  const { main, wt } = project('feat/14-x', 'task-1')
+const posts = e => e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue').length
+
+test('a remark from an Issue-branch worktree follows the main tree ledger of that Issue (#77)', () => {
+  const { main, wt } = project('main', 'fix/14-wt')
   fs.mkdirSync(path.dirname(ledgerIn(main, 14)), { recursive: true })
   fs.writeFileSync(ledgerIn(main, 14), JSON.stringify({ mode: 'autonomous' }))
-  let e = env('task-1')
+  let e = env('fix/14-wt')
   let r = run(e, wt, ['remark', '14'], '의견')
   assert.equal(r.code, 1)
   assert.match(r.out, /only in an interactive turn; Issue #14's ledger is autonomous/)
-  assert.equal(e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue').length, 0)
+  assert.equal(posts(e), 0)
   fs.writeFileSync(ledgerIn(main, 14), JSON.stringify({ mode: 'interactive' }))
-  e = env('task-1')
+  e = env('fix/14-wt')
   r = run(e, wt, ['remark', '14'], '의견')
   assert.equal(r.code, 0, r.out)
   assert.deepEqual(readJson(ledgerIn(main, 14)), { mode: 'interactive' })
+})
+
+test('a task worktree and a detached worktree post no remark (#77 security review)', () => {
+  const { main, wt } = project('feat/14-x', 'task-1')
+  fs.mkdirSync(path.dirname(ledgerIn(main, 14)), { recursive: true })
+  fs.writeFileSync(ledgerIn(main, 14), JSON.stringify({ mode: 'interactive' }))
+  let e = env('task-1')
+  assert.match(run(e, wt, ['remark', '14'], '의견').out, /a task worktree posts no Issue text/)
+  assert.equal(posts(e), 0)
+  git(wt, 'switch', '-q', '--detach')
+  e = env('task-1')
+  assert.match(run(e, wt, ['remark', '14'], '의견').out, /not a detached HEAD/)
+  assert.equal(posts(e), 0)
+})
+
+test('a remark from a worktree holding the old ledger is refused until it is moved (#77 security review)', () => {
+  const { wt } = project('main', 'fix/14-wt')
+  fs.mkdirSync(path.dirname(ledgerIn(wt, 14)), { recursive: true })
+  fs.writeFileSync(ledgerIn(wt, 14), JSON.stringify({ mode: 'autonomous' }))
+  const e = env('fix/14-wt')
+  const r = run(e, wt, ['remark', '7'], '의견')
+  assert.equal(r.code, 1)
+  assert.match(r.out, /refused: /)
+  assert.equal(posts(e), 0)
 })
 
 test('Issue writes from a task worktree stay refused: only the branch Issue is written', () => {

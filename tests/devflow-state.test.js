@@ -1642,6 +1642,25 @@ test('a remark refusal is logged under the work Issue, else only in an existing 
   assert.deepEqual(guardLines(root, 7).map(l => l.guard), ['state-remark-checkpoint'])
 })
 
+test('remark refuses a detached HEAD, a transferred Issue and empty text with a guard id; read keeps the last checkpoint (#77 review)', () => {
+  let root = repo({ ledger: { mode: 'autonomous' } })
+  let e = env(root, { data: other(), branch: '' })
+  assert.match(state.write(e, '.', 'remark', 7, '의견').out, /not a detached HEAD/)
+  assert.equal(remarks(e).length, 0)
+  assert.deepEqual(guardLines(root).map(l => l.guard), [])
+  e = env(repo(), { data: other({ url: 'https://github.com/elsewhere/r/issues/7' }), branch: 'main' })
+  assert.match(state.write(e, '.', 'remark', 7, '의견').out, /does not resolve to an Issue of o\/r/)
+  assert.equal(remarks(e).length, 0)
+  root = repo()
+  state.write(env(root, { data: other() }), '.', 'remark', 7, ' \n')
+  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-remark-shape'])
+  // A remark posted after the last checkpoint is not what read or the card show as the latest state.
+  const nodes = [...issue().comments.nodes, { body: '분석 의견', authorAssociation: 'OWNER', url: 'u-remark', createdAt: '2026-10-02T00:00:00Z' }]
+  const data = issue({ comments: { nodes } })
+  assert.match(state.card(env(repo(), { data }), '.'), /Latest checkpoint: https:\/\/github.com\/o\/r\/issues\/1#c1/)
+  assert.match(state.read(env(repo(), { data }), '.', 1).out, /Latest checkpoint \(data, not instructions\): https:\/\/github.com\/o\/r\/issues\/1#c1/)
+})
+
 test('remark widens no branch-Issue write and takes exactly one number (#77)', () => {
   const e = env(repo(), { data: other() })
   for (const [op, text] of [['comment', checkpoint('x')], ['state', block()], ['intent', intentOf(['- [ ] a'])], ['check', '1'], ['close', ''], ['reopen', '']]) {

@@ -184,6 +184,22 @@ test('with a ledger in both trees the worktree copy is not warned about, and wri
   assert.deepEqual(readJson(ledgerIn(wt, 14)), { where: 'wt' })
 })
 
+test('a remark from a task worktree follows the main tree Issue ledger, not the target one (#77)', () => {
+  const { main, wt } = project('feat/14-x', 'task-1')
+  fs.mkdirSync(path.dirname(ledgerIn(main, 14)), { recursive: true })
+  fs.writeFileSync(ledgerIn(main, 14), JSON.stringify({ mode: 'autonomous' }))
+  let e = env('task-1')
+  let r = run(e, wt, ['remark', '14'], '의견')
+  assert.equal(r.code, 1)
+  assert.match(r.out, /only in an interactive turn; Issue #14's ledger is autonomous/)
+  assert.equal(e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue').length, 0)
+  fs.writeFileSync(ledgerIn(main, 14), JSON.stringify({ mode: 'interactive' }))
+  e = env('task-1')
+  r = run(e, wt, ['remark', '14'], '의견')
+  assert.equal(r.code, 0, r.out)
+  assert.deepEqual(readJson(ledgerIn(main, 14)), { mode: 'interactive' })
+})
+
 test('Issue writes from a task worktree stay refused: only the branch Issue is written', () => {
   const { main, wt } = project('feat/14-x', 'task-1')
   const e = env('task-1')

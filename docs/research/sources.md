@@ -10,7 +10,8 @@
   - 여러 워크플로를 가진 스킬은 루트를 라우터로 둔다.
   - 레시피식 지침은 새 모델을 묶는다.
   - AGENTS.md에는 상황별 포인터를 둔다.
-  - 안전한 작업은 명시적으로 허가하고, 강한 경계 문구를 재조정한다.
+  - 안전한 작업은 명시적으로 허가하고, 강한 경계 문구를 재조정한다. 이전 모델을 막으려던 경계는 새 모델을 필요 이상
+    멈추게 할 수 있어, 지침을 읽을 모델을 바꿀 때 다시 본다(#79, documents 2번).
   - 완료 조건을 먼저 정의한다.
 - [Prompting Claude Opus 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
   - 기본 effort는 `medium`이고, 효과를 측정한 뒤에만 높인다. `medium`이 코딩에서 Opus 5의 `high`와 같거나 낫다.
@@ -49,7 +50,7 @@
 ## 호스트 문서
 
 - Claude Code
-  - [Skills](https://code.claude.com/docs/en/skills): frontmatter, 호출 제어, 목록 예산, compact 뒤 다시 붙는 범위, eval.
+  - [Skills](https://code.claude.com/docs/en/skills): frontmatter, 호출 제어, 목록 예산, compact 뒤 다시 붙는 범위, eval, 매번 지켜야 할 규칙은 훅으로 옮기라는 문제 해결 안내(#79).
   - [Plugin reference](https://code.claude.com/docs/en/plugins-reference),
     [Plugin components](https://code.claude.com/docs/en/plugins/components),
     [Plugin loading](https://code.claude.com/docs/en/plugins/loading): 이름 공간, 에이전트 frontmatter 제한,

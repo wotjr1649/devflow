@@ -18,4 +18,10 @@ At start, reconcile the current request with the Issue: goal, every requirement,
 
 Refresh state before mutation.
 
-Return goal/acceptance, repository/Issue identity and branch/worktree association, root, base/head or non-Git artifact identity and freshness, completed/pending scope, preserved state, observed/unrun checks, and next covered action. Continue requested implementation when ready. PR preparation receives this record; merge/release gates remain outside this skill.
+For change-start tasks, return a start record that a later session can use without the transcript:
+- The goal and observable acceptance criteria.
+- Repository and Issue identity, their branch/worktree association, and the working root.
+- The base ref/SHA and working branch HEAD SHA, identifying both roles even when equal; for non-Git work, the artifact identity. State what freshness was verified.
+- Completed and pending scope, including implementation and its tests; preserved state; checks run and left unrun; and the next covered action.
+
+Mark unavailable or inapplicable information with the reason. Analysis/review-only tasks return their findings without creating tracking or workspace state to fill this record. Continue requested implementation when ready. PR preparation receives this record; merge/release gates remain outside this skill.

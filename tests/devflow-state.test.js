@@ -1858,7 +1858,7 @@ test('N2 A8: a card of exactly 999 tokens is shown whole; one more token shorten
 })
 
 test('N2 A9: a Tool path over 400 tokens is kept exactly when the card still fits', () => {
-  const tool = `C:/${'a'.repeat(1700)}/bin/devflow-state`
+  const tool = `plugin/${'a'.repeat(1700)}/bin/devflow-state`
   const e = env(repo())
   e.tool = tool
   const out = state.card(e, '.')
@@ -1868,7 +1868,7 @@ test('N2 A9: a Tool path over 400 tokens is kept exactly when the card still fit
 
 test('N2 A10: when even the minimal card cannot fit, the terminal error keeps the warnings and shows no state or Tool', () => {
   const e = env(repo(), { headers: withScopes('repo') })
-  e.tool = `C:/${'가'.repeat(990)}`
+  e.tool = `plugin/${'가'.repeat(990)}`
   const out = state.card(e, '.')
   assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
   assert.match(out, /resume card unavailable: even the minimal card exceeds the 1,000-token budget/)
@@ -1917,7 +1917,7 @@ test('N2 A12b: an exception before the context is a one-line reason, warnings no
 
 test('N2 A12d: an exception with a Tool too long for the minimal error ends in the terminal error with the warnings', () => {
   const e = failingLog(env(repo({ ledger: { lastCommit: 'a0b1234' } }), { headers: withScopes('repo') }))
-  e.tool = `C:/${'가'.repeat(990)}`
+  e.tool = `plugin/${'가'.repeat(990)}`
   const out = state.card(e, '.')
   assert.match(out, /resume card unavailable/)
   assert.match(out, WARNING)

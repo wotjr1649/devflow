@@ -253,7 +253,7 @@ test('N2 A10: with the legacy-ledger warning, a Tool too long for any card ends 
   fs.mkdirSync(path.dirname(ledgerIn(wt, 14)), { recursive: true })
   fs.writeFileSync(ledgerIn(wt, 14), JSON.stringify({ stage: 'build' }))
   const e = env('fix/14-wt')
-  e.tool = `C:/${'가'.repeat(990)}`
+  e.tool = `plugin/${'가'.repeat(990)}`
   const out = state.card(e, wt)
   assert.match(out, /Warning: Issue #14's ledger is in this worktree/)
   assert.match(out, /resume card unavailable/)

@@ -70,7 +70,8 @@ Issue의 confirmed intent·큰 단계와 체크포인트의 검증 기록, 장�
 | 10 | cleanup 정리 | 브랜치와 worktree 정리 | 정리 기록 | 정리 완료 | workspace-cleanup |
 | 11 | learn 회고 | 교훈을 알맞은 곳에 둠 | 아래 "회고와 기억" | 교훈이 있을 때만 | 라우터 reference, 둘 곳이 에이전트가 읽는 파일이면 writing-for-agents |
 
-ship은 통합하기 전에 Issue 브랜치에서 상태 블록을 done으로 쓰고 Issue를 닫는다. 브랜치를 지운 뒤에는 그 Issue에
+ship은 Issue 브랜치에서 상태 블록을 done으로 쓰고 Issue를 닫는다. `local-merge`는 통합 전에, `pr-ci`는 병합 결과를 확인한
+뒤에 한다. 범위가 남은 부분 통합은 닫지 않고 남은 범위를 상태에 둔다. 브랜치를 지운 뒤에는 그 Issue에
 쓸 수 없으므로, cleanup과 그 뒤의 learn은 장부에만 남긴다.
 
 표의 에이전트 역할은 [호스트별 역할](orchestration.md#모델과-effort)을 따른다. 설계·계획 검토는 Claude의 reviewer,

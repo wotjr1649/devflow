@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node }}
-      # doctor expects the tracked pre-push gate to be enabled, and the tests make commits in temporary repositories.
+      # Same hooks setting as a local-merge clone (doctor checks it there); the tests make commits in temporary repositories.
       - run: git config core.hooksPath .githooks
       - run: git config --global user.name ci && git config --global user.email ci@example.invalid
       # The project gate, read from .devflow.json as the pre-push hook reads it, so the two cannot drift apart.

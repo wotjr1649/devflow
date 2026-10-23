@@ -170,7 +170,7 @@ doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다. 
 방식으로 다시 잠근다. 이유는 장부 notes에 남아 ship 체크포인트로 간다. `ledger-update`는
 `testsLocked`를 바꾸지 못하고 `notes`는 덧붙이기만 하며, 읽을 수 없는 장부는 잠긴 것으로 본다. 그때는 에이전트가
 장부를 고칠 수 없으므로 사람이 JSON을 바로잡는다. 장부는 추적되지 않는
-로컬 파일이라 훅이 못 본 셸 명령으로 지우면 doctor의 이 검사도 사라진다. 훅과 이 검사는 가드레일이다. rebase한 뒤에는 정확히 `rebase`를 이유로 풀고 stdin에 `rebase`를 주어 다시 잠근다. 그 해제만 실패 증거를 `testsFailing`에 남겨 재잠금이 이어받고, 다른 이유로 풀면 증거가 지워져 시험의 실패를 다시 보여야 한다.
+로컬 파일이라 훅이 못 본 셸 명령으로 지우면 doctor의 이 검사도 사라진다. 훅과 이 검사는 가드레일이다. rebase하거나 main을 병합해 base를 갱신한 뒤에는 정확히 `rebase`를 이유로 풀고 stdin에 `rebase`를 주어 다시 잠근다. 그 해제만 실패 증거를 `testsFailing`에 남겨 재잠금이 이어받고, 다른 이유로 풀면 증거가 지워져 시험의 실패를 다시 보여야 한다.
 적지 않으면 잠금 명령은 거부되고 훅과 doctor는 아무것도 하지 않는다.
 
 ## doctor 검사 항목
@@ -195,13 +195,13 @@ doctor는 스킬(분석)·편집 직후 훅(알림)·pre-push·CI(실패)가 쓴
 ## 통합과 CI
 
 devflow 자체는 `pr-ci`다([ADR-0027](../design/decisions/ADR-0027-pr-ci-integration.md)). CI는 push와 main 대상 PR마다
-Linux·macOS, Node 22·24로 `verify`를 실행하고, PR 실행은 병합 결과를 검사한다. 통합은 Issue 브랜치 HEAD의 push CI와
-PR 최신 병합 결과의 CI가 네 조합 모두 성공하고 PR head가 리뷰한 SHA일 때 merge commit으로 한다.
-누락·취소·건너뜀·다른 커밋·다른 workflow의 같은 이름은 통과가 아니다. main의 ruleset이 ADR-0027과 다르면 통합하지 않는다.
+Linux·macOS, Node 22·24로 `verify`를 돌린다(PR은 병합 결과). 통합 조건: 브랜치 HEAD push CI와 PR 최신 병합 결과
+CI의 전부 성공, PR head가 독립 리뷰(M0 포함)를 받은 SHA, merge commit. PR 본문은 리뷰 근거와 `Refs #<n>`만
+담는다(닫는 키워드 금지). 누락·취소·건너뜀·다른 커밋·출처가 다른 같은 이름은 통과가 아니고, ruleset이 ADR-0027과 다르면
+통합하지 않는다.
 
-통합 전 [ship](lifecycle.md#단계)의 검사·기록을 마치고, 직전에 base·head·규칙·check를 다시 읽는다. 병합 뒤 main SHA와
-main CI를 확인하고 완료·정리한다. 태그·릴리스·호스트 설치·저장소 설정은 별도
-사용자 지시로 한다.
+[ship](lifecycle.md#단계)의 검사·기록 뒤, 통합 직전에 base·head·규칙·check를 다시 읽는다. 뒤처지면 main을 병합한다
+([리뷰](orchestration.md#리뷰)). 병합 뒤 main SHA·CI 확인 후 완료·정리한다.
 ## 버전
 
 두 플러그인 매니페스트의 `version`은 같아야 하며 `tests/devflow-config.test.js`가 검사한다.

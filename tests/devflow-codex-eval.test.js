@@ -427,3 +427,14 @@ test('a refusal for a missing folder keeps the error code (#73 F1 review 2)', ()
   fs.rmSync(path.join(version, 'references'), { recursive: true })
   assert.throws(() => loadedInstall(promptText([['r2', skills]], catalogLines('r2')), SEVEN, home, VERSION), /references \(ENOENT\)/)
 })
+
+test('text like "(file: …)" in a description does not count as a second location (#73 F1 review 3)', () => {
+  const { home, skills } = cacheHome()
+  const lines = SEVEN.map(n => `- devflow:${n}: reads examples (file: /example/${n}/SKILL.md). (file: r2/${n}/SKILL.md)`)
+  assert.equal(loadedInstall(promptText([['r2', skills]], lines), SEVEN, home, VERSION).installed, 'plugins/cache/devflow-local/devflow/0.3.1')
+})
+
+test('a home whose folder name holds "(file: /" still gives its cache location (#73 F1 review 3)', { skip: process.platform === 'win32' && 'Windows folder names cannot hold a colon' }, () => {
+  const odd = cacheHome('devflow-local', path.join(tmpdir('codex-eval-odd2-'), 'Codex (file: ', 'test'))
+  assert.equal(loadedInstall(promptText([], catalogLines(odd.skills)), SEVEN, odd.home, VERSION).installed, 'plugins/cache/devflow-local/devflow/0.3.1')
+})

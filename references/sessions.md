@@ -15,6 +15,38 @@ one-line note on stdin ([수동 지표](../docs/specs/metrics.md#수동-지표))
 After the Issue branch is gone (cleanup on main), `note` and `metric` still take the Issue's number, as long as its
 ledger exists.
 
+## Progress and returns
+
+For verified tracked work entering through `devflow`, use the [lifecycle mapping](../docs/specs/lifecycle.md#사용자-탐색).
+Explain the goal, current increment's user result, milestone and separate status, observed evidence, remaining exit
+conditions, next primary action, blockers/open decisions and applicable revision. Task k/N is a count, not a percentage.
+Refresh at resume, increment completion, milestone transitions, rollback, scope changes or blockers, not every message.
+Pre-Issue entry and other skills' direct returns are outside this change; a missing card does not authorize routing.
+
+Read confirmed intent and coarse state with the card's Tool `read <issue>`, and the same Issue's task progress and
+blockers with `ledger <issue>`. Open the linked plan for task/proof scope, receipts for observations and Git for
+revision applicability. When scope/proof/next action changes, append a local `note` with the evidence pointer,
+task versus full-acceptance scope and next covered action; keep original evidence in place. Use existing boundary
+updates; create no milestone fields, duplicate status record or routine public posts. Keep private paths/logs local.
+
+Issue build with ledger task verify can be the normal loop; Issue done with cleanup/learn can be normal closeout.
+Reconcile other differences by repository/Issue/branch identity, scope and applicable revision, not the newest
+timestamp. Check changed commits when HEAD differs from lastCommit; a successful log alone proves no applicability.
+Missing/unreadable ledger means unknown task progress and blockers, not none. Missing/stale receipts or unclear task
+versus full verification leave acceptance unpassed. Preserve lookup/writer/branch/history warnings and failed receipts.
+For a truncated card, recover the full filtered Issue and ledger, then the relevant local plan/evidence through their
+existing readers before relying on omitted facts. Do not guess completion or repair state automatically. If identity
+or conflict remains unresolved, show position unverified, hold the dependent effect and name the cheapest owner read
+or evidence comparison next; continue independent covered work. This recovery procedure does not fix card truncation.
+
+Apply the lifecycle's return rules: behavior failure to Increment; plan error to plan/ready in Preparation; broken
+assumption to design in Preparation; changed intent/acceptance to Direction through the existing confirmation path.
+Explain why, retained evidence/decisions, reopened exit conditions and next action. Same-scope fixes need no new
+interview. Review-only stops at findings. Separate delivered subset, parent scope, Issue closure and local closeout;
+after branch deletion use the closed-branch rules above, without reopening an Issue to match a label. Issue done or
+branch deletion alone proves neither integration nor completed cleanup; keep Delivery open until its scoped exits
+have evidence. Learning is optional.
+
 ## Handing off
 
 Before handing off, including asking the user to `/clear`, finish the work's checks, commits and state updates, wait

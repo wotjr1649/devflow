@@ -24,14 +24,14 @@ Write the Issue at stage boundaries, decisions and blockers: the state block (15
 [keys](../../docs/specs/ledger.md#작업-장부-키); keep them current, change `running` only with
 `running <issue> add|done <label>`, and add notes only with `note`.
 
-Read [sessions](../../references/sessions.md) to count a user correction or a wrongly blocked action when it happens,
-and before handing off or `/clear`, switching unattended mode, posting changed requirements or writing after the
-branch is gone.
+Read [sessions](../../references/sessions.md) for progress/returns and interventions, and before handoff, switching unattended mode,
+intent updates or closed-branch writes. Use five milestones with separate status; keep routing stages and
+recover truncated state from owners.
 
 ## Stage and path
 
-The stage is the state block's "단계" line; inside build and verify the ledger's task says where the loop is. The
-path (spike, bounded, architectural) is the ledger's `path`; when unset, classify by
+State block's "단계" is stage; in build/verify the ledger's task locates the loop. The path
+(spike, bounded, architectural) is the ledger's `path`; when unset, classify by
 [경로별 단계](../../docs/specs/lifecycle.md#경로별-단계), take the heavier path when unsure, and record it.
 
 Call the owner skill by name to enter its stage: start - `development-start`; review and ship - `pr-review-workflow`,

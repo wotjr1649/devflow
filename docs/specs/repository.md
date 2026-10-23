@@ -194,15 +194,14 @@ doctor는 스킬(분석)·편집 직후 훅(알림)·pre-push·CI(실패)가 쓴
 
 ## 통합과 CI
 
-devflow CI는 push마다 Linux·macOS, Node 22·24로 `verify`를 실행한다. BASE..HEAD에 `bin/`, `hooks/`, `tests/`가
-있으면 Issue 브랜치 push 후 그 HEAD의 CI 전부 통과 시 main에 fast-forward한다.
-누락·취소·건너뜀·다른 커밋은 통과가 아니다. 그 밖은 정보용 CI다. local-merge에 원격 Issue 브랜치
-push·완료 대기는 불필요하나 CI 실행·별도 필수 관문은 유지한다.
+devflow 자체는 `pr-ci`다([ADR-0027](../design/decisions/ADR-0027-pr-ci-integration.md)). CI는 push와 main 대상 PR마다
+Linux·macOS, Node 22·24로 `verify`를 실행하고, PR 실행은 병합 결과를 검사한다. 통합은 Issue 브랜치 HEAD의 push CI와
+PR 최신 병합 결과의 CI가 네 조합 모두 성공하고 PR head가 리뷰한 SHA일 때 merge commit으로 한다.
+누락·취소·건너뜀·다른 커밋·다른 workflow의 같은 이름은 통과가 아니다. main의 ruleset이 ADR-0027과 다르면 통합하지 않는다.
 
-통합 전 [ship](lifecycle.md#단계)의 검사·기록을 마친다.
-로컬 pre-push의 `verify`가 통합 관문이다. 검사 커밋·작업 트리는 일치해야 하며 관문 우회는 금지다.
-통합 뒤 원격 main·결과를 확인하고 병합된 로컬·원격 브랜치·worktree를 정리한다. 태그·릴리스·호스트 설치는 별도 사용자 지시로 한다.
-
+통합 전 [ship](lifecycle.md#단계)의 검사·기록을 마치고, 직전에 base·head·규칙·check를 다시 읽는다. 병합 뒤 main SHA와
+main CI를 확인하고 완료·정리한다. 태그·릴리스·호스트 설치·저장소 설정은 별도
+사용자 지시로 한다.
 ## 버전
 
 두 플러그인 매니페스트의 `version`은 같아야 하며 `tests/devflow-config.test.js`가 검사한다.

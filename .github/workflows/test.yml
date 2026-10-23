@@ -1,8 +1,10 @@
 # Runs doctor and tests on Linux and macOS; required paths and integration gates: docs/specs/repository.md.
 name: test
-# Any push: devflow pushes main, and an Issue branch only to see this run before integrating.
+# Any push runs on its own commit; a pull request into main also runs on the merge result GitHub would make (#73).
 on:
   push:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read

@@ -31,6 +31,9 @@ disappear later, and `devflow-state` writes an Issue only from its branch. Rules
 6. Integrate. If a required integration check fails (including CI after a successful push), or the push is refused,
    return to the Issue branch, reopen a prematurely closed Issue and restore its state: a failed check returns to
    build, anything else to ship.
+   With `pr-ci`, a merge is not done until it is seen: in step 5 leave the Issue open with `남음: PR 병합 확인`, merge
+   by [통합과 CI](../docs/specs/repository.md#통합과-ci) or the project's rule, confirm the merged main SHA and its CI, and
+   only then, still from the Issue branch, set `단계: done` and close the Issue.
 
 Cleanup is recorded in the ledger only. `workspace-cleanup` owns integration proof, including squash/rebase
 equivalence, and non-forcing deletion; a refused deletion retains the branch.

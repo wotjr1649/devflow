@@ -1,5 +1,5 @@
 {
-  "integration": "local-merge",
+  "integration": "pr-ci",
   "branch": "{type}/{issue}-{slug}",
   "private": [
     "docs/prompts/",

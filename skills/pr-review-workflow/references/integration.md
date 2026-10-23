@@ -6,4 +6,4 @@ For failed required CI, the next action is to investigate and fix its cause, the
 
 Assess supplied CI against the project's required check and exact head; unrequired identifiers stay unknown, not new gates. Before mutation bind live CI to repo/workflow/run/attempt/event/base/head/checkout and synthetic/head/post-merge type; reject unrelated runs. Refresh base/head/rules/CI/approvals/threads; guard expected head or hold races. Merge by project method without bypass; verify result/required post-merge checks.
 
-Devflow informational BASE..HEAD CI: skip optional push/wait; keep Issue-branch checks. After verified merge, [cleanup](cleanup.md).
+After verified merge, [cleanup](cleanup.md).

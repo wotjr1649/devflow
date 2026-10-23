@@ -216,33 +216,44 @@ function loadedInstall(promptText, names, home, version) {
   const folders = new Set()
   for (const name of names) {
     const entries = catalog.filter(l => l.startsWith('- devflow:' + name + ': '))
-    const file = entries.length === 1 && /\(file: ([^)]+)\)$/.exec(entries[0])
-    if (!file) throw new Error('The native prompt does not give one location for devflow:' + name)
-    const alias = /^(r\d+)\/(.*)$/.exec(normalize(file[1]))
+    // The location runs from the last "(file: " to the closing parenthesis, so a folder may hold parentheses.
+    const at = entries.length === 1 && entries[0].endsWith(')') ? entries[0].lastIndexOf('(file: ') : -1
+    if (at < 0) throw new Error('The native prompt does not give one location for devflow:' + name)
+    const file = normalize(entries[0].slice(at + '(file: '.length, -1))
+    const alias = /^(r\d+)\/(.*)$/.exec(file)
     if (alias && !roots.has(alias[1])) throw new Error('The native prompt names an unknown skill root for devflow:' + name)
-    const full = alias ? roots.get(alias[1]) + '/' + alias[2] : normalize(file[1])
+    const full = alias ? roots.get(alias[1]) + '/' + alias[2] : file
     const tail = '/' + name + '/SKILL.md'
     if (!full.endsWith(tail)) throw new Error('The native prompt names an unexpected file for devflow:' + name)
     folders.add(full.slice(0, -tail.length))
   }
   if (folders.size !== 1) throw new Error('The devflow skills load from more than one folder')
   const skillRoot = [...folders][0]
-  const m = /^plugins\/cache\/([^/]+)\/devflow\/([^/]+)\/skills$/.exec(normalize(path.relative(home, skillRoot)))
+  // Compared by real path: Codex prints the real path of a home given through a link, and Windows ignores case.
+  const win = process.platform === 'win32'
+  const real = (p, what) => {
+    try { return fs.realpathSync.native(p) } catch (e) { throw new Error('The loaded devflow ' + what + ' cannot be read (' + e.code + ')') }
+  }
+  const realHome = real(home, 'Codex home')
+  const m = (win ? /^plugins\/cache\/([^/]+)\/devflow\/([^/]+)\/skills$/i : /^plugins\/cache\/([^/]+)\/devflow\/([^/]+)\/skills$/)
+    .exec(normalize(path.relative(realHome, real(skillRoot, 'skills folder'))))
   if (!m) throw new Error('The loaded devflow skills are not this Codex home plugin cache copy')
-  if (m[2] !== version) throw new Error('The loaded devflow copy is version ' + m[2] + ', not this repository version ' + version)
   const installed = 'plugins/cache/' + m[1] + '/devflow/' + m[2]
-  const fold = s => (process.platform === 'win32' ? s.toLowerCase() : s)
-  const realHome = fs.realpathSync.native(home)
+  if (m[2] !== version) throw new Error('The loaded devflow copy ' + installed + ' is version ' + m[2] + ', not this repository version ' + version)
+  const fold = s => (win ? s.toLowerCase() : s)
+  // A junction or link anywhere from the home down could put the measured bytes outside the cache.
   for (const sub of [installed, installed + '/skills', installed + '/references']) {
-    let real
-    try { real = fs.realpathSync.native(path.join(home, sub)) } catch { throw new Error('The loaded devflow copy in the plugin cache has no ' + path.posix.basename(sub)) }
-    if (fold(normalize(real)) !== fold(normalize(path.join(realHome, sub)))) throw new Error('The loaded devflow copy leaves this Codex home plugin cache through a link')
+    let resolved
+    try { resolved = fs.realpathSync.native(path.join(realHome, sub)) } catch (e) {
+      throw new Error('The loaded devflow copy ' + installed + ' has no readable ' + path.posix.basename(sub) + ' (' + e.code + ')')
+    }
+    if (fold(normalize(resolved)) !== fold(normalize(path.join(realHome, sub)))) throw new Error('The loaded devflow copy ' + installed + ' leaves this Codex home plugin cache through a link')
   }
   return { skillRoot: path.resolve(skillRoot), installed }
 }
 
-// Which Codex home ran (#73): the user's default one or another, by real path, never by the variable alone. The id is a
-// hash of the real path, so two results can be compared without either showing it.
+// Which Codex home ran (#73): the user's default one or another, by real path, never by the variable alone. The id is an
+// unsalted hash of the real path: results compare without printing it, but a guessed path can be confirmed against it.
 function homeIdentity(home, defaultHome = path.join(os.homedir(), '.codex')) {
   const canonical = p => {
     let real

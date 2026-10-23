@@ -213,32 +213,33 @@ function loadedInstall(promptText, names, home, version) {
   }
   const end = lines.findIndex((l, i) => i > list && l.startsWith('#'))
   const catalog = lines.slice(list + 1, end < 0 ? undefined : end)
-  const folders = new Set()
-  for (const name of names) {
-    const entries = catalog.filter(l => l.startsWith('- devflow:' + name + ': '))
-    const tail = '/' + name + '/SKILL.md'
-    // The location runs from a "(file: " to the closing parenthesis; a folder may hold parentheses or even "(file: ",
-    // so every start is tried and exactly one must give a known alias or an absolute path ending in this skill's file.
-    const found = new Set()
-    for (let at = entries.length === 1 && entries[0].endsWith(')') ? entries[0].indexOf('(file: ') : -1; at >= 0; at = entries[0].indexOf('(file: ', at + 1)) {
-      const file = normalize(entries[0].slice(at + '(file: '.length, -1))
-      const alias = /^(r\d+)\/(.*)$/.exec(file)
-      const full = alias ? (roots.has(alias[1]) ? roots.get(alias[1]) + '/' + alias[2] : null) : path.isAbsolute(file) ? file : null
-      if (full && full.endsWith(tail)) found.add(full.slice(0, -tail.length))
-    }
-    if (found.size !== 1) throw new Error('The native prompt does not give one location for devflow:' + name)
-    folders.add([...found][0])
-  }
-  if (folders.size !== 1) throw new Error('The devflow skills load from more than one folder')
-  const skillRoot = [...folders][0]
   // Compared by real path: Codex prints the real path of a home given through a link, and Windows ignores case.
   const win = process.platform === 'win32'
   const real = (p, what) => {
     try { return fs.realpathSync.native(p) } catch (e) { throw new Error('The loaded devflow ' + what + ' cannot be read (' + e.code + ')') }
   }
   const realHome = real(home, 'Codex home')
-  const m = (win ? /^plugins\/cache\/([^/]+)\/devflow\/([^/]+)\/skills$/i : /^plugins\/cache\/([^/]+)\/devflow\/([^/]+)\/skills$/)
-    .exec(normalize(path.relative(realHome, real(skillRoot, 'skills folder'))))
+  const CACHE = win ? /^plugins\/cache\/([^/]+)\/devflow\/([^/]+)\/skills$/i : /^plugins\/cache\/([^/]+)\/devflow\/([^/]+)\/skills$/
+  const inCache = folder => [home, realHome].some(h => CACHE.test(normalize(path.relative(h, folder))))
+  const folders = new Set()
+  for (const name of names) {
+    const entries = catalog.filter(l => l.startsWith('- devflow:' + name + ': '))
+    const tail = '/' + name + '/SKILL.md'
+    // The location runs from a "(file: " to the closing parenthesis; a folder or a description may hold "(file: " too,
+    // so every start is tried and exactly one must give this skill's file inside this home's plugin cache.
+    const found = new Set()
+    for (let at = entries.length === 1 && entries[0].endsWith(')') ? entries[0].indexOf('(file: ') : -1; at >= 0; at = entries[0].indexOf('(file: ', at + 1)) {
+      const file = normalize(entries[0].slice(at + '(file: '.length, -1))
+      const alias = /^(r\d+)\/(.*)$/.exec(file)
+      const full = alias ? (roots.has(alias[1]) ? roots.get(alias[1]) + '/' + alias[2] : null) : path.isAbsolute(file) ? file : null
+      if (full && full.endsWith(tail) && inCache(full.slice(0, -tail.length))) found.add(full.slice(0, -tail.length))
+    }
+    if (found.size !== 1) throw new Error('The native prompt does not give one location in this Codex home plugin cache for devflow:' + name)
+    folders.add([...found][0])
+  }
+  if (folders.size !== 1) throw new Error('The devflow skills load from more than one folder')
+  const skillRoot = [...folders][0]
+  const m = CACHE.exec(normalize(path.relative(realHome, real(skillRoot, 'skills folder'))))
   if (!m) throw new Error('The loaded devflow skills are not this Codex home plugin cache copy')
   const installed = 'plugins/cache/' + m[1] + '/devflow/' + m[2]
   if (m[2] !== version) throw new Error('The loaded devflow copy ' + installed + ' is version ' + m[2] + ', not this repository version ' + version)

@@ -138,11 +138,14 @@ Tool: node "<plugin root>/bin/devflow-state"
 - 보호하는 정보: 첫 줄, 모든 Warning, Issue 줄, 상태 블록의 단계·브랜치/PR·다음 행동·막힘 줄(블록 전체에서 찾는다),
   Ledger·Mode 줄, 체크포인트 복구 정보, `Tool:` 줄. 넘으면 나머지 상태 줄을 꼬리부터, 다음으로 커밋 목록·Private 목록을
   개수로, 체크포인트 링크를 생략형으로 줄이고, 마지막으로 보호 값과 제목을 200 → 120 → 60자 미리보기로 줄인다.
-- 줄인 것이 있으면 `(state truncated) …; read <n> before relying on next or blockers` 한 줄을 둔다. 미리보기는 같은
-  접두사의 다른 값과 구별되지 않을 수 있으므로 원문을 읽기 전에는 다음 행동·막힘 판단을 미확인으로 둔다. 다음 행동·막힘
-  줄이 아예 없으면 `Next/blockers: not in the state block (unknown)`을 보이고 값을 만들지 않는다.
+- 위 축소 단계를 거쳤거나 15줄 밖을 처리했으면 `(state truncated) …; read <n> before relying on next or blockers` 한
+  줄을 둔다. 늘 적용하는 표시 제한(repo·branch·제목의 `…`, 220자 넘는 체크포인트 링크 생략)은 값에 표시가 있으므로 이
+  줄을 더하지 않는다. 미리보기는 같은 접두사의 다른 값과 구별되지 않을 수 있으므로 원문을 읽기 전에는 다음 행동·막힘
+  판단을 미확인으로 둔다. 줄인 카드에서 다음 행동이나 막힘 줄이 블록에 없으면 없는 쪽을 `Next`·`Blockers`(둘 다면
+  `Next/blockers`)`: not in the state block (unknown)`으로 보이고 값을 만들지 않는다. 줄이지 않은 카드는 블록 전체가 보인다.
 - 그래도 넘으면 상태 없이 첫 줄·경고·이유·`Tool:` 줄만 둔 최소 오류 카드를 낸다. 카드 생성 중 예외도 같은 형식으로,
-  확보한 경고와 아직 돌지 않은 경고 검사(`Warnings not checked`)와 한 줄 200자로 정리한 이유를 보인다.
+  확보한 경고와 아직 돌지 않은 경고 검사(`Warnings not checked`)와 이유를 보인다. 이유의 메시지는 한 줄로 바꿔
+  200자로 자른다(앞뒤 고정 문구 제외).
 - 최소 오류 카드도 넘으면 상태·`Tool:` 줄·라우팅이 없는 고정 오류(`resume card unavailable …`)에 확보한 경고만 둔다.
   `Tool:` 줄을 줄이거나 추정하지 않는다.
 - `Tool:` 줄은 있으면 언제나 마지막 줄이다. 마지막 줄이 `Tool:` 줄이 아닌 카드(`resume card failed`, `unavailable`)로는

@@ -1790,7 +1790,7 @@ function fullCard() {
   const root = repo({ ledger: { lastCommit: 'a0b1234', mode: 'interactive', task: { current: 1, total: 3 }, modeChanged: { to: 'interactive', at: '2026-10-23T00:00:00Z' } } })
   const priv = path.join(root, 'docs/plans')
   fs.mkdirSync(priv, { recursive: true })
-  for (let i = 0; i < 30; i++) fs.writeFileSync(path.join(priv, `2026-10-01-i1-${'긴이름'.repeat(10)}${i}-plan.md`), '')
+  for (let i = 0; i < 30; i++) fs.writeFileSync(path.join(priv, `2026-10-01-i1-${'long-name-'.repeat(10)}${i}-plan.md`), '')
   sessionsAt(root, others(3))
   const details = Array.from({ length: 11 }, (_, i) => `- 상세${i}: ${'가'.repeat(120)}`)
   const body = stateBody(['- 단계: build', `- 브랜치/PR: ${BRANCH} (main @ abc1234, PR 없음)`, ...details, '- 다음 행동: 후보의 정상 입력 회귀 확인', '- 막힘: 독립 검증 미실행, 통합 보류'])

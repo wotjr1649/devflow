@@ -20,20 +20,23 @@ ledger exists.
 For verified tracked work entering through `devflow`, use the [lifecycle mapping](../docs/specs/lifecycle.md#사용자-탐색).
 Explain the goal, current increment's user result, milestone and separate status, observed evidence, remaining exit
 conditions, next primary action, blockers/open decisions and applicable revision. Task k/N is a count, not a percentage.
-Refresh at resume, increment completion, milestone transitions, rollback, scope changes or blockers, not every message.
+Refresh at resume, stage completion, increment completion, milestone transitions, rollback, scope changes or blockers,
+not every message.
 Pre-Issue entry and other skills' direct returns are outside this change; a missing card does not authorize routing.
 
 Read confirmed intent and coarse state with the card's Tool `read <issue>`, and the same Issue's task progress and
-blockers with `ledger <issue>`. Open the linked plan for task/proof scope, receipts for observations and Git for
-revision applicability. When scope/proof/next action changes, append a local `note` with the evidence pointer,
-task versus full-acceptance scope and next covered action; keep original evidence in place. Use existing boundary
-updates; create no milestone fields, duplicate status record or routine public posts. Keep private paths/logs local.
+blockers with `ledger <issue>`. Recorded verification evidence is in the ledger's notes and the Issue's checkpoints;
+open the raw evidence they point to only when needed. Open the linked plan for task/proof scope (bounded: the one
+change and checks set in design) and Git for revision applicability. Keep original evidence in place. Use existing
+boundary updates; create no milestone fields, duplicate status record or routine public posts. Keep private paths/logs
+local.
 
 Issue build with ledger task verify can be the normal loop; Issue done with cleanup/learn can be normal closeout.
 Reconcile other differences by repository/Issue/branch identity, scope and applicable revision, not the newest
 timestamp. Check changed commits when HEAD differs from lastCommit; a successful log alone proves no applicability.
-Missing/unreadable ledger means unknown task progress and blockers, not none. Missing/stale receipts or unclear task
-versus full verification leave acceptance unpassed. Preserve lookup/writer/branch/history warnings and failed receipts.
+Missing/unreadable ledger means unknown task progress and blockers, not none. Missing/stale verification evidence or
+unclear task versus full verification leave acceptance unpassed. Preserve lookup/writer/branch/history warnings and
+failed results.
 For a truncated card, recover the full filtered Issue and ledger, then the relevant local plan/evidence through their
 existing readers before relying on omitted facts. Do not guess completion or repair state automatically. If identity
 or conflict remains unresolved, show position unverified, hold the dependent effect and name the cheapest owner read

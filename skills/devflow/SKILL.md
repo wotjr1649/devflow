@@ -24,8 +24,9 @@ Write the Issue at stage boundaries, decisions and blockers: the state block (15
 [keys](../../docs/specs/ledger.md#작업-장부-키); keep them current, change `running` only with
 `running <issue> add|done <label>`, and add notes only with `note`.
 
-Read [sessions](../../references/sessions.md) for progress/returns and interventions, and before handoff, switching unattended mode,
-intent updates or closed-branch writes. Use five milestones with separate status; keep routing stages and
+Read [sessions](../../references/sessions.md) to count a user correction or a wrongly blocked action when it happens,
+for progress/returns, and before handing off or `/clear`, switching unattended mode, intent updates or closed-branch
+writes. Use five milestones with separate status; keep routing stages and
 recover truncated state from owners.
 
 ## Stage and path

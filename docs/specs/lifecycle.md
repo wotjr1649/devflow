@@ -27,12 +27,13 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 | Milestone | 내부 단계 | 나가는 데 필요한 증거 |
 |---|---|---|
 | 방향 (Direction) | discover, start | 확인된 intent·수용 기준, Issue 연결, 작업 브랜치와 기준선 |
-| 준비 (Preparation) | design, plan, ready | 해결된 주요 결정, 작업별 계획·증명, 필요한 전제와 go |
+| 준비 (Preparation) | design, plan, ready | 해결된 주요 결정, 작업별 계획·증명, 필요한 전제와 go. bounded는 design에서 정한 한 변경·검사, 전제 확인과 `runMode` |
 | 증분 (Increment) | 작업별 build ↔ verify | 현재 작업의 사용자 결과와 적용 revision에서의 검증 |
 | 수용 (Acceptance) | 마지막 작업 뒤 전체 verify, review | 범위 전체 수용 기준의 실행 증거와 필수 리뷰·발견 사항 처리 |
 | 전달 (Delivery) | ship, cleanup, 필요할 때 learn; done은 Issue 종료 상태 | 실제 통합 범위와 Issue 종료, 남은 로컬 정리 확인 |
 
-bounded가 plan·ready를 design 안에서 처리해도 준비의 exit는 필요하다. 작업 검증과 전체 수용 검증은 scope로 구별한다.
+bounded는 plan 단계와 go 체크포인트 없이 ready를 design 안에서 처리하므로, 계획 파일이나 go가 없다는 이유로 준비를
+미확인으로 두지 않는다. 작업 검증과 전체 수용 검증은 scope로 구별한다.
 부분 통합은 전달된 부분만 설명하며 상위 범위의 충족을 뜻하지 않는다. Issue done과 로컬 closeout은 구별하고, learn은
 교훈이 있을 때만 한다. milestone은 새 저장 상태·승인 관문·Issue 게시 주기가 아니다.
 
@@ -41,9 +42,10 @@ bounded가 plan·ready를 design 안에서 처리해도 준비의 exit는 필요
 카드가 없거나 연결이 미확인이라면 기존 라우팅 제한을 유지한다. 축약된 카드는 완전한 상태가 아니므로 원 소유자의
 읽기 경로로 복구한다. 이는 카드 축약 자체의 수정이 아니다.
 
-의미 있는 경계(재개, 증분 완료, milestone 전환, 되돌림, 범위 변경, 막힘)에서 목표·현재 증분의 사용자 결과·현재 위치와
+의미 있는 경계(재개, 단계 종료, 증분 완료, milestone 전환, 되돌림, 범위 변경, 막힘)에서 목표·현재 증분의 사용자 결과·현재 위치와
 상태·완료 증거·남은 exit·다음 행동·막힘/미결 결정·적용 revision을 짧게 설명한다. 작업 k/N은 개수이며 완료율이 아니다.
-Issue의 confirmed intent·큰 단계, 장부의 작업 루프·막힘, 계획의 작업/증명 연결, receipt의 관측과 Git revision이 각 사실을
+Issue의 confirmed intent·큰 단계와 체크포인트의 검증 기록, 장부의 작업 루프·막힘·검증 증거 notes, 계획의 작업/증명
+연결(bounded는 design의 결정), 그것들이 가리키는 원시 근거([문서](documents.md)의 근거)와 Git revision이 각 사실을
 소유한다. milestone용 필드나 별도 상태 문서를 만들지 않고 [sessions](../../references/sessions.md#progress-and-returns)로
 대조한다. 누락·오래된 증거·진짜 충돌은 미확인으로 표시하고 의존 행동을 보류한다. 최신 timestamp만으로 충돌을 지우거나
 이전 FAIL을 PASS로 바꾸지 않는다. 기존 경계 업데이트를 쓰고 매 응답마다 긴 진행표를 만들지 않는다.

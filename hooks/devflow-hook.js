@@ -1047,7 +1047,7 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
     try {
       card = state.card(env, cwd, { sessionId: input.session_id })
     } catch (e) {
-      card = `[devflow] resume card failed: ${e.message}`
+      card = state.cardFailure(e)
     }
     return card ? JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: card } }) : ''
   }

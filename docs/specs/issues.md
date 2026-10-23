@@ -133,8 +133,9 @@ Tool: node "<plugin root>/bin/devflow-state"
 
 - 표시값은 타입을 확인한 뒤 보인다. repo·branch는 100자, 제목은 120자까지 보이고, 넘는 값은 `…` 미리보기다.
   HEAD가 hex가 아니면 `?`이다. 장부의 task·mode·`modeChanged`·`lastCommit`과 체크포인트 링크·날짜가 잘못된 형식이면
-  `?`·`invalid`·`unreadable`로 보이고 원문은 고치지 않는다. mode가 interactive로 보이는 것은 키가 없을 때뿐이며, 키가 있으면
-  `false`·`0`·`null`·빈 문자열도 잘못된 형식이다(`lastCommit`도 같다). 쓰기 경로가 읽지 않는 Issue 폴더(링크나 파일)의 장부는
+  `?`·`invalid`·`unreadable`로 보이고 원문은 고치지 않는다. mode의 기본값 interactive는 키가 없을 때만 적용하고, 키가
+  있으면 `interactive`·`autonomous`만 유효하다. `lastCommit`은 키가 있으면 커밋 해시 형식의 문자열만 유효하다. 두 키 모두
+  있을 때 `false`·`0`·`null`·빈 문자열은 잘못된 형식이다. 쓰기 경로가 읽지 않는 Issue 폴더(링크나 파일)의 장부는
   카드도 읽지 않는다.
 - 보호하는 정보: 첫 줄, 모든 Warning, Issue 줄, 상태 블록의 단계·브랜치/PR·다음 행동·막힘 줄(블록 전체에서 찾는다),
   Ledger·Mode 줄, 체크포인트 복구 정보, `Tool:` 줄. 넘으면 나머지 상태 줄을 꼬리부터, 다음으로 커밋 목록·Private 목록을

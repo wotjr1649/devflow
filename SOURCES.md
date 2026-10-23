@@ -19,6 +19,7 @@ above; they are listed so the ideas can be traced.
 | devflow path | Ideas from |
 |---|---|
 | `skills/devflow/` | [obra/superpowers](https://github.com/obra/superpowers) `5bf4e78`: the spike/bounded/architectural paths, the plan task structure, BASE recorded before delegation, per-task review, failing test first; [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) `feature-dev`: comparing two or three approaches |
+| `references/discover.md`, `docs/specs/lifecycle.md` (discover row) | [obra/superpowers](https://github.com/obra/superpowers/blob/2ce8aa15d05bd57213e6f746f953aafb7ded7a8b/skills/brainstorming/SKILL.md) `2ce8aa15`, `skills/brainstorming/SKILL.md`: a request that already says what it wants goes ahead without questions, look before asking, lay out approaches before building; adapted to discover's dispositions and devflow's existing start and decision owners |
 | `agents/explorer.md` | `feature-dev` `code-explorer`: return the key files and let the main session read them |
 | `agents/reviewer.md` | `pr-review-toolkit` and superpowers' task reviewer: an explicit BASE..HEAD diff, no verdict handed over |
 | `agents/implementer.md`, `agents/implementer-deep.md`, `agents/diagnostician.md` | superpowers: status words for delegated work, a stronger model after repeated failures, cause before fix |

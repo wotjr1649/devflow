@@ -58,7 +58,7 @@ Issue의 confirmed intent·큰 단계와 체크포인트의 검증 기록, 장�
 
 | # | 단계 | 책임 | 산출물 | 넘어가는 조건 | 담당 |
 |---|---|---|---|---|---|
-| 1 | discover 구상 | 무엇을 왜 만들지: 문제, 사용자, 성공 기준, 제외 범위 | intent 초안 | 사용자가 intent를 확인함 | 라우터 reference, grilling |
+| 1 | discover 구상 | 무엇을 왜 만들지: 문제, 사용자, 성공 기준, 제외 범위. 관측·주장·추정·미확인을 나누고, 무엇을 만들지 열려 있으면 컨셉과 최소 범위를 비교 | intent 초안, 또는 조사 결과·보류/중단 이유 | 사용자가 intent를 확인하면 start. 조사·초안만·보류·중단은 그 결과를 보고하고 끝나며 Issue·브랜치를 만들지 않음 | 라우터 reference, grilling |
 | 2 | start 착수 | Issue 등록과 대조, 수용 기준 확정, 작업 브랜치, 기준선 검사 | Issue 본문, 브랜치 | Issue 연결 확인, 기준선 통과 | development-start |
 | 3 | design 설계 | 요구사항과 설계 정리, 대안 비교, 우려 지점 표시, 계약이 바뀌면 spec과 결정 기록 | 설계 노트 또는 `docs/specs/`, 결정 기록 | 사용자만 정할 결정이 해결됨 | 라우터 reference, reviewer(설계 관점), grilling |
 | 4 | plan 계획 | 작업별 파일, 순서, interfaces, 증명, 위험 | 비공개 계획과 공개 요약 | 계획이 작성됨 | 라우터 reference |

@@ -398,3 +398,32 @@ test('a refused install copy is named in the message (#73 F1 review)', () => {
   fs.rmSync(path.join(version, 'references'), { recursive: true })
   assert.throws(() => loadedInstall(promptText([['r2', skills]], catalogLines('r2')), SEVEN, home, VERSION), /plugins\/cache\/devflow-local\/devflow\/0\.3\.1.*references/)
 })
+
+test('the folder the prompt names must itself be the home cache copy it resolves to (#73 F1 review 2)', () => {
+  const { home, version, skills } = cacheHome()
+  fs.writeFileSync(path.join(version, 'references', 'r.md'), 'ref')
+  // A folder outside the home whose skills link into the cache, with its own references beside them.
+  const outside = tmpdir('codex-eval-elsewhere-')
+  fs.symlinkSync(path.join(version, 'skills'), path.join(outside, 'skills'), 'junction')
+  fs.mkdirSync(path.join(outside, 'references'))
+  fs.writeFileSync(path.join(outside, 'references', 'r.md'), 'ref')
+  assert.throws(() => loadedInstall(promptText([['r2', fwd(path.join(outside, 'skills'))]], catalogLines('r2')), SEVEN, home, VERSION), REFUSED)
+  // A second copy in the same cache whose skills link to the first one.
+  const sibling = path.join(home, 'plugins', 'cache', 'other', 'devflow', '0.3.1')
+  fs.mkdirSync(path.join(sibling, 'references'), { recursive: true })
+  fs.symlinkSync(path.join(version, 'skills'), path.join(sibling, 'skills'), 'junction')
+  assert.throws(() => loadedInstall(promptText([['r2', fwd(path.join(sibling, 'skills'))]], catalogLines('r2')), SEVEN, home, VERSION), REFUSED)
+  // The measured copy is the home cache folder itself.
+  assert.equal(fwd(loadedInstall(promptText([['r2', skills]], catalogLines('r2')), SEVEN, home, VERSION).installedRoot), fwd(fs.realpathSync.native(version)))
+})
+
+test('a folder name holding "(file: " still gives the full location (#73 F1 review 2)', { skip: process.platform === 'win32' && 'Windows folder names cannot hold a colon' }, () => {
+  const odd = cacheHome('devflow-local', path.join(tmpdir('codex-eval-odd-'), 'Codex (file: test'))
+  assert.equal(loadedInstall(promptText([], catalogLines(odd.skills)), SEVEN, odd.home, VERSION).installed, 'plugins/cache/devflow-local/devflow/0.3.1')
+})
+
+test('a refusal for a missing folder keeps the error code (#73 F1 review 2)', () => {
+  const { home, version, skills } = cacheHome()
+  fs.rmSync(path.join(version, 'references'), { recursive: true })
+  assert.throws(() => loadedInstall(promptText([['r2', skills]], catalogLines('r2')), SEVEN, home, VERSION), /references \(ENOENT\)/)
+})

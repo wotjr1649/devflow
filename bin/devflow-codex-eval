@@ -162,6 +162,10 @@ function continuationConditions(prior, current) {
   for (const key of ['version', 'runnerHash', 'sourceHash', 'globalInstructionsHash', 'catalogHash']) {
     if (!prior[key] || prior[key] !== current[key]) throw new Error('Continuation Codex version, runner code, installed skills, global instructions or skill catalog changed (' + key + ')')
   }
+  // Results written before #73 have no home or install identity, so they never match a current run.
+  for (const key of ['codexHome', 'codexHomeId', 'installed']) {
+    if (prior[key] !== current[key]) throw new Error('Continuation Codex home or installed copy changed (' + key + ')')
+  }
 }
 
 // The run measures the installed plugin, so it has to be the repository's skills, byte for byte.
@@ -189,6 +193,64 @@ function checkInstalled(repoSkills, installedSkills) {
   const expected = skillSnapshot(repoSkills)
   if (skillSnapshot(installedSkills) !== expected) throw new Error('The installed devflow skills differ from this repository; update the installed copy before measuring')
   return expected
+}
+
+// What the host loads (#73): the preflight prompt's one skill block - a "Skill roots" table of `rN` aliases, then a
+// list whose devflow lines end in "(file: <rN or folder>/<name>/SKILL.md)". Each of the seven names needs exactly one
+// line with a location, all in one skills folder, and that folder must be this home's plugin cache copy of this
+// repository's version, with no link from the home down. Anything else stops the run before a model call. The folder is
+// returned as the model sees it, since the trace matches that spelling.
+function loadedInstall(promptText, names, home, version) {
+  if (promptText.split('### Skill roots').length !== 2) throw new Error('The native prompt does not hold exactly one skill roots table')
+  const lines = promptText.slice(promptText.indexOf('### Skill roots')).split(/\r?\n/)
+  const list = lines.indexOf('### Available skills')
+  if (list < 0) throw new Error('The native prompt has no skill list after its skill roots table')
+  const roots = new Map()
+  for (const line of lines.slice(1, list).filter(l => l.trim())) {
+    const m = /^- `(r\d+)` = `([^`]+)`$/.exec(line)
+    if (!m || roots.has(m[1])) throw new Error('The native prompt skill roots table is not one plain definition per alias')
+    roots.set(m[1], normalize(m[2]))
+  }
+  const end = lines.findIndex((l, i) => i > list && l.startsWith('#'))
+  const catalog = lines.slice(list + 1, end < 0 ? undefined : end)
+  const folders = new Set()
+  for (const name of names) {
+    const entries = catalog.filter(l => l.startsWith('- devflow:' + name + ': '))
+    const file = entries.length === 1 && /\(file: ([^)]+)\)$/.exec(entries[0])
+    if (!file) throw new Error('The native prompt does not give one location for devflow:' + name)
+    const alias = /^(r\d+)\/(.*)$/.exec(normalize(file[1]))
+    if (alias && !roots.has(alias[1])) throw new Error('The native prompt names an unknown skill root for devflow:' + name)
+    const full = alias ? roots.get(alias[1]) + '/' + alias[2] : normalize(file[1])
+    const tail = '/' + name + '/SKILL.md'
+    if (!full.endsWith(tail)) throw new Error('The native prompt names an unexpected file for devflow:' + name)
+    folders.add(full.slice(0, -tail.length))
+  }
+  if (folders.size !== 1) throw new Error('The devflow skills load from more than one folder')
+  const skillRoot = [...folders][0]
+  const m = /^plugins\/cache\/([^/]+)\/devflow\/([^/]+)\/skills$/.exec(normalize(path.relative(home, skillRoot)))
+  if (!m) throw new Error('The loaded devflow skills are not this Codex home plugin cache copy')
+  if (m[2] !== version) throw new Error('The loaded devflow copy is version ' + m[2] + ', not this repository version ' + version)
+  const installed = 'plugins/cache/' + m[1] + '/devflow/' + m[2]
+  const fold = s => (process.platform === 'win32' ? s.toLowerCase() : s)
+  const realHome = fs.realpathSync.native(home)
+  for (const sub of [installed, installed + '/skills', installed + '/references']) {
+    let real
+    try { real = fs.realpathSync.native(path.join(home, sub)) } catch { throw new Error('The loaded devflow copy in the plugin cache has no ' + path.posix.basename(sub)) }
+    if (fold(normalize(real)) !== fold(normalize(path.join(realHome, sub)))) throw new Error('The loaded devflow copy leaves this Codex home plugin cache through a link')
+  }
+  return { skillRoot: path.resolve(skillRoot), installed }
+}
+
+// Which Codex home ran (#73): the user's default one or another, by real path, never by the variable alone. The id is a
+// hash of the real path, so two results can be compared without either showing it.
+function homeIdentity(home, defaultHome = path.join(os.homedir(), '.codex')) {
+  const canonical = p => {
+    let real
+    try { real = fs.realpathSync.native(p) } catch { real = path.resolve(p) }
+    return process.platform === 'win32' ? normalize(real).toLowerCase() : normalize(real)
+  }
+  const id = canonical(home)
+  return { codexHome: id === canonical(defaultHome) ? 'default' : 'override', codexHomeId: crypto.createHash('sha256').update(id).digest('hex') }
 }
 
 // Global instructions stay as the host loads them; a change during the run would change what is measured.
@@ -235,13 +297,17 @@ function runLocal(args, options) {
   return result.stdout
 }
 
-// Free check before any model call: the native prompt lists all seven devflow skills.
-function preflight(cwd, env, names) {
-  const text = JSON.stringify(JSON.parse(runLocal(preflightArgs(), { cwd, env })))
+// Free check before any model call: the native prompt lists all seven devflow skills, and where it loads them from.
+function preflight(cwd, env, names, home, version) {
+  const input = JSON.parse(runLocal(preflightArgs(), { cwd, env }))
+  const text = JSON.stringify(input)
   const catalog = [...new Set([...text.matchAll(/- ([\w:-]+): /g)].map(m => m[1]))].sort()
   const missing = names.filter(n => !catalog.includes('devflow:' + n))
   if (missing.length) throw new Error('The native prompt does not list devflow skills: ' + missing.join(', '))
-  return catalog
+  const strings = []
+  const walk = v => { if (typeof v === 'string') strings.push(v); else if (v && typeof v === 'object') Object.values(v).forEach(walk) }
+  walk(input)
+  return { catalog, ...loadedInstall(strings.join('\n'), names, home, version) }
 }
 
 function execute(c, cwd, env, skillRoot, limits = {}) {
@@ -298,18 +364,18 @@ async function main(args) {
   const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
   const env = cleanEnv(home)
   const pluginVersion = JSON.parse(fs.readFileSync(path.join(ROOT, '.codex-plugin', 'plugin.json'), 'utf8')).version
-  const skillRoot = path.join(home, 'plugins', 'cache', 'devflow', 'devflow', pluginVersion, 'skills')
   const names = fs.readdirSync(path.join(ROOT, 'skills')).sort()
   const current = {
     version: runLocal(['--version'], { cwd: ROOT, env }).trim(),
     runnerHash: crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),
-    sourceHash: installedHash(ROOT, path.dirname(skillRoot)),
     globalInstructionsHash: globalInstructionsHash(home),
+    ...homeIdentity(home),
   }
   checkOutsideRepo(taskRoot())
   const preflightDir = fs.mkdtempSync(path.join(taskRoot(), 'cx-'))
-  let catalog
-  try { catalog = preflight(preflightDir, env, names) } finally { fs.rmSync(preflightDir, { recursive: true, force: true }) }
+  let catalog, skillRoot
+  try { ({ catalog, skillRoot, installed: current.installed } = preflight(preflightDir, env, names, home, pluginVersion)) } finally { fs.rmSync(preflightDir, { recursive: true, force: true }) }
+  try { current.sourceHash = installedHash(ROOT, path.dirname(skillRoot)) } catch (e) { throw new Error(e.message + ' (' + current.installed + ')') }
   current.catalogHash = crypto.createHash('sha256').update(JSON.stringify(catalog)).digest('hex')
   let priorTokens = 0
   let continued = null
@@ -330,7 +396,7 @@ async function main(args) {
   const taskDir = fs.mkdtempSync(path.join(taskRoot(), 'cx-'))
   const resultDir = path.join(ROOT, 'evals', 'results', new Date().toISOString().replace(/[:.]/g, '-') + '-codex-' + (opts.smoke ? 'smoke' : 'full'))
   fs.mkdirSync(resultDir, { recursive: true })
-  const report = { host: 'codex', ...current, model: MODEL, effort: EFFORT, sandbox: 'read-only', codexHome: 'real', timeoutSeconds: TIMEOUT / 1000,
+  const report = { host: 'codex', ...current, model: MODEL, effort: EFFORT, sandbox: 'read-only', timeoutSeconds: TIMEOUT / 1000,
     mode: opts.smoke ? 'smoke' : 'full', budgetTokens: opts.budgetTokens, priorTokens, repetitions: opts.repetitions, catalog,
     runner: 'devflow-codex-eval', startedAt: new Date().toISOString(),
     ...(continued ? { continuedFrom: normalize(path.relative(ROOT, path.resolve(ROOT, opts.continueFrom))), continuedAtCase: continued.cases.length } : {}),
@@ -366,5 +432,5 @@ async function main(args) {
   if (!report.complete || report.summary.invalid || !report.summary.thresholdPassed) process.exitCode = 1
 }
 
-module.exports = { parseTrace, loadCases, score, parseArgs, summarize, cleanEnv, preflight, execute, execArgs, skillSnapshot, checkInstalled, installedHash, caseDir, taskRoot, preflightArgs, checkOutsideRepo, globalInstructionsHash, continuation, continuationConditions, expandCases }
+module.exports = { parseTrace, loadCases, score, parseArgs, summarize, cleanEnv, preflight, execute, execArgs, skillSnapshot, checkInstalled, installedHash, loadedInstall, homeIdentity, caseDir, taskRoot, preflightArgs, checkOutsideRepo, globalInstructionsHash, continuation, continuationConditions, expandCases }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

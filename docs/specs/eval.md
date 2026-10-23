@@ -32,9 +32,12 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
   재시도하지 않는다. 각 시도는 새 세션·새 빈 폴더이고 반복 번호를 결과에 기록한다. invalid·실패한 시도를 대체하지 않는다.
   budget 플래그가 없으면 모델 프로세스를 시작하지 않는다. `--prior-results`의 사용량도 예산에 합친다.
   `--continue-from`은 예산 때문에 중단된 full에서만, 기존 사례·정책·프롬프트 해시·반복 횟수와 Codex 버전·실행기 코드 해시·
-  설치된 스킬 해시·전역 지침 해시·스킬 목록 해시가 모두 같을 때 미실행 시도만 실행한다. 기록된 시도를 재실행하지 않는다.
+  설치된 스킬 해시·전역 지침 해시·스킬 목록 해시와 CODEX_HOME 구분·식별값·설치 위치가 모두 같을 때 미실행 시도만 실행한다.
+  기록된 시도를 재실행하지 않는다. 이 세 값이 없는 #73 이전 결과는 이어 실행하지 않고 파일도 바꾸지 않는다.
 - `gpt-6.1-sol/high`, 사례당 300초다. 모델·effort·시간 제한·측정 대상·예산을 바꾸기 전에 사용자가 결정한다.
-- 사용자의 실제 CODEX_HOME에서 돈다. 호스트가 평소 싣는 전역 지침·활성 플러그인·system 스킬이 그대로 들어가며,
+- 사용자의 실제 CODEX_HOME에서 돈다. 결과의 `codexHome`은 실경로가 `~/.codex`와 같으면 `default`, 아니면 `override`이고,
+  `codexHomeId`는 그 실경로의 sha256이다. `override` 결과는 이 계약의 공식 측정이 아니며, marketplace 이름만으로 공식 조건을
+  주장하지 않는다. 호스트가 평소 싣는 전역 지침·활성 플러그인·system 스킬이 그대로 들어가며,
   설정 파일은 바꾸지 않는다. 명령행으로 `--sandbox read-only`와 모델·effort를 고정하고 `--ephemeral`로 세션을 남기지 않는다.
   자식에게는 CODEX_HOME과 실행에 필요한 최소 환경 변수만 넘긴다. 작업 폴더는 모델에게 `<cwd>`로 보이므로 사례 폴더는
   이 저장소 밖 OS 임시 폴더에 위치 번호만 담은 이름(`cx-*/t01`)으로 만든다. 명령행 `-c project_root_markers=[]`로
@@ -42,8 +45,11 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
   임시 폴더는 신뢰하지 않은 폴더지만 codex-cli 0.160.0은 쓸 수 있는 실행에서만 새 폴더의 신뢰를 기록하므로
   read-only 실행은 전역 config.toml을 바꾸지 않는다. 사전 검사도 read-only로 고정하고, 임시 폴더가 이 저장소 안이면 멈춘다.
   평소 사용과의 차이는 쓰기 차단이다.
-- 측정 대상은 설치된 플러그인이다. 설치된 devflow 스킬이 저장소의 `skills/`와 바이트 단위로 다르면 비용 없이 멈춘다.
-  모델 호출 전 `codex debug prompt-input`으로 devflow 7개 스킬이 목록에 있는지 확인하고 목록 전체를 결과에 남긴다.
+- 측정 대상은 호스트가 실제로 싣는 플러그인이다. 모델 호출 전 `codex debug prompt-input`으로 devflow 7개 스킬이 목록에 있는지
+  확인하고 목록 전체를 결과에 남긴다. 같은 출력의 한 skill 블록(Skill roots 표와 목록)에서 7개 스킬의 위치가 각각 한 줄씩
+  같은 폴더를 가리키고, 그 폴더가 이 CODEX_HOME의 `plugins/cache/<marketplace>/devflow/<저장소 plugin 버전>/skills`이며
+  home부터 링크 없이 그 안에 있어야 한다. 그 위치(home 기준 상대 경로)를 결과의 `installed`에 남기고, 그 설치본의 `skills/`·
+  `references/`가 저장소와 바이트 단위로 다르면 비용 없이 멈춘다. 이 중 하나라도 맞지 않으면 모델 호출 전에 멈춘다.
   매 시도 전 전역 지침 해시가 시작 때와 다르면 멈춘다.
 - 시도가 끝난 뒤 작업 폴더에 새 항목이 있으면 쓰기 차단이 듣지 않은 것이므로 invalid로 두고 더 진행하지 않는다.
   작업 폴더 밖의 쓰기는 이 검사로 보이지 않는다. 모델은 사용자 권한으로 파일을 읽을 수 있으며 이는 평소 사용과 같다.

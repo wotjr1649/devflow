@@ -195,9 +195,9 @@ doctor는 스킬(분석)·편집 직후 훅(알림)·pre-push·CI(실패)가 쓴
 ## 통합과 CI
 
 devflow 자체는 `pr-ci`다([ADR-0027](../design/decisions/ADR-0027-pr-ci-integration.md)). CI는 push와 main 대상 PR마다
-Linux·macOS, Node 22·24로 `verify`를 돌린다(PR은 병합 결과). 통합 조건: 브랜치 HEAD push CI와 PR 최신 병합 결과
-CI의 전부 성공, PR head가 독립 리뷰(M0 포함)를 받은 SHA, merge commit. PR 본문은 리뷰 근거와 `Refs #<n>`만
-담는다(닫는 키워드 금지). 누락·취소·건너뜀·다른 커밋·출처가 다른 같은 이름은 통과가 아니고, ruleset이 ADR-0027과 다르면
+Linux·macOS, Node 22·24로 `verify`를 돌린다(PR은 병합 결과). 통합 조건: 브랜치 HEAD push CI와 PR 최신 병합 결과 CI의
+전부 성공, merge commit, PR head가 독립 리뷰(M0 포함)를 받은 SHA, 또는 그 뒤 main 병합만 더해 diff가 같은 SHA(둘 다
+PR에 기록). 누락·취소·건너뜀·다른 커밋·출처가 다른 같은 이름은 통과가 아니고, ruleset이 ADR-0027과 다르면
 통합하지 않는다.
 
 [ship](lifecycle.md#단계)의 검사·기록 뒤, 통합 직전에 base·head·규칙·check를 다시 읽는다. 뒤처지면 main을 병합한다

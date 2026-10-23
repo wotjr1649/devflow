@@ -14,8 +14,9 @@ ADR-0008은 리뷰할 다른 사람이 없다는 이유로 main 직접 통합(fa
 ## 결정
 
 - `.devflow.json`의 `integration`을 `pr-ci`로 바꾼다. Issue는 문제·합의·수용, 비공개 계획은 설계·실행, PR은 한 변경의
-  리뷰·CI·통합 기록을 맡는다. #73 전체나 이미 통합한 증분에는 PR을 만들지 않는다. PR은 `Refs #<n>`으로 Issue를 가리키고
-  닫는 키워드를 쓰지 않는다. Issue 종료는 `devflow-state`가 병합 확인 뒤에 한다.
+  리뷰·CI·통합 기록을 맡는다. #73 전체나 이미 통합한 증분에는 PR을 만들지 않는다. PR 본문은 공개 요약·리뷰 근거(리뷰한
+  SHA)·`Refs #<n>`을 담고, 본문·커밋·merge commit 메시지에 닫는 키워드를 쓰지 않는다. Issue 종료는 `devflow-state`가
+  병합 확인 뒤에 한다.
 - 흐름: 작은 증분 → 로컬 검증 → 브랜치 HEAD의 push CI → PR에 독립 리뷰 근거(리뷰한 SHA) 연결 → 최신 head와 병합
   결과의 CI 확인 → merge commit으로 통합 → 실제 main SHA와 main CI 확인 → 완료·정리. 문서만 바뀐 PR과 M0도 같다.
 - merge commit: 기존 제품 커밋과 그 SHA(시험 잠금·리뷰 패키지·CI 근거)가 그대로 main 이력에 남는다. squash·rebase는
@@ -39,8 +40,9 @@ ADR-0008은 리뷰할 다른 사람이 없다는 이유로 main 직접 통합(fa
 
 ## 되돌림
 
-ruleset이 PR을 요구하므로 되돌림도 PR로 한다. 되돌림 커밋은 `.devflow.json`, AGENTS.md, repository·lifecycle·metrics·
-orchestration spec, ship·integration reference를 이 결정 전의 내용으로 돌리고, `test.yml`의 `pull_request` trigger와 이
+ruleset이 PR을 요구하므로 되돌림도 PR로 한다. 되돌림 커밋은 이 저장소 고유의 정책만 이 결정 전의 내용으로
+돌린다: `.devflow.json`, AGENTS.md, repository spec의 통합과 CI, pr-review-workflow `integration.md`의 devflow 줄,
+ADR-0008 상태 줄. lifecycle·metrics·orchestration·ship의 통합 방식별 순서는 다른 `pr-ci` 프로젝트에도 맞으므로 남긴다. `test.yml`의 `pull_request` trigger와 이
 ADR은 남겨 상태를 "되돌림 중: ruleset 해제 대기"로 고친다. 그 PR을 병합한 뒤부터 ruleset 해제까지는 통합을 멈춘다.
 ruleset 해제는 별도 사용자 승인으로 하고, 해제를 확인한 뒤 이 ADR을 "폐기"로, trigger 제거는 다음 증분으로 한다.
 서버 보호를 먼저 끄고 빠져나오지 않는다. 바꾼 설정의 이전 값은 실행 기록에 둔다.

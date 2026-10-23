@@ -36,7 +36,8 @@ disappear later, and `devflow-state` writes an Issue only from its branch. Rules
    Issue open; merge by the project's rule ([devflow](../docs/specs/repository.md#통합과-ci)); confirm the merged SHA on
    the target branch and the checks the project requires after merge; then, from the Issue branch, set `단계: done`
    and close the Issue only when every criterion is checked. A partial ship keeps the Issue open with its remaining
-   scope in the state block. A PR references the Issue without a closing keyword, so GitHub never closes it.
+   scope in the state block. No closing keyword goes in the PR body or any commit message it merges, so GitHub does
+   not close the Issue.
 
 Cleanup is recorded in the ledger only. `workspace-cleanup` owns integration proof, including squash/rebase
 equivalence, and non-forcing deletion; a refused deletion retains the branch.

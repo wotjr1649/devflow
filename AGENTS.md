@@ -34,7 +34,7 @@ node bin/devflow-doctor
 node --test --test-timeout=120000 tests/*.test.js
 git switch <type>/<issue>-<slug>
 git push -u origin <type>/<issue>-<slug> && gh pr create --base main
-gh pr merge <number> --merge --match-head-commit <reviewed head SHA>
+gh pr merge <number> --merge --match-head-commit <checked head SHA>
 ```
 
 Doctor prints `ok`; warnings pass. Fix findings without weakening valid checks.
@@ -54,13 +54,14 @@ are checked, and reopen unfinished scope. Create follow-ups only for user-decide
 or reproduced defects; propose others at ship. Follow `docs/specs/issues.md` and queue
 unattended writes under `docs/specs/ledger.md`.
 
-Interactive integration is a merge-commit PR into main after its required checks pass; never push to main. Only on explicit
+Integration is a merge-commit PR into main after its required checks pass; never push to main.
+PR body: summary, review evidence, `Refs #<n>`; no closing keyword in PR text or commits. Only on explicit
 user instruction: tags, releases, repository settings, host installation or updates, and host
 configuration (`~/.claude`, `~/.codex`, `~/.agents`).
 
 This repository is public: commit only public material, no private file contents or another
-project's private instructions. Issue text contains no local absolute paths, private file
-contents, raw logs or secrets. Link articles instead of copying them.
+project's private instructions. Issue and PR text contain no local absolute paths, private
+file contents, raw logs or secrets. Link articles instead of copying them.
 
 A missing prerequisite blocks its dependent action; continue independent authorized work.
 Keep temporary pauses, readiness, budgets and receipts in task records. Distinguish proposed

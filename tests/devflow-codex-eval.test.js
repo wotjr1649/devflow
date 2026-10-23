@@ -384,7 +384,9 @@ test('the same cache reached another way is accepted: a linked home, a case vari
   const real = cacheHome()
   const alias = path.join(tmpdir('codex-eval-homealias-'), 'home')
   fs.symlinkSync(real.home, alias, 'junction')
-  assert.equal(loadedInstall(promptText([['r2', real.skills]], catalogLines('r2')), SEVEN, alias, VERSION).installed, 'plugins/cache/devflow-local/devflow/0.3.1')
+  // The real path, as Codex prints it: macOS temp folders resolve from /var to /private/var.
+  const printed = fwd(fs.realpathSync.native(path.join(real.version, 'skills')))
+  assert.equal(loadedInstall(promptText([['r2', printed]], catalogLines('r2')), SEVEN, alias, VERSION).installed, 'plugins/cache/devflow-local/devflow/0.3.1')
   if (process.platform === 'win32') {
     const upper = real.skills.replace('/plugins/cache/', '/PLUGINS/CACHE/')
     assert.equal(loadedInstall(promptText([['r2', upper]], catalogLines('r2')), SEVEN, real.home, VERSION).installed, 'plugins/cache/devflow-local/devflow/0.3.1')

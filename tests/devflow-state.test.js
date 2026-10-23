@@ -1943,3 +1943,13 @@ test('N2 A14: the router and the tracking reference say what a card without a To
     assert.match(text, /never search the repository for it/, file)
   }
 })
+
+test('N2 A7b: next or blocker text after a line separator inside one state line is not taken for a state line', () => {
+  const details = Array.from({ length: 13 }, (_, i) => `- 상세${i}: ${'가'.repeat(120)}`)
+  const hidden = `- 메모: x${String.fromCharCode(0x2028)}- 다음 행동: 숨은 다음${String.fromCharCode(0x2029)}- 막힘: 숨은 막힘`
+  const body = stateBody(['- 단계: build', `- 브랜치/PR: ${BRANCH}`, hidden, ...details])
+  const out = state.card(env(repo(), { data: issue({ body }) }), '.')
+  assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
+  assert.match(out, /\(state truncated\)/)
+  assert.match(out, /^Next\/blockers: not in the state block \(unknown\); read 1$/m)
+})

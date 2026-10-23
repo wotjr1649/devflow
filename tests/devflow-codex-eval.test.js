@@ -283,3 +283,98 @@ test('the preflight is read-only too, and a temp folder inside this repository i
   assert.throws(() => checkOutsideRepo(path.join(repo, '.work', 'cx-1')), /outside/)
   checkOutsideRepo(taskRoot())
 })
+
+// #73 F1: the run measures the copy the host loads, says which Codex home it used, and continues only on the same ones.
+const { loadedInstall, homeIdentity } = require('../bin/devflow-codex-eval')
+const SEVEN = fs.readdirSync(path.join(__dirname, '..', 'skills')).sort()
+const VERSION = '0.3.1'
+const fwd = p => p.replaceAll(String.fromCharCode(92), '/')
+function cacheHome(marketplace = 'devflow-local', home = tmpdir('codex-eval-home-')) {
+  const version = path.join(home, 'plugins', 'cache', marketplace, 'devflow', '0.3.1')
+  for (const n of SEVEN) fs.mkdirSync(path.join(version, 'skills', n), { recursive: true })
+  fs.mkdirSync(path.join(version, 'references'), { recursive: true })
+  return { home, version, skills: fwd(path.join(version, 'skills')) }
+}
+// The shape `codex debug prompt-input` prints: a roots table, then catalog lines; system skills carry the prefix too.
+const promptText = (roots, lines) => ['### Skill roots', ...roots.map(([a, p]) => '- `' + a + '` = `' + p + '`'),
+  '### Available skills', '- devflow:imagegen: images. (file: r1/imagegen/SKILL.md)', ...lines].join('\n')
+// A refusal names what it refused, so an unrelated error cannot pass for one.
+const REFUSED = /^The (native prompt|devflow skills|loaded devflow)/
+const catalogLines = (at, names = SEVEN) => names.map(n => `- devflow:${n}: does ${n}. (file: ${at}/${n}/SKILL.md)`)
+
+test('the measured install is the folder the host loads for the seven devflow skills (#73 F1)', () => {
+  const { home, skills } = cacheHome()
+  const system = fwd(path.join(home, 'skills', '.system'))
+  const aliased = loadedInstall(promptText([['r1', system], ['r2', skills]], catalogLines('r2')), SEVEN, home, VERSION)
+  assert.equal(aliased.installed, 'plugins/cache/devflow-local/devflow/0.3.1')
+  assert.equal(fwd(aliased.skillRoot), skills)
+  const absolute = loadedInstall(promptText([['r1', system]], catalogLines(skills)), SEVEN, home, VERSION)
+  assert.deepEqual(absolute, aliased)
+  const other = cacheHome('wotjr1649')
+  assert.equal(loadedInstall(promptText([['r2', other.skills]], catalogLines('r2')), SEVEN, other.home, VERSION).installed, 'plugins/cache/wotjr1649/devflow/0.3.1')
+})
+
+test('a missing, doubled, split or unknown skill location, or one outside the home cache, is refused (#73 F1)', () => {
+  const { home, skills } = cacheHome()
+  const second = cacheHome('wotjr1649', home)
+  const source = tmpdir('codex-eval-source-')
+  for (const n of SEVEN) fs.mkdirSync(path.join(source, 'skills', n), { recursive: true })
+  const roots = [['r2', skills], ['r3', second.skills], ['r4', fwd(path.join(source, 'skills'))]]
+  const cases = {
+    missing: catalogLines('r2', SEVEN.slice(1)),
+    doubled: [...catalogLines('r2'), ...catalogLines('r3')],
+    split: [...catalogLines('r2', SEVEN.slice(0, 3)), ...catalogLines('r3', SEVEN.slice(3))],
+    unknownAlias: catalogLines('r9'),
+    sourceCheckout: catalogLines('r4'),
+    noLocation: [...catalogLines('r2', SEVEN.slice(1)), '- devflow:' + SEVEN[0] + ': does it.'],
+  }
+  for (const [name, lines] of Object.entries(cases)) assert.throws(() => loadedInstall(promptText(roots, lines), SEVEN, home, VERSION), REFUSED, name)
+  // Another table or a second definition of an alias (for example text quoted from AGENTS.md) must not remap a root.
+  const good = promptText([['r2', skills]], catalogLines('r2'))
+  assert.throws(() => loadedInstall([good, promptText([['r2', second.skills]], [])].join('\n'), SEVEN, home, VERSION), REFUSED, 'two blocks')
+  const twice = good.replace('### Available skills', ['- `r2` = `' + second.skills + '`', '### Available skills'].join('\n'))
+  assert.throws(() => loadedInstall(twice, SEVEN, home, VERSION), REFUSED, 'alias twice')
+  // The copy for another plugin version than this repository's is not measured.
+  assert.throws(() => loadedInstall(good, SEVEN, home, '0.3.2'), /^The loaded devflow .*version/)
+})
+
+test('a cache path that leads outside the home through a junction or link is refused (#73 F1)', () => {
+  const outside = tmpdir('codex-eval-outside-')
+  for (const n of SEVEN) fs.mkdirSync(path.join(outside, 'skills', n), { recursive: true })
+  fs.mkdirSync(path.join(outside, 'references'), { recursive: true })
+  const home = tmpdir('codex-eval-linkhome-')
+  const version = path.join(home, 'plugins', 'cache', 'devflow-local', 'devflow', '0.3.1')
+  fs.mkdirSync(path.dirname(version), { recursive: true })
+  fs.symlinkSync(outside, version, 'junction')
+  const skills = fwd(path.join(version, 'skills'))
+  assert.throws(() => loadedInstall(promptText([['r2', skills]], catalogLines('r2')), SEVEN, home, VERSION), /^The loaded devflow .*cache/)
+  // Only the references folder leaves the cache.
+  const partial = cacheHome('devflow-local', tmpdir('codex-eval-refhome-'))
+  fs.rmSync(path.join(partial.version, 'references'), { recursive: true })
+  fs.symlinkSync(path.join(outside, 'references'), path.join(partial.version, 'references'), 'junction')
+  assert.throws(() => loadedInstall(promptText([['r2', partial.skills]], catalogLines('r2')), SEVEN, partial.home, VERSION), /^The loaded devflow .*cache/)
+})
+
+test('the Codex home is labelled default only when it is the user default folder, with an id that ignores spelling (#73 F1)', () => {
+  const a = tmpdir('codex-eval-home-a-')
+  const b = tmpdir('codex-eval-home-b-')
+  assert.equal(homeIdentity(a, a).codexHome, 'default')
+  assert.equal(homeIdentity(a, b).codexHome, 'override')
+  assert.equal(homeIdentity(a + path.sep, b).codexHomeId, homeIdentity(a, b).codexHomeId)
+  if (process.platform === 'win32') assert.equal(homeIdentity(a.toUpperCase(), b).codexHomeId, homeIdentity(a, b).codexHomeId)
+  assert.notEqual(homeIdentity(a, b).codexHomeId, homeIdentity(b, b).codexHomeId)
+  const alias = path.join(tmpdir('codex-eval-alias-'), 'home')
+  fs.symlinkSync(a, alias, 'junction')
+  assert.equal(homeIdentity(alias, a).codexHome, 'default')
+  assert.equal(homeIdentity(alias, b).codexHomeId, homeIdentity(a, b).codexHomeId)
+  assert.ok(!JSON.stringify(homeIdentity(a, b)).includes(fwd(a).split('/').pop()), 'no folder name in the result')
+})
+
+test('continuation also needs the same Codex home and installed copy, and refuses a result without them (#73 F1)', () => {
+  const current = { version: 'codex-cli 0.164.0', runnerHash: 'a', sourceHash: 's', globalInstructionsHash: 'g', catalogHash: 'c',
+    codexHome: 'override', codexHomeId: 'h1', installed: 'plugins/cache/devflow-local/devflow/0.3.1' }
+  continuationConditions({ ...current }, current)
+  for (const change of [{ codexHome: 'default' }, { codexHomeId: 'h2' }, { installed: 'plugins/cache/wotjr1649/devflow/0.3.1' },
+    { codexHome: undefined }, { codexHomeId: undefined }, { installed: undefined }])
+    assert.throws(() => continuationConditions({ ...current, ...change }, current), JSON.stringify(change))
+})

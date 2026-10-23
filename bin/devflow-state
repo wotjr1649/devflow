@@ -576,7 +576,8 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
       const task = ledger.task && typeof ledger.task === 'object' ? ledger.task : {}
       const count = v => (Number.isSafeInteger(v) && v > 0 ? v : '?')
       // Writes queue only on "autonomous"; anything else posts at once, which the card says rather than hides.
-      const mode = !ledger.mode ? 'interactive' : MODES.includes(ledger.mode) ? ledger.mode : 'invalid (writes treat it as interactive)'
+      // Only a missing key is the default: a present false, 0, null or "" is a malformed value, shown as invalid.
+      const mode = !Object.hasOwn(ledger, 'mode') ? 'interactive' : MODES.includes(ledger.mode) ? ledger.mode : 'invalid (writes treat it as interactive)'
       ledgerLines.push(`Ledger: task ${count(task.current)}/${count(task.total)} · mode ${mode} · ` +
         `pending posts ${notAList(ledger) ? '? (not a list)' : queueOf(ledger).length}`)
       const changed = ledger.modeChanged
@@ -584,8 +585,9 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
         ledgerLines.push(`Mode: ${changed.to} since ${changed.at}`)
       }
       const lc = ledger.lastCommit
-      if (lc && (typeof lc !== 'string' || !COMMIT_HASH.test(lc))) ledgerLines.push('Ledger lastCommit is not a commit hash')
-      else if (lc) {
+      const hasLc = Object.hasOwn(ledger, 'lastCommit')
+      if (hasLc && (typeof lc !== 'string' || !COMMIT_HASH.test(lc))) ledgerLines.push('Ledger lastCommit is not a commit hash')
+      else if (hasLc) {
         const log = env.run('git', ['log', '--format=%h %s', '-n', String(MAX_CARD_COMMITS), `${lc}..HEAD`], { cwd: ctx.root })
         if (log.code !== 0) ledgerLines.push(`Ledger commit ${lc} is not in this history`)
         else if (log.stdout.trim()) {

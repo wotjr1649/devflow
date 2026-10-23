@@ -1953,3 +1953,12 @@ test('N2 A7b: next or blocker text after a line separator inside one state line 
   assert.match(out, /\(state truncated\)/)
   assert.match(out, /^Next\/blockers: not in the state block \(unknown\); read 1$/m)
 })
+
+test('N2 A7c: a shortened state that has next but no blockers line says the blockers are unknown', () => {
+  const details = Array.from({ length: 13 }, (_, i) => `- 상세${i}: ${'가'.repeat(120)}`)
+  const body = stateBody(['- 단계: build', `- 브랜치/PR: ${BRANCH}`, '- 다음 행동: 확인', ...details])
+  const out = state.card(env(repo(), { data: issue({ body }) }), '.')
+  assert.match(out, /^- 다음 행동: 확인$/m)
+  assert.match(out, /^Blockers: not in the state block \(unknown\); read 1$/m)
+  assert.doesNotMatch(out, /^- 막힘:/m)
+})

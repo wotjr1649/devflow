@@ -26,5 +26,5 @@ with no Issue and no feature decision.
   registers it. Before an Issue exists, a draft, an investigation, a deferral, a stop or a spike creates no Issue,
   branch, ledger or product change; when tracking is unavailable, keep the draft, say that tracking failed and do not
   claim the start happened. On a tracked Issue sent back here, follow [되돌아가기](../docs/specs/lifecycle.md#되돌아가기):
-  a deferral the user decides becomes a follow-up Issue, and a changed intent goes through `devflow-state intent`
-  after the user approves the text.
+  a part of the scope the user defers becomes a follow-up Issue, deferring or stopping the whole Issue goes into its
+  state block, and a changed intent goes through `devflow-state intent` after the user approves the text.

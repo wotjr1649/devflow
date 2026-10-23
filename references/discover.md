@@ -4,8 +4,8 @@ Done when the work ends in one disposition the evidence supports: start, with an
 investigation's findings and open questions; a draft, when only a draft was asked for; or defer or stop, with the
 reason and what would reopen it. A draft the user has not confirmed stays a draft.
 
-A request that already states the problem and observable acceptance goes straight to start without a second
-interview. Research-only work can end with findings, with no Issue and no feature decision.
+An implementation request, not a spike, that already states the problem and observable acceptance goes straight to
+start without a second interview. Research-only work can end with findings, with no Issue and no feature decision.
 
 - Look before you ask: read the request, the decisions already made and the code or docs it touches, and reuse what
   is settled unless new evidence changes it. Keep apart what you observed, what was claimed, what you infer and what

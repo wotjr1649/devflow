@@ -125,3 +125,25 @@ Tool: node "<plugin root>/bin/devflow-state"
 
 `Tool:` 줄은 스킬이 `devflow-state`를 부를 경로다. Codex는 스킬 본문의 경로 변수를 치환하지 않지만 훅은 플러그인 위치를
 알기 때문이다. 카드는 로컬 컨텍스트에만 들어가고 게시되지 않는다.
+
+### 예산과 의미 보존
+
+카드 전체는 `estTokens` 1,000 미만이며, 어느 경로든 실제로 조립한 출력으로 판정한다(#73, [ADR-0026](../design/decisions/ADR-0026-resume-card-budget.md)).
+연결·작성자·공개 필터·Issue 번호 판단은 온전한 원문으로 하고, 줄이는 것은 표시뿐이다. 카드는 Issue·장부·세션 파일을 바꾸지 않는다.
+
+- 표시값은 타입을 확인한 뒤 보인다. repo·branch는 100자, 제목은 120자까지 보이고, 넘는 값은 `…` 미리보기다.
+  HEAD가 hex가 아니면 `?`이다. 장부의 task·mode·`modeChanged`·`lastCommit`과 체크포인트 링크·날짜가 잘못된 형식이면
+  `?`·`invalid`·`unreadable`로 보이고 원문은 고치지 않는다. 쓰기 경로가 읽지 않는 Issue 폴더(링크나 파일)의 장부는
+  카드도 읽지 않는다.
+- 보호하는 정보: 첫 줄, 모든 Warning, Issue 줄, 상태 블록의 단계·브랜치/PR·다음 행동·막힘 줄(블록 전체에서 찾는다),
+  Ledger·Mode 줄, 체크포인트 복구 정보, `Tool:` 줄. 넘으면 나머지 상태 줄을 꼬리부터, 다음으로 커밋 목록·Private 목록을
+  개수로, 체크포인트 링크를 생략형으로 줄이고, 마지막으로 보호 값과 제목을 200 → 120 → 60자 미리보기로 줄인다.
+- 줄인 것이 있으면 `(state truncated) …; read <n> before relying on next or blockers` 한 줄을 둔다. 미리보기는 같은
+  접두사의 다른 값과 구별되지 않을 수 있으므로 원문을 읽기 전에는 다음 행동·막힘 판단을 미확인으로 둔다. 다음 행동·막힘
+  줄이 아예 없으면 `Next/blockers: not in the state block (unknown)`을 보이고 값을 만들지 않는다.
+- 그래도 넘으면 상태 없이 첫 줄·경고·이유·`Tool:` 줄만 둔 최소 오류 카드를 낸다. 카드 생성 중 예외도 같은 형식으로,
+  확보한 경고와 아직 돌지 않은 경고 검사(`Warnings not checked`)와 한 줄 200자로 정리한 이유를 보인다.
+- 최소 오류 카드도 넘으면 상태·`Tool:` 줄·라우팅이 없는 고정 오류(`resume card unavailable …`)에 확보한 경고만 둔다.
+  `Tool:` 줄을 줄이거나 추정하지 않는다.
+- `Tool:` 줄은 있으면 언제나 마지막 줄이다. 마지막 줄이 `Tool:` 줄이 아닌 카드(`resume card failed`, `unavailable`)로는
+  Issue 읽기·쓰기와 라우팅을 하지 않는다. 경로는 유효한 카드나 사용자에게서만 받고 저장소를 검색해 찾지 않는다.

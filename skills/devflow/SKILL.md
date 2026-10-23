@@ -12,6 +12,8 @@ did not run; say which, and route nothing.
 A card that names a reason instead of the state (another branch in the state block, a failed lookup, a body written
 by a non-writer) means the stage is unknown; report the reason rather than guess. A branch without an Issue number has
 no Issue yet: new work goes to `development-start`, which classifies its path.
+A card whose last line is not a `Tool:` line (resume card failed or unavailable) allows no Issue I/O and no routing:
+report its reason, take the devflow-state path only from a valid card or the user, and never search the repository for it.
 
 ## devflow-state
 

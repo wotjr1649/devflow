@@ -247,3 +247,16 @@ test('a FIFO in a worktree git dir cannot hold mainTree open (#43)', { skip: pro
   assert.equal(r.signal, null, 'mainTree did not return before the timeout')
   assert.equal(r.stdout.trim(), 'null')
 })
+
+test('N2 A10: with the legacy-ledger warning, a Tool too long for any card ends in the terminal error that keeps the warning', () => {
+  const { wt } = project('feat/14-x', 'fix/14-wt')
+  fs.mkdirSync(path.dirname(ledgerIn(wt, 14)), { recursive: true })
+  fs.writeFileSync(ledgerIn(wt, 14), JSON.stringify({ stage: 'build' }))
+  const e = env('fix/14-wt')
+  e.tool = `C:/${'가'.repeat(990)}`
+  const out = state.card(e, wt)
+  assert.match(out, /Warning: Issue #14's ledger is in this worktree/)
+  assert.match(out, /resume card unavailable/)
+  assert.equal(out.split('\n').filter(l => l.startsWith('Tool:')).length, 0)
+  assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
+})

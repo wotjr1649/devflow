@@ -41,6 +41,8 @@ const realFolders = (dir, parts, seen) => {
 }
 
 function main(argv) {
+  // Only a lone --help asks for the usage; anywhere else the word keeps its old meaning (a folder name, or a ref).
+  if (argv.length === 1 && argv[0] === '--help') return { code: 0, out: USAGE }
   let ref = 'HEAD'
   const dirs = []
   for (let i = 0; i < argv.length; i++) {
@@ -99,4 +101,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { main, objectId, unsafePath }
+module.exports = { main, objectId, unsafePath, USAGE }

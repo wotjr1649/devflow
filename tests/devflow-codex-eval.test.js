@@ -378,3 +378,23 @@ test('continuation also needs the same Codex home and installed copy, and refuse
     { codexHome: undefined }, { codexHomeId: undefined }, { installed: undefined }])
     assert.throws(() => continuationConditions({ ...current, ...change }, current), JSON.stringify(change))
 })
+
+test('the same cache reached another way is accepted: a linked home, a case variant on Windows, a parenthesis in a folder (#73 F1 review)', () => {
+  // Codex prints the real path of a CODEX_HOME given through a link (seen with a junction, .work/devflow/i73/f1-probe/pi-alias.json).
+  const real = cacheHome()
+  const alias = path.join(tmpdir('codex-eval-homealias-'), 'home')
+  fs.symlinkSync(real.home, alias, 'junction')
+  assert.equal(loadedInstall(promptText([['r2', real.skills]], catalogLines('r2')), SEVEN, alias, VERSION).installed, 'plugins/cache/devflow-local/devflow/0.3.1')
+  if (process.platform === 'win32') {
+    const upper = real.skills.replace('/plugins/cache/', '/PLUGINS/CACHE/')
+    assert.equal(loadedInstall(promptText([['r2', upper]], catalogLines('r2')), SEVEN, real.home, VERSION).installed, 'plugins/cache/devflow-local/devflow/0.3.1')
+  }
+  const paren = cacheHome('devflow-local', path.join(tmpdir('codex-eval-paren-'), 'Codex (test)'))
+  assert.equal(loadedInstall(promptText([], catalogLines(paren.skills)), SEVEN, paren.home, VERSION).installed, 'plugins/cache/devflow-local/devflow/0.3.1')
+})
+
+test('a refused install copy is named in the message (#73 F1 review)', () => {
+  const { home, version, skills } = cacheHome()
+  fs.rmSync(path.join(version, 'references'), { recursive: true })
+  assert.throws(() => loadedInstall(promptText([['r2', skills]], catalogLines('r2')), SEVEN, home, VERSION), /plugins\/cache\/devflow-local\/devflow\/0\.3\.1.*references/)
+})

@@ -299,7 +299,7 @@ function cacheHome(marketplace = 'devflow-local', home = tmpdir('codex-eval-home
 const promptText = (roots, lines) => ['### Skill roots', ...roots.map(([a, p]) => '- `' + a + '` = `' + p + '`'),
   '### Available skills', '- devflow:imagegen: images. (file: r1/imagegen/SKILL.md)', ...lines].join('\n')
 // A refusal names what it refused, so an unrelated error cannot pass for one.
-const REFUSED = /^The (native prompt|devflow skills|loaded devflow)/
+const REFUSED = /^Error: The (native prompt|devflow skills|loaded devflow)/
 const catalogLines = (at, names = SEVEN) => names.map(n => `- devflow:${n}: does ${n}. (file: ${at}/${n}/SKILL.md)`)
 
 test('the measured install is the folder the host loads for the seven devflow skills (#73 F1)', () => {
@@ -335,7 +335,7 @@ test('a missing, doubled, split or unknown skill location, or one outside the ho
   const twice = good.replace('### Available skills', ['- `r2` = `' + second.skills + '`', '### Available skills'].join('\n'))
   assert.throws(() => loadedInstall(twice, SEVEN, home, VERSION), REFUSED, 'alias twice')
   // The copy for another plugin version than this repository's is not measured.
-  assert.throws(() => loadedInstall(good, SEVEN, home, '0.3.2'), /^The loaded devflow .*version/)
+  assert.throws(() => loadedInstall(good, SEVEN, home, '0.3.2'), /^Error: The loaded devflow .*version/)
 })
 
 test('a cache path that leads outside the home through a junction or link is refused (#73 F1)', () => {
@@ -347,12 +347,12 @@ test('a cache path that leads outside the home through a junction or link is ref
   fs.mkdirSync(path.dirname(version), { recursive: true })
   fs.symlinkSync(outside, version, 'junction')
   const skills = fwd(path.join(version, 'skills'))
-  assert.throws(() => loadedInstall(promptText([['r2', skills]], catalogLines('r2')), SEVEN, home, VERSION), /^The loaded devflow .*cache/)
+  assert.throws(() => loadedInstall(promptText([['r2', skills]], catalogLines('r2')), SEVEN, home, VERSION), /^Error: The loaded devflow .*cache/)
   // Only the references folder leaves the cache.
   const partial = cacheHome('devflow-local', tmpdir('codex-eval-refhome-'))
   fs.rmSync(path.join(partial.version, 'references'), { recursive: true })
   fs.symlinkSync(path.join(outside, 'references'), path.join(partial.version, 'references'), 'junction')
-  assert.throws(() => loadedInstall(promptText([['r2', partial.skills]], catalogLines('r2')), SEVEN, partial.home, VERSION), /^The loaded devflow .*cache/)
+  assert.throws(() => loadedInstall(promptText([['r2', partial.skills]], catalogLines('r2')), SEVEN, partial.home, VERSION), /^Error: The loaded devflow .*cache/)
 })
 
 test('the Codex home is labelled default only when it is the user default folder, with an id that ignores spelling (#73 F1)', () => {

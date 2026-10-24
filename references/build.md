@@ -37,7 +37,9 @@ In M2 and M3 each task gets a narrow review before the next starts: the host-spe
 [roles](../docs/specs/orchestration.md#모델과-effort), given that task's BASE..HEAD. A mechanical change inside one file outside `highRisk` skips it; the final review covers it.
 
 M3 (Claude only) launches the implementers in the background with the Agent tool's `isolation: "worktree"` on each call,
-never in the agent definition, which would put M2 in worktrees too. Those worktrees start from the remote default branch,
+never in the agent definition, which would put M2 in worktrees too. Record each launch first with
+`running <n> add <label> --worktree`: only that record ties the task worktree to the Issue's test lock, and a task worktree
+without it counts as locked. `running <n> done <label>` takes the record out. Those worktrees start from the remote default branch,
 so a brief whose BASE is not on it begins with `git merge --ff-only <BASE>` in its worktree, and every brief asks for a
 commit there. The main session merges one result at a time into the Issue branch (fast-forward, then cherry-pick), runs
 the full checks after each merge. The worktrees and their branches stay until cleanup, after ship has measured the

@@ -320,6 +320,8 @@ function checks(dir, { only } = {}) {
     const ctx = state.repoContext(stateEnv(), root)
     let ledger = null
     let unread = false
+    // A task worktree whose delegation cannot be confirmed has no Issue to compare with, which must not pass (#73 G1).
+    if (ctx && ctx.bind === 'unconfirmed') fail('tests', 'this task worktree has no confirmed delegation, so whether its tests are locked is unknown')
     try {
       ledger = ctx && ctx.issue ? state.readLedger(ctx.store, ctx.issue) : null
     } catch {

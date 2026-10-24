@@ -13,7 +13,7 @@
 |---|---|
 | `stage`, `path` | lifecycle의 단계와 경로(spike, bounded, architectural). 단계 기록은 [lifecycle](lifecycle.md#단계)의 ship 이후 예외와 [작업 루프](lifecycle.md#반복)를 따른다 |
 | `mode` | `interactive` 또는 `autonomous`. 무인 구간의 유일한 기준이다. 새 장부는 `ledger-update`로 정할 수 있고, 기존 장부의 전환은 `devflow-state mode <n> autonomous\|interactive < 이유`로만 한다([자율 실행](#자율-실행)) |
-| `modeChanged` | 마지막 mode 전환의 `{to, at}`. `mode` 명령이 ISO 시각을 기록하고 재개 카드가 `Mode: <to> since <at>`로 보인다 |
+| `modeChanged` | 마지막 mode 전환의 `{to, at, session}`. `mode` 명령(새 장부를 autonomous로 시작하는 `ledger-update` 포함)이 ISO 시각과 바꾼 세션의 id 해시를 기록하고, 재귀속은 `session`만 바꾼다([자율 실행](#자율-실행)). 재개 카드가 `Mode: <to> since <at>`로 보인다 |
 | `runMode` | M0~M3으로 시작한다(뒤에 설명을 붙여도 된다) |
 | `task` | `{current, total}`, 1 이상의 정수. 마지막 작업이 끝나면 current가 total을 넘을 수 있다 |
 | `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
@@ -23,13 +23,13 @@
 | `notes` | 수정·승격·경로 변경과 수동 지표 증가의 이유, 검증 증거, 한 줄씩(`note`로 덧붙인다) |
 | `decisions` | 열린 결정만. 내린 결정은 체크포인트나 결정 기록에 둔다 |
 | `blocked` | 막힘이나 사람을 기다리는 사유(원격 쓰기 확인 포함). 비어 있지 않으면 자율 계속을 하지 않는다 |
-| `running` | 실행 중인 백그라운드 위임의 이름 목록. 띄울 때 `devflow-state running <n> add <이름>`, 결과가 오거나 실패·중단했으면 `done`으로 뺀다. 남은
+| `running` | 실행 중인 백그라운드 위임의 이름 목록. 띄울 때 `devflow-state running <n> add <이름>`, 결과가 오거나 실패·중단했으면 `done`으로 뺀다. M3 구현자는 `add <이름> --worktree`로 띄우기 전에 기록한다([task worktree](#task-worktree)). 남은
 항목은 무인 계속을 막으므로, 새 세션은 장부를 보고 끝난 위임을 뺀다. `ledger-update`로 통째로 바꾸면 다른 위임이 빠져 Stop 훅이 그 위에서 계속하므로 쓰지 않는다(#24) |
 | `followups` | ship 때 제안할 후속 후보 |
 | `pendingPosts` | 무인 구간에 쌓인 게시. `devflow-state`가 관리하고 `ledger-update`는 거부한다. 올리면 안 되는 항목은 대화형 턴에서 `pending drop <n> <id>`에 이유를 주어 뺀다. 목록이 아니면(손으로 고친 장부) 쌓기와 flush를 거부하고 사람이 고친다(#35). 장부는 클론이나 압축본이 함께 가져올 수 있는 작업 트리 파일이므로, 쌓을 때 항목마다 저장소 밖에 둔 이 기기의 키(절대 경로 `DEVFLOW_HOME`, 없으면 `~/.devflow`의 `queue.key`)로 저장소 이름까지 덮는 HMAC을 붙이고, flush는 맞는 표시가 없는 항목이 하나라도 있으면 아무것도 게시하지 않는다. 그런 항목은 `pending`으로 읽고, 남길 것은 직접 게시한 뒤 `pending drop`으로 뺀다. 키를 읽지 못하면 flush는 대기열을 그대로 두고 거부한다. 무인 실행은 저장소 밖에 쓰지 못하는 샌드박스에서 돌 수 있으므로 `mode <n> autonomous`(새 장부를 autonomous로 시작하는 `ledger-update` 포함)가 대화형 턴에서 키를 먼저 만든다. GitHub origin이 없으면 flush는 거부한다. 같은 OS 사용자의 프로세스는 키를 읽을 수 있고, 이미 게시된 항목이 든 옛 장부를 되살리면 다시 게시될 수 있다 |
 
 같은 폴더의 `guard-events.jsonl`은 차단 기록이고([metrics](metrics.md#수동-지표)), `sessions.json`과 `ledger.lock`은
-[동시 세션](#동시-세션) 것이다.
+[동시 세션](#동시-세션), `delegates.json`은 [task worktree](#task-worktree) 것이다.
 
 ## 자율 실행
 
@@ -37,7 +37,9 @@
 또는 비대화형으로 띄우는 프롬프트가 그렇게 정할 때 라우터가 `devflow-state mode <n> autonomous < 이유`로 바꾼다.
 사람이 돌아오면 `devflow-state mode <n> interactive < 이유`로 되돌린 뒤 게시 대기를 보여 준다. 이유는 stdin의 첫 줄로
 필수이고, 명령은 잠금 안에서 mode를 바꾸며 `mode <값>: <이유>`를 notes에 덧붙이고 `modeChanged`에 값과 시각을 남긴다.
-같은 값으로의 전환은 거부한다. bypass(Claude)나 yolo(Codex) 같은 승인 설정은 사람이 있는지를 말하지 않으므로 기준으로
+같은 값으로의 전환은 거부한다. 다만 다른 세션이 이미 autonomous인 작업에 `mode <n> autonomous`를 하면 거부하지 않고
+`modeChanged.session`만 그 세션으로 바꾼다(재귀속, 이유는 notes에). 새 세션이 autonomous 작업을 이어받으면 사용자가
+있을 때 interactive로 바꾸고, 무인으로 이어 가면 먼저 재귀속한다. bypass(Claude)나 yolo(Codex) 같은 승인 설정은 사람이 있는지를 말하지 않으므로 기준으로
 쓰지 않는다. Stop 훅은 이때만 계속을 요청하고, 장부만 읽는다.
 
 - 조건: 단계가 build나 verify이고 열린 작업이 있으며, `blocked`, 열린 `decisions`, `running`이 비어 있다
@@ -53,6 +55,38 @@
 
 대화형 작업에서는 이 훅이 꺼져 있다.
 
+## task worktree
+
+worktree의 Issue는 그 worktree 브랜치의 Issue뿐이다. Issue 브랜치가 아닌 linked worktree는 독립이며 어느 Issue의 장부·
+시험 잠금·세션·대기열·차단 기록도 쓰지 않는다. 같은 세션의 위임 기록이 있어도 마찬가지다(#73, 사용자 결정, 이유:
+[ADR-0028](../design/decisions/ADR-0028-worktree-binding.md)).
+
+- M3 작업 worktree는 Claude 격리 위치의 표지(`.claude/worktrees/agent-*` 폴더나 `worktree-agent-*` 브랜치)가 있는
+  worktree다. 메인은 구현자를 띄우기 전에 그 Issue 브랜치에서 `running <n> add <이름> --worktree`를 실행한다. 같은 잠금
+  안에서 Issue 폴더의 `delegates.json`에 이름과 세션 id 해시를 남기고, 세션 id가 없거나 그 세션이 다른 Issue에 위임
+  기록을 갖고 있거나 그 여부를 읽을 수 없으면, 이름이 이미 running이나 기록에 있으면, 기록이 읽기 한도(64 KiB)를 넘게
+  되면 거부한다. `done`이 `running`과 함께
+  뺀다. 기록은 그 이름이 장부 `running`에 있을 때만 센다(장부 쓰기가 실패해 이름 없이 남은 기록은 아무것도 잇지 않는다).
+- 연결(bound): worktree가 정확히 `<주 작업 트리>/.claude/worktrees/agent-*`에 있고 git이 그 주 작업 트리를 증명하며(다른
+  위치, 브랜치 표지만 있는 worktree, 그 worktree 안이나 다른 철자의 주 작업 트리는 연결되지 않는다), 세션 id, 그 세션을 가리키는 기록이 정확히 한 Issue에 있고 Issue 폴더 목록과
+  기록을 모두 읽을 수 있을 때만이다(대소문자만 다른 폴더 이름도 그 Issue로 센다). 연결된 worktree는 부모 장부를 읽고 시험 잠금·차단 기록·doctor의 잠금 검사를 따르며, 카드는 부모의 task
+  worktree임과 상태를 메인 세션이 가진다는 한 줄을 보인다.
+- 확인 불가: 표지가 있는데 위 조건 중 하나라도 빠지면 독립으로 풀지 않는다. 훅은 시험과 프로필을 잠긴 것으로 보고 기록
+  복구를 안내하고(시험 목록이 없어도 프로필은 잠긴다), 편집 도구로 자기 worktree 밖의 파일(주 작업 트리의 Issue 장부와 위임 기록 포함)을 쓰지 못하게 하며(경로 글자로 판단하고
+  링크는 따라가지 않는다. 셸 쓰기와 셸로 만든 링크는 이 보호 밖이다), git
+  메타데이터를 읽지 못해도 경로 표지로 판정한다. doctor는 잠금 여부를 알 수 없어 실패한다.
+- 표지가 있는 worktree는 Issue 브랜치로 바꿔도 자기 Issue로 보지 않고, 연결 여부와 관계없이 장부·Issue 쓰기·create·
+  remark·flush·release를 거부한다. 각 쓰기 입구가 판정을 직접 검사한다.
+- 판정은 `devflow-state`의 한 함수로 CLI·훅·doctor가 같이 한다. 훅은 입력의 `session_id`를 쓰고 자기 환경 변수는 읽지
+  않는다. 이름 표지는 연결의 필요조건이지 증거가 아니다. host가 격리 worktree의 폴더와 브랜치 이름을 둘 다 바꾸면 위임이
+  독립으로 보인다(Claude Code 2.1.310에서 확인한 규칙).
+- create: Issue 브랜치가 아닌 linked worktree에는 대기열이 없다. 주 작업 트리 브랜치의 Issue가 autonomous이거나,
+  autonomous 장부를 이 세션이 켰거나 이어받았거나(`modeChanged.session`) 최근 30분 안에 썼거나, 켠 세션을 모르는
+  autonomous 장부가 있거나(세션 id를 모를 때 포함), Issue 폴더 목록이나 장부를 읽지 못하면 거부하고 그 Issue와 `mode <n> interactive` 복구를
+  알린다. detached HEAD의 create는 어디서든 거부한다. 작업 Issue가 없는 주 작업 트리의 create는 대화형으로 간주하는
+  한계가 그대로다([Issue 입출력](issues.md#issue-입출력)).
+- `release <n>`은 이 세션의 항목이 있을 때만 지우고, 없으면 폴더·잠금·파일을 만들지 않는다.
+
 ## 동시 세션
 
 같은 기기의 두 세션(Claude와 Claude 또는 Codex)이 인계나 메시지로 한 Issue를 이어받을 때다.
@@ -61,7 +95,7 @@
   10초 지난 잠금은 버리고, 2초 안에 잡지 못한 쓰기는 거부한다.
 - `ledger-update`는 보낸 최상위 키를 바꾸고, 덧붙이는 기록은 `note`·`metric`으로 한다(동시 기록 유실 방지).
   셋은 Issue 브랜치에선 자기 장부만 쓰고, 다른 이름 브랜치(main 등)에선 번호의 장부를 쓰되 `note`·`metric`은
-  장부가 있어야 한다. detached HEAD(rebase 중일 수 있음)는 거부한다.
+  장부가 있어야 한다. detached HEAD(rebase 중일 수 있음)와 Issue 브랜치가 아닌 linked worktree는 거부한다.
 - 쓰기(Issue와 장부)는 세션을 `sessions.json`에 남긴다(id 해시와 시각). 다른 세션이 30분 안에 쓰고 해제하지 않았으면
   재개 카드와 쓰기 출력이 경고한다. 거부하지 않고, 읽기는 세지 않는다.
 - 세션 id: Codex는 `CODEX_THREAD_ID`, Claude는 SessionStart 훅이 셸에 넘기는 `DEVFLOW_SESSION_ID`(없으면

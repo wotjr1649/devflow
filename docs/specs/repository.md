@@ -33,8 +33,8 @@ Issue 폴더(`.work/devflow/i<issue>/`: 장부, 차단 기록, 세션 기록, �
   쓸 수 없으므로, 이 판정으로 남의 저장소를 가리킬 수 없다. 훅은 파일 시스템에 묻기 전에 경로 문자열부터 확인한다.
 - 훅은 git 메타데이터를 읽기 전에 로컬 경로인지 확인하고, 작은 일반 파일만 읽는다. 공유 경로·링크·위조된 되돌림 링크는
   주 작업 트리의 근거로 쓰지 않는다. SessionEnd는 git 프로세스 없이 이 판정으로 세션을 해제한다([ledger](ledger.md#동시-세션)).
-- Issue 브랜치가 아닌 worktree(M3 작업 worktree)는 장부 명령에서 주 작업 트리 브랜치의 Issue로 본다. Issue 쓰기는 그
-  브랜치 자신의 Issue만 받는다.
+- Issue 브랜치가 아닌 linked worktree는 주 작업 트리 브랜치의 Issue를 빌리지 않는다. M3 연결은
+  [task worktree](ledger.md#task-worktree)를 따른다.
 - worktree에만 옛 Issue 폴더가 있으면 재개 카드가 옮기라고 경고하고, 옮길 때까지 그 Issue의 장부와 Issue 쓰기를 거부한다.
 
 ## .gitignore 관리 블록

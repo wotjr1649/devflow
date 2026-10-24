@@ -1092,14 +1092,21 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
         if (tests.ledger && editedFiles(input.tool_input).some(f => same(path.resolve(cwd, nativePath(f)), path.resolve(tests.ledger)))) {
           return testLocked(root, 'the Issue ledger', tests.unconfirmed)
         }
-        // Matched by name wherever it lies, since a broken .git leaves no store to compare with. Windows also writes the
-        // file through a stream name (::$DATA) or with trailing dots and spaces, which it drops.
+        // An unconfirmed task worktree's edit tools write nothing outside it: no spelling match covers every Windows name of
+        // the main work tree's ledgers (stream names, trailing dots on any folder, 8.3 short names), and the hook resolves
+        // no links. Inside it, a ledger or delegation record (a store git cannot prove) is matched by name.
+        const outside = f => {
+          const rel = path.relative(root, path.resolve(cwd, nativePath(f)))
+          return rel.startsWith('..') || path.isAbsolute(rel)
+        }
         const record = f => {
           let p = path.resolve(cwd, nativePath(f))
-          if (process.platform === 'win32') p = p.replace(/:[^\\/]*$/, '').replace(/[. ]+$/, '')
+          if (process.platform === 'win32') p = p.split(/[\\/]/).map((s, k) => (k ? s.replace(/:.*$/, '').replace(/[. ]+$/, '') : s)).join('\\')
           return /[\\/]\.work[\\/]devflow[\\/]i\d+[\\/](ledger|delegates)\.json$/i.test(p)
         }
-        if (tests.unconfirmed && editedFiles(input.tool_input).some(record)) return testLocked(root, 'an Issue ledger or delegation record', true)
+        if (tests.unconfirmed && editedFiles(input.tool_input).some(f => outside(f) || record(f))) {
+          return testLocked(root, 'a file outside this task worktree or an Issue record', true)
+        }
         const hit = protectedEdit(root, cwd, input.tool_input, tests)
         if (!hit) return ''
         if (hit.path && byLock(hit.path)) return testLocked(root, hit.path, tests.unconfirmed)

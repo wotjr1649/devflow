@@ -1467,6 +1467,8 @@ function unattendedRun(ctx) {
   const base = path.join(ctx.store, '.work', 'devflow')
   // bigint: a Number ino rounds 64-bit file ids, and two folders could then pass for one.
   const stat = p => { try { return fs.lstatSync(p, { bigint: true }) } catch { return null } }
+  // null when nothing is there, undefined when it cannot be told.
+  const seen = p => { try { return fs.lstatSync(p) } catch (e) { return e.code === 'ENOENT' || e.code === 'ENOTDIR' ? null : undefined } }
   let names = []
   try {
     names = fs.readdirSync(base)
@@ -1475,7 +1477,16 @@ function unattendedRun(ctx) {
   }
   for (const name of names) {
     const m = /^i([1-9]\d*)$/i.exec(name)
-    if (!m) continue
+    // A Windows short name can make i<n> open a folder or link listed under another name: a link, or a folder that may
+    // hold a ledger, is unknown.
+    if (!m) {
+      const dir = seen(path.join(base, name))
+      const ledgerHere = dir && dir.isDirectory() && seen(path.join(base, name, 'ledger.json')) !== null
+      if (dir === undefined || (dir && dir.isSymbolicLink()) || ledgerHere) {
+        return unknown(`.work/devflow/${name} may hold a ledger under a name that is not i<n>`, `.work/devflow/${name}`)
+      }
+      continue
+    }
     const st = stat(path.join(base, name))
     let plain = st && st.isDirectory()
     if (plain && name !== `i${m[1]}`) {
@@ -1485,7 +1496,8 @@ function unattendedRun(ctx) {
     }
     if (!plain) return unknown(`.work/devflow/${name} is not the plain folder devflow reads for Issue #${m[1]}`, `.work/devflow/${name}`)
   }
-  for (const n of issues) {
+  // The main work tree's Issue is read by the name devflow reads, which a short name can give a folder listed otherwise.
+  for (const n of ctx.mainIssue && !issues.includes(ctx.mainIssue) ? [...issues, ctx.mainIssue] : issues) {
     // Checked again here: the folder may have been replaced since the names were judged.
     if (!issueDirOk(ctx.store, n)) return unknown(`Issue #${n}'s folder is not a plain folder`, `.work/devflow/i${n}`)
     let ledger

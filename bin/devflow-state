@@ -158,11 +158,13 @@ function repoContext(env, cwd, opts = {}) {
   const session = 'session' in opts ? opts.session : (sessionId(env.vars) || {}).hash || null
   const { bind, issue } = bindingOf({ root, store, linked, branch, session })
   // A reftable repository keeps the stub "ref: refs/heads/.invalid" in HEAD, so git names the main tree's branch there;
-  // when it cannot, the main tree counts as detached.
+  // when it cannot, the main tree counts as detached. The full ref, as --short may answer heads/<branch>, and the main
+  // tree's git dir named, so an inherited GIT_DIR cannot answer for another worktree.
   let mainBranch = linked ? main.branch : ''
   if (linked && mainBranch.startsWith('.')) {
-    const r = env.run('git', ['symbolic-ref', '-q', '--short', 'HEAD'], { cwd: main.path })
-    mainBranch = r.code === 0 ? r.stdout.trim() : ''
+    const r = env.run('git', [`--git-dir=${path.join(main.path, '.git')}`, 'symbolic-ref', '-q', 'HEAD'], { cwd: main.path })
+    const m = r.code === 0 && /^refs\/heads\/(\S+)$/.exec(r.stdout.trim())
+    mainBranch = m ? m[1] : ''
   }
   // Issue writes stay with the branch's own Issue (branchIssue), never a task worktree's.
   return { env, root, store, linked, branch, head: git('rev-parse', '--short', 'HEAD'), repo: origin && origin[1],

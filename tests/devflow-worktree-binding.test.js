@@ -562,3 +562,40 @@ test('R30: a record that would pass the size its readers accept is refused, leav
   assert.match(r.out, /too large/)
   assert.deepEqual(snapshot(p.main, 7), before)
 })
+
+// Narrow re-review findings on eb71e6c (Claude security, Codex cross-host).
+test('R31: with its git metadata broken, an unconfirmed agent still cannot edit the main work tree ledgers', () => {
+  const p = project('feat/7-x')
+  const child = agent(p)
+  lockTests(p, 7)
+  fs.rmSync(path.join(child, '.git'))
+  fs.writeFileSync(path.join(child, '.git'), 'garbage\n')
+  for (const file of ['ledger.json', 'delegates.json']) {
+    const out = hook.handle(pre(child, { file_path: path.join(folder(p.main, 7), file) }, { session: 'S' }))
+    assert.equal(decision(out), 'deny', file)
+    assert.match(reason(out), /no confirmed delegation/, file)
+  }
+})
+
+test('R32: other Windows spellings of a ledger or delegation record are the same file to the guard', { skip: process.platform !== 'win32' }, () => {
+  const p = project('feat/7-x')
+  const child = agent(p)
+  lockTests(p, 7)
+  for (const name of ['ledger.json::$DATA', 'delegates.json::$DATA', 'ledger.json.', 'delegates.json ']) {
+    const out = hook.handle(pre(child, { file_path: path.join(folder(p.main, 7), name) }, { session: 'S' }))
+    assert.equal(decision(out), 'deny', name)
+  }
+})
+
+test('R33: a worktree delegation takes a label nothing runs or records yet, so the record binds only with its ledger write', () => {
+  const p = project('main')
+  const own = plain(p, 'feat/7-x')
+  ledger(p.main, 7, { stage: 'build', running: ['t1'] })
+  const e = env('feat/7-x', 'S')
+  const r = run(e, own, ['running', '7', 'add', 't1', '--worktree'])
+  assert.equal(r.code, 1)
+  assert.match(r.out, /already/)
+  assert.equal(read(p.main, 7, 'delegates.json'), null)
+  assert.equal(run(e, own, ['running', '7', 'add', 't2', '--worktree']).code, 0)
+  assert.match(run(e, own, ['running', '7', 'add', 't2', '--worktree']).out, /already/)
+})

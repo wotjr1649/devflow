@@ -870,3 +870,106 @@ test('R50: a case variant whose file id the file system does not give (0) is unk
   ownerOnly(r.out)
   assert.match(r.out, /\.work\/devflow\/I7\b/)
 })
+
+// A Windows short name (SetFileShortNameW needs no privilege since 1903): the listing shows only the folder's own name,
+// while .work/devflow/<alias> opens that folder. Modeled by sending the alias path to the folder.
+function shortName(p, real, alias, fn) {
+  const base = path.join(p.main, '.work', 'devflow')
+  const low = s => path.resolve(String(s)).toLowerCase()
+  const from = low(path.join(base, alias))
+  const to = path.join(base, real)
+  const map = q => {
+    const at = low(q)
+    return at === from || at.startsWith(from + path.sep) ? to + path.resolve(String(q)).slice(from.length) : q
+  }
+  const watch = ['lstatSync', 'statSync', 'readFileSync', 'readdirSync', 'openSync', 'existsSync']
+  const orig = Object.fromEntries(watch.map(k => [k, fs[k]]))
+  for (const k of watch) fs[k] = (q, ...a) => orig[k](typeof q === 'string' ? map(q) : q, ...a)
+  try {
+    return fn()
+  } finally {
+    Object.assign(fs, orig)
+  }
+}
+const unattended = session => ({ stage: 'build', mode: 'autonomous', modeChanged: { to: 'autonomous', at: '2026-10-24T00:00:00.000Z', session: hashOf(session) } })
+
+test('R51: a folder listed under another name that the short name i7 opens, holding an unattended ledger this session switched, refuses a worktree create', () => {
+  const p = project('main')
+  const wt = plain(p)
+  const dir = path.join(p.main, '.work', 'devflow', 'friendly-folder')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'ledger.json'), JSON.stringify(unattended('S')))
+  const e = env('없음', 'S')
+  const r = shortName(p, 'friendly-folder', 'i7', () => create(e, wt))
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+  assert.match(r.out, /\.work\/devflow\/friendly-folder\b/)
+})
+
+test('R52: an Issue folder i8 that the short name i7 opens is read as the main work tree Issue #7 too', () => {
+  const p = project('feat/7-x')
+  const wt = plain(p)
+  ledger(p.main, 8, unattended('T'))
+  const before = snapshot(p.main, 8)
+  const e = env('없음', 'S')
+  const r = shortName(p, 'i8', 'i7', () => create(e, wt))
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  assert.match(r.out, /Issue #7 runs unattended/)
+  ownerOnly(r.out)
+  assert.deepEqual(snapshot(p.main, 8), before)
+})
+
+test('R53: a folder under another name whose ledger cannot be told to be absent refuses a worktree create', () => {
+  const p = project('main')
+  const wt = plain(p)
+  const dir = path.join(p.main, '.work', 'devflow', 'friendly-folder')
+  fs.mkdirSync(dir, { recursive: true })
+  const lstat = fs.lstatSync
+  const denied = path.resolve(dir, 'ledger.json').toLowerCase()
+  fs.lstatSync = (q, ...a) => {
+    if (path.resolve(String(q)).toLowerCase() === denied) throw Object.assign(new Error('EACCES'), { code: 'EACCES' })
+    return lstat(q, ...a)
+  }
+  const e = env('없음', 'S')
+  let r
+  try {
+    r = create(e, wt)
+  } finally {
+    fs.lstatSync = lstat
+  }
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+  assert.match(r.out, /\.work\/devflow\/friendly-folder\b/)
+})
+
+test('R54: a link under another name, which a short name i7 can open, refuses a worktree create without following it', () => {
+  const p = project('main')
+  const wt = plain(p)
+  const outside = path.join(p.base, 'outside')
+  fs.mkdirSync(outside)
+  fs.writeFileSync(path.join(outside, 'ledger.json'), JSON.stringify(unattended('S')))
+  fs.mkdirSync(path.join(p.main, '.work', 'devflow'), { recursive: true })
+  const link = path.join(p.main, '.work', 'devflow', 'jx')
+  fs.symlinkSync(outside, link, 'junction')
+  const e = env('없음', 'S')
+  const [r, seen] = followed(link, outside, () => create(e, wt))
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  assert.deepEqual(seen, [])
+  ownerOnly(r.out)
+  assert.match(r.out, /\.work\/devflow\/jx\b/)
+})
+
+test('P13: folders with no ledger under other names, and no main work tree Issue folder, leave a worktree create posting', () => {
+  const p = project('feat/7-x')
+  const wt = plain(p)
+  fs.mkdirSync(path.join(p.main, '.work', 'devflow', 'analysis'), { recursive: true })
+  fs.writeFileSync(path.join(p.main, '.work', 'devflow', 'notes.md'), 'x')
+  const e = env('없음', 'S')
+  const r = create(e, wt)
+  assert.equal(r.code, 0, r.out)
+  assert.equal(posts(e), 1)
+})

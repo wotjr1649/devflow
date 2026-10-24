@@ -157,9 +157,19 @@ function repoContext(env, cwd, opts = {}) {
   const store = linked ? main.path : root
   const session = 'session' in opts ? opts.session : (sessionId(env.vars) || {}).hash || null
   const { bind, issue } = bindingOf({ root, store, linked, branch, session })
+  // A reftable repository keeps the stub "ref: refs/heads/.invalid" in HEAD, so git names the main tree's branch there;
+  // when it cannot, the main tree counts as detached. The full ref, as --short may answer heads/<branch>, and the main
+  // tree's git dir named, so an inherited GIT_DIR cannot answer for another worktree.
+  let mainBranch = linked ? main.branch : ''
+  if (linked && mainBranch.startsWith('.')) {
+    const r = env.run('git', [`--git-dir=${path.join(main.path, '.git')}`, 'symbolic-ref', '-q', 'HEAD'], { cwd: main.path })
+    const m = r.code === 0 && /^refs\/heads\/(\S+)$/.exec(r.stdout.trim())
+    mainBranch = m ? m[1] : ''
+  }
   // Issue writes stay with the branch's own Issue (branchIssue), never a task worktree's.
   return { env, root, store, linked, branch, head: git('rev-parse', '--short', 'HEAD'), repo: origin && origin[1],
-    issue, branchIssue: bind === 'own' ? issue : null, bind, session, mainIssue: linked ? issueOf(main.branch) : null }
+    issue, branchIssue: bind === 'own' ? issue : null, bind, session, mainIssue: linked ? issueOf(mainBranch) : null,
+    mainDetached: linked && !mainBranch }
 }
 
 // #73 G1 (ADR-0028, ledger.md task worktree): which Issue a worktree works for. Git facts decide every worktree without
@@ -1455,27 +1465,100 @@ function shipMissing(text, ledger) {
 // session is unknown. Nothing here proves a person is present: without such evidence it posts, as from the main tree.
 function unattendedRun(ctx) {
   const now = Date.now()
-  const busy = (n, why = `Issue #${n} runs unattended`) => ({ code: 1, guard: 'state-create-unattended',
-    out: `refused: a new Issue is not posted from this worktree while ${why}; once that run is over, switch it with ` +
-      `devflow-state mode ${n} interactive from its branch or the main work tree` })
+  // Only the run's owning session or the user can settle it: another Issue's mode is not this session's to switch.
+  const busy = (why, ask) => ({ code: 1, guard: 'state-create-unattended',
+    out: `refused: a new Issue is not posted from this worktree while ${why}; ask the session that owns it, or the user, ` +
+      `to ${ask} before retrying` })
+  const unknown = (what, entry) => busy(`${what}, so whether an unattended run is under way is unknown`, `check or repair ${entry}`)
   const issues = issueFolders(ctx.store)
-  if (!issues) {
-    return { code: 1, guard: 'state-create-unattended',
-      out: 'refused: the Issue folders cannot be listed, so whether an unattended run is under way is unknown; create from the main work tree' }
+  if (!issues) return unknown('the Issue folders cannot be listed', '.work and .work/devflow')
+  // Each entry is judged by the name listed and none is followed: a link or file in place of a folder, or a case variant
+  // not shown to be the folder devflow reads as i<n> (where names keep case), is unknown rather than skipped.
+  const base = path.join(ctx.store, '.work', 'devflow')
+  // bigint: a Number ino rounds 64-bit file ids, and two folders could then pass for one.
+  const stat = p => { try { return fs.lstatSync(p, { bigint: true }) } catch { return null } }
+  // null when nothing is there, undefined when it cannot be told.
+  const seen = p => { try { return fs.lstatSync(p) } catch (e) { return e.code === 'ENOENT' || e.code === 'ENOTDIR' ? null : undefined } }
+  let names = []
+  try {
+    names = fs.readdirSync(base)
+  } catch (e) {
+    if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') return unknown('the Issue folders cannot be listed', '.work/devflow')
   }
-  for (const n of issues) {
-    if (!issueDirOk(ctx.store, n)) continue
+  // A long name with a lone UTF-16 surrogate is listed with U+FFFD, so it can match another entry's name.
+  if (new Set(names).size !== names.length) return unknown('a name in .work/devflow is listed twice', '.work/devflow')
+  // A name comes from the working tree: shown only when plain (SHOWN_NAME), and only in text, never in a decision.
+  const shown = name => (SHOWN_NAME.test(name) ? `.work/devflow/${name}` : 'an entry of .work/devflow with an unusual name')
+  const opened = new Map()
+  for (const name of names) {
+    const m = /^i([1-9]\d*)$/i.exec(name)
+    // Two listed names that open one entry (a lossy name matching another by case) leave the entry behind one unjudged.
+    const id = stat(path.join(base, name))
+    if (id && id.ino !== 0n) {
+      const key = `${id.dev}:${id.ino}`
+      if (opened.has(key)) {
+        return unknown(`${shown(name)} opens the same entry as ${shown(opened.get(key))}`, shown(name))
+      }
+      opened.set(key, name)
+    }
+    // A Windows short name can make i<n> open a folder or link listed under another name: a link, a folder that may
+    // hold a ledger, or a listed name that opens nothing (such a lossy name), is unknown.
+    if (!m) {
+      const dir = seen(path.join(base, name))
+      const ledgerHere = dir && dir.isDirectory() && seen(path.join(base, name, 'ledger.json')) !== null
+      if (!dir || dir.isSymbolicLink() || ledgerHere) {
+        return unknown(`${shown(name)} may hold a ledger under a name that is not i<n>`, shown(name))
+      }
+      continue
+    }
+    const st = id
+    let plain = st && st.isDirectory()
+    if (plain && name !== `i${m[1]}`) {
+      // A file id of 0 is one the file system does not give, so it cannot show that the two names are one folder.
+      const read = stat(path.join(base, `i${m[1]}`))
+      plain = read && read.isDirectory() && st.ino !== 0n && read.ino === st.ino && read.dev === st.dev
+    }
+    if (!plain) return unknown(`.work/devflow/${name} is not the plain folder devflow reads for Issue #${m[1]}`, `.work/devflow/${name}`)
+  }
+  // The main work tree's Issue is read by the name devflow reads, which a short name can give a folder listed otherwise.
+  for (const n of ctx.mainIssue && !issues.includes(ctx.mainIssue) ? [...issues, ctx.mainIssue] : issues) {
+    // Checked again here: the folder may have been replaced since the names were judged.
+    if (!issueDirOk(ctx.store, n)) return unknown(`Issue #${n}'s folder is not a plain folder`, `.work/devflow/i${n}`)
     let ledger
     try {
       ledger = readLedger(ctx.store, n)
     } catch {
-      return busy(n, `Issue #${n}'s ledger cannot be read, so whether it runs unattended is unknown`)
+      return unknown(`Issue #${n}'s ledger cannot be read`, `.work/devflow/i${n}/ledger.json`)
     }
     if (!ledger || ledger.mode !== 'autonomous') continue
     const by = ledger.modeChanged && typeof ledger.modeChanged.session === 'string' ? ledger.modeChanged.session : null
-    if (n === ctx.mainIssue || !ctx.session || !by || by === ctx.session || recent(readSessions(ctx.store, n), now)[ctx.session]) return busy(n)
+    // A detached main work tree may be its Issue branch mid-rebase, so any unattended ledger may be its Issue's.
+    if (n === ctx.mainIssue || ctx.mainDetached || !ctx.session || !by || by === ctx.session) {
+      return busy(`Issue #${n} runs unattended`, 'confirm whether that run is over')
+    }
+    // Unlike readSessions, a record that cannot be read is unknown here: it may hold this session's recent write.
+    if (!sessionsReadable(ctx.store, n)) {
+      return unknown(`Issue #${n}'s sessions record cannot be read`, `.work/devflow/i${n}/sessions.json`)
+    }
+    if (recent(readSessions(ctx.store, n), now)[ctx.session]) return busy(`Issue #${n} runs unattended`, 'confirm whether that run is over')
   }
   return null
+}
+function sessionsReadable(root, n) {
+  const p = sessionsPath(root, n)
+  let st
+  try {
+    st = fs.lstatSync(p)
+  } catch (e) {
+    return e.code === 'ENOENT' || e.code === 'ENOTDIR'
+  }
+  if (!st.isFile() || st.size > MAX_SESSIONS_BYTES) return false
+  try {
+    const s = JSON.parse(fs.readFileSync(p, 'utf8'))
+    return !!s && typeof s === 'object' && !Array.isArray(s)
+  } catch {
+    return false
+  }
 }
 
 function attempt(ctx, op, n, text, title, { flushing = false, verifyOnly = false } = {}) {

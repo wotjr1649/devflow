@@ -602,11 +602,18 @@ test('blocks off an Issue branch, allowed calls and unreadable input are not log
   assert.equal(fs.existsSync(path.join(f, '.work')), false)
 })
 
-test('a block in a worktree off the Issue branch is logged to the main work tree on the Issue branch (M3)', () => {
+// #73 G1: only a delegation the main session recorded for this session ties an agent worktree to the parent Issue.
+test('a block in an agent worktree is logged to its recorded parent Issue (M3), and nowhere without a record', () => {
   const d = gitRepo('feat/7-x')
-  const wt = path.join(d, '.claude', 'worktrees', 'task1')
-  git(d, 'worktree', 'add', '-q', '-b', 'task-1', wt)
-  assert.equal(decision(hook.handle(pre(wt, 'gh issue close 1'))), 'deny')
+  const wt = path.join(d, '.claude', 'worktrees', 'agent-a1')
+  git(d, 'worktree', 'add', '-q', '-b', 'worktree-agent-a1', wt)
+  const sessionPre = cmd => JSON.stringify({ ...JSON.parse(pre(wt, cmd)), session_id: 'S' })
+  assert.equal(decision(hook.handle(sessionPre('gh issue close 1'))), 'deny')
+  assert.deepEqual(guards(d, 7), [], 'no record: nothing is logged under the main tree Issue')
+  const hash = require('crypto').createHash('sha256').update('S').digest('hex').slice(0, 12)
+  fs.mkdirSync(path.join(d, '.work', 'devflow', 'i7'), { recursive: true })
+  fs.writeFileSync(path.join(d, '.work', 'devflow', 'i7', 'delegates.json'), JSON.stringify({ t1: { session: hash, host: 'claude', at: '2026-10-24T00:00:00.000Z' } }))
+  assert.equal(decision(hook.handle(sessionPre('gh issue close 1'))), 'deny')
   assert.deepEqual(guards(d, 7), ['issue-write'])
   assert.equal(fs.existsSync(path.join(wt, '.work')), false)
 })
@@ -665,16 +672,17 @@ test('a worktree outside the main work tree, proven by git, logs to the main one
   const task = sibling()
   git(d, 'worktree', 'add', '-q', '-b', 'task-2', task)
   assert.equal(decision(hook.handle(pre(task, 'gh issue close 1'))), 'deny')
-  assert.deepEqual(guards(d, 7), ['issue-write'], 'a task branch logs under the main tree Issue')
+  assert.deepEqual(guards(d, 7), [], 'a worktree off any Issue branch is independent (#73 G1): no main tree Issue log')
   const own = sibling()
   git(d, 'worktree', 'add', '-q', '-b', 'fix/7-wt', own)
   hook.handle(pre(own, 'gh issue close 1'))
-  assert.deepEqual(guards(d, 7), ['issue-write', 'issue-write'], 'its own Issue branch logs there too')
+  assert.deepEqual(guards(d, 7), ['issue-write'], 'its own Issue branch logs in the main work tree')
   assert.equal(fs.existsSync(path.join(own, '.work')), false)
+  assert.equal(fs.existsSync(path.join(task, '.work')), false)
   const rel = sibling()
   git(d, 'worktree', 'add', '-q', '--relative-paths', '-b', 'fix/7-rel', rel)
   hook.handle(pre(rel, 'gh issue close 1'))
-  assert.deepEqual(guards(d, 7).length, 3, 'a worktree made with relative paths is proven too')
+  assert.deepEqual(guards(d, 7).length, 2, 'a worktree made with relative paths is proven too')
 })
 
 test('a .git file that only claims a repository does not log into it (#14)', () => {

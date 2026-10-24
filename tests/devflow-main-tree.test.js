@@ -75,18 +75,19 @@ test('a worktree session writes the main tree ledger, and it outlives the worktr
   assert.deepEqual(readJson(ledgerIn(main, 14)).notes, ['from the worktree', 'from main'])
 })
 
-test('a worktree on a branch that is no Issue branch speaks for the main tree Issue only', () => {
+// #73 G1: a worktree is independent by default; only an explicit M3 delegation shares the parent Issue.
+test('a worktree on a branch that is no Issue branch writes no Issue ledger, the main tree one included', () => {
   const { main, wt } = project('feat/14-x', 'task-1')
   const e = env('task-1')
   assert.equal(run(env('feat/14-x'), main, ['ledger-update', '14'], '{"stage":"build"}').code, 0)
   fs.mkdirSync(path.dirname(ledgerIn(main, 7)), { recursive: true })
   fs.writeFileSync(ledgerIn(main, 7), '{}')
-  assert.deepEqual(run(e, wt, ['note', '14'], 'task worktree'), { code: 0, out: 'notes 1' })
-  for (const argv of [['note', '7'], ['ledger-update', '7']]) {
+  for (const argv of [['note', '14'], ['note', '7'], ['ledger-update', '7']]) {
     const r = run(e, wt, argv, argv[0] === 'note' ? 'x' : '{"x":1}')
     assert.equal(r.code, 1, argv.join(' '))
-    assert.match(r.out, /only to the branch's Issue #14/)
+    assert.match(r.out, /need an Issue branch here/)
   }
+  assert.deepEqual(readJson(ledgerIn(main, 14)), { stage: 'build' })
   assert.deepEqual(readJson(ledgerIn(main, 7)), {})
 })
 

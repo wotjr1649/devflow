@@ -82,8 +82,9 @@ worktree의 Issue는 그 worktree 브랜치의 Issue뿐이다. Issue 브랜치�
   독립으로 보인다(Claude Code 2.1.310에서 확인한 규칙).
 - create: Issue 브랜치가 아닌 linked worktree에는 대기열이 없다. 주 작업 트리 브랜치의 Issue가 autonomous이거나,
   autonomous 장부를 이 세션이 켰거나 이어받았거나(`modeChanged.session`) 최근 30분 안에 썼거나, 켠 세션을 모르는
-  autonomous 장부가 있거나(세션 id를 모를 때 포함), 주 작업 트리가 detached HEAD(Issue 브랜치 rebase 중일 수 있다)인데 autonomous
-  장부가 있거나, Issue 폴더 목록·Issue 폴더·장부, autonomous 장부의 `sessions.json`을 읽지 못하면 거부한다. 목록의 이름
+  autonomous 장부가 있거나(세션 id를 모를 때 포함), 주 작업 트리가 detached HEAD(Issue 브랜치 rebase 중일 수 있다)인데
+  autonomous 장부가 있거나, Issue 폴더 목록·Issue 폴더·장부, autonomous 장부의 `sessions.json`을 읽지 못하면 거부한다.
+  reftable 저장소는 HEAD 파일이 stub이라 주 작업 트리의 브랜치를 git에 묻고, 묻지 못하면 detached로 본다. 목록의 이름
   그대로 보며 따라가지 않는다. `i<n>` 이름 중 링크이거나 폴더가 아닌 항목, `i<n>`과 대소문자만 다른 이름 중 `i<n>`으로 읽히는 폴더와 같은
   항목임을 file id로 보이지 못하는 것(대소문자를 지키는 파일 시스템의 별개 폴더, id 0 포함)은 읽지 못한 것으로 본다.
   Windows short name은 목록에 다른 이름으로 나오는 항목을 `i<n>`으로 열 수 있으므로, 다른 이름의 링크, 장부가 있거나 있는지

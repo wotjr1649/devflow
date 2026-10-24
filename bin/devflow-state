@@ -157,10 +157,17 @@ function repoContext(env, cwd, opts = {}) {
   const store = linked ? main.path : root
   const session = 'session' in opts ? opts.session : (sessionId(env.vars) || {}).hash || null
   const { bind, issue } = bindingOf({ root, store, linked, branch, session })
+  // A reftable repository keeps the stub "ref: refs/heads/.invalid" in HEAD, so git names the main tree's branch there;
+  // when it cannot, the main tree counts as detached.
+  let mainBranch = linked ? main.branch : ''
+  if (linked && mainBranch.startsWith('.')) {
+    const r = env.run('git', ['symbolic-ref', '-q', '--short', 'HEAD'], { cwd: main.path })
+    mainBranch = r.code === 0 ? r.stdout.trim() : ''
+  }
   // Issue writes stay with the branch's own Issue (branchIssue), never a task worktree's.
   return { env, root, store, linked, branch, head: git('rev-parse', '--short', 'HEAD'), repo: origin && origin[1],
-    issue, branchIssue: bind === 'own' ? issue : null, bind, session, mainIssue: linked ? issueOf(main.branch) : null,
-    mainDetached: linked && !main.branch }
+    issue, branchIssue: bind === 'own' ? issue : null, bind, session, mainIssue: linked ? issueOf(mainBranch) : null,
+    mainDetached: linked && !mainBranch }
 }
 
 // #73 G1 (ADR-0028, ledger.md task worktree): which Issue a worktree works for. Git facts decide every worktree without

@@ -1475,14 +1475,16 @@ function unattendedRun(ctx) {
   } catch (e) {
     if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') return unknown('the Issue folders cannot be listed', '.work/devflow')
   }
+  // A long name with a lone UTF-16 surrogate is listed with U+FFFD, so it can match another entry's name.
+  if (new Set(names).size !== names.length) return unknown('a name in .work/devflow is listed twice', '.work/devflow')
   for (const name of names) {
     const m = /^i([1-9]\d*)$/i.exec(name)
-    // A Windows short name can make i<n> open a folder or link listed under another name: a link, or a folder that may
-    // hold a ledger, is unknown.
+    // A Windows short name can make i<n> open a folder or link listed under another name: a link, a folder that may
+    // hold a ledger, or a listed name that opens nothing (such a lossy name), is unknown.
     if (!m) {
       const dir = seen(path.join(base, name))
       const ledgerHere = dir && dir.isDirectory() && seen(path.join(base, name, 'ledger.json')) !== null
-      if (dir === undefined || (dir && dir.isSymbolicLink()) || ledgerHere) {
+      if (!dir || dir.isSymbolicLink() || ledgerHere) {
         return unknown(`.work/devflow/${name} may hold a ledger under a name that is not i<n>`, `.work/devflow/${name}`)
       }
       continue

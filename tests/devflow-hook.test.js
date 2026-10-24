@@ -613,6 +613,8 @@ test('a block in an agent worktree is logged to its recorded parent Issue (M3), 
   const hash = require('crypto').createHash('sha256').update('S').digest('hex').slice(0, 12)
   fs.mkdirSync(path.join(d, '.work', 'devflow', 'i7'), { recursive: true })
   fs.writeFileSync(path.join(d, '.work', 'devflow', 'i7', 'delegates.json'), JSON.stringify({ t1: { session: hash, host: 'claude', at: '2026-10-24T00:00:00.000Z' } }))
+  // A record counts while its label is in the ledger's running, as running <n> add <label> --worktree leaves both.
+  fs.writeFileSync(path.join(d, '.work', 'devflow', 'i7', 'ledger.json'), JSON.stringify({ running: ['t1'] }))
   assert.equal(decision(hook.handle(sessionPre('gh issue close 1'))), 'deny')
   assert.deepEqual(guards(d, 7), ['issue-write'])
   assert.equal(fs.existsSync(path.join(wt, '.work')), false)

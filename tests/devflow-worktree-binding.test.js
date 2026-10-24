@@ -52,9 +52,13 @@ const put = (root, n, file, value) => {
   fs.writeFileSync(path.join(folder(root, n), file), typeof value === 'string' ? value : JSON.stringify(value))
 }
 const ledger = (root, n, value) => put(root, n, 'ledger.json', value)
-const delegate = (root, n, session, label = 't1') =>
-  put(root, n, 'delegates.json', { [label]: { session: hashOf(session), host: 'claude', at: '2026-10-24T00:00:00.000Z' } })
 const read = (root, n, file) => { const f = path.join(folder(root, n), file); return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null }
+// What running <n> add <label> --worktree leaves: the record, and the label in the ledger's running.
+const delegate = (root, n, session, label = 't1') => {
+  put(root, n, 'delegates.json', { [label]: { session: hashOf(session), host: 'claude', at: '2026-10-24T00:00:00.000Z' } })
+  const l = JSON.parse(read(root, n, 'ledger.json') || '{}')
+  ledger(root, n, { ...l, running: [...(Array.isArray(l.running) ? l.running : []), label] })
+}
 const snapshot = (root, n) => ['ledger.json', 'sessions.json', 'guard-events.jsonl', 'delegates.json'].map(f => read(root, n, f))
 const guards = (root, n) => (read(root, n, 'guard-events.jsonl') || '').trim().split('\n').filter(Boolean).map(l => JSON.parse(l).guard)
 
@@ -450,4 +454,111 @@ test('new: mode records the session that switched it', () => {
   ledger(p.main, 14, { stage: 'build' })
   assert.equal(run(env('feat/14-x', 'S'), own, ['mode', '14', 'autonomous'], 'away').code, 0)
   assert.equal(JSON.parse(read(p.main, 14, 'ledger.json')).modeChanged.session, hashOf('S'))
+})
+
+// Review findings on 91a61e2 (Claude security review, Codex cross-host review).
+test('R23: an unconfirmed task worktree cannot edit an Issue ledger or delegation record in the main work tree', () => {
+  const p = project('feat/7-x')
+  const child = agent(p)
+  lockTests(p, 7)
+  for (const file of ['ledger.json', 'delegates.json']) {
+    const out = hook.handle(pre(child, { file_path: path.join(folder(p.main, 7), file) }, { session: 'S' }))
+    assert.equal(decision(out), 'deny', file)
+    assert.match(reason(out), /no confirmed delegation/, file)
+  }
+})
+
+test('R24: an Issue folder whose name differs only in case is still that Issue where the file system ignores case', t => {
+  const p = project('feat/14-x')
+  const wt = plain(p)
+  fs.mkdirSync(path.join(p.main, '.work', 'devflow', 'I14'), { recursive: true })
+  if (!fs.existsSync(folder(p.main, 14))) return t.skip('this file system tells I14 from i14')
+  fs.writeFileSync(path.join(p.main, '.work', 'devflow', 'I14', 'ledger.json'), JSON.stringify({ stage: 'build', mode: 'autonomous', running: ['t0'],
+    modeChanged: { to: 'autonomous', at: '2026-10-24T00:00:00.000Z', session: hashOf('T') } }))
+  fs.writeFileSync(path.join(p.main, '.work', 'devflow', 'I14', 'delegates.json'), JSON.stringify({ t0: { session: hashOf('S'), host: 'claude', at: '2026-10-24T00:00:00.000Z' } }))
+  const e = env('없음', 'S')
+  assert.equal(run(e, wt, ['create', '--title', 'new'], BODY).code, 1)
+  assert.equal(posts(e), 0)
+  const own = plain(p, 'feat/7-x')
+  ledger(p.main, 7, { stage: 'build' })
+  const r = run(env('feat/7-x', 'S'), own, ['running', '7', 'add', 'n1', '--worktree'])
+  assert.equal(r.code, 1)
+  assert.match(r.out, /already delegates worktree tasks for Issue #14/)
+})
+
+test('R25: when the Issue folders cannot be listed, a worktree create is refused and an agent stays unconfirmed', () => {
+  const p = project('main')
+  const wt = plain(p)
+  const child = agent(p)
+  lockTests(p, 7)
+  delegate(p.main, 7, 'S')
+  const list = fs.readdirSync
+  const base = path.join(p.main, '.work', 'devflow')
+  fs.readdirSync = (d, ...a) => {
+    if (path.resolve(String(d)).toLowerCase() === base.toLowerCase()) throw Object.assign(new Error('denied'), { code: 'EACCES' })
+    return list(d, ...a)
+  }
+  try {
+    const e = env('없음', 'S')
+    assert.equal(run(e, wt, ['create', '--title', 'new'], BODY).code, 1)
+    assert.equal(posts(e), 0)
+    assert.match(reason(editTest(child, { session: 'S' })), /no confirmed delegation/)
+  } finally {
+    fs.readdirSync = list
+  }
+})
+
+test('R26: a delegation record whose label is not running binds nothing, so an unlocked parent does not unlock its agent', () => {
+  const p = project('feat/7-x')
+  const child = agent(p)
+  ledger(p.main, 7, { stage: 'build', running: [] })
+  put(p.main, 7, 'delegates.json', { t1: { session: hashOf('S'), host: 'claude', at: '2026-10-24T00:00:00.000Z' } })
+  const out = editTest(child, { session: 'S' })
+  assert.equal(decision(out), 'deny')
+  assert.match(reason(out), /no confirmed delegation/)
+})
+
+test('R27: an agent worktree whose git metadata cannot be read still counts as locked', () => {
+  const p = project('main')
+  const child = agent(p)
+  // Removed first: Windows refuses to overwrite the hidden file git made.
+  fs.rmSync(path.join(child, '.git'))
+  fs.writeFileSync(path.join(child, '.git'), 'garbage\n')
+  const out = editTest(child, { session: 'S' })
+  assert.equal(decision(out), 'deny')
+  assert.match(reason(out), /no confirmed delegation/)
+})
+
+test('R28: an unconfirmed task worktree keeps the profile locked even with no tests listed', () => {
+  const p = project('main')
+  const child = agent(p)
+  fs.writeFileSync(path.join(child, '.devflow.json'), '{}\n')
+  const out = hook.handle(pre(child, { file_path: path.join(child, '.devflow.json') }, { session: 'S' }))
+  assert.equal(decision(out), 'deny')
+  assert.match(reason(out), /no confirmed delegation/)
+})
+
+test('R29: any label is recorded as its own entry, and only a recorded or running label can be taken out', () => {
+  const p = project('main')
+  const own = plain(p, 'feat/7-x')
+  ledger(p.main, 7, { stage: 'build' })
+  const e = env('feat/7-x', 'S')
+  assert.equal(run(e, own, ['running', '7', 'add', '__proto__', '--worktree']).code, 0)
+  const rec = JSON.parse(read(p.main, 7, 'delegates.json'))
+  assert.ok(Object.hasOwn(rec, '__proto__'))
+  assert.equal(rec.__proto__.session, hashOf('S'))
+  assert.match(run(e, own, ['running', '7', 'done', 'constructor']).out, /is not running/)
+  assert.equal(run(e, own, ['running', '7', 'done', '__proto__']).code, 0)
+  assert.equal(Object.hasOwn(JSON.parse(read(p.main, 7, 'delegates.json')), '__proto__'), false)
+})
+
+test('R30: a record that would pass the size its readers accept is refused, leaving record and ledger as they were', () => {
+  const p = project('main')
+  const own = plain(p, 'feat/7-x')
+  ledger(p.main, 7, { stage: 'build' })
+  const before = snapshot(p.main, 7)
+  const r = run(env('feat/7-x', 'S'), own, ['running', '7', 'add', 'x'.repeat(70000), '--worktree'])
+  assert.equal(r.code, 1)
+  assert.match(r.out, /too large/)
+  assert.deepEqual(snapshot(p.main, 7), before)
 })

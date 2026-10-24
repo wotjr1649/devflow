@@ -28,9 +28,9 @@ const git = (cwd, ...args) => {
 const hashOf = s => crypto.createHash('sha256').update(s).digest('hex').slice(0, 12)
 
 // A devflow project with tests/** locked by profile, its main work tree on mainBranch.
-function project(mainBranch = 'main') {
+function project(mainBranch = 'main', name = 'main') {
   const base = fs.realpathSync.native(tmpdir('dfwb-'))
-  const main = path.join(base, 'main')
+  const main = path.join(base, name)
   fs.mkdirSync(path.join(main, 'tests'), { recursive: true })
   git(main, 'init', '-q')
   fs.writeFileSync(path.join(main, '.devflow.json'), '{ "tests": ["tests/**"] }\n')
@@ -683,4 +683,45 @@ test('R40: names that start with two dots keep their protected and test locks', 
   for (const name of ['..env', path.join('..config', 'a.js')]) {
     assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, name) }, { session: 'S' }))), 'deny', name)
   }
+})
+
+// Sixth narrow round on a0a994b: binding is structural. Only a worktree that sits exactly at
+// <main work tree>/.claude/worktrees/agent-* (where Claude Code puts it, 2.1.310) can be bound to that main work tree's
+// Issue, so no spelling of a forged store and no worktree elsewhere can claim one.
+test('R41: a long-path root with a plainly spelled forged store inside it binds nothing', { skip: process.platform !== 'win32' }, () => {
+  const p = project('feat/7-x')
+  const child = agent(p)
+  lockTests(p, 7)
+  const own = path.join(child, 'fake', '.git', 'worktrees', 'x')
+  fs.mkdirSync(own, { recursive: true })
+  fs.writeFileSync(path.join(own, 'gitdir'), path.join('\\\\?\\' + child, '.git') + '\n')
+  fs.writeFileSync(path.join(own, 'commondir'), '../..\n')
+  fs.writeFileSync(path.join(own, 'HEAD'), 'ref: refs/heads/worktree-agent-a1\n')
+  fs.rmSync(path.join(child, '.git'))
+  fs.writeFileSync(path.join(child, '.git'), `gitdir: ${own}\n`)
+  delegate(path.join(child, 'fake'), 7, 'S')
+  const long = '\\\\?\\' + child
+  const out = hook.handle(pre(long, { file_path: path.join(long, 'tests', 'a.test.js') }, { session: 'S' }))
+  assert.equal(decision(out), 'deny')
+  assert.match(reason(out), /no confirmed delegation/)
+})
+
+test('R42: a real repository whose name looks like a short name still binds its agent worktrees', () => {
+  const p = project('feat/7-x', 'repo~1')
+  const child = agent(p)
+  lockTests(p, 7)
+  delegate(p.main, 7, 'S')
+  const out = editTest(child, { session: 'S' })
+  assert.equal(decision(out), 'deny')
+  assert.match(reason(out), /tests\/a\.test\.js is a test file, locked/)
+})
+
+test('R43: an agent branch outside the isolation folder is never bound, even with a record', () => {
+  const p = project('feat/7-x')
+  ledger(p.main, 7, { stage: 'build' })
+  delegate(p.main, 7, 'S')
+  const moved = worktree(p, path.join(p.base, 'moved'), 'worktree-agent-a3')
+  const out = editTest(moved, { session: 'S' })
+  assert.equal(decision(out), 'deny')
+  assert.match(reason(out), /no confirmed delegation/)
 })

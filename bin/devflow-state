@@ -1487,6 +1487,8 @@ function unattendedRun(ctx) {
   }
   // A long name with a lone UTF-16 surrogate is listed with U+FFFD, so it can match another entry's name.
   if (new Set(names).size !== names.length) return unknown('a name in .work/devflow is listed twice', '.work/devflow')
+  // A name comes from the working tree: shown only when plain (SHOWN_NAME), and only in text, never in a decision.
+  const shown = name => (SHOWN_NAME.test(name) ? `.work/devflow/${name}` : 'an entry of .work/devflow with an unusual name')
   const opened = new Map()
   for (const name of names) {
     const m = /^i([1-9]\d*)$/i.exec(name)
@@ -1495,7 +1497,7 @@ function unattendedRun(ctx) {
     if (id && id.ino !== 0n) {
       const key = `${id.dev}:${id.ino}`
       if (opened.has(key)) {
-        return unknown(`.work/devflow/${name} opens the same entry as .work/devflow/${opened.get(key)}`, `.work/devflow/${name}`)
+        return unknown(`${shown(name)} opens the same entry as ${shown(opened.get(key))}`, shown(name))
       }
       opened.set(key, name)
     }
@@ -1505,7 +1507,7 @@ function unattendedRun(ctx) {
       const dir = seen(path.join(base, name))
       const ledgerHere = dir && dir.isDirectory() && seen(path.join(base, name, 'ledger.json')) !== null
       if (!dir || dir.isSymbolicLink() || ledgerHere) {
-        return unknown(`.work/devflow/${name} may hold a ledger under a name that is not i<n>`, `.work/devflow/${name}`)
+        return unknown(`${shown(name)} may hold a ledger under a name that is not i<n>`, shown(name))
       }
       continue
     }

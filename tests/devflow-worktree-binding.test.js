@@ -1106,3 +1106,56 @@ test('R61: a tag named like the main work tree branch does not hide its Issue in
   if (!got) return t.skip('this git has no reftable')
   refusedAsMain(got)
 })
+
+// Entry names come from the working tree: a refusal names only plain ones and describes any other.
+const UNSHOWN = /an entry of \.work\/devflow with an unusual name/g
+
+test('R62: a refusal for an entry under another name does not echo a name holding a bidi control or a newline', () => {
+  for (const name of ['ok\u202Eevil', 'ok\nevil']) {
+    const p = project('main')
+    const wt = plain(p)
+    const dir = path.join(p.main, '.work', 'devflow', name)
+    // Windows names cannot hold a newline: there the listing stands in for one.
+    const real = !name.includes('\n') || process.platform !== 'win32'
+    const e = env('없음', 'S')
+    let r
+    if (real) {
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, 'ledger.json'), JSON.stringify(unattended('S')))
+      r = create(e, wt)
+    } else {
+      fs.mkdirSync(path.dirname(dir), { recursive: true })
+      r = listing(p, [name], () => create(e, wt))
+    }
+    assert.equal(posts(e), 0, r.out)
+    assert.equal(r.code, 1)
+    assert.doesNotMatch(r.out, /evil|[\u202E\n]/)
+    assert.equal((r.out.match(UNSHOWN) || []).length, 2, r.out)
+    ownerOnly(r.out)
+    if (real) assert.equal(fs.readFileSync(path.join(dir, 'ledger.json'), 'utf8'), JSON.stringify(unattended('S')))
+  }
+})
+
+test('R63: two names opening one file id are refused without echoing either unusual name, and plain names are shown', () => {
+  for (const [a, b, shown] of [['one\u202Eevil', 'two\u202Eevil', false], ['one-a', 'two-b', true]]) {
+    const p = project('main')
+    const wt = plain(p)
+    const base = path.join(p.main, '.work', 'devflow')
+    fs.mkdirSync(base, { recursive: true })
+    fs.writeFileSync(path.join(base, a), 'x')
+    fs.linkSync(path.join(base, a), path.join(base, b))
+    const e = env('없음', 'S')
+    const r = create(e, wt)
+    assert.equal(posts(e), 0, r.out)
+    assert.equal(r.code, 1)
+    assert.match(r.out, /opens the same entry as/)
+    ownerOnly(r.out)
+    if (shown) {
+      assert.match(r.out, /\.work\/devflow\/one-a\b/)
+      assert.match(r.out, /\.work\/devflow\/two-b\b/)
+    } else {
+      assert.doesNotMatch(r.out, /evil|\u202E/)
+      assert.equal((r.out.match(UNSHOWN) || []).length, 3, r.out)
+    }
+  }
+})

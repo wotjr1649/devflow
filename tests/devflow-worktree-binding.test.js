@@ -97,6 +97,30 @@ const decision = out => (out ? JSON.parse(out).hookSpecificOutput.permissionDeci
 const reason = out => JSON.parse(out).hookSpecificOutput.permissionDecisionReason
 const lockTests = (p, n) => ledger(p.main, n, { stage: 'build', testsLocked: { at: p.at } })
 const testFails = root => doctor(root).lines.filter(l => l.startsWith('FAIL tests'))
+// The recovery a create refusal names: the run's owner or the user, never a mode change or a route without this check.
+const ownerOnly = out => {
+  assert.doesNotMatch(out, /devflow-state mode|mode \d+ interactive/)
+  assert.doesNotMatch(out, /main work tree/)
+  assert.match(out, /; ask the session that owns it, or the user, to .+ before retrying$/)
+}
+// What fn reads through link or in target: an lstat of link itself only tells it is a link; anything else follows it.
+function followed(link, target, fn) {
+  const seen = []
+  const watch = ['lstatSync', 'statSync', 'readFileSync', 'readdirSync', 'openSync']
+  const orig = Object.fromEntries(watch.map(k => [k, fs[k]]))
+  // path.resolve turns either separator into the platform's, so a path spelled with / or \ is matched alike.
+  const low = s => path.resolve(String(s)).toLowerCase()
+  for (const k of watch) fs[k] = (q, ...a) => {
+    const at = low(q)
+    if (at.startsWith(low(target)) || at.startsWith(low(link) + path.sep) || (at === low(link) && k !== 'lstatSync')) seen.push(`${k} ${q}`)
+    return orig[k](q, ...a)
+  }
+  try {
+    return [fn(), seen]
+  } finally {
+    Object.assign(fs, orig)
+  }
+}
 
 test('R1: an independent worktree changes nothing of the main work tree Issue', () => {
   const p = project('feat/14-x')
@@ -123,8 +147,8 @@ test('R2: create from an independent worktree is refused while the main work tre
   const e = env('없음', 'S')
   const r = run(e, wt, ['create', '--title', 'new'], BODY)
   assert.equal(r.code, 1)
-  assert.match(r.out, /runs unattended/)
-  assert.match(r.out, /mode 14 interactive/)
+  assert.match(r.out, /Issue #14 runs unattended/)
+  ownerOnly(r.out)
   assert.equal(posts(e), 0)
   assert.deepEqual(snapshot(p.main, 14), before)
 })
@@ -248,12 +272,14 @@ test('R11c: an unattended ledger nobody is recorded for refuses create from a wo
   const p = project('main')
   const wt = plain(p)
   ledger(p.main, 8, { stage: 'build', mode: 'autonomous' })
+  const before = snapshot(p.main, 8)
   const e = env('없음', 'S')
   const r = run(e, wt, ['create', '--title', 'new'], BODY)
   assert.equal(r.code, 1)
   assert.match(r.out, /Issue #8 runs unattended/)
-  assert.match(r.out, /mode 8 interactive/)
+  ownerOnly(r.out)
   assert.equal(posts(e), 0)
+  assert.deepEqual(snapshot(p.main, 8), before)
 })
 
 test('R13: without a session id an agent worktree counts as unconfirmed', () => {
@@ -500,7 +526,9 @@ test('R25: when the Issue folders cannot be listed, a worktree create is refused
   }
   try {
     const e = env('없음', 'S')
-    assert.equal(run(e, wt, ['create', '--title', 'new'], BODY).code, 1)
+    const r = run(e, wt, ['create', '--title', 'new'], BODY)
+    assert.equal(r.code, 1)
+    ownerOnly(r.out)
     assert.equal(posts(e), 0)
     assert.match(reason(editTest(child, { session: 'S' })), /no confirmed delegation/)
   } finally {
@@ -724,4 +752,121 @@ test('R43: an agent branch outside the isolation folder is never bound, even wit
   const out = editTest(moved, { session: 'S' })
   assert.equal(decision(out), 'deny')
   assert.match(reason(out), /no confirmed delegation/)
+})
+
+// #73 G2: an independent create judges every Issue folder entry by the name listed and follows none. An entry it cannot
+// tell is the folder devflow reads, or a ledger it cannot read, is unknown and refuses rather than being skipped.
+const create = (e, wt) => run(e, wt, ['create', '--title', 'new'], BODY)
+
+test('R44: an Issue folder that is a plain file makes a worktree create refuse, naming it', () => {
+  const p = project('main')
+  const wt = plain(p)
+  fs.mkdirSync(path.join(p.main, '.work', 'devflow'), { recursive: true })
+  fs.writeFileSync(folder(p.main, 7), 'not a folder')
+  const e = env('없음', 'S')
+  const r = create(e, wt)
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+  assert.match(r.out, /\.work\/devflow\/i7\b/)
+})
+
+test('R45: an Issue folder that is a link refuses without reading anything through it', () => {
+  const p = project('main')
+  const wt = plain(p)
+  const outside = path.join(p.base, 'outside')
+  fs.mkdirSync(outside)
+  fs.writeFileSync(path.join(outside, 'ledger.json'), JSON.stringify({ mode: 'interactive' }))
+  fs.mkdirSync(path.join(p.main, '.work', 'devflow'), { recursive: true })
+  fs.symlinkSync(outside, folder(p.main, 7), 'junction')
+  const e = env('없음', 'S')
+  const [r, seen] = followed(folder(p.main, 7), outside, () => create(e, wt))
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  assert.deepEqual(seen, [])
+  assert.match(r.out, /\.work\/devflow\/i7 is not the plain folder/)
+  ownerOnly(r.out)
+  assert.equal(fs.readFileSync(path.join(outside, 'ledger.json'), 'utf8'), JSON.stringify({ mode: 'interactive' }))
+})
+
+test('R46: a ledger that cannot be read makes a worktree create refuse, naming the ledger', () => {
+  const p = project('main')
+  const wt = plain(p)
+  ledger(p.main, 7, '{not json')
+  const e = env('없음', 'S')
+  const r = create(e, wt)
+  assert.equal(r.code, 1)
+  assert.equal(posts(e), 0)
+  ownerOnly(r.out)
+  assert.match(r.out, /\.work\/devflow\/i7\/ledger\.json/)
+  assert.equal(read(p.main, 7, 'ledger.json'), '{not json')
+})
+
+test('R47: where names keep case, a case variant I7 makes a worktree create refuse rather than skip it', t => {
+  const p = project('main')
+  const wt = plain(p)
+  fs.mkdirSync(path.join(p.main, '.work', 'devflow', 'I7'), { recursive: true })
+  if (fs.existsSync(folder(p.main, 7))) return t.skip('this file system ignores case (R24 covers it)')
+  fs.writeFileSync(path.join(p.main, '.work', 'devflow', 'I7', 'ledger.json'), JSON.stringify({ stage: 'build', mode: 'autonomous' }))
+  const e = env('없음', 'S')
+  const r = create(e, wt)
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+  assert.match(r.out, /\.work\/devflow\/I7\b/)
+})
+
+test('R48: a .work/devflow that is a link refuses without listing through it', () => {
+  const p = project('main')
+  const wt = plain(p)
+  const outside = path.join(p.base, 'outside')
+  fs.mkdirSync(path.join(outside, 'i7'), { recursive: true })
+  fs.mkdirSync(path.join(p.main, '.work'), { recursive: true })
+  const link = path.join(p.main, '.work', 'devflow')
+  fs.symlinkSync(outside, link, 'junction')
+  const e = env('없음', 'S')
+  const [r, seen] = followed(link, outside, () => create(e, wt))
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  assert.deepEqual(seen, [])
+  ownerOnly(r.out)
+})
+
+// Where names keep case, i7 and I7 can both be listed; lstat answers for them with the file ids given (dev 1).
+function twoNames(p, ids) {
+  const wt = plain(p)
+  const base = path.join(p.main, '.work', 'devflow')
+  fs.mkdirSync(base, { recursive: true })
+  const low = s => path.resolve(String(s)).toLowerCase()
+  const fake = (ino, big) => ({ isDirectory: () => true, isFile: () => false, isSymbolicLink: () => false,
+    ino: big ? ino : Number(ino), dev: big ? 1n : 1 })
+  const list = fs.readdirSync
+  const lstat = fs.lstatSync
+  fs.readdirSync = (d, ...a) => (low(d) === low(base) ? Object.keys(ids) : list(d, ...a))
+  fs.lstatSync = (q, o) => {
+    const name = path.basename(String(q))
+    return low(path.dirname(String(q))) === low(base) && Object.hasOwn(ids, name) ? fake(ids[name], o && o.bigint) : lstat(q, o)
+  }
+  const e = env('없음', 'S')
+  try {
+    return [create(e, wt), e]
+  } finally {
+    fs.readdirSync = list
+    fs.lstatSync = lstat
+  }
+}
+
+test('R49: two folders whose 64-bit file ids differ only past Number precision are not taken for one', () => {
+  const [r, e] = twoNames(project('main'), { i7: 2n ** 53n, I7: 2n ** 53n + 1n })
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+})
+
+test('R50: a case variant whose file id the file system does not give (0) is unknown, not taken for the Issue folder', () => {
+  const [r, e] = twoNames(project('main'), { i7: 0n, I7: 0n })
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+  assert.match(r.out, /\.work\/devflow\/I7\b/)
 })

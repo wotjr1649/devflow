@@ -599,3 +599,20 @@ test('R33: a worktree delegation takes a label nothing runs or records yet, so t
   assert.equal(run(e, own, ['running', '7', 'add', 't2', '--worktree']).code, 0)
   assert.match(run(e, own, ['running', '7', 'add', 't2', '--worktree']).out, /already/)
 })
+
+// Third narrow round on 50dd8b1: a spelling match cannot cover every Windows name of a file (folder trailing dots,
+// 8.3 short names), so an unconfirmed task worktree's edit tools write nothing outside the worktree at all.
+test('R34: an unconfirmed task worktree edits nothing outside itself, however the path is spelled', () => {
+  const p = project('feat/7-x')
+  const child = agent(p)
+  lockTests(p, 7)
+  const outside = [path.join(p.base, 'elsewhere.txt'), path.join(p.main, '.work.', 'devflow', 'i7', 'ledger.json'),
+    path.join(p.main, '.work', 'devflow.', 'i7', 'ledger.json'), path.join(p.main, '.work', 'devflow', 'i7.', 'delegates.json')]
+  for (const file of outside) {
+    const out = hook.handle(pre(child, { file_path: file }, { session: 'S' }))
+    assert.equal(decision(out), 'deny', file)
+    assert.match(reason(out), /no confirmed delegation/, file)
+  }
+  // Inside it, code stays open; only the locked tests and profile are closed.
+  assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, 'src', 'a.js') }, { session: 'S' }))), 'allow')
+})

@@ -1647,8 +1647,14 @@ function running(env, cwd, n, op, label, { worktree = false } = {}) {
   }
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
-    // The record goes first, under the same lock: a ledger write that then fails leaves it without its running label,
-    // which binds nothing (delegatedIssues).
+    // Older shapes become labels done can remove: {} is empty, an object lists its keys, other values their trimmed text
+    // or JSON, and empty ones go.
+    const v = ledger.running
+    const items = Array.isArray(v) ? v : v && typeof v === 'object' ? Object.keys(v) : [v]
+    const label = x => (typeof x === 'string' ? x.trim() : x === null || x === undefined || x === false ? '' : JSON.stringify(x))
+    const now = [...new Set(items.map(label).filter(Boolean))]
+    // The record goes first, under the same lock, for a label nothing runs or records yet: a ledger write that then
+    // fails leaves it without its running label, which binds nothing (delegatedIssues).
     let delegates
     try {
       delegates = readDelegates(ctx.store, n)
@@ -1657,6 +1663,9 @@ function running(env, cwd, n, op, label, { worktree = false } = {}) {
     }
     // A label is a key of its own whatever it reads (__proto__, constructor): never one an object inherits.
     const had = Object.hasOwn(delegates, name)
+    if (worktree && (had || now.includes(name))) {
+      return { result: { refused: `refused: "${name}" is already running or recorded for Issue #${n}; a worktree delegation takes a new label` } }
+    }
     if (worktree) delegates = { ...delegates, [name]: { session: ctx.session, host: (sessionId(env.vars) || {}).host || 'claude', at: new Date().toISOString() } }
     else if (op === 'done' && had) delete delegates[name]
     if (worktree || had) {
@@ -1666,12 +1675,6 @@ function running(env, cwd, n, op, label, { worktree = false } = {}) {
       }
       writeJson(delegatesPath(ctx.store, n), delegates)
     }
-    // Older shapes become labels done can remove: {} is empty, an object lists its keys, other values their trimmed text
-    // or JSON, and empty ones go.
-    const v = ledger.running
-    const items = Array.isArray(v) ? v : v && typeof v === 'object' ? Object.keys(v) : [v]
-    const label = x => (typeof x === 'string' ? x.trim() : x === null || x === undefined || x === false ? '' : JSON.stringify(x))
-    const now = [...new Set(items.map(label).filter(Boolean))]
     if (op === 'done' && !now.includes(name)) return { result: had ? now : ZERO }
     const next = op === 'add' ? (now.includes(name) ? now : [...now, name]) : now.filter(x => x !== name)
     return { ledger: { ...ledger, running: next }, result: next }

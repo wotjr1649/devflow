@@ -775,7 +775,7 @@ function lockedTests(root) {
   const t = guardTarget(root)
   // A task worktree whose delegation cannot be confirmed counts as locked (#73 G1): its Issue's lock is unknown, so the
   // profile is locked even with no tests listed, and the Issue ledgers and delegation records stay out of edit tools.
-  if (t && t.unconfirmed) return Object.assign([...(listed ? globs : []), '.devflow.json'], { unconfirmed: true, records: path.join(t.store, '.work', 'devflow') })
+  if (t && t.unconfirmed) return Object.assign([...(listed ? globs : []), '.devflow.json'], { unconfirmed: true })
   if (!listed || !t) return []
   const ledgerAbs = path.join(t.root, '.work', 'devflow', `i${t.issue}`, 'ledger.json')
   const ledgerFile = path.relative(root, ledgerAbs).split(path.sep).join('/')
@@ -998,7 +998,7 @@ function guardTarget(root) {
     const { own, main: proven } = location || {}
     const branch = own ? headBranch(own) || '' : ''
     const b = state.bindingOf({ root, store: proven || root, linked: !!proven && proven !== root, branch, session: eventSession })
-    if (b.bind === 'unconfirmed') return { unconfirmed: true, store: proven || root }
+    if (b.bind === 'unconfirmed') return { unconfirmed: true }
     return b.issue ? { root: proven || root, issue: b.issue } : null
   } catch {
     return null
@@ -1092,12 +1092,14 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
         if (tests.ledger && editedFiles(input.tool_input).some(f => same(path.resolve(cwd, nativePath(f)), path.resolve(tests.ledger)))) {
           return testLocked(root, 'the Issue ledger', tests.unconfirmed)
         }
-        // path.relative compares without case on Windows, like the file system.
+        // Matched by name wherever it lies, since a broken .git leaves no store to compare with. Windows also writes the
+        // file through a stream name (::$DATA) or with trailing dots and spaces, which it drops.
         const record = f => {
-          const rel = path.relative(tests.records, path.resolve(cwd, nativePath(f)))
-          return !rel.startsWith('..') && !path.isAbsolute(rel) && /^i\d+[\\/](ledger|delegates)\.json$/i.test(rel)
+          let p = path.resolve(cwd, nativePath(f))
+          if (process.platform === 'win32') p = p.replace(/:[^\\/]*$/, '').replace(/[. ]+$/, '')
+          return /[\\/]\.work[\\/]devflow[\\/]i\d+[\\/](ledger|delegates)\.json$/i.test(p)
         }
-        if (tests.records && editedFiles(input.tool_input).some(record)) return testLocked(root, 'an Issue ledger or delegation record', true)
+        if (tests.unconfirmed && editedFiles(input.tool_input).some(record)) return testLocked(root, 'an Issue ledger or delegation record', true)
         const hit = protectedEdit(root, cwd, input.tool_input, tests)
         if (!hit) return ''
         if (hit.path && byLock(hit.path)) return testLocked(root, hit.path, tests.unconfirmed)

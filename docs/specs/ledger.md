@@ -64,13 +64,14 @@ worktree의 Issue는 그 worktree 브랜치의 Issue뿐이다. Issue 브랜치�
 - M3 작업 worktree는 Claude 격리 위치의 표지(`.claude/worktrees/agent-*` 폴더나 `worktree-agent-*` 브랜치)가 있는
   worktree다. 메인은 구현자를 띄우기 전에 그 Issue 브랜치에서 `running <n> add <이름> --worktree`를 실행한다. 같은 잠금
   안에서 Issue 폴더의 `delegates.json`에 이름과 세션 id 해시를 남기고, 세션 id가 없거나 그 세션이 다른 Issue에 위임
-  기록을 갖고 있거나 그 여부를 읽을 수 없으면, 기록이 읽기 한도(64 KiB)를 넘게 되면 거부한다. `done`이 `running`과 함께
+  기록을 갖고 있거나 그 여부를 읽을 수 없으면, 이름이 이미 running이나 기록에 있으면, 기록이 읽기 한도(64 KiB)를 넘게
+  되면 거부한다. `done`이 `running`과 함께
   뺀다. 기록은 그 이름이 장부 `running`에 있을 때만 센다(장부 쓰기가 실패해 이름 없이 남은 기록은 아무것도 잇지 않는다).
 - 연결(bound): 표지, git의 worktree 증명, 세션 id, 그 세션을 가리키는 기록이 정확히 한 Issue에 있고 Issue 폴더 목록과
   기록을 모두 읽을 수 있을 때만이다(대소문자만 다른 폴더 이름도 그 Issue로 센다). 연결된 worktree는 부모 장부를 읽고 시험 잠금·차단 기록·doctor의 잠금 검사를 따르며, 카드는 부모의 task
   worktree임과 상태를 메인 세션이 가진다는 한 줄을 보인다.
 - 확인 불가: 표지가 있는데 위 조건 중 하나라도 빠지면 독립으로 풀지 않는다. 훅은 시험과 프로필을 잠긴 것으로 보고 기록
-  복구를 안내하고(시험 목록이 없어도 프로필은 잠긴다), 편집 도구로 Issue 장부와 위임 기록을 고치지 못하게 하며, git
+  복구를 안내하고(시험 목록이 없어도 프로필은 잠긴다), 편집 도구로 Issue 장부와 위임 기록(이름으로 판단, Windows의 다른 철자 포함)을 고치지 못하게 하며, git
   메타데이터를 읽지 못해도 경로 표지로 판정한다. doctor는 잠금 여부를 알 수 없어 실패한다.
 - 표지가 있는 worktree는 Issue 브랜치로 바꿔도 자기 Issue로 보지 않고, 연결 여부와 관계없이 장부·Issue 쓰기·create·
   remark·flush·release를 거부한다. 각 쓰기 입구가 판정을 직접 검사한다.

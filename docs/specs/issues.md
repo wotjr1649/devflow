@@ -27,11 +27,12 @@ Issue를 읽고 쓰는 방법, Issue 본문과 체크포인트의 형식, 재개
 - 의견: `remark <번호>`는 어느 브랜치에서든 현재 GitHub origin 저장소의 기존 Issue에 일반 댓글을 단다(#77). 체크포인트
   형식(읽기와 같은 정규화 뒤)은 거부하므로 재개 카드와 `read`가 상태로 읽지 않는다. 공개 필터, 빈 본문·8000자 상한을
   적용하고, 게시 전 대상을 조회해 없는 번호·PR 번호는 거부하며, 출력에 저장소·번호·상태·제목(쓰기 권한자가 아니면
-  숨김)·URL을 낸다. 닫힌 Issue에도 달고 다시 열지 않는다. 무인 여부는 호출자 작업 Issue(연결 worktree는 주 작업 트리
-  브랜치의 Issue)의 장부로만 판단해 autonomous면 거부하고 대기열에 넣지 않는다. 대상 Issue의 장부·세션 기록은 읽거나
+  숨김)·URL을 낸다. 닫힌 Issue에도 달고 다시 열지 않는다. 무인 여부는 호출자 작업 Issue의 장부로만 판단해 autonomous면 거부하고 대기열에 넣지 않는다. 대상 Issue의 장부·세션 기록은 읽거나
   만들지 않는다. detached HEAD(rebase 중인 Issue 브랜치일 수 있다), task worktree(위임은 Issue에 쓰지 않는다), 옮기지 않은 옛 worktree 장부는 거부한다. 대상이 다른 저장소로 옮겨진 Issue면 거부한다. 작업 Issue가 없는 main은 대화형으로 간주하며, 이는 무인 실행을 증명하지 못하는 한계다. 거부 기록은
   작업 Issue에, 없으면 이미 있는 대상 폴더에만 남긴다. 응답 유실은 댓글처럼 다시 읽어 확인한다. 다른 저장소, 상태·본문·
   체크·종료와 체크포인트의 브랜치 Issue 제한은 바뀌지 않는다. 지원 대상은 게시 권한이 아니다. 이유: [ADR-0025](../design/decisions/ADR-0025-remark.md).
+- 새 Issue: `create`는 번호 없는 착수라 브랜치 Issue 제한의 예외이고, 작업 Issue 장부가 autonomous면 대기열에 쌓는다.
+  detached HEAD와 M3 작업 worktree에서는 거부하고, linked worktree의 무인 판정은 [task worktree](ledger.md#task-worktree)를 따른다.
 - 관계: `sub-issue add <부모번호> <자식번호>`는 현재 GitHub origin의 같은 저장소에서 한 관계를 추가한다. Issue 브랜치가
   필요하고 기록·대기열은 그 작업 Issue에 귀속되지만, 부모·자식은 브랜치 번호와 달라도 된다. 이 예외는 관계 추가뿐이며
   본문·댓글·종료의 기존 대상 제한을 바꾸지 않는다. 명령·브랜치·HMAC은 권한이 아니므로 실행과 flush 모두 요청·지침에서

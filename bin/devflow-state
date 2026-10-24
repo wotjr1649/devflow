@@ -159,7 +159,8 @@ function repoContext(env, cwd, opts = {}) {
   const { bind, issue } = bindingOf({ root, store, linked, branch, session })
   // Issue writes stay with the branch's own Issue (branchIssue), never a task worktree's.
   return { env, root, store, linked, branch, head: git('rev-parse', '--short', 'HEAD'), repo: origin && origin[1],
-    issue, branchIssue: bind === 'own' ? issue : null, bind, session, mainIssue: linked ? issueOf(main.branch) : null }
+    issue, branchIssue: bind === 'own' ? issue : null, bind, session, mainIssue: linked ? issueOf(main.branch) : null,
+    mainDetached: linked && !main.branch }
 }
 
 // #73 G1 (ADR-0028, ledger.md task worktree): which Issue a worktree works for. Git facts decide every worktree without
@@ -1477,8 +1478,18 @@ function unattendedRun(ctx) {
   }
   // A long name with a lone UTF-16 surrogate is listed with U+FFFD, so it can match another entry's name.
   if (new Set(names).size !== names.length) return unknown('a name in .work/devflow is listed twice', '.work/devflow')
+  const opened = new Map()
   for (const name of names) {
     const m = /^i([1-9]\d*)$/i.exec(name)
+    // Two listed names that open one entry (a lossy name matching another by case) leave the entry behind one unjudged.
+    const id = stat(path.join(base, name))
+    if (id && id.ino !== 0n) {
+      const key = `${id.dev}:${id.ino}`
+      if (opened.has(key)) {
+        return unknown(`.work/devflow/${name} opens the same entry as .work/devflow/${opened.get(key)}`, `.work/devflow/${name}`)
+      }
+      opened.set(key, name)
+    }
     // A Windows short name can make i<n> open a folder or link listed under another name: a link, a folder that may
     // hold a ledger, or a listed name that opens nothing (such a lossy name), is unknown.
     if (!m) {
@@ -1489,7 +1500,7 @@ function unattendedRun(ctx) {
       }
       continue
     }
-    const st = stat(path.join(base, name))
+    const st = id
     let plain = st && st.isDirectory()
     if (plain && name !== `i${m[1]}`) {
       // A file id of 0 is one the file system does not give, so it cannot show that the two names are one folder.
@@ -1510,11 +1521,33 @@ function unattendedRun(ctx) {
     }
     if (!ledger || ledger.mode !== 'autonomous') continue
     const by = ledger.modeChanged && typeof ledger.modeChanged.session === 'string' ? ledger.modeChanged.session : null
-    if (n === ctx.mainIssue || !ctx.session || !by || by === ctx.session || recent(readSessions(ctx.store, n), now)[ctx.session]) {
+    // A detached main work tree may be its Issue branch mid-rebase, so any unattended ledger may be its Issue's.
+    if (n === ctx.mainIssue || ctx.mainDetached || !ctx.session || !by || by === ctx.session) {
       return busy(`Issue #${n} runs unattended`, 'confirm whether that run is over')
     }
+    // Unlike readSessions, a record that cannot be read is unknown here: it may hold this session's recent write.
+    if (!sessionsReadable(ctx.store, n)) {
+      return unknown(`Issue #${n}'s sessions record cannot be read`, `.work/devflow/i${n}/sessions.json`)
+    }
+    if (recent(readSessions(ctx.store, n), now)[ctx.session]) return busy(`Issue #${n} runs unattended`, 'confirm whether that run is over')
   }
   return null
+}
+function sessionsReadable(root, n) {
+  const p = sessionsPath(root, n)
+  let st
+  try {
+    st = fs.lstatSync(p)
+  } catch (e) {
+    return e.code === 'ENOENT' || e.code === 'ENOTDIR'
+  }
+  if (!st.isFile() || st.size > MAX_SESSIONS_BYTES) return false
+  try {
+    const s = JSON.parse(fs.readFileSync(p, 'utf8'))
+    return !!s && typeof s === 'object' && !Array.isArray(s)
+  } catch {
+    return false
+  }
 }
 
 function attempt(ctx, op, n, text, title, { flushing = false, verifyOnly = false } = {}) {

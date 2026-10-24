@@ -82,12 +82,13 @@ worktree의 Issue는 그 worktree 브랜치의 Issue뿐이다. Issue 브랜치�
   독립으로 보인다(Claude Code 2.1.310에서 확인한 규칙).
 - create: Issue 브랜치가 아닌 linked worktree에는 대기열이 없다. 주 작업 트리 브랜치의 Issue가 autonomous이거나,
   autonomous 장부를 이 세션이 켰거나 이어받았거나(`modeChanged.session`) 최근 30분 안에 썼거나, 켠 세션을 모르는
-  autonomous 장부가 있거나(세션 id를 모를 때 포함), Issue 폴더 목록·Issue 폴더·장부를 읽지 못하면 거부한다. 목록의 이름
-  그대로 보며 따라가지 않는다. 링크이거나 폴더가 아닌 항목, `i<n>`과 대소문자만 다른 이름 중 `i<n>`으로 읽히는 폴더와 같은
+  autonomous 장부가 있거나(세션 id를 모를 때 포함), 주 작업 트리가 detached HEAD(Issue 브랜치 rebase 중일 수 있다)인데 autonomous
+  장부가 있거나, Issue 폴더 목록·Issue 폴더·장부, autonomous 장부의 `sessions.json`을 읽지 못하면 거부한다. 목록의 이름
+  그대로 보며 따라가지 않는다. `i<n>` 이름 중 링크이거나 폴더가 아닌 항목, `i<n>`과 대소문자만 다른 이름 중 `i<n>`으로 읽히는 폴더와 같은
   항목임을 file id로 보이지 못하는 것(대소문자를 지키는 파일 시스템의 별개 폴더, id 0 포함)은 읽지 못한 것으로 본다.
   Windows short name은 목록에 다른 이름으로 나오는 항목을 `i<n>`으로 열 수 있으므로, 다른 이름의 링크, 장부가 있거나 있는지
-  알 수 없는 폴더, 목록의 이름으로 열리지 않거나 판정할 수 없는 항목, 두 번 나오는 이름(짝 없는 surrogate가 든 이름은
-  U+FFFD로 나온다)도 읽지 못한 것으로 보고, 주 작업 트리 브랜치의 Issue는 목록과 별개로 `i<n>`으로 읽는다. 연결
+  알 수 없는 폴더, 목록의 이름으로 열리지 않거나 판정할 수 없는 항목, 두 번 나오는 이름이나 같은 file id를 여는 두 이름(짝 없는
+  surrogate가 든 이름은 U+FFFD로 나와 다른 항목의 이름과 겹칠 수 있다)도 읽지 못한 것으로 보고, 주 작업 트리 브랜치의 Issue는 목록과 별개로 `i<n>`으로 읽는다. 연결
   판정의 대소문자 규칙과 달리 create는 같은 항목일 때만 Issue 폴더로 본다. 거부는 그 Issue나 항목을 알리고 그 실행의 소유
   세션이나 사용자에게 확인·복구를 맡기며, 다른 Issue의 mode를 바꾸거나 이 검사가 없는 경로로 옮기라고 안내하지 않는다. detached HEAD의 create는 어디서든 거부한다. 작업 Issue가 없는 주 작업 트리의 create는 대화형으로 간주하는
   한계가 그대로다([Issue 입출력](issues.md#issue-입출력)).

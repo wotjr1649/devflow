@@ -727,7 +727,8 @@ function relativeTo(root, cwd, files, { keepRoot = false } = {}) {
   return files.map(f => path.relative(root, path.resolve(cwd, nativePath(f))))
     // On Windows a path on another drive or share comes back absolute: it is outside the root too.
     .filter(r => !path.isAbsolute(r)).map(r => r.split(path.sep).join('/'))
-    .map(r => (keepRoot && r === '' ? '.' : r)).filter(r => r && !r.startsWith('..'))
+    // Only a real parent step leaves the root: ..env is a name inside it.
+    .map(r => (keepRoot && r === '' ? '.' : r)).filter(r => r && r !== '..' && !r.startsWith('../'))
 }
 
 // targets => the first protected path or the unreadable-profile marker, or null. An unreadable profile permits only
@@ -1097,7 +1098,7 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
         // no links. Inside it, a ledger or delegation record (a store git cannot prove) is matched by name.
         // Both sides spelled alike (a \\?\ prefix dropped), and only a real parent step counts: ..env is inside.
         const outside = f => {
-          const rel = path.relative(path.resolve(nativePath(root)), path.resolve(cwd, nativePath(f)))
+          const rel = path.relative(path.resolve(nativePath(root)), path.resolve(nativePath(cwd), nativePath(f)))
           return rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
         }
         const record = f => {

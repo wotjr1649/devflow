@@ -176,7 +176,10 @@ function bindingOf({ root, store, linked, branch, session }) {
   // A main work tree inside the worktree itself is a forgery its own files can make (a .git pointing at a fake common
   // dir there), never a proof: no real repository lives inside one of its linked worktrees.
   const inside = (() => { const rel = path.relative(root, store); return rel === '' || !(rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) })()
-  if (!linked || !session || inside) return { bind: 'unconfirmed', issue: null }
+  // Git writes a plain path; another spelling of the same folder (a \\?\ prefix, a stream after the drive, an 8.3 short
+  // name) could hide one inside the worktree from the text comparison above, so it proves nothing either.
+  const odd = process.platform === 'win32' && (/^[\\/]{2}[?.][\\/]/.test(store) || store.indexOf(':', 2) >= 0 || /(^|[\\/])[^\\/]*~\d/.test(store))
+  if (!linked || !session || inside || odd) return { bind: 'unconfirmed', issue: null }
   const { hits, unreadable } = delegatedIssues(store, session)
   return hits.length === 1 && !unreadable ? { bind: 'bound', issue: hits[0] } : { bind: 'unconfirmed', issue: null }
 }

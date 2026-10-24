@@ -650,3 +650,37 @@ test('R37: a root spelled with the Windows long-path prefix still holds its own 
   const long = '\\\\?\\' + child
   assert.equal(decision(hook.handle(pre(long, { file_path: path.join(long, 'src', 'a.js') }, { session: 'S' }))), 'allow')
 })
+
+// Fifth narrow round on 6170c35 (Codex cross-host, Claude security).
+test('R38: a forged in-worktree store spelled with the long-path prefix is no proof either', { skip: process.platform !== 'win32' }, () => {
+  const p = project('feat/7-x')
+  const child = agent(p)
+  lockTests(p, 7)
+  const own = path.join(child, 'fake', '.git', 'worktrees', 'x')
+  fs.mkdirSync(own, { recursive: true })
+  fs.writeFileSync(path.join(own, 'gitdir'), path.join(child, '.git') + '\n')
+  fs.writeFileSync(path.join(own, 'commondir'), '../..\n')
+  fs.writeFileSync(path.join(own, 'HEAD'), 'ref: refs/heads/worktree-agent-a1\n')
+  fs.rmSync(path.join(child, '.git'))
+  fs.writeFileSync(path.join(child, '.git'), `gitdir: \\\\?\\${own}\n`)
+  delegate(path.join(child, 'fake'), 7, 'S')
+  const out = editTest(child, { session: 'S' })
+  assert.equal(decision(out), 'deny')
+  assert.match(reason(out), /no confirmed delegation/)
+})
+
+test('R39: a relative edit from a long-path cwd stays inside the worktree', { skip: process.platform !== 'win32' }, () => {
+  const p = project('main')
+  const child = agent(p)
+  const long = '\\\\?\\' + child
+  assert.equal(decision(hook.handle(pre(long, { file_path: 'src/a.js' }, { session: 'S' }))), 'allow')
+})
+
+test('R40: names that start with two dots keep their protected and test locks', () => {
+  const p = project('main')
+  const child = agent(p)
+  fs.writeFileSync(path.join(child, '.devflow.json'), JSON.stringify({ protected: ['..env'], tests: ['..config/**'] }))
+  for (const name of ['..env', path.join('..config', 'a.js')]) {
+    assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, name) }, { session: 'S' }))), 'deny', name)
+  }
+})

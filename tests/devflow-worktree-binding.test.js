@@ -973,3 +973,46 @@ test('P13: folders with no ledger under other names, and no main work tree Issue
   assert.equal(r.code, 0, r.out)
   assert.equal(posts(e), 1)
 })
+
+// Node lists a long name holding a lone UTF-16 surrogate with U+FFFD, a name nothing can be opened by, so the folder
+// behind it is only reached through its short name. Modeled by listing that name for .work/devflow.
+const LOSSY = '���x'
+function listing(p, names, fn) {
+  const base = path.resolve(p.main, '.work', 'devflow').toLowerCase()
+  const list = fs.readdirSync
+  fs.readdirSync = (d, ...a) => (path.resolve(String(d)).toLowerCase() === base ? [...names] : list(d, ...a))
+  try {
+    return fn()
+  } finally {
+    fs.readdirSync = list
+  }
+}
+// The folder only the short name reaches, holding an unattended ledger this session switched.
+const hidden = p => {
+  const dir = path.join(p.main, '.work', 'devflow', 'hidden')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'ledger.json'), JSON.stringify(unattended('S')))
+}
+
+test('R55: a listed name that opens nothing, behind which the short name i7 holds this session\'s ledger, refuses a worktree create', () => {
+  const p = project('main')
+  const wt = plain(p)
+  hidden(p)
+  const e = env('없음', 'S')
+  const r = shortName(p, 'hidden', 'i7', () => listing(p, [LOSSY], () => create(e, wt)))
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+})
+
+test('R56: a name listed twice, one of them a plain folder with no ledger, refuses a worktree create', () => {
+  const p = project('main')
+  const wt = plain(p)
+  fs.mkdirSync(path.join(p.main, '.work', 'devflow', LOSSY), { recursive: true })
+  hidden(p)
+  const e = env('없음', 'S')
+  const r = shortName(p, 'hidden', 'i7', () => listing(p, [LOSSY, LOSSY], () => create(e, wt)))
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+})

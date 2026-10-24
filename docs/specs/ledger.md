@@ -67,7 +67,8 @@ worktree의 Issue는 그 worktree 브랜치의 Issue뿐이다. Issue 브랜치�
   기록을 갖고 있거나 그 여부를 읽을 수 없으면, 이름이 이미 running이나 기록에 있으면, 기록이 읽기 한도(64 KiB)를 넘게
   되면 거부한다. `done`이 `running`과 함께
   뺀다. 기록은 그 이름이 장부 `running`에 있을 때만 센다(장부 쓰기가 실패해 이름 없이 남은 기록은 아무것도 잇지 않는다).
-- 연결(bound): 표지, git의 worktree 증명(주 작업 트리가 그 worktree 안에 있거나 Windows에서 git이 쓰지 않는 철자면 증명이 아니다), 세션 id, 그 세션을 가리키는 기록이 정확히 한 Issue에 있고 Issue 폴더 목록과
+- 연결(bound): worktree가 정확히 `<주 작업 트리>/.claude/worktrees/agent-*`에 있고 git이 그 주 작업 트리를 증명하며(다른
+  위치, 브랜치 표지만 있는 worktree, 그 worktree 안이나 다른 철자의 주 작업 트리는 연결되지 않는다), 세션 id, 그 세션을 가리키는 기록이 정확히 한 Issue에 있고 Issue 폴더 목록과
   기록을 모두 읽을 수 있을 때만이다(대소문자만 다른 폴더 이름도 그 Issue로 센다). 연결된 worktree는 부모 장부를 읽고 시험 잠금·차단 기록·doctor의 잠금 검사를 따르며, 카드는 부모의 task
   worktree임과 상태를 메인 세션이 가진다는 한 줄을 보인다.
 - 확인 불가: 표지가 있는데 위 조건 중 하나라도 빠지면 독립으로 풀지 않는다. 훅은 시험과 프로필을 잠긴 것으로 보고 기록

@@ -724,7 +724,8 @@ const nativePath = f => (process.platform !== 'win32' ? f : f
   .replace(/^[\\/]{2}(?:localhost|127\.0\.0\.1)[\\/]([a-zA-Z])\$(?=[\\/]|$)/i, '$1:'))
 
 function relativeTo(root, cwd, files, { keepRoot = false } = {}) {
-  return files.map(f => path.relative(root, path.resolve(cwd, nativePath(f))))
+  // Root, folder and file spelled alike: a \\?\ root must not drop its own files from the protected and locked checks.
+  return files.map(f => path.relative(path.resolve(nativePath(root)), path.resolve(nativePath(cwd), nativePath(f))))
     // On Windows a path on another drive or share comes back absolute: it is outside the root too.
     .filter(r => !path.isAbsolute(r)).map(r => r.split(path.sep).join('/'))
     // Only a real parent step leaves the root: ..env is a name inside it.

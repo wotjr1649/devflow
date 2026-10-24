@@ -19,8 +19,9 @@ agent id는 띄운 뒤에야 메인이 안다. 훅 입력의 `agent_id`·`sessio
 - 귀속은 Git 사실이 먼저다. worktree의 Issue는 그 브랜치의 Issue뿐이고, Issue 브랜치가 아닌 linked worktree는 어느
   Issue에도 귀속하지 않는다. 같은 세션의 기록이 있어도 마찬가지다.
 - M3 연결은 네 가지가 모두 있을 때만 성립한다: 메인이 띄우기 **전에** `running <n> add <이름> --worktree`로 남긴 위임
-  기록(`delegates.json`, 세션 id 해시), 같은 세션, 격리 worktree 표지(`.claude/worktrees/agent-*` 또는 `worktree-agent-*`),
-  git의 worktree 증명. 연결된 worktree는 부모 장부를 읽고 시험 잠금·차단 기록·doctor 잠금 검사를 따른다.
+  기록(`delegates.json`, 세션 id 해시), 같은 세션, Claude Code가 두는 위치 그대로인 worktree(정확히
+  `<주 작업 트리>/.claude/worktrees/agent-*`)와 git의 그 주 작업 트리 증명. 다른 위치나 `worktree-agent-*` 브랜치 표지만
+  있는 worktree는 연결되지 않는다. 연결된 worktree는 부모 장부를 읽고 시험 잠금·차단 기록·doctor 잠금 검사를 따른다.
 - 표지가 있는데 연결을 확인할 수 없으면 독립으로 풀지 않는다. 시험과 프로필을 잠긴 것으로 보고 doctor가 실패한다.
 - 표지가 있는 worktree는 연결 여부와 관계없이 장부·Issue 쓰기·create·flush·release를 하지 않는다. Issue 브랜치로 바꿔도
   자기 Issue로 보지 않는다. 각 쓰기 입구가 이 판정을 직접 검사한다.

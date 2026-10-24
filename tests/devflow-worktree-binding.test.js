@@ -1016,3 +1016,54 @@ test('R56: a name listed twice, one of them a plain folder with no ledger, refus
   assert.equal(r.code, 1)
   ownerOnly(r.out)
 })
+
+test('R57: a lossy name that opens, by case, another listed entry with no ledger refuses a worktree create', () => {
+  const p = project('main')
+  const wt = plain(p)
+  const upper = '���X'
+  fs.mkdirSync(path.join(p.main, '.work', 'devflow', LOSSY), { recursive: true })
+  hidden(p)
+  const e = env('없음', 'S')
+  // Where names ignore case, the listed upper spelling opens the real lower one.
+  const r = shortName(p, 'hidden', 'i7', () => shortName(p, LOSSY, upper, () => listing(p, [upper, LOSSY], () => create(e, wt))))
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+})
+
+test('R58: an unattended ledger whose sessions record cannot be read refuses a worktree create, naming the record', () => {
+  const p = project('main')
+  const wt = plain(p)
+  ledger(p.main, 7, unattended('T'))
+  fs.mkdirSync(path.join(folder(p.main, 7), 'sessions.json'))
+  const e = env('없음', 'S')
+  const r = create(e, wt)
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+  assert.match(r.out, /\.work\/devflow\/i7\/sessions\.json/)
+})
+
+test('R59: with the main work tree detached (an Issue branch mid-rebase), any unattended ledger refuses a worktree create', () => {
+  const p = project('feat/7-x')
+  const wt = plain(p)
+  git(p.main, 'switch', '-q', '--detach')
+  ledger(p.main, 7, unattended('T'))
+  const e = env('없음', 'S')
+  const r = create(e, wt)
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  assert.match(r.out, /Issue #7 runs unattended/)
+  ownerOnly(r.out)
+})
+
+test('P14: with the main work tree detached and no unattended ledger, a worktree create posts', () => {
+  const p = project('feat/7-x')
+  const wt = plain(p)
+  git(p.main, 'switch', '-q', '--detach')
+  ledger(p.main, 7, { stage: 'build', mode: 'interactive' })
+  const e = env('없음', 'S')
+  const r = create(e, wt)
+  assert.equal(r.code, 0, r.out)
+  assert.equal(posts(e), 1)
+})

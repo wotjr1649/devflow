@@ -616,3 +616,37 @@ test('R34: an unconfirmed task worktree edits nothing outside itself, however th
   // Inside it, code stays open; only the locked tests and profile are closed.
   assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, 'src', 'a.js') }, { session: 'S' }))), 'allow')
 })
+
+// Fourth narrow round on 3a58c19 (Codex cross-host, Claude security).
+test('R35: names that only start with two dots are inside the worktree', () => {
+  const p = project('main')
+  const child = agent(p)
+  for (const name of ['..env', path.join('..config', 'a.js')]) {
+    assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, name) }, { session: 'S' }))), 'allow', name)
+  }
+})
+
+test('R36: a git proof that points into the worktree itself proves nothing, so a forged store binds no agent', () => {
+  const p = project('feat/7-x')
+  const child = agent(p)
+  lockTests(p, 7)
+  // The forgery an agent could write with edit tools alone: a fake common dir inside its own worktree vouching for it.
+  const own = path.join(child, 'fake', '.git', 'worktrees', 'x')
+  fs.mkdirSync(own, { recursive: true })
+  fs.writeFileSync(path.join(own, 'gitdir'), path.join(child, '.git') + '\n')
+  fs.writeFileSync(path.join(own, 'commondir'), '../..\n')
+  fs.writeFileSync(path.join(own, 'HEAD'), 'ref: refs/heads/worktree-agent-a1\n')
+  fs.rmSync(path.join(child, '.git'))
+  fs.writeFileSync(path.join(child, '.git'), 'gitdir: fake/.git/worktrees/x\n')
+  delegate(path.join(child, 'fake'), 7, 'S')
+  const out = editTest(child, { session: 'S' })
+  assert.equal(decision(out), 'deny')
+  assert.match(reason(out), /no confirmed delegation/)
+})
+
+test('R37: a root spelled with the Windows long-path prefix still holds its own files', { skip: process.platform !== 'win32' }, () => {
+  const p = project('main')
+  const child = agent(p)
+  const long = '\\\\?\\' + child
+  assert.equal(decision(hook.handle(pre(long, { file_path: path.join(long, 'src', 'a.js') }, { session: 'S' }))), 'allow')
+})

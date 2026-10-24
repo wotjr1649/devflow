@@ -1095,9 +1095,10 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
         // An unconfirmed task worktree's edit tools write nothing outside it: no spelling match covers every Windows name of
         // the main work tree's ledgers (stream names, trailing dots on any folder, 8.3 short names), and the hook resolves
         // no links. Inside it, a ledger or delegation record (a store git cannot prove) is matched by name.
+        // Both sides spelled alike (a \\?\ prefix dropped), and only a real parent step counts: ..env is inside.
         const outside = f => {
-          const rel = path.relative(root, path.resolve(cwd, nativePath(f)))
-          return rel.startsWith('..') || path.isAbsolute(rel)
+          const rel = path.relative(path.resolve(nativePath(root)), path.resolve(cwd, nativePath(f)))
+          return rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
         }
         const record = f => {
           let p = path.resolve(cwd, nativePath(f))

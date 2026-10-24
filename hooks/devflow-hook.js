@@ -774,6 +774,8 @@ function lockedTests(root) {
   if (!Array.isArray(globs) || !globs.length || globs.some(g => typeof g !== 'string' || !g)) return []
   const t = guardTarget(root)
   if (!t) return []
+  // A task worktree whose delegation cannot be confirmed counts as locked (#73 G1): its Issue's lock is unknown.
+  if (t.unconfirmed) return Object.assign([...globs, '.devflow.json'], { unconfirmed: true })
   const ledgerAbs = path.join(t.root, '.work', 'devflow', `i${t.issue}`, 'ledger.json')
   const ledgerFile = path.relative(root, ledgerAbs).split(path.sep).join('/')
   // The profile is locked with them: dropping its "tests" key would lift the lock (Issue #52).
@@ -787,7 +789,11 @@ function lockedTests(root) {
     return locked
   }
 }
-const testLocked = (root, r) => blocked(root, 'test-locked', r === '.devflow.json'
+const testLocked = (root, r, unconfirmed) => unconfirmed
+  ? blocked(root, 'test-locked', `devflow: ${r} is locked: this task worktree has no confirmed delegation, so its Issue's test ` +
+    'lock is unknown. The main session records the delegation with devflow-state running <issue> add <label> --worktree ' +
+    'before launching it.')
+  : blocked(root, 'test-locked', r === '.devflow.json'
   ? 'devflow: .devflow.json is locked with the tests for this fix. To change it, say why and unlock first: devflow-state ' +
     'tests <issue> unlock < reason.'
   : `devflow: ${r} is a test file, locked for this fix. Fix the code, not the test. If the test itself is wrong, say why ` +
@@ -820,8 +826,9 @@ function auditEdit(root, cwd, toolInput) {
 // Autonomous work continues while a task is open and nothing waits on a person; at most twice per task.
 const MAX_CONTINUES = 2
 function continueWork(env, cwd) {
-  const ctx = state.repoContext(env, cwd)
-  if (!ctx || !ctx.issue || state.legacyOf(ctx, ctx.issue)) return ''
+  // Only the session's own Issue continues: a task worktree writes no ledger (#73 G1).
+  const ctx = state.repoContext(env, cwd, { session: eventSession })
+  if (!ctx || ctx.bind !== 'own' || state.legacyOf(ctx, ctx.issue)) return ''
   // No ledger, no lock: the lock would create the Issue's folder in every repository branch the hook runs in.
   if (!state.readLedger(ctx.store, ctx.issue)) return ''
   // Decided and counted under the ledger lock, so a write another session makes meanwhile is kept (Issue #10). A lock
@@ -975,26 +982,22 @@ function gitLocation(root) {
   }
 }
 
-// Where a block is logged: the Issue of this branch, or the main tree's Issue for an M3 task branch.
+// The session id hash of the event this process handles (one event per process; handle sets it for each call), which
+// decides an M3 delegation (#73 G1). Only the hook input's: the hook's own environment names no subagent.
+let eventSession = null
+const sessionHash = id => (typeof id === 'string' && id ? crypto.createHash('sha256').update(id).digest('hex').slice(0, 12) : null)
+
+// Which Issue a worktree works for, as devflow-state decides it (bindingOf, ledger.md task worktree), from git's files
+// without spawning git: { root, issue } for its own Issue or a bound task worktree, { unconfirmed: true } for a task
+// worktree whose delegation cannot be confirmed, null otherwise. A worktree off any Issue branch borrows no Issue.
 function guardTarget(root) {
   try {
-    const issueOf = b => { const m = /^[^/]+\/(\d+)-/.exec(b || ''); return m ? Number(m[1]) : null }
     const location = gitLocation(root)
     if (!location) return null
-    const { own, common, main: proven } = location
-    const issue = issueOf(headBranch(own))
-    if (issue) return { root: proven || root, issue }
-    if (proven) {
-      const main = issueOf(headBranch(common))
-      return main ? { root: proven, issue: main } : null
-    }
-    // Only a worktree nested in the main work tree (M3's) logs there, so a crafted commondir cannot place the log
-    // outside the folders above this one.
-    const mainRoot = path.dirname(common)
-    const key = p => (process.platform === 'win32' ? p.toLowerCase() : p) + path.sep
-    if (common === own || !key(root).startsWith(key(mainRoot))) return null
-    const main = issueOf(headBranch(common))
-    return main ? { root: mainRoot, issue: main } : null
+    const { own, main: proven } = location
+    const b = state.bindingOf({ root, store: proven || root, linked: !!proven && proven !== root, branch: headBranch(own) || '', session: eventSession })
+    if (b.bind === 'unconfirmed') return { unconfirmed: true }
+    return b.issue ? { root: proven || root, issue: b.issue } : null
   } catch {
     return null
   }
@@ -1027,7 +1030,7 @@ function provenMain(root, own, common) {
 function blocked(root, guard, reason) {
   try {
     const t = root && guardTarget(root)
-    if (t) state.logGuard(t.root, t.issue, guard)
+    if (t && t.issue) state.logGuard(t.root, t.issue, guard)
   } catch {}
   return deny(reason)
 }
@@ -1041,11 +1044,12 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
     return deny('devflow: the hook input could not be read, so the command was not checked for Issue writes.')
   }
   const cwd = input.cwd || process.cwd()
+  eventSession = sessionHash(input.session_id)
   if (input.hook_event_name === 'SessionStart') {
     shareSessionId(env.vars || {}, cwd, input.session_id)
     let card
     try {
-      card = state.card(env, cwd, { sessionId: input.session_id })
+      card = state.card(env, cwd, { sessionId: input.session_id || null })
     } catch (e) {
       card = state.cardFailure(e)
     }
@@ -1084,11 +1088,11 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       if (EDIT_TOOLS.test(tool)) {
         const same = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
         if (tests.ledger && editedFiles(input.tool_input).some(f => same(path.resolve(cwd, nativePath(f)), path.resolve(tests.ledger)))) {
-          return testLocked(root, 'the Issue ledger')
+          return testLocked(root, 'the Issue ledger', tests.unconfirmed)
         }
         const hit = protectedEdit(root, cwd, input.tool_input, tests)
         if (!hit) return ''
-        if (hit.path && byLock(hit.path)) return testLocked(root, hit.path)
+        if (hit.path && byLock(hit.path)) return testLocked(root, hit.path, tests.unconfirmed)
         return hit.unreadable
           ? blocked(root, 'profile-unreadable', 'devflow: .devflow.json does not parse, so its protected paths are unknown; fix .devflow.json first.')
           : blocked(root, 'protected-path', `devflow: ${hit.path} is a protected path in .devflow.json; leave it as it is.`)
@@ -1100,7 +1104,7 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
         return blocked(root, 'profile-unreadable', 'devflow: .devflow.json cannot be read, so its protected paths are unknown; fix .devflow.json first.')
       }
       if (kind.startsWith(PROTECTED) && kind !== PROTECTED + PROFILE_UNREADABLE && byLock(kind.slice(PROTECTED.length))) {
-        return testLocked(root, kind.slice(PROTECTED.length))
+        return testLocked(root, kind.slice(PROTECTED.length), tests.unconfirmed)
       }
       if (kind.startsWith(PROTECTED)) {
         return blocked(root, 'protected-path', `devflow: ${kind.slice(PROTECTED.length)} is a protected path in .devflow.json; leave it as it is.`)
@@ -1179,6 +1183,7 @@ async function main(inProcess = false) {
   let input
   try { input = JSON.parse(raw) } catch {}
   if (typeof inProcess === 'string' && ANALYSIS_FAILURES[inProcess]) {
+    eventSession = sessionHash(input?.session_id)
     out = blocked(devflowRoot(input?.cwd || process.cwd()), inProcess, ANALYSIS_FAILURES[inProcess])
   } else if (input?.hook_event_name === 'PreToolUse' && !inProcess && outsideDevflow(input.cwd || process.cwd())) {
     out = ''

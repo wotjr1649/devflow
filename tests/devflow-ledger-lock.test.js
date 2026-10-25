@@ -399,15 +399,19 @@ test('release does not rewrite survivors when the target disappears after preche
   assert.equal(fs.existsSync(lockFile(root)), false)
 })
 
-test('release refuses output that would become unreadable or lose non-finite metadata (#93)', () => {
-  for (const extra of [JSON.stringify(Array(9000).fill(0)), '1e999']) {
+test('release refuses destructive output without claiming a lock collision (#93)', () => {
+  for (const extra of ['9007199254740993', JSON.stringify(Array(9000).fill(0)), '1e999']) {
     const root = repo({ stage: 'build' })
     const file = sessionsFile(root)
     const before = `{"${state.sessionId(A).hash}":{"host":"claude","at":${Date.now()}},` +
       `"${state.sessionId(B).hash}":{"host":"claude","at":${Date.now()},"extra":${extra}}}`
     assert.ok(Buffer.byteLength(before) < 65536)
     fs.writeFileSync(file, before)
-    assert.equal(run(root, A, ['release', '1']).code, 1)
+    const r = run(root, A, ['release', '1'])
+    assert.equal(r.code, 1)
+    assert.match(r.out, /could not safely release/)
+    assert.doesNotMatch(r.out, /another write holds/)
+    assert.equal(guards(root).at(-1), 'state-session-release-failed')
     assert.equal(fs.readFileSync(file, 'utf8'), before)
     assert.equal(fs.existsSync(lockFile(root)), false)
   }

@@ -360,6 +360,59 @@ test('release refuses a linked sessions store and preserves its target (#93)', t
   assert.equal(fs.readFileSync(target, 'utf8'), before)
 })
 
+test('release refuses a failed reread after a valid CLI precheck (#93)', t => {
+  const root = repo({ stage: 'build' })
+  run(root, A, ['note', '1'], 'a')
+  const file = sessionsFile(root)
+  const before = fs.readFileSync(file, 'utf8')
+  const ledger = fs.readFileSync(path.join(dir(root), 'ledger.json'), 'utf8')
+  const read = fs.readFileSync
+  let reads = 0
+  t.mock.method(fs, 'readFileSync', (p, ...args) => {
+    if (p === file && ++reads > 1) throw Object.assign(new Error('unreadable fixture'), { code: 'EACCES' })
+    return read(p, ...args)
+  })
+  assert.equal(run(root, A, ['release', '1']).code, 1)
+  t.mock.restoreAll()
+  assert.ok(reads >= 2)
+  assert.equal(fs.readFileSync(file, 'utf8'), before)
+  assert.equal(fs.readFileSync(path.join(dir(root), 'ledger.json'), 'utf8'), ledger)
+  assert.equal(fs.existsSync(lockFile(root)), false)
+})
+
+test('release does not rewrite survivors when the target disappears after precheck (#93)', t => {
+  const root = repo({ stage: 'build' })
+  run(root, A, ['note', '1'], 'a')
+  const file = sessionsFile(root)
+  const survivors = JSON.stringify({ [state.sessionId(B).hash]: { host: 'claude', at: Date.now() } })
+  const read = fs.readFileSync
+  let reads = 0
+  t.mock.method(fs, 'readFileSync', (p, ...args) => {
+    const text = read(p, ...args)
+    if (p === file && ++reads === 1) fs.writeFileSync(file, survivors)
+    return text
+  })
+  assert.equal(run(root, A, ['release', '1']).code, 0)
+  t.mock.restoreAll()
+  assert.ok(reads >= 2)
+  assert.equal(fs.readFileSync(file, 'utf8'), survivors)
+  assert.equal(fs.existsSync(lockFile(root)), false)
+})
+
+test('release refuses output that would become unreadable or lose non-finite metadata (#93)', () => {
+  for (const extra of [JSON.stringify(Array(9000).fill(0)), '1e999']) {
+    const root = repo({ stage: 'build' })
+    const file = sessionsFile(root)
+    const before = `{"${state.sessionId(A).hash}":{"host":"claude","at":${Date.now()}},` +
+      `"${state.sessionId(B).hash}":{"host":"claude","at":${Date.now()},"extra":${extra}}}`
+    assert.ok(Buffer.byteLength(before) < 65536)
+    fs.writeFileSync(file, before)
+    assert.equal(run(root, A, ['release', '1']).code, 1)
+    assert.equal(fs.readFileSync(file, 'utf8'), before)
+    assert.equal(fs.existsSync(lockFile(root)), false)
+  }
+})
+
 test('the session id is kept only as a hash, the Codex id wins, and no id means no record', () => {
   const root = repo({ stage: 'build' })
   run(root, { CODEX_THREAD_ID: 'cccc-3333', CLAUDE_CODE_SESSION_ID: 'aaaaaaaa-1111' }, ['note', '1'], 'a')

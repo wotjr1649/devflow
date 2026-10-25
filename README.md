@@ -64,6 +64,44 @@ with `--plugin-dir`, displayed as `devflow@inline`. See the [local development r
 for isolated profiles, startup, source and cache updates, and verification. This development path is not the
 release channel ([distribution contract](docs/specs/repository.md#배포)).
 
+## Verify a local checkout
+
+Use this path to check a clone before installing anything. It changes no host configuration.
+
+1. Check the tools. Node.js must be 22 or 24, and `gh` must be signed in:
+
+   ```bash
+   node --version
+   git --version
+   gh auth status
+   ```
+
+2. Clone this repository and run the repository checks from its root:
+
+   ```bash
+   git clone https://github.com/wotjr1649/devflow.git
+   cd devflow
+   node bin/devflow-doctor
+   node --test --test-timeout=120000 tests/*.test.js
+   ```
+
+   Doctor prints `ok`, and warnings still pass. The test run takes a couple of minutes and reports `fail 0`;
+   a few skipped tests are normal.
+
+3. Load this checkout in Claude Code for one session, from a throwaway project rather than your real profile's
+   project. Start a new session there, then open `/plugin` and confirm `devflow @ inline` is `Enabled`:
+
+   ```bash
+   claude --plugin-dir /path/to/devflow
+   ```
+
+   The resume card and Issue guard run only in a project with a `.devflow.json`; see the
+   [repository contract](docs/specs/repository.md) for that file.
+
+This confirms the checkout is sound and loads. It does not exercise hooks in a real session, Codex, or the release
+channel. For isolated test profiles, the Codex path and what to verify for each kind of change, follow the
+[local development runbook](docs/local-development.md).
+
 ## Prerequisites and limits
 
 - Node.js 22 or 24 (the CI matrix), Git and authenticated GitHub CLI (`gh`) must be available to hooks and commands.

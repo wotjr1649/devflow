@@ -1159,3 +1159,65 @@ test('R63: two names opening one file id are refused without echoing either unus
     }
   }
 })
+
+test('R64: an Issue folder whose number is past the safe integer range refuses a worktree create rather than reading another number', () => {
+  const p = project('main')
+  const wt = plain(p)
+  // Number('9007199254740993') is 9007199254740992: read by number, this folder's ledger would be missed.
+  const dir = path.join(p.main, '.work', 'devflow', 'i9007199254740993')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'ledger.json'), JSON.stringify(unattended('S')))
+  const e = env('없음', 'S')
+  const r = create(e, wt)
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+})
+
+test('R65: an Issue folder missing from an earlier listing but present when the entries are judged has its ledger read', () => {
+  const p = project('main')
+  const wt = plain(p)
+  ledger(p.main, 7, unattended('S'))
+  const base = path.resolve(p.main, '.work', 'devflow').toLowerCase()
+  const list = fs.readdirSync
+  let calls = 0
+  // The folder appears between two listings, as when a run creates its ledger meanwhile.
+  fs.readdirSync = (d, ...a) => (path.resolve(String(d)).toLowerCase() === base && calls++ === 0 ? [] : list(d, ...a))
+  const e = env('없음', 'S')
+  let r
+  try {
+    r = create(e, wt)
+  } finally {
+    fs.readdirSync = list
+  }
+  assert.ok(calls > 1, 'the folder is listed more than once')
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  assert.match(r.out, /Issue #7 runs unattended/)
+})
+
+test('R66: a sessions record that reads once and then fails refuses a worktree create rather than passing as empty', () => {
+  const p = project('main')
+  const wt = plain(p)
+  ledger(p.main, 7, unattended('T'))
+  put(p.main, 7, 'sessions.json', { [hashOf('S')]: { host: 'claude', at: Date.now() } })
+  const target = path.resolve(folder(p.main, 7), 'sessions.json').toLowerCase()
+  const readFile = fs.readFileSync
+  let reads = 0
+  fs.readFileSync = (f, ...a) => {
+    if (typeof f === 'string' && path.resolve(f).toLowerCase() === target && reads++ > 0) {
+      throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    }
+    return readFile(f, ...a)
+  }
+  const e = env('없음', 'S')
+  let r
+  try {
+    r = create(e, wt)
+  } finally {
+    fs.readFileSync = readFile
+  }
+  assert.equal(posts(e), 0, r.out)
+  assert.equal(r.code, 1)
+  ownerOnly(r.out)
+})

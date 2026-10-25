@@ -476,7 +476,7 @@ function readDelegates(root, n) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`Issue #${n}'s delegates.json is not an object`)
   return v
 }
-// The Issue numbers with a folder in the store; null when they cannot be listed (a link, an error other than none),
+// The Issue numbers with a folder in the store; null when they cannot be listed or read exactly,
 // which callers deciding a lock or a post treat as unknown, not as no Issue. Names match in any case: where the file
 // system ignores case, I14 is the folder i14's ledger is read from.
 function issueFolders(store) {
@@ -484,7 +484,8 @@ function issueFolders(store) {
   const base = path.join(work, 'devflow')
   if (isLinkOrOther(work) || isLinkOrOther(base)) return null
   try {
-    return [...new Set(fs.readdirSync(base).map(d => /^i([1-9]\d*)$/i.exec(d)).filter(Boolean).map(m => Number(m[1])))]
+    const issues = fs.readdirSync(base).map(d => /^i([1-9]\d*)$/i.exec(d)).filter(Boolean).map(m => Number(m[1]))
+    return issues.every(Number.isSafeInteger) ? [...new Set(issues)] : null
   } catch (e) {
     return e.code === 'ENOENT' || e.code === 'ENOTDIR' ? [] : null
   }

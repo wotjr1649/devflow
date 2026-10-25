@@ -1471,7 +1471,7 @@ function unattendedRun(ctx) {
     out: `refused: a new Issue is not posted from this worktree while ${why}; ask the session that owns it, or the user, ` +
       `to ${ask} before retrying` })
   const unknown = (what, entry) => busy(`${what}, so whether an unattended run is under way is unknown`, `check or repair ${entry}`)
-  if (!issueFolders(ctx.store)) return unknown('the Issue folders cannot be listed', '.work and .work/devflow')
+  if (!issueFolders(ctx.store)) return unknown('the Issue folders cannot be listed or read exactly', '.work and .work/devflow')
   // Each entry is judged by the name listed and none is followed: a link or file in place of a folder, or a case variant
   // not shown to be the folder devflow reads as i<n> (where names keep case), is unknown rather than skipped.
   const base = path.join(ctx.store, '.work', 'devflow')

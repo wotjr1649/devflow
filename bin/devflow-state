@@ -534,7 +534,13 @@ function releaseSessions(root, n, hashes, opts) {
   try {
     return withLock(root, n, () => {
       const s = readSessions(root, n, { strict: true })
+      if (!hashes.some(h => Object.hasOwn(s, h))) return
       for (const h of hashes) delete s[h]
+      const text = JSON.stringify(s, (_, v) => {
+        if (typeof v === 'number' && !Number.isFinite(v)) throw new Error('released sessions would lose a non-finite number')
+        return v
+      }, 2) + '\n'
+      if (Buffer.byteLength(text) > MAX_SESSIONS_BYTES) throw new Error('released sessions would exceed the read limit')
       writeJson(sessionsPath(root, n), s)
     }, opts).ok
   } catch {

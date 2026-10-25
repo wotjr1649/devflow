@@ -537,7 +537,7 @@ function releaseSessions(root, n, hashes, opts) {
       if (!hashes.some(h => Object.hasOwn(s, h))) return
       for (const h of hashes) delete s[h]
       const text = JSON.stringify(s, (_, v) => {
-        if (typeof v === 'number' && (!Number.isFinite(v) || (Number.isInteger(v) && !Number.isSafeInteger(v)))) throw new Error('released sessions would lose numeric metadata')
+        if (typeof v === 'number' && (!Number.isFinite(v) || Object.is(v, -0))) throw new Error('released sessions would lose numeric metadata')
         return v
       }, 2) + '\n'
       if (Buffer.byteLength(text) > MAX_SESSIONS_BYTES) throw new Error('released sessions would exceed the read limit')
@@ -2177,12 +2177,15 @@ function command(argv, stdin, env, cwd) {
       if (!ctx || !me) return { code: 1, out: 'refused: no devflow repository or no session id to release' }
       // A delegate shares its parent's session id, so its release would take the parent's entry out.
       if (taskWorktree(ctx)) return { code: 1, out: 'refused: a task worktree releases nothing; the main session does' }
-      // Only an entry this session holds goes; an Issue it never wrote to gets no folder, lock or file.
-      if (!readSessions(ctx.store, n)[me.hash]) return { code: 0, out: `this session holds nothing in Issue #${n}` }
-      return releaseSessions(ctx.store, n, [me.hash]) ? { code: 0, out: `released this session from Issue #${n}` } : guarded(ctx, {
+      const failed = () => guarded(ctx, {
         code: 1, out: `refused: could not safely release this session from Issue #${n}; inspect its ledger lock and sessions.json before retrying`,
         guard: 'state-session-release-failed',
       })
+      // Unknown is not absent; an Issue it never wrote to gets no folder, lock or file.
+      const held = issueDirOk(ctx.store, n) ? sessionsRecord(ctx.store, n) : null
+      if (!held) return failed()
+      if (!Object.hasOwn(held, me.hash)) return { code: 0, out: `this session holds nothing in Issue #${n}` }
+      return releaseSessions(ctx.store, n, [me.hash]) ? { code: 0, out: `released this session from Issue #${n}` } : failed()
     }
     case 'pending': {
       if (rest[0] === 'drop') {

@@ -24,6 +24,8 @@ Claude Code와 Codex가 `hooks/hooks.json` 한 정의와 `hooks/devflow-hook.js`
 `CODEX_THREAD_ID`가 없을 때만 환경 파일에 `DEVFLOW_SESSION_ID`를 쓴다. 이 전용 효과는 공통 계약을 충족하지 않는다.
 소비처는 CLI의 writer 기록·해제·위임 귀속이다([ledger](ledger.md#동시-세션)). 이 보호는 대체 전달의
 정상·오귀속·동시성·정리 검증 전에는 제거하지 않는다. 해소 작업과 검증 상태는 #73이 추적하며, 문서 채택만으로 해소되지 않는다.
+상속된 `CODEX_THREAD_ID`가 남아 있으면 CLI는 그 값을 우선하므로 안쪽 세션의 hook 입력과 귀속이 어긋날 수 있다.
+이는 코드의 조건부 위험이며, 실제 상속·오귀속 여부는 대상 호스트의 중첩 시나리오에서 따로 검증한다.
 
 ## 셸 가드
 

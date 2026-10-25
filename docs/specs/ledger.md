@@ -108,7 +108,7 @@ worktree의 Issue는 그 worktree 브랜치의 Issue뿐이다. Issue 브랜치�
 - 쓰기(Issue와 장부)는 세션을 `sessions.json`에 남긴다(id 해시와 시각). 다른 세션이 30분 안에 쓰고 해제하지 않았으면
   재개 카드와 쓰기 출력이 경고한다. 거부하지 않고, 읽기는 세지 않는다.
 - [현행 세션 id 전달](hooks.md#두-호스트의-공통-계약): CLI는 `CODEX_THREAD_ID` → `DEVFLOW_SESSION_ID` →
-  `CLAUDE_CODE_SESSION_ID` 중 첫 값을 쓴다. 중첩 host도 이 순서다. 서브에이전트는 부모 id이며, id가 없으면 기록·경고하지 않는다.
+  `CLAUDE_CODE_SESSION_ID` 중 비어 있지 않은 첫 값을 쓴다. 중첩 host도 이 순서다. 서브에이전트는 부모 id이며, id가 없으면 기록·경고하지 않는다.
 - 인계할 때는 검사·커밋·상태 기록과 위임 작업을 마친 뒤, 마지막 장부 동작으로 `release <n>`을 실행한다. `/clear`로
   작업 단위를 넘길 때도 이 순서를 따른다. 그다음 사용자에게 다음 행동을 보고하고 `/clear`를 맡긴다. 해제 뒤 다시 쓰면
   세션이 재등록되므로 추가 기록은 해제 전에 마친다. Codex의 직접 `/clear`는 이전 thread를 즉시 종료하지 않으며 이전

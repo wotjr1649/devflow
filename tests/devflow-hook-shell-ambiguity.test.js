@@ -16,6 +16,13 @@ const source = [
   "process.stdout.write(prompt.join('\\n'));",
   "'@ | node",
 ].join('\n')
+const assigned = [
+  "$ErrorActionPreference = 'Stop'",
+  "$prompt = @'",
+  "Read this project's Issue description and '$example' as data.",
+  "'@",
+  'Write-Output $prompt',
+].join('\n')
 const root = tmpdir('shell-ambiguity-')
 fs.writeFileSync(path.join(root, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
 const input = command => JSON.stringify({
@@ -41,6 +48,16 @@ test('ordinary dynamic commands and confirmed writes retain their diagnostics (#
   assert.equal(check(['gh', 'issue', 'close', '1']), 'gh issue write')
   assert.match(output('gh issue close 1').permissionDecisionReason, /Issue writes go through/)
   assert.equal(check("echo \"@'\"; $GH issue close 1"), 'command name built at run time with Issue words')
+})
+
+test('unresolved commands explain uncertainty without claiming an Issue write (#90)', () => {
+  for (const command of [assigned, assigned.replaceAll('\n', '\r\n'), '$GH issue close 1', ['$GH', 'api', '-X', 'POST']]) {
+    assert.equal(check(command), 'command name built at run time with Issue words')
+    const result = output(command)
+    assert.equal(result.permissionDecision, 'deny')
+    assert.match(result.permissionDecisionReason, /cannot establish command safety.*parsed command name is unresolved/i)
+    assert.doesNotMatch(result.permissionDecisionReason, /Issue writes go through|execution shell is not identified/i)
+  }
 })
 
 test('here-string presence cannot allow writes or execution outside its body (#69)', () => {
@@ -84,4 +101,21 @@ test('native hook process returns a deny, not an analyzer failure (#69)', () => 
   assert.equal(result.permissionDecision, 'deny')
   assert.match(result.permissionDecisionReason, /shell ambiguity.*execution shell/i)
   assert.doesNotMatch(result.permissionDecisionReason, /check failed|deadline was exceeded/)
+})
+
+test('native unresolved-command denial keeps its issue-write guard record (#90)', () => {
+  const cwd = tmpdir('unresolved-guard-')
+  fs.writeFileSync(path.join(cwd, '.devflow.json'), '{}')
+  const git = spawnSync('git', ['init', '-q', '--initial-branch=fix/90-fixture', cwd], { encoding: 'utf8', windowsHide: true })
+  assert.equal(git.status, 0, git.stderr)
+  const run = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
+    input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: assigned }, cwd }),
+    encoding: 'utf8', timeout: 15000, windowsHide: true,
+  })
+  assert.equal(run.status, 0, run.stderr)
+  const result = JSON.parse(run.stdout).hookSpecificOutput
+  assert.equal(result.permissionDecision, 'deny')
+  assert.match(result.permissionDecisionReason, /cannot establish command safety.*parsed command name is unresolved/i)
+  const records = fs.readFileSync(path.join(cwd, '.work/devflow/i90/guard-events.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+  assert.deepEqual(records.map(r => r.guard), ['issue-write'])
 })

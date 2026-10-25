@@ -66,7 +66,9 @@ release channel ([distribution contract](docs/specs/repository.md#배포)).
 
 ## Verify a local checkout
 
-Use this path to check a clone before installing anything. It changes no host configuration.
+Use this path to check a clone before installing anything. Steps 1 and 2 only read the repository and run its
+checks. Step 3 runs against a scratch Claude Code profile, so it leaves your default profile, plugins and trust
+choices alone.
 
 1. Check the tools. Node.js must be 22 or 24, and `gh` must be signed in:
 
@@ -88,19 +90,22 @@ Use this path to check a clone before installing anything. It changes no host co
    Doctor prints `ok`, and warnings still pass. The test run takes a couple of minutes and reports `fail 0`;
    a few skipped tests are normal.
 
-3. Load this checkout in Claude Code for one session, from a throwaway project rather than your real profile's
-   project. Start a new session there, then open `/plugin` and confirm `devflow @ inline` is `Enabled`:
+3. Confirm Claude Code loads this checkout. `CLAUDE_CONFIG_DIR` points the command at an empty scratch profile,
+   so nothing is written to your default one:
 
    ```bash
-   claude --plugin-dir /path/to/devflow
+   scratch=$(mktemp -d)
+   CLAUDE_CONFIG_DIR="$scratch" claude --plugin-dir "$PWD" plugin list
+   rm -rf "$scratch"
    ```
 
-   The resume card and Issue guard run only in a project with a `.devflow.json`; see the
-   [repository contract](docs/specs/repository.md) for that file.
+   `devflow@inline` should show your checkout as its path and `loaded` as its status.
 
-This confirms the checkout is sound and loads. It does not exercise hooks in a real session, Codex, or the release
-channel. For isolated test profiles, the Codex path and what to verify for each kind of change, follow the
-[local development runbook](docs/local-development.md).
+This confirms the checkout is sound and loads. It does not open a session, exercise hooks, or cover Codex and the
+release channel. Opening a session with a dedicated profile, logging in, trusting hooks and installing are owner
+decisions; the [local development runbook](docs/local-development.md) covers them, including isolated test
+profiles and what to verify for each kind of change. The resume card and Issue guard run only in a project with a
+`.devflow.json`; see the [repository contract](docs/specs/repository.md).
 
 ## Prerequisites and limits
 

@@ -106,7 +106,7 @@ test('native hook process returns a deny, not an analyzer failure (#69)', () => 
 test('native unresolved-command denial keeps its issue-write guard record (#90)', () => {
   const cwd = tmpdir('unresolved-guard-')
   fs.writeFileSync(path.join(cwd, '.devflow.json'), '{}')
-  const git = spawnSync('git', ['init', '-q', '--initial-branch=fix/90-fixture', cwd], { encoding: 'utf8', windowsHide: true })
+  const git = spawnSync('git', ['-c', 'init.defaultRefFormat=files', 'init', '-q', '--initial-branch=fix/90-fixture', cwd], { encoding: 'utf8', windowsHide: true })
   assert.equal(git.status, 0, git.stderr)
   const run = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
     input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: assigned }, cwd }),

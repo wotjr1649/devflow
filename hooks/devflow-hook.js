@@ -1132,9 +1132,6 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       if (kind === SHELL_AMBIGUITY) {
         return blocked(root, 'issue-write', `devflow: cannot establish command safety. Blocked: ${kind}. The other shell readings must remain checked.`)
       }
-      if (kind === 'command name built at run time with Issue words') {
-        return blocked(root, 'issue-write', `devflow: cannot establish command safety: the parsed command name is unresolved and Issue/API tokens are present. Blocked: ${kind}.`)
-      }
       return blocked(root, 'issue-write', `devflow: Issue writes go through devflow-state (${[...state.WRITE_OPS].join(', ')}), which filters ` +
         `paths, secrets and length before posting. Blocked: ${kind}.`)
     } catch (e) {

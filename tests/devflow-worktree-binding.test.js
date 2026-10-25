@@ -1174,6 +1174,70 @@ test('R64: an Issue folder whose number is past the safe integer range refuses a
   ownerOnly(r.out)
 })
 
+// Issue #73: a lossy folder number must leave delegation identity unknown, rather than erase a second record.
+for (const n of ['9007199254740993', '9007199254740992', '9'.repeat(200)]) {
+  const label = n.length > 20 ? 'long decimal' : n
+  test(`number identity: ${label} leaves a real-Git agent unconfirmed`, () => {
+    const p = project('main')
+    const child = agent(p)
+    delegate(p.main, 7, 'S')
+    delegate(p.main, n, 'S', 'other')
+    const before = snapshot(p.main, n)
+    assert.equal(state.repoContext(env('main', 'S'), child).bind, 'unconfirmed')
+    const out = editTest(child, { session: 'S' })
+    assert.equal(decision(out), 'deny')
+    assert.match(reason(out), /no confirmed delegation/)
+    assert.doesNotMatch(reason(out), new RegExp(n))
+    assert.deepEqual(snapshot(p.main, n), before)
+  })
+
+  test(`number identity: ${label} refuses running add without changing records`, () => {
+    const p = project('main')
+    const own = plain(p, 'feat/7-x')
+    ledger(p.main, 7, { stage: 'build' })
+    delegate(p.main, n, 'S', 'other')
+    const before = [snapshot(p.main, 7), snapshot(p.main, n)]
+    const r = run(env('feat/7-x', 'S'), own, ['running', '7', 'add', 'new', '--worktree'])
+    assert.equal(r.code, 1)
+    assert.match(r.out, /whether this session delegates elsewhere is unknown/)
+    assert.doesNotMatch(r.out, new RegExp(n))
+    assert.deepEqual([snapshot(p.main, 7), snapshot(p.main, n)], before)
+  })
+}
+
+test('number identity: a decimal listed as Infinity remains unknown for binding and running add', () => {
+  const p = project('main')
+  const child = agent(p)
+  const own = plain(p, 'feat/7-x')
+  delegate(p.main, 7, 'S')
+  // No file system can store this component; the real-Git consumers still see the parser's Infinity boundary.
+  const n = '9'.repeat(400)
+  listing(p, ['i7', `i${n}`], () => {
+    assert.equal(state.repoContext(env('main', 'S'), child).bind, 'unconfirmed')
+    const r = run(env('feat/7-x', 'S'), own, ['running', '7', 'add', 'new', '--worktree'])
+    assert.equal(r.code, 1)
+    assert.match(r.out, /whether this session delegates elsewhere is unknown/)
+    assert.doesNotMatch(r.out, new RegExp(n))
+  })
+})
+
+test('number identity: safe maximum and missing delegation files keep normal binding and release behavior', () => {
+  const p = project('main')
+  const child = agent(p)
+  const own = plain(p, 'feat/9007199254740991-x')
+  ledger(p.main, 7, { stage: 'build' }) // Missing delegates.json is normal, even with another Issue's record.
+  ledger(p.main, '9007199254740991', { stage: 'build' })
+  const e = env('feat/9007199254740991-x', 'S')
+  assert.equal(run(e, own, ['running', '9007199254740991', 'add', 'max', '--worktree']).code, 0)
+  assert.equal(state.repoContext(env('main', 'S'), child).issue, Number.MAX_SAFE_INTEGER)
+  assert.equal(decision(editTest(child, { session: 'S' })), 'allow')
+  delegate(p.main, '9007199254740993', 'S', 'other')
+  assert.equal(run(e, own, ['running', '9007199254740991', 'add', 'ordinary']).code, 0)
+  assert.equal(run(e, own, ['running', '9007199254740991', 'done', 'max']).code, 0)
+  assert.deepEqual(JSON.parse(read(p.main, '9007199254740991', 'delegates.json')), {})
+  assert.deepEqual(JSON.parse(read(p.main, '9007199254740991', 'ledger.json')).running, ['ordinary'])
+})
+
 test('R65: an Issue folder missing from an earlier listing but present when the entries are judged has its ledger read', () => {
   const p = project('main')
   const wt = plain(p)

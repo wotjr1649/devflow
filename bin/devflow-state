@@ -446,15 +446,17 @@ const sessionsPath = (root, n) => path.join(root, '.work', 'devflow', `i${n}`, '
 // The file comes from the working tree, which a cloned repository controls: only small plain files in real folders,
 // and only entries shaped as devflow writes them reach a warning.
 const MAX_SESSIONS_BYTES = 65536
-function readSessions(root, n) {
+function readSessions(root, n, { strict = false } = {}) {
   try {
-    if (!issueDirOk(root, n)) return {}
+    if (!issueDirOk(root, n)) throw new Error(`Issue #${n}'s folder is a link`)
     const p = sessionsPath(root, n)
     const st = fs.lstatSync(p)
-    if (!st.isFile() || st.size > MAX_SESSIONS_BYTES) return {}
+    if (!st.isFile() || st.size > MAX_SESSIONS_BYTES) throw new Error(`Issue #${n}'s sessions.json is not a small plain file`)
     const s = JSON.parse(fs.readFileSync(p, 'utf8'))
-    return s && typeof s === 'object' && !Array.isArray(s) ? s : {}
-  } catch {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) throw new Error(`Issue #${n}'s sessions.json is not an object`)
+    return s
+  } catch (e) {
+    if (strict) throw e
     return {}
   }
 }
@@ -527,12 +529,11 @@ function recordWrite(root, n, vars) {
   } catch {}
 }
 
-// Removes the given session hashes from the Issue's activity; true when the lock was taken.
+// Removes only the given session hashes; a failed read must not turn other sessions into an empty store.
 function releaseSessions(root, n, hashes, opts) {
   try {
     return withLock(root, n, () => {
-      const now = Date.now()
-      const s = recent(readSessions(root, n), now)
+      const s = readSessions(root, n, { strict: true })
       for (const h of hashes) delete s[h]
       writeJson(sessionsPath(root, n), s)
     }, opts).ok

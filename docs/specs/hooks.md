@@ -1,11 +1,12 @@
 # 공통 hook과 셸 가드 계약
 
-프로필 읽기, 분석 시간 제한, 셸 쓰기 대상 판정과 한계를 정한다. 프로필 형식과 시험 잠금은
+두 호스트의 공통 hook 요구와 프로필 읽기, 분석 시간 제한, 셸 쓰기 대상 판정·한계를 정한다. 프로필 형식과 시험 잠금은
 [repository](repository.md#devflowjson), Issue 쓰기는 [issues](issues.md)가 정한다.
 
 ## 두 호스트의 공통 계약
 
-Claude Code와 Codex는 `hooks/hooks.json` 한 정의와 `hooks/devflow-hook.js` 한 진입점·정책을 함께 쓴다.
+아래는 제품이 충족해야 하는 계약이며, 현행 세션 전달은 아직 미충족이다.
+Claude Code와 Codex가 `hooks/hooks.json` 한 정의와 `hooks/devflow-hook.js` 한 진입점·정책을 함께 쓰도록 한다.
 호스트 전용 이벤트 등록, 허용·거부·계속·해제 정책, 파일·설정·환경 쓰기를 두지 않는다. 같은 의미의 입력을 공통 검사로
 정규화하는 것은 허용하지만, 전용 효과를 다른 파일로 옮기는 것은 공통화가 아니다. 호스트별 packaging metadata는 별개다.
 
@@ -19,8 +20,9 @@ Claude Code와 Codex는 `hooks/hooks.json` 한 정의와 `hooks/devflow-hook.js`
   허용·거부·파일 불변, 귀속·해제, workflow와 인도는 별도로 판정한다. 단일 파일 공유나 설치 목록은 실행 효과의 증거가 아니다.
   미발화·오류 뒤 금지한 효과가 실행되면 실패로 남기고, 미지원·미실행·로딩 불일치와 구분한다.
 
-현행 편차: SessionStart의 `shareSessionId()`는 `CLAUDE_ENV_FILE`에 `DEVFLOW_SESSION_ID`를 쓰므로 위 공통 효과 계약을
-충족하지 않는다. 소비처는 CLI의 writer 기록·해제·위임 귀속이다([ledger](ledger.md#동시-세션)). 이 보호는 대체 전달의
+확인된 편차: SessionStart의 `shareSessionId()`는 devflow 저장소에서 안전한 id를 받고 `CLAUDE_ENV_FILE`이 있으며
+`CODEX_THREAD_ID`가 없을 때만 환경 파일에 `DEVFLOW_SESSION_ID`를 쓴다. 이 전용 효과는 공통 계약을 충족하지 않는다.
+소비처는 CLI의 writer 기록·해제·위임 귀속이다([ledger](ledger.md#동시-세션)). 이 보호는 대체 전달의
 정상·오귀속·동시성·정리 검증 전에는 제거하지 않는다. 해소 작업과 검증 상태는 #73이 추적하며, 문서 채택만으로 해소되지 않는다.
 
 ## 셸 가드

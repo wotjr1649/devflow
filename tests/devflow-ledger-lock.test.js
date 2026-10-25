@@ -303,6 +303,63 @@ test('release takes the session out of the warnings', () => {
   assert.doesNotMatch(run(root, B, ['note', '1'], 'c').out, WARN)
 })
 
+test('release preserves every non-target entry, including expired activity and metadata (#93)', () => {
+  const root = repo({ stage: 'build' })
+  run(root, A, ['note', '1'], 'a')
+  const mine = JSON.parse(fs.readFileSync(sessionsFile(root), 'utf8'))
+  const others = {
+    [state.sessionId(B).hash]: { host: 'claude', at: Date.now(), extra: { keep: true } },
+    [state.hashId('expired-peer')]: { host: 'codex', at: Date.now() - 31 * 60000, extra: 'keep' },
+    unknown: null,
+  }
+  fs.writeFileSync(sessionsFile(root), JSON.stringify({ ...mine, ...others }))
+  assert.equal(run(root, A, ['release', '1']).code, 0)
+  assert.deepEqual(JSON.parse(fs.readFileSync(sessionsFile(root), 'utf8')), others)
+})
+
+test('release refuses unknown or invalid stores without overwriting them (#93)', () => {
+  for (const before of [null, '{', 'null', '[]', '1', JSON.stringify({ large: 'x'.repeat(65536) })]) {
+    const root = repo({ stage: 'build' })
+    const file = sessionsFile(root)
+    if (before !== null) fs.writeFileSync(file, before)
+    assert.equal(state.releaseSessions(root, 1, [state.sessionId(A).hash]), false)
+    if (before === null) assert.equal(fs.existsSync(file), false)
+    else assert.equal(fs.readFileSync(file, 'utf8'), before)
+    assert.equal(fs.existsSync(lockFile(root)), false)
+  }
+})
+
+test('release refuses an unreadable store without overwriting it (#93)', t => {
+  const root = repo({ stage: 'build' })
+  const file = sessionsFile(root)
+  const before = JSON.stringify({ [state.sessionId(A).hash]: { host: 'claude', at: Date.now() } })
+  fs.writeFileSync(file, before)
+  const read = fs.readFileSync
+  t.mock.method(fs, 'readFileSync', (p, ...args) => {
+    if (p === file) throw Object.assign(new Error('unreadable fixture'), { code: 'EACCES' })
+    return read(p, ...args)
+  })
+  assert.equal(state.releaseSessions(root, 1, [state.sessionId(A).hash]), false)
+  t.mock.restoreAll()
+  assert.equal(fs.readFileSync(file, 'utf8'), before)
+  assert.equal(fs.existsSync(lockFile(root)), false)
+})
+
+test('release refuses a linked sessions store and preserves its target (#93)', t => {
+  const root = repo({ stage: 'build' })
+  const file = sessionsFile(root)
+  const target = path.join(root, 'other-sessions.json')
+  const before = JSON.stringify({ [state.sessionId(A).hash]: { host: 'claude', at: Date.now() } })
+  fs.writeFileSync(target, before)
+  try { fs.symlinkSync(target, file, 'file') } catch (e) {
+    if (process.platform === 'win32' && e.code === 'EPERM') return t.skip('file symlinks require Windows privilege')
+    throw e
+  }
+  assert.equal(state.releaseSessions(root, 1, [state.sessionId(A).hash]), false)
+  assert.equal(fs.lstatSync(file).isSymbolicLink(), true)
+  assert.equal(fs.readFileSync(target, 'utf8'), before)
+})
+
 test('the session id is kept only as a hash, the Codex id wins, and no id means no record', () => {
   const root = repo({ stage: 'build' })
   run(root, { CODEX_THREAD_ID: 'cccc-3333', CLAUDE_CODE_SESSION_ID: 'aaaaaaaa-1111' }, ['note', '1'], 'a')

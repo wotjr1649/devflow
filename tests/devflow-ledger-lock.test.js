@@ -325,6 +325,8 @@ test('release refuses unknown or invalid stores without overwriting them (#93)',
     assert.equal(state.releaseSessions(root, 1, [state.sessionId(A).hash]), false)
     if (before === null) assert.equal(fs.existsSync(file), false)
     else assert.equal(fs.readFileSync(file, 'utf8'), before)
+    assert.equal(run(root, A, ['release', '1']).code, before === null ? 0 : 1)
+    if (before !== null) assert.equal(fs.readFileSync(file, 'utf8'), before)
     assert.equal(fs.existsSync(lockFile(root)), false)
   }
 })
@@ -340,6 +342,7 @@ test('release refuses an unreadable store without overwriting it (#93)', t => {
     return read(p, ...args)
   })
   assert.equal(state.releaseSessions(root, 1, [state.sessionId(A).hash]), false)
+  assert.equal(run(root, A, ['release', '1']).code, 1)
   t.mock.restoreAll()
   assert.equal(fs.readFileSync(file, 'utf8'), before)
   assert.equal(fs.existsSync(lockFile(root)), false)
@@ -356,6 +359,7 @@ test('release refuses a linked sessions store and preserves its target (#93)', t
     throw e
   }
   assert.equal(state.releaseSessions(root, 1, [state.sessionId(A).hash]), false)
+  assert.equal(run(root, A, ['release', '1']).code, 1)
   assert.equal(fs.lstatSync(file).isSymbolicLink(), true)
   assert.equal(fs.readFileSync(target, 'utf8'), before)
 })
@@ -400,7 +404,7 @@ test('release does not rewrite survivors when the target disappears after preche
 })
 
 test('release refuses destructive output without claiming a lock collision (#93)', () => {
-  for (const extra of ['9007199254740993', JSON.stringify(Array(9000).fill(0)), '1e999']) {
+  for (const extra of ['-0', JSON.stringify(Array(9000).fill(0)), '1e999']) {
     const root = repo({ stage: 'build' })
     const file = sessionsFile(root)
     const before = `{"${state.sessionId(A).hash}":{"host":"claude","at":${Date.now()}},` +
@@ -414,6 +418,21 @@ test('release refuses destructive output without claiming a lock collision (#93)
     assert.equal(guards(root).at(-1), 'state-session-release-failed')
     assert.equal(fs.readFileSync(file, 'utf8'), before)
     assert.equal(fs.existsSync(lockFile(root)), false)
+  }
+})
+
+test('release preserves parsed metadata values without imposing a raw-number format (#93)', () => {
+  for (const extra of ['9007199254740993', '9007199254740992', '1e21', '1.00000000000000001']) {
+    const root = repo({ stage: 'build' })
+    const file = sessionsFile(root)
+    const mine = state.sessionId(A).hash
+    const before = `{"${mine}":{"host":"claude","at":${Date.now()}},` +
+      `"${state.sessionId(B).hash}":{"host":"claude","at":${Date.now()},"extra":${extra}}}`
+    const expected = JSON.parse(before)
+    delete expected[mine]
+    fs.writeFileSync(file, before)
+    assert.equal(run(root, A, ['release', '1']).code, 0)
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), expected)
   }
 })
 

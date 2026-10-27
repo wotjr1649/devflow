@@ -446,15 +446,17 @@ const sessionsPath = (root, n) => path.join(root, '.work', 'devflow', `i${n}`, '
 // The file comes from the working tree, which a cloned repository controls: only small plain files in real folders,
 // and only entries shaped as devflow writes them reach a warning.
 const MAX_SESSIONS_BYTES = 65536
-function readSessions(root, n) {
+function readSessions(root, n, { strict = false } = {}) {
   try {
-    if (!issueDirOk(root, n)) return {}
+    if (!issueDirOk(root, n)) throw new Error(`Issue #${n}'s folder is a link`)
     const p = sessionsPath(root, n)
     const st = fs.lstatSync(p)
-    if (!st.isFile() || st.size > MAX_SESSIONS_BYTES) return {}
+    if (!st.isFile() || st.size > MAX_SESSIONS_BYTES) throw new Error(`Issue #${n}'s sessions.json is not a small plain file`)
     const s = JSON.parse(fs.readFileSync(p, 'utf8'))
-    return s && typeof s === 'object' && !Array.isArray(s) ? s : {}
-  } catch {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) throw new Error(`Issue #${n}'s sessions.json is not an object`)
+    return s
+  } catch (e) {
+    if (strict) throw e
     return {}
   }
 }
@@ -527,13 +529,18 @@ function recordWrite(root, n, vars) {
   } catch {}
 }
 
-// Removes the given session hashes from the Issue's activity; true when the lock was taken.
+// Removes only the given session hashes; a failed read must not turn other sessions into an empty store.
 function releaseSessions(root, n, hashes, opts) {
   try {
     return withLock(root, n, () => {
-      const now = Date.now()
-      const s = recent(readSessions(root, n), now)
+      const s = readSessions(root, n, { strict: true })
+      if (!hashes.some(h => Object.hasOwn(s, h))) return
       for (const h of hashes) delete s[h]
+      const text = JSON.stringify(s, (_, v) => {
+        if (typeof v === 'number' && (!Number.isFinite(v) || Object.is(v, -0))) throw new Error('released sessions would lose numeric metadata')
+        return v
+      }, 2) + '\n'
+      if (Buffer.byteLength(text) > MAX_SESSIONS_BYTES) throw new Error('released sessions would exceed the read limit')
       writeJson(sessionsPath(root, n), s)
     }, opts).ok
   } catch {
@@ -2170,9 +2177,15 @@ function command(argv, stdin, env, cwd) {
       if (!ctx || !me) return { code: 1, out: 'refused: no devflow repository or no session id to release' }
       // A delegate shares its parent's session id, so its release would take the parent's entry out.
       if (taskWorktree(ctx)) return { code: 1, out: 'refused: a task worktree releases nothing; the main session does' }
-      // Only an entry this session holds goes; an Issue it never wrote to gets no folder, lock or file.
-      if (!readSessions(ctx.store, n)[me.hash]) return { code: 0, out: `this session holds nothing in Issue #${n}` }
-      return releaseSessions(ctx.store, n, [me.hash]) ? { code: 0, out: `released this session from Issue #${n}` } : guarded(ctx, LOCKED(n))
+      const failed = () => guarded(ctx, {
+        code: 1, out: `refused: could not safely release this session from Issue #${n}; inspect its ledger lock and sessions.json before retrying`,
+        guard: 'state-session-release-failed',
+      })
+      // Unknown is not absent; an Issue it never wrote to gets no folder, lock or file.
+      const held = issueDirOk(ctx.store, n) ? sessionsRecord(ctx.store, n) : null
+      if (!held) return failed()
+      if (!Object.hasOwn(held, me.hash)) return { code: 0, out: `this session holds nothing in Issue #${n}` }
+      return releaseSessions(ctx.store, n, [me.hash]) ? { code: 0, out: `released this session from Issue #${n}` } : failed()
     }
     case 'pending': {
       if (rest[0] === 'drop') {

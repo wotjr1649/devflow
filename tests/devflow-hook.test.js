@@ -1153,12 +1153,15 @@ test('SessionEnd resolves a linked worktree without a git process and preserves 
   const folder = path.join(root, '.work', 'devflow', 'i47')
   fs.mkdirSync(folder, { recursive: true })
   const file = path.join(folder, 'sessions.json')
-  const other = { host: 'claude', at: Date.now() }
-  fs.writeFileSync(file, JSON.stringify({ [hashOf(SID)]: { host: 'codex', at: Date.now() }, [hashOf('other')]: other }))
+  const others = {
+    [hashOf('other')]: { host: 'claude', at: Date.now(), extra: 'keep' },
+    [hashOf('expired-other')]: { host: 'codex', at: Date.now() - 31 * 60000, extra: { keep: true } },
+  }
+  fs.writeFileSync(file, JSON.stringify({ [hashOf(SID)]: { host: 'codex', at: Date.now() }, ...others }))
   let calls = 0
   const unavailable = { run: () => { calls++; return { code: 'ETIMEDOUT', stdout: '', stderr: '' } } }
   hook.handle(event('SessionEnd', wt, { session_id: SID }), unavailable)
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { [hashOf('other')]: other })
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), others)
   assert.equal(calls, 0, 'session cleanup does not depend on starting git before a deadline')
   assert.equal(fs.existsSync(path.join(wt, '.work')), false)
 })

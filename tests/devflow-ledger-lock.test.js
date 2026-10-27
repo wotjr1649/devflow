@@ -463,6 +463,34 @@ test('the resume card warns about another active session and not about its own',
   assert.doesNotMatch(state.card(env(root, { vars: {} }), '.'), WARN, 'a card that knows no own id warns about nothing')
 })
 
+test('the hook resume card keeps an inherited outer writer visible', () => {
+  const root = repo({ stage: 'build' })
+  const outer = { CODEX_THREAD_ID: 'cccc-3333' }
+  run(root, outer, ['note', '1'], 'outer')
+  run(root, A, ['note', '1'], 'inner')
+  const before = fs.readFileSync(sessionsFile(root), 'utf8')
+  const card = state.card(env(root, { vars: { ...outer, ...A } }), '.', { sessionId: A.CLAUDE_CODE_SESSION_ID })
+  assert.match(card, /Warning: another codex session/, 'the hook session must not also claim its inherited outer identity')
+  assert.doesNotMatch(card, WARN, 'the current hook session is still its own')
+  assert.equal(fs.readFileSync(sessionsFile(root), 'utf8'), before, 'rendering the card preserves both writers')
+})
+
+test('the resume card reports an unavailable hook identity without assuming the environment identity', () => {
+  const root = repo({ stage: 'build' })
+  run(root, A, ['note', '1'], 'active')
+  const before = fs.readFileSync(sessionsFile(root), 'utf8')
+  for (const sessionId of [null, '']) {
+    const e = env(root, { vars: { CODEX_THREAD_ID: 'outer' } })
+    const card = state.card(e, '.', { sessionId })
+    assert.match(card, /session identity unavailable; other sessions not checked/)
+    assert.doesNotMatch(card, /Warning: another/, 'an unknown hook identity must not fall back to the inherited identity')
+    const run0 = e.run
+    e.run = (cmd, args, opts) => { if (cmd === 'gh') throw new Error('unavailable'); return run0(cmd, args, opts) }
+    assert.match(state.card(e, '.', { sessionId }), /Warnings not checked: other sessions/)
+  }
+  assert.equal(fs.readFileSync(sessionsFile(root), 'utf8'), before)
+})
+
 // Review fixes (2026-10-03): a posted item that cannot be removed stops the flush; a linked folder no longer blocks
 // interactive writes; odd locks and claims; validated and capped session warnings; subagents share the session.
 test('a post whose removal cannot take the lock stops the flush and says so', () => {

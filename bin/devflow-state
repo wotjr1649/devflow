@@ -639,7 +639,7 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
   if (ctx.bind === 'unconfirmed') return stop('Task worktree with no confirmed delegation: it counts as locked and writes nothing; the ' +
     'main session records it with devflow-state running <n> add <label> --worktree before launching')
   if (!ctx.issue) return stop('Branch name has no Issue number (<type>/<issue>-<slug>)')
-  const own = [hookSession && hashId(hookSession), (sessionId(env.vars) || {}).hash].filter(Boolean)
+  const own = ctx.session ? [ctx.session] : []
   if (own.length) seen.sessions.push(...sessionWarnings(ctx.store, ctx.issue, own))
   seen.checked.add('other sessions')
   const got = fetchIssue(ctx, ctx.issue, { include: true })

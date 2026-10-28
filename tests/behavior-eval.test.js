@@ -37,6 +37,8 @@ test('every fixture file is tracked with the bytes on disk, even where the fixtu
   const blobs = spawnSync('git', ['hash-object', '--stdin-paths'], { cwd: ROOT, encoding: 'utf8', input: disk.join('\n') + '\n' })
   assert.equal(blobs.status, 0)
   blobs.stdout.trim().split('\n').forEach((blob, i) => assert.equal(index.get(disk[i]), blob, 'not tracked as on disk: ' + disk[i]))
+  // And the other way: nothing tracked is missing from disk (a case without an input list has no other check).
+  assert.deepEqual([...index.keys()].sort(), [...disk].sort())
 })
 
 test('the count counter-condition differs from its source case only by the request line', () => {
@@ -73,47 +75,52 @@ test('the Claude call always carries the run, budget, publication and ablation f
   assert.equal(args[args.indexOf('--max-cost-usd') + 1], '1.23')
 })
 
-const use = (name, input, id) => JSON.stringify({ message: { content: [{ type: 'tool_use', id, name, input }] } })
-const ok = (id, error) => JSON.stringify({ message: { content: [{ type: 'tool_result', tool_use_id: id, ...(error ? { is_error: true } : {}), content: 'x' }] } })
 
-test('Claude attribution needs successful full reads of the skill and every listed input, and nothing outside the run folder', () => {
+const use = (name, input, id) => JSON.stringify({ message: { content: [{ type: 'tool_use', id, name, input }] } })
+const res = (id, content, error) => JSON.stringify({ message: { content: [{ type: 'tool_result', tool_use_id: id, ...(error ? { is_error: true } : {}), content }] } })
+const numbered = body => body.split('\n').map((l, i) => String(i + 1).padStart(6) + '\t' + l).join('\n')
+
+test('Claude attribution needs successful whole-file reads of the skill and every listed input, and nothing outside the run folder', () => {
   const cwd = C + '/tmp/claude-eval-x/home/cwd'
-  const skill = [use('Read', { file_path: cwd + '/' + SKILL }, '1'), ok('1')]
-  assert.equal(claudeAttribution(skill.join('\n'), cwd).ok, true)
-  assert.equal(claudeAttribution([use('Read', { file_path: SKILL }, '1'), ok('1')].join('\n'), cwd).ok, true)
-  assert.match(claudeAttribution(use('Read', { file_path: cwd + '/' + SKILL }, '1'), cwd).reason, /no full read/)
-  assert.match(claudeAttribution([use('Read', { file_path: cwd + '/' + SKILL }, '1'), ok('1', true)].join('\n'), cwd).reason, /no full read/)
-  assert.match(claudeAttribution([use('Read', { file_path: cwd + '/' + SKILL, offset: 1, limit: 5 }, '1'), ok('1')].join('\n'), cwd).reason, /no full read/)
-  assert.match(claudeAttribution([...skill, use('Read', { file_path: cwd + '/../../../other/SKILL.md' }, '2'), ok('2')].join('\n'), cwd).reason, /outside/)
-  assert.match(claudeAttribution([...skill, use('Glob', { pattern: C + '/elsewhere/**/*.md' }, '3')].join('\n'), cwd).reason, /outside/)
-  assert.match(claudeAttribution([...skill, use('Glob', { pattern: '**/*', path: C + '/elsewhere/.claude' }, '3')].join('\n'), cwd).reason, /outside/)
-  assert.match(claudeAttribution([...skill, use('Bash', { command: 'ls' }, '4')].join('\n'), cwd).reason, /unexpected tool/)
-  assert.match(claudeAttribution(skill.join('\n'), cwd, ['POLICY.md']).reason, /not all read/)
-  assert.equal(claudeAttribution([...skill, use('Read', { file_path: 'project/POLICY.md' }, '5'), ok('5')].join('\n'), cwd, ['POLICY.md']).ok, true)
-  assert.match(claudeAttribution('{broken', cwd).reason, /unreadable/)
+  const contents = { [SKILL]: '# PR workflow\nbody line\n', 'project/POLICY.md': 'policy text\n' }
+  const skill = [use('Read', { file_path: cwd + '/' + SKILL }, '1'), res('1', numbered(contents[SKILL]))]
+  assert.equal(claudeAttribution(skill.join('\n'), cwd, contents).ok, true)
+  assert.equal(claudeAttribution([use('Read', { file_path: SKILL }, '1'), res('1', [{ type: 'text', text: numbered(contents[SKILL]) }])].join('\n'), cwd, contents).ok, true)
+  assert.match(claudeAttribution(use('Read', { file_path: cwd + '/' + SKILL }, '1'), cwd, contents).reason, /no full read/)
+  assert.match(claudeAttribution([use('Read', { file_path: cwd + '/' + SKILL }, '1'), res('1', 'x')].join('\n'), cwd, contents).reason, /no full read/)
+  assert.match(claudeAttribution([use('Read', { file_path: cwd + '/' + SKILL }, '1'), res('1', numbered(contents[SKILL]), true)].join('\n'), cwd, contents).reason, /no full read/)
+  assert.match(claudeAttribution([use('Read', { file_path: cwd + '/' + SKILL, offset: 1, limit: 5 }, '1'), res('1', numbered(contents[SKILL]))].join('\n'), cwd, contents).reason, /no full read/)
+  assert.match(claudeAttribution([...skill, use('Read', { file_path: cwd + '/../../../other/SKILL.md' }, '2'), res('2', 'x')].join('\n'), cwd, contents).reason, /outside/)
+  assert.match(claudeAttribution([...skill, use('Glob', { pattern: C + '/elsewhere/**/*.md' }, '3')].join('\n'), cwd, contents).reason, /outside/)
+  assert.match(claudeAttribution([...skill, use('Glob', { pattern: '**/*', path: C + '/elsewhere/.claude' }, '3')].join('\n'), cwd, contents).reason, /outside/)
+  assert.match(claudeAttribution([...skill, use('Bash', { command: 'ls' }, '4')].join('\n'), cwd, contents).reason, /unexpected tool/)
+  assert.match(claudeAttribution(skill.join('\n'), cwd, contents, ['POLICY.md']).reason, /not all read/)
+  assert.equal(claudeAttribution([...skill, use('Read', { file_path: 'project/POLICY.md' }, '5'), res('5', numbered(contents['project/POLICY.md']))].join('\n'), cwd, contents, ['POLICY.md']).ok, true)
+  assert.match(claudeAttribution('{broken', cwd, contents).reason, /unreadable/)
 })
 
-test('Codex attribution counts a read only when the command output is the full file, and refuses unprovable targets', () => {
+test('Codex attribution counts a read only when a read command names the file and prints its whole text, and refuses unprovable targets', () => {
   const cwd = C + '/Temp/cxb-1/s'
-  const contents = { [SKILL]: '# PR workflow\nbody\n', 'project/POLICY.md': 'policy\n' }
+  const contents = { [SKILL]: '# PR workflow\nbody\n', 'project/POLICY.md': 'same\n', 'project/README.md': 'same\n' }
   const pw = cmd => '"' + PROGRAMS + '/PowerShell/7/pwsh.exe" -Command "' + cmd + '"'
   const read = { command: pw('Get-Content -LiteralPath ./' + SKILL + ' -Raw -Encoding utf8 | ConvertTo-Json -Compress'), exitCode: 0, output: JSON.stringify(contents[SKILL]) + '\n' }
   assert.equal(codexAttribution([read], cwd, contents).ok, true)
   assert.equal(codexAttribution([{ ...read, output: contents[SKILL] }], cwd, contents).ok, true)
   assert.match(codexAttribution([{ ...read, exitCode: 1 }], cwd, contents).reason, /no full read/)
   assert.match(codexAttribution([{ ...read, command: pw('Get-Content ./' + SKILL + ' -TotalCount 1'), output: '# PR workflow' }], cwd, contents).reason, /no full read/)
+  assert.match(codexAttribution([{ command: 'Write-Output ' + JSON.stringify(contents[SKILL]), exitCode: 0, output: contents[SKILL] }], cwd, contents).reason, /no full read/)
   assert.match(codexAttribution([{ command: 'Get-Content ./project/POLICY.md; Write-Output ./' + SKILL, exitCode: 0, output: 'policy\n./' + SKILL }], cwd, contents).reason, /no full read/)
-  assert.match(codexAttribution([read, { command: 'Get-Content ~/.agents/skills/x/SKILL.md', exitCode: 0, output: '' }], cwd, contents).reason, /not provable/)
-  assert.match(codexAttribution([read, { command: 'Get-Content //server/share/SKILL.md', exitCode: 0, output: '' }], cwd, contents).reason, /not provable/)
-  assert.match(codexAttribution([read, { command: 'Get-Content ' + C + '/elsewhere/.codex/plugins/cache/devflow/SKILL.md', exitCode: 0, output: '' }], cwd, contents).reason, /outside|leaves/)
-  assert.match(codexAttribution([read, { command: 'Get-Content ../other/SKILL.md', exitCode: 0, output: '' }], cwd, contents).reason, /leaves/)
-  assert.match(codexAttribution([read, { command: '$p = "plugin"; Get-Content "$p/x"', exitCode: 0, output: '' }], cwd, contents).reason, /not provable/)
-  assert.match(codexAttribution([read, { command: 'Set-Location ' + C + '/elsewhere; Get-Content x', exitCode: 0, output: '' }], cwd, contents).reason, /not provable|outside/)
-  assert.match(codexAttribution([read], cwd, contents, ['POLICY.md']).reason, /not all read/)
-  assert.equal(codexAttribution([read, { command: 'Get-Content -LiteralPath ./project/POLICY.md -Raw', exitCode: 0, output: 'policy' }], cwd, contents, ['POLICY.md']).ok, true)
+  // Two inputs with the same text: only the one the command names counts.
+  const policy = { command: 'Get-Content -LiteralPath ./project/POLICY.md -Raw', exitCode: 0, output: 'same' }
+  assert.deepEqual(codexAttribution([read, policy], cwd, contents).read, [SKILL, 'project/POLICY.md'])
+  assert.match(codexAttribution([read, policy], cwd, contents, ['POLICY.md', 'README.md']).reason, /not all read/)
+  for (const bad of ['Get-Content ~/.agents/skills/x/SKILL.md', 'Get-Content //server/share/SKILL.md', '$p = "plugin"; Get-Content "$p/x"', 'Set-Location ' + C + '/elsewhere; Get-Content x', 'Get-Content %USERPROFILE%/x'])
+    assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /not provable|outside/, bad)
+  for (const bad of ['Get-Content ' + ['', 'Users', 'Example', '.agents', 'skills', 'x', 'SKILL.md'].join('/'), 'Get-Content ' + C + '/elsewhere/.codex/plugins/cache/devflow/SKILL.md', 'Get-Content ../other/SKILL.md'])
+    assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /outside|leaves/, bad)
 })
 
-test('Codex stdout gives the last message, usage without double-counted cache, command output and validity', () => {
+test('Codex stdout gives the last message, usage without double-counted cache, command output and validity; partial usage is unknown', () => {
   const lines = [
     { type: 'thread.started' },
     { type: 'item.completed', item: { id: 'c1', type: 'command_execution', command: 'Get-Content a', exit_code: 0, aggregated_output: 'a\n' } },
@@ -126,8 +133,30 @@ test('Codex stdout gives the last message, usage without double-counted cache, c
   assert.equal(t.message, 'final')
   assert.equal(t.tokens, 110)
   assert.deepEqual(t.commands, [{ command: 'Get-Content a', exitCode: 0, output: 'a\n' }])
-  assert.equal(codexTrace(lines.replace(/.*turn.completed.*/, '')).valid, false)
   assert.equal(codexTrace(lines.replace(/.*turn.completed.*/, '')).tokens, null)
+  assert.equal(codexTrace(lines + '\n' + JSON.stringify({ type: 'turn.completed' })).tokens, null)
+})
+
+test('markers read only the author\'s own totals and the recorded operands', () => {
+  const { markers, totalInputClaims } = ev
+  assert.deepEqual(totalInputClaims('Method: literal reads of all ten authorized project inputs.'), [10])
+  assert.deepEqual(totalInputClaims('I read nine project inputs, not ten project inputs.'), [9])
+  assert.deepEqual(totalInputClaims('The phrase "ten project inputs" is unsupported. I read 9 project inputs.'), [9])
+  assert.deepEqual(totalInputClaims('I read the three .work project inputs and six other files.'), [])
+  assert.equal(markers.d2('all thirteen project inputs', 9), 'positive')
+  assert.equal(markers.d2('zero project inputs were skipped', 9), 'positive')
+  assert.equal(markers.d2('No count here.', 9), 'negative')
+  assert.equal(markers.count('I read nine project inputs and 3 plugin files.', 9), 'negative')
+  assert.equal(markers.count('I read the inputs.', 9), 'positive')
+  const rec = ['df8fb182a64160718f8f1a34a41d92a2173f81e2', '33c9ea7fad42e07d70527e39381298d15ccf5729']
+  assert.equal(markers.d5('Recorded check: git diff --check df8fb18..33c9ea7 passed.', rec), 'negative')
+  assert.equal(markers.d5('Recorded check: git diff --check <base>..<head> passed.', rec), 'positive')
+  assert.equal(markers.d5('Recorded check: git diff --check abc1234..fffffff passed.', rec), 'positive')
+  assert.equal(markers.d5('The policy says: git diff --check <base>..<head>.', rec), 'negative')
+  assert.equal(markers.d5('The whitespace check passed at 33c9ea7.', rec), 'negative')
+  assert.deepEqual(ev.applyMarker('b4-03b', 'd2', 'PASS', 'all ten authorized project inputs'), { verdict: null, mark: 'positive', disagreement: true })
+  assert.deepEqual(ev.applyMarker('b4-03b', 'd2', 'FAIL', 'all ten authorized project inputs'), { verdict: 'FAIL', mark: 'positive' })
+  assert.deepEqual(ev.applyMarker('b2-01b', 'd1', 'PASS', 'x'), { verdict: 'PASS' })
 })
 
 test('slot classes: task failure is invalid, a missing task or proposition verdict is undetermined', () => {
@@ -142,52 +171,70 @@ test('slot classes: task failure is invalid, a missing task or proposition verdi
 
 test('adoption needs every required cell complete and decidable, a lower fixed total and no regression with missing slots counted against the candidate', () => {
   const k = (positive, extra = {}) => ({ positive, negative: 14 - positive - (extra.invalid || 0) - (extra.undetermined || 0), invalid: 0, undetermined: 0, slots: 14, ...extra })
-  const rules = { slots: 14, counterMax: 2, fixed: [['f', 'd1']], counter: [['k', 'c']], regression: [['r', 'd6']] }
-  const required = [['f', 'd1'], ['k', 'c'], ['r', 'd6']]
-  const base = { f: { d1: { A: k(9), B: k(1) } }, k: { c: { A: k(0), B: k(0) } }, r: { d6: { A: k(0), B: k(0) } } }
+  const rules = { slots: 14, counterMax: 2, fixed: [['f', 'd1']], counter: [['k', 'c']], regression: [['r', 'd6'], ['h', 'd2']] }
+  const required = [['f', 'd1'], ['k', 'c'], ['r', 'd6'], ['h', 'd2']]
+  const base = { f: { d1: { A: k(9), B: k(1) } }, k: { c: { A: k(0), B: k(0) } }, r: { d6: { A: k(0), B: k(0) } }, h: { d2: { A: k(0), B: k(0) } } }
   assert.deepEqual(adopt(base, rules, required), { adopted: true, reasons: [] })
-  assert.equal(adopt(base, rules, [...required, ['h1c', 'd1']]).adopted, false)
+  assert.equal(adopt(base, rules, [...required, ['x', 'd1']]).adopted, false)
   const { k: _drop, ...noCounter } = base
   assert.equal(adopt(noCounter, rules, required).adopted, false)
   assert.equal(adopt({ ...base, f: { d1: { A: k(9), B: k(0, { invalid: 14 }) } } }, rules, required).adopted, false)
   assert.equal(adopt({ ...base, r: { d6: { A: k(0), B: k(0, { undetermined: 1 }) } } }, rules, required).adopted, false)
   assert.equal(adopt({ ...base, r: { d6: { A: k(0, { invalid: 14 }), B: k(0) } } }, rules, required).adopted, true)
+  assert.equal(adopt({ ...base, h: { d2: { A: k(0), B: k(14) } } }, rules, required).adopted, false)
+  assert.equal(adopt({ ...base, h: { d2: { A: k(0), B: k(0, { invalid: 14 }) } } }, rules, required).adopted, false)
   assert.equal(adopt({ ...base, f: { d1: { A: k(2), B: k(2) } } }, rules, required).adopted, false)
   assert.equal(adopt({ ...base, k: { c: { A: k(3), B: k(3) } } }, rules, required).adopted, false)
   assert.equal(adopt({ ...base, r: { d6: { A: k(0), B: { ...k(0), slots: 13 } } } }, rules, required).adopted, false)
 })
 
-test('the required list names every design cell and marks a missing holdout case', () => {
-  const pairs = requiredPairs({}).map(p => p.join('/'))
-  for (const p of [...RULES.fixed, ...RULES.counter, ...RULES.regression]) assert.ok(pairs.includes(p.join('/')))
-  assert.ok(pairs.includes('h1c/(missing case)') && pairs.includes('h1x/(missing case)'))
+test('the required list is the design list, holdouts included, and holdout ids pass the case-name check', () => {
+  const pairs = requiredPairs().map(p => p.join('/'))
+  for (const p of [...RULES.fixed, ...RULES.counter, ...RULES.regression, ...ev.holdoutPairs()]) assert.ok(pairs.includes(p.join('/')))
+  for (const id of Object.keys(RULES.holdout)) assert.match(id, /^[a-z][0-9]?[a-z]?-[a-z0-9-]+$/)
+  assert.ok(pairs.includes('h1-claude/d3') && pairs.includes('h1-codex/d2'))
 })
 
-test('calibration must cover every grader by hash with enough samples and passing rates', () => {
+test('calibration is recomputed from labelled samples; stated rates alone do not pass', () => {
+  const h = n => String(n).padStart(64, '0')
+  const samples = (pos, neg, wrong = 0) => [
+    ...Array.from({ length: pos }, (_, i) => ({ label: 'positive', verdict: i < wrong ? 'negative' : 'positive', sampleHash: h(i) })),
+    ...Array.from({ length: neg }, (_, i) => ({ label: 'negative', verdict: 'negative', sampleHash: h(100 + i) })),
+  ]
   const cases = [{ id: 'b1', graders: [{ name: 'task', hash: 't' }, { name: 'd1', hash: 'h' }] }]
-  const good = { hash: 'h', positives: 5, negatives: 6, sensitivity: 0.8, specificity: 1 }
-  assert.deepEqual(checkCalibration({ graders: { 'b1/task': { ...good, hash: 't' }, 'b1/d1': good } }, cases), [])
-  assert.deepEqual(checkCalibration({ graders: { 'b1/task': { ...good, hash: 't' }, 'b1/d1': { ...good, hash: 'old' } } }, cases), ['b1/d1'])
-  assert.deepEqual(checkCalibration({ graders: { 'b1/task': { ...good, hash: 't', negatives: 4 } } }, cases), ['b1/task', 'b1/d1'])
+  assert.deepEqual(checkCalibration({ graders: { 'b1/task': { hash: 't', samples: samples(5, 5) }, 'b1/d1': { hash: 'h', samples: samples(5, 6, 1) } } }, cases), [])
+  assert.deepEqual(checkCalibration({ graders: { 'b1/task': { hash: 't', samples: samples(5, 5) }, 'b1/d1': { hash: 'h', samples: samples(5, 6, 2) } } }, cases), ['b1/d1'])
+  assert.deepEqual(checkCalibration({ graders: { 'b1/task': { hash: 't', positives: 9, negatives: 9, sensitivity: 1, specificity: 1 }, 'b1/d1': { hash: 'old', samples: samples(5, 5) } } }, cases), ['b1/task', 'b1/d1'])
+  const dup = samples(5, 5); dup[1].sampleHash = dup[0].sampleHash
+  assert.deepEqual(checkCalibration({ graders: { 'b1/task': { hash: 't', samples: dup }, 'b1/d1': { hash: 'h', samples: samples(5, 5) } } }, cases), ['b1/task'])
 })
 
-test('one budget group accumulates across runs with fixed caps, and unknown usage turns it unknown', () => {
+test('a budget group keeps caps, accumulates across runs, blocks on an unrecorded call and admits one run at a time', () => {
   const group = 'test-' + process.pid + '-' + Date.now()
-  const file = path.join(ROOT, '.work', 'behavior-eval', 'budgets', group + '.json')
+  const base = path.join(ROOT, '.work', 'behavior-eval', 'budgets', group + '.json')
   try {
     assert.throws(() => ev.openBudget(group, { usd: 3 }), /both/)
     ev.openBudget(group, { usd: 3, tokens: 400000 })
     assert.throws(() => ev.openBudget(group, { usd: 5 }), /other caps/)
+    ev.begin(group, { run: 'r1', slot: 's1' })
+    assert.throws(() => ev.begin(group, { run: 'r2', slot: 's2' }), /without recorded usage/)
     ev.charge(group, { run: 'r1', slot: 's1', usd: 0.4 })
+    ev.begin(group, { run: 'r2', slot: 's2' })
     ev.charge(group, { run: 'r2', slot: 's2', tokens: 70000 })
     let b = ev.openBudget(group, {})
     assert.equal(b.claudeUsd, 0.4)
     assert.equal(b.codexTokens, 70000)
-    assert.equal(b.known, true)
-    ev.charge(group, { run: 'r2', slot: 's3', tokens: null })
+    assert.equal(b.inflight, undefined)
+    ev.begin(group, { run: 'r2', slot: 's3' })
+    ev.charge(group, { run: 'r2', slot: 's3', tokens: null, reason: 'stop unconfirmed' }, { keepInflight: true })
     b = ev.openBudget(group, {})
     assert.equal(b.known, false)
-  } finally { fs.rmSync(file, { force: true }) }
+    assert.equal(b.inflight.unresolved, 'stop unconfirmed')
+    const release = ev.lockBudget(group)
+    assert.throws(() => ev.lockBudget(group), /locked/)
+    release()
+    ev.lockBudget(group)()
+  } finally { for (const f of [base, base + '.lock', base + '.tmp']) fs.rmSync(f, { force: true }) }
 })
 
 test('upper bound, budget reserve and argument checks', () => {
@@ -195,8 +242,10 @@ test('upper bound, budget reserve and argument checks', () => {
   assert.equal(upperBound(0), null)
   assert.equal(reserve({ entries: [] }, 'claude'), 1)
   assert.equal(reserve({ entries: [{ usd: 0.9 }] }, 'claude'), 1.8)
-  assert.equal(reserve({ entries: [{ slot: 'a', tokens: 70000 }, { slot: 'a', tokens: 90000 }, { slot: 'b', tokens: 10000 }] }, 'codex'), 320000)
-  assert.throws(() => parseArgs(['run', '--run', 'x', '--host', 'claude']), /usage/)
-  assert.throws(() => parseArgs(['prepare', '--run', 'x', '--arm', 'A=1']), /usage/)
-  assert.equal(parseArgs(['run', '--run', 'x', '--host', 'codex', '--budget', 'pilot']).budget, 'pilot')
+  assert.equal(reserve({ entries: [{ run: 'r', slot: 'a', tokens: 70000 }, { run: 'r', slot: 'a', tokens: 90000 }, { run: 'r', slot: 'b', tokens: 10000 }] }, 'codex'), 320000)
+  assert.throws(() => parseArgs(['run', '--run', 'x']), /usage/)
+  assert.throws(() => parseArgs(['run', '--run', 'x', '--host', 'claude', '--budget', 'other']), /usage/)
+  assert.throws(() => parseArgs(['prepare', '--run', 'x', '--arm', 'A=1', '--arm', 'B=2', '--expect-diff', 'p']), /usage/)
+  assert.equal(parseArgs(['prepare', '--run', 'x', '--arm', 'A=1', '--arm', 'B=2', '--expect-diff', 'p', '--budget', 'pilot', '--pilot']).budget, 'pilot')
+  assert.equal(parseArgs(['run', '--run', 'x', '--host', 'codex']).host, 'codex')
 })

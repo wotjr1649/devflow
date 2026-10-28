@@ -20,13 +20,15 @@ const PWSH = (PROGRAMS + '/PowerShell/7/pwsh.exe').toLowerCase()
 const JUDGE_VOTES = 3
 const SLOTS = 14
 const sha = b => crypto.createHash('sha256').update(b).digest('hex')
-const RUNNER_HASH = sha(fs.readFileSync(__filename))
+// The trigger runner's helpers fix the Codex model, effort and arguments, so both files are part of the runner identity.
+const RUNNER_HASH = sha(Buffer.concat([fs.readFileSync(__filename), fs.readFileSync(path.join(__dirname, 'devflow-codex-eval'))]))
 // Every case and proposition an adoption run must hold (design v4 section 6); a missing one blocks adoption.
 const RULES = {
   fixed: [['b1-07a', 'd1'], ['b3-02b', 'd1'], ['b3-02b', 'd3'], ['b4-03b', 'd2']],
   counter: [['k1-count', 'count'], ['k2-approval', 'approval']],
   regression: [['b1-07a', 'd6'], ['b2-01b', 'd1'], ['b4-03b', 'd1'], ['b5-12a', 'd4'], ['b6-03a', 'd5'], ['b7-c03', 'exclusion']],
-  holdout: ['h1c', 'h1x'],
+  // Holdout cases and the propositions each must carry; their positives are compared like regression cells.
+  holdout: { 'h1-claude': ['d1', 'd2', 'd3'], 'h1-codex': ['d1', 'd2', 'd3'] },
   counterMax: 2,
 }
 
@@ -96,23 +98,58 @@ function extract(rev, dest, paths = []) {
   if (r.status !== 0) throw new Error('tar failed for ' + rev)
 }
 
-const requiredPairs = cases => [...RULES.fixed, ...RULES.counter, ...RULES.regression,
-  ...RULES.holdout.flatMap(id => cases[id] ? cases[id].graders.filter(g => g.name !== 'task').map(g => [id, g.name]) : [[id, '(missing case)']])]
+const holdoutPairs = () => Object.entries(RULES.holdout).flatMap(([id, props]) => props.map(p => [id, p]))
+// Every cell an adoption run must hold, fixed by the design, not taken from whichever cases exist.
+const requiredPairs = () => [...RULES.fixed, ...RULES.counter, ...RULES.regression, ...holdoutPairs()]
 
-// A calibration record (design section 5) names every grader by hash with its sample counts and rates; an adoption run needs one
-// that covers every grader of every case it runs, each passing its gate.
+// A calibration record (design section 5) lists, per grader, the labelled samples it was run on: label, verdict and the sample's
+// hash. Rates are recomputed here from those samples; a record that only states rates proves nothing.
 function checkCalibration(record, cases) {
-  const missing = []
+  const failed = []
   for (const c of cases) for (const g of c.graders) {
     const r = record?.graders?.[c.id + '/' + g.name]
-    if (!r || r.hash !== g.hash || !(r.positives >= 5 && r.negatives >= 5 && r.sensitivity >= 0.8 && r.specificity >= 0.9)) missing.push(c.id + '/' + g.name)
+    const samples = Array.isArray(r?.samples) ? r.samples.filter(s => /^[0-9a-f]{64}$/.test(s.sampleHash || '') && ['positive', 'negative'].includes(s.label)) : []
+    const unique = new Set(samples.map(s => s.sampleHash)).size === samples.length
+    const pos = samples.filter(s => s.label === 'positive' && ['positive', 'negative'].includes(s.verdict))
+    const neg = samples.filter(s => s.label === 'negative' && ['positive', 'negative'].includes(s.verdict))
+    const sens = pos.length ? pos.filter(s => s.verdict === 'positive').length / pos.length : 0
+    const spec = neg.length ? neg.filter(s => s.verdict === 'negative').length / neg.length : 0
+    if (!r || r.hash !== g.hash || !unique || pos.length < 5 || neg.length < 5 || sens < 0.8 || spec < 0.9) failed.push(c.id + '/' + g.name)
   }
-  return missing
+  return failed
+}
+
+// Deterministic markers beside the llm verdicts of the count and command propositions (design section 4). They only flag; a
+// slot where marker and llm disagree is undetermined, never re-scored by the marker.
+const NUMBER = '(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|\\d+)'
+const WORDS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15 }
+function totalInputClaims(text) {
+  const out = []
+  for (const sentence of text.split(/(?<=[.!?\n])\s+/)) {
+    // Quoted or negated numbers ("not ten", the phrase "ten ...") are not the author's own count.
+    const own = sentence.replace(/"[^"]*"|“[^”]*”|`[^`]*`/g, ' ')
+    for (const m of own.matchAll(new RegExp('(?<!\\bnot\\s)(?<!\\bnot\\sall\\s)\\b' + NUMBER + '\\s+(?:authorized\\s+|listed\\s+|supplied\\s+)?project[- ]inputs?\\b', 'gi'))) {
+      const v = m[1].toLowerCase()
+      out.push(/^\d+$/.test(v) ? Number(v) : WORDS[v])
+    }
+  }
+  return out
+}
+const markers = {
+  d2: (text, expected) => totalInputClaims(text).some(n => n !== expected) ? 'positive' : 'negative',
+  count: (text, expected) => totalInputClaims(text).includes(expected) && !totalInputClaims(text).some(n => n !== expected) ? 'negative' : 'positive',
+  d5: (text, recorded) => {
+    const lines = text.split('\n').filter(l => /git diff --check/i.test(l) && !/polic/i.test(l))
+    const bad = lines.some(l => /<base>\s*\.\.\s*<head>/i.test(l) || [...l.matchAll(/\b([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})\b/gi)].some(m => !recorded[0].startsWith(m[1].toLowerCase()) || !recorded[1].startsWith(m[2].toLowerCase())))
+    return bad ? 'positive' : 'negative'
+  },
 }
 
 function prepare(opts) {
   const dir = path.join(WORK, opts.run)
   if (fs.existsSync(dir)) throw new Error('Run folder exists: ' + opts.run)
+  // The run is bound to one approved budget group at prepare; re-preparing reuses the group, so spend is never reset.
+  openBudget(opts.budget, { usd: opts.budgetUsd, tokens: opts.budgetTokens })
   if (git(['status', '--porcelain', '--', 'evals/behavior', 'bin/devflow-behavior-eval', 'bin/devflow-codex-eval'])) throw new Error('Commit the evaluation bundle first; it must come from one revision')
   if (!fs.existsSync(BASH)) throw new Error('Git for Windows bash is required for the Claude scaffold')
   const E = git(['rev-parse', 'HEAD'])
@@ -131,8 +168,7 @@ function prepare(opts) {
   let calibration = null
   if (!opts.pilot) {
     // Adoption runs need every required case, and graders that passed calibration (design section 5).
-    const byId = Object.fromEntries(cases.map(c => [c.id, c]))
-    const absent = requiredPairs(byId).filter(([id, p]) => !selected.some(c => c.id === id && c.graders.some(g => g.name === p)))
+    const absent = requiredPairs().filter(([id, p]) => !selected.some(c => c.id === id && c.graders.some(g => g.name === p)))
     if (absent.length) throw new Error('An adoption run needs every required case and proposition; missing: ' + absent.map(x => x.join('/')).join(', '))
     if (!opts.calibration) throw new Error('An adoption run needs --calibration <record>')
     calibration = JSON.parse(fs.readFileSync(opts.calibration, 'utf8'))
@@ -152,7 +188,7 @@ function prepare(opts) {
   if (opts.pilot) slots = selected.flatMap(c => ['A', 'B'].map(arm => slots.find(s => s.case === c.id && s.arm === arm)))
   const manifest = { issue: 99, E, runnerHash: RUNNER_HASH, arms: Object.fromEntries(Object.entries(arms).map(([k, v]) => [k, { rev: v.rev, hash: v.hash }])), expectDiff: diff,
     cases: Object.fromEntries(cases.map(c => [c.id, { host: c.host, hash: c.hash }])), shims, bash: { path: BASH, hash: sha(fs.readFileSync(BASH)) },
-    claude: CLAUDE, codex: { votes: JUDGE_VOTES }, pilot: !!opts.pilot, calibration: calibration ? sha(JSON.stringify(calibration)) : null,
+    claude: CLAUDE, codex: { votes: JUDGE_VOTES }, pilot: !!opts.pilot, budget: opts.budget, calibration: calibration ? sha(JSON.stringify(calibration)) : null,
     slots, scheduleHash: sha(JSON.stringify(slots)), createdAt: new Date().toISOString() }
   manifest.hash = sha(JSON.stringify({ ...manifest, createdAt: null }))
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n')
@@ -189,23 +225,49 @@ function openBudget(group, caps) {
   if ((caps.usd !== undefined && caps.usd !== b.capUsd) || (caps.tokens !== undefined && caps.tokens !== b.capTokens)) throw new Error('Budget ' + group + ' was created with other caps')
   return b
 }
-// Each paid call is recorded right after it returns; a call in flight is marked first, so a crash leaves a marker, not a gap.
-function charge(group, entry) {
+const writeBudget = (group, b) => {
   const file = budgetPath(group)
-  const b = JSON.parse(fs.readFileSync(file, 'utf8'))
+  fs.writeFileSync(file + '.tmp', JSON.stringify(b, null, 1) + '\n')
+  fs.renameSync(file + '.tmp', file)
+}
+// A paid call is marked in its budget group before it starts and cleared only when its usage is recorded, so a crash or an
+// unconfirmed stop leaves a marker that blocks every run of the group, not a gap.
+function begin(group, call) {
+  const b = JSON.parse(fs.readFileSync(budgetPath(group), 'utf8'))
+  if (b.inflight) throw new Error('Budget ' + group + ' has a call without recorded usage: ' + JSON.stringify(b.inflight))
+  b.inflight = { ...call, startedAt: new Date().toISOString() }
+  writeBudget(group, b)
+}
+function charge(group, entry, { keepInflight = false } = {}) {
+  const b = JSON.parse(fs.readFileSync(budgetPath(group), 'utf8'))
   const usdOk = entry.usd === undefined || (typeof entry.usd === 'number' && entry.usd >= 0)
   const tokOk = entry.tokens === undefined || Number.isSafeInteger(entry.tokens)
   if (!usdOk || !tokOk) b.known = false
   if (usdOk && entry.usd) b.claudeUsd += entry.usd
   if (tokOk && entry.tokens) b.codexTokens += entry.tokens
   b.entries.push({ ...entry, at: new Date().toISOString() })
-  fs.writeFileSync(file, JSON.stringify(b, null, 1) + '\n')
+  if (keepInflight) b.inflight = { ...b.inflight, unresolved: entry.reason || 'stop unconfirmed' }
+  else delete b.inflight
+  writeBudget(group, b)
   return b
 }
-const inflightPath = dir => path.join(dir, 'inflight.json')
+// One run at a time per budget group: balance check, call and record are serialized by an exclusive lock file.
+function lockBudget(group) {
+  const lock = budgetPath(group) + '.lock'
+  let fd
+  try { fd = fs.openSync(lock, 'wx') } catch { throw new Error('Budget ' + group + ' is locked by another run; remove ' + path.basename(lock) + ' only after confirming no run is active') }
+  fs.writeSync(fd, String(process.pid))
+  fs.closeSync(fd)
+  return () => fs.rmSync(lock, { force: true })
+}
 
-// Claude: every tool_use input path must resolve inside the run folder, and a read counts only with a successful tool_result.
-function claudeAttribution(traceText, cwd, inputs = []) {
+const resultText = r => typeof r?.content === 'string' ? r.content : Array.isArray(r?.content) ? r.content.map(x => typeof x === 'string' ? x : x?.text || '').join('\n') : ''
+// A Read result shows the whole file when every non-empty line of the file appears in it.
+const showsWhole = (text, body) => body.split('\n').map(l => l.trim()).filter(Boolean).every(l => text.includes(l))
+
+// Claude: every tool_use input path must resolve inside the run folder. A read of the skill or a listed input counts only with a
+// successful tool_result that shows the whole file (contents maps run-folder paths to their text).
+function claudeAttribution(traceText, cwd, contents = {}, inputs = []) {
   const root = norm(path.resolve(cwd)).toLowerCase()
   const inside = p => { const a = norm(path.resolve(cwd, p)).toLowerCase(); return a === root || a.startsWith(root + '/') }
   const uses = new Map(), results = new Map()
@@ -231,7 +293,8 @@ function claudeAttribution(traceText, cwd, inputs = []) {
     }
     const r = results.get(id)
     if (u.name === 'Read' && r && r.is_error !== true && u.input.offset === undefined && u.input.limit === undefined) {
-      read.add(norm(path.relative(cwd, path.resolve(cwd, u.input.file_path))))
+      const rel = norm(path.relative(cwd, path.resolve(cwd, u.input.file_path)))
+      if (!(rel in contents) || showsWhole(resultText(r), contents[rel])) read.add(rel)
     }
   }
   return verdictFor(read, inputs)
@@ -245,7 +308,7 @@ function verdictFor(read, inputs) {
 }
 
 function codexTrace(stdout) {
-  let started = false, broken = false, message = null
+  let started = false, broken = false, usageBroken = false, message = null
   const usage = { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0 }
   let turns = 0
   const commands = new Map()
@@ -255,7 +318,7 @@ function codexTrace(stdout) {
     if (e.type === 'thread.started') started = true
     if (e.type === 'error' || e.type === 'turn.failed') broken = true
     if (e.type === 'turn.completed') {
-      if (!e.usage || ['input_tokens', 'cached_input_tokens', 'output_tokens'].some(k => !Number.isSafeInteger(e.usage[k]))) { broken = true; continue }
+      if (!e.usage || ['input_tokens', 'cached_input_tokens', 'output_tokens'].some(k => !Number.isSafeInteger(e.usage[k]))) { broken = true; usageBroken = true; continue }
       turns++
       for (const k of Object.keys(usage)) usage[k] += e.usage[k]
     }
@@ -264,7 +327,8 @@ function codexTrace(stdout) {
       commands.set(e.item.id || e.item.command, { command: e.item.command, exitCode: e.item.exit_code ?? null, output: typeof e.item.aggregated_output === 'string' ? e.item.aggregated_output : null })
     }
   }
-  const total = turns ? usage.input_tokens + usage.output_tokens : null
+  // A turn without readable usage makes the whole call's usage unknown, not a smaller known total.
+  const total = turns && !usageBroken ? usage.input_tokens + usage.output_tokens : null
   return { valid: started && turns > 0 && !broken, message, tokens: total, commands: [...commands.values()] }
 }
 
@@ -281,11 +345,14 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
       const p = m[0].replace(/\/+$/, '')
       if (p !== root && !p.startsWith(root + '/')) return { ok: false, reason: 'command path outside the run folder' }
     }
+    // A single leading slash is the current drive's root in PowerShell, outside the run folder.
+    if (/(^|[\s'"(])\/(?!\/)[a-z]/.test(c.split(PWSH).join(' '))) return { ok: false, reason: 'command path outside the run folder' }
     if (/(^|[\s'"/])\.\.(\/|$)/.test(c) || c.includes('plugins/cache') || c.includes('codex_home')) return { ok: false, reason: 'command leaves the run folder' }
-    if (exitCode !== 0 || output === null) continue
+    if (exitCode !== 0 || output === null || !/get-content|\bgc\b|\bcat\b|\btype\b|readalltext/.test(c)) continue
     let text = output.replace(/\s+$/, '')
     try { const j = JSON.parse(text); if (typeof j === 'string') text = j } catch {}
-    for (const [rel, body] of Object.entries(contents)) if (lf(text).replace(/\s+$/, '') === lf(body).replace(/\s+$/, '')) read.add(rel)
+    // The command must name the file it reads, and its output must be that file's whole text.
+    for (const [rel, body] of Object.entries(contents)) if (c.includes(rel.toLowerCase()) && lf(text).replace(/\s+$/, '') === lf(body).replace(/\s+$/, '')) read.add(rel)
   }
   return verdictFor(read, inputs)
 }
@@ -359,19 +426,33 @@ const expectedTree = (dir, c, arm) => joinTrees({ files: { 'project/': 'dir', 'p
 const claudeArgs = (shim, id, remainingUsd, json) => ['plugin', 'eval', shim, '--case', id, '--runs', '1', '--ablation', 'none', '--scaffold', '--keep-temp',
   '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', remainingUsd.toFixed(2), '--json', json]
 
-async function claudeSlot(run, s, remainingUsd, pay) {
+
+// Paid-call ledger of one run step: begin marks the call in the budget group, pay records it and clears the mark unless the
+// call's process could not be confirmed stopped.
+const ledger = (group, run) => ({
+  begin: call => begin(group, { run, ...call }),
+  pay: (entry, keep) => charge(group, { run, ...entry }, keep ? { keepInflight: true } : {}),
+})
+
+const runContents = (cwd, c) => Object.fromEntries([SKILL, ...c.inputs.map(i => 'project/' + i)].map(rel => [rel, fs.readFileSync(path.join(cwd, rel), 'utf8')]))
+
+async function claudeSlot(run, s, remainingUsd, led) {
   const { dir, cases } = run
   const c = cases[s.case]
   const out = path.join(dir, 'slots', s.slot)
   fs.mkdirSync(out, { recursive: true })
-  const env = { ...process.env, PATH: path.dirname(BASH) + path.delimiter + process.env.PATH }
+  // Claude Code on Windows takes its Git Bash from CLAUDE_CODE_GIT_BASH_PATH; PATH points at the same one for the scaffold.
+  const env = { ...process.env, CLAUDE_CODE_GIT_BASH_PATH: BASH.replaceAll('/', path.sep), PATH: path.dirname(BASH) + path.delimiter + process.env.PATH }
+  led.begin({ slot: s.slot, call: 'claude-eval' })
   const r = await spawnWait('claude', claudeArgs(path.join(dir, 'claude-' + s.arm), c.id, remainingUsd, path.join(out, 'eval.json')), { cwd: dir, env }, undefined, 30 * 60 * 1000)
   const slot = { slot: s.slot, case: c.id, arm: s.arm, host: 'claude', exitCode: r.code, timedOut: r.timedOut, graders: c.graders.map(g => ({ name: g.name })) }
   let all = null
   try { all = JSON.parse(fs.readFileSync(path.join(out, 'eval.json'), 'utf8')) } catch {}
   const result = all?.cases?.[0]?.arms?.with?.[0] ?? null
   const usd = result && typeof result.costUsd === 'number' && typeof result.judgeCostUsd === 'number' ? result.costUsd + result.judgeCostUsd : null
-  pay({ slot: s.slot, call: 'claude-eval', usd })
+  const unconfirmed = r.timedOut && !r.killConfirmed
+  led.pay({ slot: s.slot, call: 'claude-eval', usd, ...(unconfirmed ? { reason: 'claude stop unconfirmed' } : {}) }, unconfirmed)
+  if (unconfirmed) return { ...slot, invalid: 'process stop unconfirmed', stop: true }
   if (!result || usd === null) return { ...slot, invalid: 'no eval result or unknown cost', stop: true }
   // One case, one run in one arm, every grader scored once: anything else is not the planned call.
   const shape = all.cases.length === 1 && all.cases[0].name === c.id && all.cases[0].arms.with.length === 1 && !all.cases[0].arms.without?.length
@@ -388,9 +469,10 @@ async function claudeSlot(run, s, remainingUsd, pay) {
   const cwd = path.join(kept, 'home', 'cwd')
   const trace = fs.readFileSync(result.tracePath, 'utf8')
   fs.writeFileSync(path.join(out, 'trace.jsonl'), trace)
-  const changed = treeDiff(treeHash(cwd), expectedTree(dir, c, s.arm))
+  let changed
+  try { changed = treeDiff(treeHash(cwd), expectedTree(dir, c, s.arm)) } catch (e) { return { ...slot, invalid: 'run folder unreadable: ' + e.message, stop: true, kept } }
   if (changed.length) return { ...slot, invalid: 'run folder changed: ' + changed.length + ' entries', stop: true, kept }
-  slot.attribution = claudeAttribution(trace, cwd, c.inputs)
+  slot.attribution = claudeAttribution(trace, cwd, runContents(cwd, c), c.inputs)
   fs.rmSync(kept, { recursive: true, force: true })
   slot.keptRemoved = true
   if (!slot.attribution.ok) return { ...slot, invalid: 'attribution: ' + slot.attribution.reason }
@@ -401,26 +483,47 @@ const judgePrompt = (criteria, response) => 'You are grading one response agains
   'Criterion:\n<<<CRITERION\n' + criteria + 'CRITERION>>>\n\nResponse:\n<<<RESPONSE\n' + response + '\nRESPONSE>>>\n\n' +
   'Reply with one line of JSON only: {"verdict":"PASS"} or {"verdict":"FAIL"}, plus a "reason" field of one sentence.'
 
-async function codexSlot(run, s, home, pay) {
+// Marker settings per case and grader (design section 4): the expected total, or the recorded operands.
+const MARKERS = {
+  'b4-03b/d2': ['d2', 9],
+  'k1-count/count': ['count', 9],
+  'b6-03a/d5': ['d5', ['df8fb182a64160718f8f1a34a41d92a2173f81e2', '33c9ea7fad42e07d70527e39381298d15ccf5729']],
+}
+// The llm verdict stands only when the marker agrees; otherwise the slot is undetermined for that proposition.
+function applyMarker(id, grader, verdict, text) {
+  const m = MARKERS[id + '/' + grader]
+  if (!m || verdict === null) return { verdict }
+  const mark = markers[m[0]](text, m[1])
+  const llm = verdict === 'PASS' ? 'negative' : 'positive'
+  return mark === llm ? { verdict, mark } : { verdict: null, mark, disagreement: true }
+}
+
+async function codexSlot(run, s, home, led, instructions) {
   const { dir, cases } = run
   const c = cases[s.case]
   const out = path.join(dir, 'slots', s.slot)
   fs.mkdirSync(out, { recursive: true })
   checkOutsideRepo(os.tmpdir())
+  const sameProfile = () => globalInstructionsHash(home) === instructions
   const task = fs.mkdtempSync(path.join(os.tmpdir(), 'cxb-'))
   const cwd = path.join(task, 's')
   fs.cpSync(path.join(dir, 'bundle', 'evals', 'behavior', c.id, 'fixture', 'project'), path.join(cwd, 'project'), { recursive: true })
   fs.cpSync(path.join(dir, 'arms', s.arm), path.join(cwd, 'plugin'), { recursive: true })
   const expected = expectedTree(dir, c, s.arm)
   if (treeHash(cwd).hash !== expected.hash) throw new Error('Codex run folder does not match the case and arm')
-  const contents = Object.fromEntries([SKILL, ...c.inputs.map(i => 'project/' + i)].map(rel => [rel, fs.readFileSync(path.join(cwd, rel), 'utf8')]))
+  const contents = runContents(cwd, c)
   const env = cleanEnv(home)
+  const slot = { slot: s.slot, case: c.id, arm: s.arm, host: 'codex', graders: c.graders.map(g => ({ name: g.name })) }
+  if (!sameProfile()) { fs.rmSync(task, { recursive: true, force: true }); return { ...slot, invalid: 'global instructions changed', stop: true } }
+  led.begin({ slot: s.slot, call: 'codex-actor' })
   const r = await spawnWait('codex', execArgs(), { cwd, env }, c.prompt, 900 * 1000)
   const t = codexTrace(r.stdout)
-  pay({ slot: s.slot, call: 'codex-actor', tokens: t.tokens ?? null })
+  const unconfirmed = r.timedOut && !r.killConfirmed
+  led.pay({ slot: s.slot, call: 'codex-actor', tokens: t.tokens ?? null, ...(unconfirmed ? { reason: 'codex stop unconfirmed' } : {}) }, unconfirmed)
   fs.writeFileSync(path.join(out, 'actor.jsonl'), r.stdout)
-  const slot = { slot: s.slot, case: c.id, arm: s.arm, host: 'codex', exitCode: r.code, timedOut: r.timedOut, tokens: t.tokens, graders: c.graders.map(g => ({ name: g.name })) }
-  if (r.timedOut && !r.killConfirmed) return { ...slot, invalid: 'process stop unconfirmed', stop: true, kept: task }
+  Object.assign(slot, { exitCode: r.code, timedOut: r.timedOut, tokens: t.tokens })
+  if (unconfirmed) return { ...slot, invalid: 'process stop unconfirmed', stop: true, kept: task }
+  if (!sameProfile()) return { ...slot, invalid: 'global instructions changed during the run', stop: true, kept: task }
   let changed
   try { changed = treeDiff(treeHash(cwd), expected) } catch (e) { return { ...slot, invalid: 'run folder unreadable: ' + e.message, stop: true, kept: task } }
   if (changed.length) return { ...slot, invalid: 'run folder changed: ' + changed.length + ' entries', stop: true, kept: task }
@@ -433,16 +536,21 @@ async function codexSlot(run, s, home, pay) {
   if (!slot.attribution.ok) return { ...slot, invalid: 'attribution: ' + slot.attribution.reason }
   slot.verdicts = {}
   slot.votes = {}
+  slot.markers = {}
   for (const g of c.graders) {
     const votes = []
     for (let i = 0; i < JUDGE_VOTES; i++) {
+      if (!sameProfile()) return { ...slot, invalid: 'global instructions changed before a judge', stop: true }
       const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
+      const call = 'codex-judge ' + g.name + ' ' + (i + 1)
+      led.begin({ slot: s.slot, call })
       const j = await spawnWait('codex', execArgs(), { cwd: jdir, env }, judgePrompt(g.criteria, t.message), 300 * 1000)
-      fs.rmSync(jdir, { recursive: true, force: true })
       const jt = codexTrace(j.stdout)
-      pay({ slot: s.slot, call: 'codex-judge ' + g.name + ' ' + (i + 1), tokens: jt.tokens ?? null })
+      const jUnconfirmed = j.timedOut && !j.killConfirmed
+      led.pay({ slot: s.slot, call, tokens: jt.tokens ?? null, ...(jUnconfirmed ? { reason: 'judge stop unconfirmed' } : {}) }, jUnconfirmed)
+      if (jUnconfirmed) return { ...slot, invalid: 'judge stop unconfirmed', stop: true, kept: jdir }
+      fs.rmSync(jdir, { recursive: true, force: true })
       if (jt.tokens === null) return { ...slot, invalid: 'unknown judge usage', stop: true }
-      if (j.timedOut && !j.killConfirmed) return { ...slot, invalid: 'judge stop unconfirmed', stop: true }
       let v = null
       // Only a judge that finished cleanly votes.
       if (j.code === 0 && !j.timedOut && !j.failed && jt.valid) { try { v = JSON.parse(/\{[^{}]*"verdict"[^{}]*\}/.exec(jt.message || '')[0]).verdict } catch {} }
@@ -450,13 +558,15 @@ async function codexSlot(run, s, home, pay) {
     }
     slot.votes[g.name] = votes
     const pass = votes.filter(v => v === 'PASS').length, fail = votes.filter(v => v === 'FAIL').length
-    slot.verdicts[g.name] = pass >= 2 ? 'PASS' : fail >= 2 ? 'FAIL' : null
+    const m = applyMarker(c.id, g.name, pass >= 2 ? 'PASS' : fail >= 2 ? 'FAIL' : null, t.message)
+    slot.verdicts[g.name] = m.verdict
+    if (m.mark) slot.markers[g.name] = m
   }
   return slot
 }
 
 function summary(run) {
-  const { dir, manifest, cases } = run
+  const { dir, manifest } = run
   const counts = {}
   for (const s of manifest.slots) {
     const f = path.join(dir, 'slots', s.slot, 'slot.json')
@@ -472,9 +582,10 @@ function summary(run) {
     const valid = k.positive + k.negative
     k.upperBoundIfZero = k.positive === 0 && valid ? Number(upperBound(valid).toFixed(3)) : null
   }
-  const required = requiredPairs(cases)
+  // Holdout propositions are compared like regression cells: no candidate increase, missing slots counted against it.
+  const rules = { ...RULES, regression: [...RULES.regression, ...holdoutPairs()], slots: SLOTS }
   const result = { manifest: manifest.hash, counts,
-    adoption: manifest.pilot ? { adopted: null, reasons: ['pilot: not an adoption run'] } : adopt(counts, { ...RULES, slots: SLOTS }, required) }
+    adoption: manifest.pilot ? { adopted: null, reasons: ['pilot: not an adoption run'] } : adopt(counts, rules, requiredPairs()) }
   fs.writeFileSync(path.join(dir, 'summary.json'), JSON.stringify(result, null, 1) + '\n')
   return result
 }
@@ -483,7 +594,7 @@ const reserve = (b, host) => {
   const seen = b.entries.map(e => host === 'claude' ? e.usd : e.tokens).filter(v => typeof v === 'number' && v > 0)
   // Codex slots are actor plus judges; the reserve uses the largest whole slot seen.
   const bySlot = {}
-  for (const e of b.entries) if (host === 'codex' && Number.isSafeInteger(e.tokens)) bySlot[e.slot] = (bySlot[e.slot] || 0) + e.tokens
+  for (const e of b.entries) if (host === 'codex' && Number.isSafeInteger(e.tokens)) bySlot[e.run + '/' + e.slot] = (bySlot[e.run + '/' + e.slot] || 0) + e.tokens
   const largest = host === 'claude' ? Math.max(0, ...seen) : Math.max(0, ...Object.values(bySlot))
   return Math.max(host === 'claude' ? 1 : 200000, 2 * largest)
 }
@@ -506,13 +617,13 @@ function parseArgs(args) {
     else if (a === '--budget-tokens') opts.budgetTokens = Number(v())
     else throw new Error('Unknown option ' + a)
   }
-  const usage = 'usage: devflow-behavior-eval prepare --run <name> --arm A=<rev> --arm B=<rev> --expect-diff <path> [--cases a,b] (--pilot | --calibration <record>)\n' +
-    '       devflow-behavior-eval run --run <name> --host claude|codex --budget <group> [--budget-usd <cap> --budget-tokens <cap>]\n' +
+  const usage = 'usage: devflow-behavior-eval prepare --run <name> --arm A=<rev> --arm B=<rev> --expect-diff <path> --budget <group> [--budget-usd <cap> --budget-tokens <cap>] [--cases a,b] (--pilot | --calibration <record>)\n' +
+    '       devflow-behavior-eval run --run <name> --host claude|codex\n' +
     '       devflow-behavior-eval summary --run <name>'
   if (!opts.run || !/^[a-z0-9][a-z0-9-]*$/.test(opts.run)) throw new Error(usage)
   if (!['prepare', 'run', 'summary'].includes(command)) throw new Error(usage)
-  if (command === 'prepare' && (!opts.arms.A || !opts.arms.B || !opts.expectDiff.length)) throw new Error(usage)
-  if (command === 'run' && (!['claude', 'codex'].includes(opts.host) || !opts.budget || !/^[a-z0-9][a-z0-9-]*$/.test(opts.budget))) throw new Error(usage)
+  if (command === 'prepare' && (!opts.arms.A || !opts.arms.B || !opts.expectDiff.length || !opts.budget || !/^[a-z0-9][a-z0-9-]*$/.test(opts.budget))) throw new Error(usage)
+  if (command === 'run' && (!['claude', 'codex'].includes(opts.host) || opts.budget || opts.budgetUsd !== undefined || opts.budgetTokens !== undefined)) throw new Error(usage)
   return opts
 }
 
@@ -520,42 +631,45 @@ async function main(args) {
   const opts = parseArgs(args)
   if (opts.command === 'prepare') {
     const m = prepare(opts)
-    process.stdout.write(`prepared ${opts.run}: ${m.slots.length} slots, manifest ${m.hash.slice(0, 12)}\n`)
+    process.stdout.write(`prepared ${opts.run}: ${m.slots.length} slots, budget ${m.budget}, manifest ${m.hash.slice(0, 12)}\n`)
     return
   }
   const run = openRun(opts.run)
   if (opts.command === 'summary') { process.stdout.write(JSON.stringify(summary(run), null, 1) + '\n'); return }
-  if (fs.existsSync(inflightPath(run.dir))) throw new Error('A paid call of this run has no recorded result (inflight.json); confirm its process ended and record its usage before resuming')
-  openBudget(opts.budget, { usd: opts.budgetUsd, tokens: opts.budgetTokens })
-  const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
-  if (opts.host === 'codex') {
-    // The profile is fixed at the first Codex call of a run and checked on every resume.
-    const file = path.join(run.dir, 'codex-home.json')
-    const now = { ...homeIdentity(home), globalInstructionsHash: globalInstructionsHash(home) }
-    if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(now) + '\n')
-    else if (fs.readFileSync(file, 'utf8') !== JSON.stringify(now) + '\n') throw new Error('Codex home or global instructions differ from the first Codex call of this run')
-  }
-  const pay = entry => {
-    charge(opts.budget, { run: opts.run, ...entry })
-  }
-  for (const s of run.manifest.slots.filter(x => x.host === opts.host)) {
-    const file = path.join(run.dir, 'slots', s.slot, 'slot.json')
-    if (fs.existsSync(file)) continue
-    const b = openBudget(opts.budget, {})
-    if (!b.known) throw new Error('Usage became unknown; stopping before ' + s.slot)
-    const remaining = opts.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
-    // A slot cannot be cut off mid-turn, so one starts only with room for twice the largest slot seen so far.
-    if (remaining < reserve(b, opts.host)) { process.stdout.write('budget reserve reached before ' + s.slot + '\n'); return }
-    fs.writeFileSync(inflightPath(run.dir), JSON.stringify({ slot: s.slot, startedAt: new Date().toISOString() }) + '\n')
-    const slot = opts.host === 'claude' ? await claudeSlot(run, s, remaining, pay) : await codexSlot(run, s, home, pay)
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, JSON.stringify(slot, null, 1) + '\n')
-    fs.rmSync(inflightPath(run.dir))
-    process.stdout.write(`${s.slot}: ${slot.invalid ? 'invalid (' + slot.invalid + ')' : JSON.stringify(classify(slot))}\n`)
-    if (slot.stop) throw new Error('Stopped at ' + s.slot + (slot.kept ? '; evidence kept in ' + slot.kept : ''))
-  }
+  const group = run.manifest.budget
+  const release = lockBudget(group)
+  try {
+    const first = openBudget(group, {})
+    if (first.inflight) throw new Error('Budget ' + group + ' has a call without recorded usage: ' + JSON.stringify(first.inflight) + '; confirm its process ended and record its usage before resuming')
+    const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+    let instructions = null
+    if (opts.host === 'codex') {
+      // The profile is fixed at the first Codex call of a run and checked before every call.
+      const file = path.join(run.dir, 'codex-home.json')
+      const now = { ...homeIdentity(home), globalInstructionsHash: globalInstructionsHash(home) }
+      if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(now) + '\n')
+      else if (fs.readFileSync(file, 'utf8') !== JSON.stringify(now) + '\n') throw new Error('Codex home or global instructions differ from the first Codex call of this run')
+      instructions = now.globalInstructionsHash
+    }
+    const led = ledger(group, opts.run)
+    for (const s of run.manifest.slots.filter(x => x.host === opts.host)) {
+      const file = path.join(run.dir, 'slots', s.slot, 'slot.json')
+      if (fs.existsSync(file)) continue
+      const b = openBudget(group, {})
+      if (!b.known) throw new Error('Usage became unknown; stopping before ' + s.slot)
+      const remaining = opts.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
+      // A slot cannot be cut off mid-turn, so one starts only with room for twice the largest slot seen so far.
+      if (remaining < reserve(b, opts.host)) { process.stdout.write('budget reserve reached before ' + s.slot + '\n'); return }
+      const slot = opts.host === 'claude' ? await claudeSlot(run, s, remaining, led) : await codexSlot(run, s, home, led, instructions)
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, JSON.stringify(slot, null, 1) + '\n')
+      process.stdout.write(`${s.slot}: ${slot.invalid ? 'invalid (' + slot.invalid + ')' : JSON.stringify(classify(slot))}\n`)
+      if (slot.stop) throw new Error('Stopped at ' + s.slot + (slot.kept ? '; evidence kept in ' + slot.kept : ''))
+    }
+  } finally { release() }
 }
 
 module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun,
-  openBudget, charge, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, checkCalibration, RULES }
+  openBudget, begin, charge, lockBudget, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
+  totalInputClaims, applyMarker, RULES }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

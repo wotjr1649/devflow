@@ -77,8 +77,8 @@ pr-review-workflow의 반복 보고 결함이 skill 본문 후보에서 줄었�
 CI는 `tests/behavior-eval.test.js`(사례·fixture·실행표·귀속·판정 계산)만 돌린다.
 
 ```bash
-node bin/devflow-behavior-eval prepare --run <name> --arm A=<기준선 rev> --arm B=<후보 rev> --expect-diff skills/pr-review-workflow/SKILL.md [--cases <id,...>] (--pilot | --calibration <record>)
-node bin/devflow-behavior-eval run --run <name> --host claude|codex --budget <group> [--budget-usd <상한> --budget-tokens <상한>]
+node bin/devflow-behavior-eval prepare --run <name> --arm A=<기준선 rev> --arm B=<후보 rev> --expect-diff skills/pr-review-workflow/SKILL.md --budget <group> [--budget-usd <상한> --budget-tokens <상한>] [--cases <id,...>] (--pilot | --calibration <record>)
+node bin/devflow-behavior-eval run --run <name> --host claude|codex
 node bin/devflow-behavior-eval summary --run <name>
 ```
 
@@ -90,19 +90,21 @@ node bin/devflow-behavior-eval summary --run <name>
 - arm: 고정 revision의 추적 파일만 `git archive`로 뽑는다. 두 arm의 차이가 `--expect-diff` 목록과 다르면 멈춘다. 사례·grader는 실행기를
   부른 커밋(평가 묶음) 하나에서 뽑고, 이 묶음과 실행기는 커밋된 상태여야 한다. `.work/behavior-eval/<run>/manifest.json`에 해시를 남긴다.
   이어 실행은 미실행 슬롯만 한다. 실행기·실행표·모델 설정·arm·사례·shim 전체·bash가 바뀌었으면 멈춘다.
-  Codex profile과 전역 지침은 그 run의 첫 Codex 호출 때 값과 같아야 한다.
-- 채택 run은 필수 사례·명제가 모두 있어야 하고, 모든 grader가 보정 기록(grader 해시, 양·음성 각 5개 이상, 검출률 80%·일치율 90% 이상)을
-  통과해야 준비된다. pilot은 보정 없이 기계적 동작만 확인하며 채택 판정을 내지 않는다.
+  Codex profile과 전역 지침은 그 run의 첫 Codex 호출 때 값과 같아야 하고, actor·judge 호출마다 다시 확인한다.
+- 채택 run은 실행기에 고정된 필수 사례·명제 목록(holdout `h1-claude`·`h1-codex`의 D1·D2·D3 포함)이 모두 있어야 준비된다.
+  모든 grader는 보정 기록을 통과해야 한다. 기록에는 grader 해시와 표본마다 라벨·판정·표본 해시가 있다. 실행기는 그 표본에서
+  양·음성 각 5개 이상, 검출률 80%, 일치율 90% 이상을 다시 계산한다. pilot은 보정 없이 기계적 동작만 확인하며 채택 판정을 내지 않는다.
 - 실행표: 사례마다 ABBA 7블록으로 arm별 14슬롯을 만든다. pilot은 사례마다 arm별 1슬롯이며 채택 판정에 쓰지 않는다.
 - Claude: 사례 폴더와 arm만 담은 shim plugin을 대상으로 슬롯마다 다음을 실행한다.
   - 명령: `claude plugin eval <shim> --case <id> --runs 1 --ablation none --scaffold --keep-temp --no-publish --trust-plugin --model claude-opus-5-5 --judge-model claude-sonnet-5-5 --max-cost-usd <잔여> --json`
-  - scaffold는 PATH 앞에 둔 Git for Windows bash로 `project/`와 `plugin/`을 만든다.
+  - scaffold는 `CLAUDE_CODE_GIT_BASH_PATH`와 PATH 앞에 둔 Git for Windows bash로 `project/`와 `plugin/`을 만든다.
   - 사용자 로그인을 상속한 사용자 터미널(Herdr pane 포함)에서 돌린다. 인증을 복사하거나 바꾸지 않는다.
   - 결과 JSON이 한 사례·한 실행·사례의 grader 수와 다르거나, 오류·비정상 종료·비용 미상이면 그 슬롯을 invalid로 두고 멈춘다.
   - trace를 결과 폴더로 옮긴 뒤 남긴 임시 폴더를 지운다. 실패하면 남기고 멈춘다.
 - Codex: 저장소 밖 임시 폴더에 같은 `project/`·`plugin/`을 node로 복사한다.
   - 명령은 트리거 eval과 같다: `codex exec` read-only, gpt-6.1-sol/high, 최소 환경 변수.
-  - 판정은 같은 criteria로 `codex exec` judge를 3회 돌려 2표 이상을 따른다. 정상 종료한 judge만 투표한다. actor stdout은 검수용으로
+  - 판정은 같은 criteria로 `codex exec` judge를 3회 돌려 2표 이상을 따른다. 입력 개수(B4 D2, K1)와 기록 명령(B6 D5)에는 결정론
+    보조 표지가 있고, 표지와 판정이 다르면 그 명제는 undetermined다. 정상 종료한 judge만 투표한다. actor stdout은 검수용으로
     결과 폴더에 둔다.
   - CODEX_HOME에 다른 devflow가 설치돼 있어도 된다. 결과에는 실사용 여부(`default`·`override`)를 남긴다.
 - 귀속: 다음을 모두 만족할 때만 유효하다.
@@ -126,8 +128,9 @@ node bin/devflow-behavior-eval summary --run <name>
 - 예산
   - 승인된 예산마다 그룹(`.work/behavior-eval/budgets/<group>.json`)을 두고, 상한은 만들 때 고정한다. 그 그룹을 쓰는 모든 run의
     Claude `costUsd`+`judgeCostUsd`와 Codex actor·judge 사용량을 호출이 끝날 때마다 누적한다.
-  - 사용량을 알 수 없으면 멈춘다. 유료 호출 전에 run에 진행 표지(`inflight.json`)를 남긴다. 표지가 남은 run은 그 호출의 종료와
-    사용량을 확인하기 전에는 이어 실행하지 않는다.
+  - run은 prepare 때 그룹 하나에 묶인다. 한 그룹은 잠금 파일로 한 번에 한 run만 쓴다.
+  - 사용량을 알 수 없으면 멈춘다. 유료 호출 전에 그룹에 진행 표지를 남기고, 사용량을 기록할 때 지운다. 프로세스 종료를 확인하지
+    못하면 표지를 남긴다. 표지가 남은 그룹은 그 호출의 종료와 사용량을 확인하기 전에는 어떤 run도 시작하지 않는다.
   - 한 슬롯은 도중에 끊을 수 없으므로, 남은 예산이 지금까지 본 가장 큰 슬롯의 두 배(최소 Claude $1, Codex 20만 토큰)보다 작으면
     다음 슬롯을 시작하지 않는다. 이 규칙으로도 진행 중인 슬롯의 초과는 완전히 막지 못한다.
 - 보존

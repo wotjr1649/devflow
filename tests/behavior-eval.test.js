@@ -301,14 +301,14 @@ test('calibration evidence must match the anchors file and each result file, and
   fs.writeFileSync(path.join(dir, 'anchors.json'), anchorsText)
   fs.mkdirSync(path.join(dir, 'results'))
   const samples = anchors.map(a => {
-    const body = JSON.stringify({ anchor: a.id, verdicts: { d1: a.labels.d1 } })
+    const body = JSON.stringify({ anchor: a.id, case: 'b1', sampleHash: sha(a.text), graderHashes: { d1: gh }, verdicts: { d1: a.labels.d1 } })
     fs.writeFileSync(path.join(dir, 'results', a.id + '.json'), body)
     return { anchor: a.id, label: a.labels.d1, verdict: a.labels.d1, sampleHash: sha(a.text), result: 'results/' + a.id + '.json', resultHash: sha(body) }
   })
   const record = { anchorsPath: path.join(dir, 'anchors.json'), anchorsHash: sha(anchorsText), graders: { 'b1/d1': { hash: gh, samples } } }
   const cases = [{ id: 'b1', graders: [{ name: 'd1', hash: gh }] }]
   assert.deepEqual(checkCalibration(record, cases, dir), [])
-  fs.writeFileSync(path.join(dir, 'results', 'a0.json'), JSON.stringify({ anchor: 'a0', verdicts: { d1: 'negative' } }))
+  fs.writeFileSync(path.join(dir, 'results', 'a0.json'), JSON.stringify({ anchor: 'a0', case: 'b1', sampleHash: sha('response 0'), graderHashes: { d1: gh }, verdicts: { d1: 'negative' } }))
   assert.deepEqual(checkCalibration(record, cases, dir), ['b1/d1'])
   assert.deepEqual(checkCalibration({ ...record, anchorsHash: sha('other') }, cases, dir), ['b1/d1'])
   const trace = [JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: '1', name: 'Read', input: {} }] } }),
@@ -334,7 +334,7 @@ test('an adjudicated cell counts a judge positive only as the reviewers settled 
   fs.mkdirSync(path.join(dir, 'results'))
   const verdictOf = a => a.labels.d1 === 'positive' ? 'positive' : (a.id === 'n0' || a.id === 'n1' ? 'positive' : 'negative')
   const samples = anchors.map(a => {
-    const body = JSON.stringify({ anchor: a.id, verdicts: { d1: verdictOf(a) } })
+    const body = JSON.stringify({ anchor: a.id, case: 'b3', sampleHash: sha(a.text), graderHashes: { d1: gh }, verdicts: { d1: verdictOf(a) } })
     fs.writeFileSync(path.join(dir, 'results', a.id + '.json'), body)
     return { anchor: a.id, label: a.labels.d1, verdict: verdictOf(a), sampleHash: sha(a.text), result: 'results/' + a.id + '.json', resultHash: sha(body) }
   })
@@ -361,7 +361,7 @@ test('review fixes: D5 abstains on an unparsed method, subset counts are not tot
   const text = JSON.stringify(anchors)
   fs.writeFileSync(path.join(run, 'anchors.json'), text)
   const samples = anchors.map(a => {
-    const body = JSON.stringify({ anchor: a.id, case: 'b2', sampleHash: sha(a.text), verdicts: { d1: a.labels.d1 } })
+    const body = JSON.stringify({ anchor: a.id, case: 'b2', sampleHash: sha(a.text), graderHashes: { d1: sha('g') }, verdicts: { d1: a.labels.d1 } })
     fs.writeFileSync(path.join(dir, 'results', a.id + '.json'), body)
     return { anchor: a.id, label: a.labels.d1, verdict: a.labels.d1, sampleHash: sha(a.text), result: 'results/' + a.id + '.json', resultHash: sha(body) }
   })
@@ -373,10 +373,42 @@ test('review fixes: D5 abstains on an unparsed method, subset counts are not tot
   assert.deepEqual(checkCalibration(record, cases, dir, { finalLabels: final(1) }), [])
   assert.deepEqual(checkCalibration(record, cases, dir, { finalLabels: final(2) }), ['b2/d1'])
   // A result file that names another anchor does not prove the sample.
-  const body = JSON.stringify({ anchor: 'a1', case: 'b2', sampleHash: sha('t0'), verdicts: { d1: 'positive' } })
+  const body = JSON.stringify({ anchor: 'a1', case: 'b2', sampleHash: sha('t0'), graderHashes: { d1: sha('g') }, verdicts: { d1: 'positive' } })
   fs.writeFileSync(path.join(dir, 'results', 'a0.json'), body)
   const tampered = { ...record, graders: { 'b2/d1': { hash: sha('g'), samples: samples.map((s, i) => i === 0 ? { ...s, resultHash: sha(body) } : s) } } }
   assert.deepEqual(checkCalibration(tampered, cases, dir), [])
   const tampered2 = { ...record, graders: { 'b2/d1': { hash: sha('g'), samples: samples.map((s, i) => i < 2 ? { ...s, resultHash: sha(body) } : s) } } }
   assert.deepEqual(checkCalibration(tampered2, cases, dir), ['b2/d1'])
+})
+
+test('second review fixes: mixed D5 lines abstain, listed subsets are not totals, legacy Claude results need the echo case they judged', () => {
+  const rec = ['df8fb182a64160718f8f1a34a41d92a2173f81e2', '33c9ea7fad42e07d70527e39381298d15ccf5729']
+  assert.equal(ev.markers.d5('Recorded check: git diff --check main; expected method: git diff --check df8fb18..33c9ea7.', rec), null)
+  assert.deepEqual(ev.totalInputClaims('I read three project inputs (.work/plan.md, .work/records.yaml and .work/spec.md).'), [])
+  const crypto = require('node:crypto')
+  const sha = s => crypto.createHash('sha256').update(s).digest('hex')
+  const run = tmpdir('legacy-')
+  const dir = path.join(run, 'calibration', 'claude')
+  fs.mkdirSync(path.join(dir, 'results'), { recursive: true })
+  fs.mkdirSync(path.join(run, 'bundle', 'evals', 'behavior', 'b5', 'graders'), { recursive: true })
+  fs.writeFileSync(path.join(run, 'bundle', 'evals', 'behavior', 'b5', 'graders', 'd4.md'), 'g4')
+  const anchors = Array.from({ length: 10 }, (_, i) => ({ id: 'l' + i, case: 'b5', text: 'legacy ' + i, labels: { d4: i < 5 ? 'positive' : 'negative' } }))
+  const text = JSON.stringify(anchors)
+  fs.writeFileSync(path.join(run, 'anchors.json'), text)
+  const samples = anchors.map(a => {
+    // The judged echo case is kept in the calibration shim; legacy results carry only the anchor id.
+    const cdir = path.join(run, 'calibration', 'claude-shim', 'evals', a.id)
+    fs.mkdirSync(path.join(cdir, 'graders'), { recursive: true })
+    fs.writeFileSync(path.join(cdir, 'anchor.md'), a.text)
+    fs.writeFileSync(path.join(cdir, 'graders', 'd4.md'), 'g4')
+    const body = JSON.stringify({ anchor: a.id, verdicts: { d4: a.labels.d4 } })
+    fs.writeFileSync(path.join(dir, 'results', a.id + '.json'), body)
+    return { anchor: a.id, label: a.labels.d4, verdict: a.labels.d4, sampleHash: sha(a.text), result: 'results/' + a.id + '.json', resultHash: sha(body) }
+  })
+  const record = { host: 'claude', run: 'r', anchorsPath: path.join(run, 'anchors.json'), anchorsHash: sha(text), graders: { 'b5/d4': { hash: sha('g4'), samples } } }
+  const cases = [{ id: 'b5', graders: [{ name: 'd4', hash: sha('g4') }] }]
+  assert.deepEqual(checkCalibration(record, cases, dir), [])
+  // The echo case that was judged held another text: that sample is not proven, and losing one of five positives fails the gate.
+  fs.writeFileSync(path.join(run, 'calibration', 'claude-shim', 'evals', 'l0', 'anchor.md'), 'other text')
+  assert.deepEqual(checkCalibration(record, cases, dir), ['b5/d4'])
 })

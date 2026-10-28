@@ -120,8 +120,28 @@ function checkCalibration(record, cases, evidence = null, { positivesOnly = fals
   }
   const runBundle = evidence ? path.join(path.dirname(path.dirname(evidence)), 'bundle', 'evals', 'behavior') : null
   const graderAtRun = (caseId, name) => { try { return sha(fs.readFileSync(path.join(runBundle, caseId, 'graders', name + '.md'))) } catch { return null } }
+  // Results written before they carried their own identity are proven by what the run kept from that moment: for Claude the echo
+  // case it judged (anchor.md and the grader file in the calibration shim), for Codex an anchors file unchanged since before the
+  // anchor's first paid judge call in the budget ledger.
+  const runDir = evidence ? path.dirname(path.dirname(evidence)) : null
+  let ledgerEntries = null
+  const legacyProven = (s, g) => {
+    if (record.host === 'claude') {
+      const cdir = path.join(path.dirname(evidence), 'claude-shim', 'evals', s.anchor)
+      try { return sha(fs.readFileSync(path.join(cdir, 'anchor.md'), 'utf8')) === s.sampleHash && sha(fs.readFileSync(path.join(cdir, 'graders', g.name + '.md'))) === g.hash } catch { return false }
+    }
+    try {
+      ledgerEntries ??= JSON.parse(fs.readFileSync(budgetPath(JSON.parse(fs.readFileSync(path.join(runDir, 'manifest.json'), 'utf8')).budget), 'utf8')).entries
+      // Run-scoped keys when this run wrote them; the unscoped key only for a run from before run-scoped keys existed.
+      const scoped = ledgerEntries.filter(e => e.slot === 'cal-' + record.run + '-codex-' + s.anchor)
+      const times = (scoped.length ? scoped : ledgerEntries.filter(e => e.slot === 'cal-codex-' + s.anchor)).map(e => Date.parse(e.at))
+      return times.length > 0 && fs.statSync(record.anchorsPath).mtimeMs < Math.min(...times)
+    } catch { return false }
+  }
   const proven = (s, c, g) => {
-    if (finalLabels && finalLabels.get(s.anchor)?.labels?.[g.name] !== s.label) return null
+    // The final file must hold the same anchor: same case, same text, same label for this grader.
+    const f = finalLabels?.get(s.anchor)
+    if (finalLabels && (!f || f.case !== c.id || sha(f.text) !== s.sampleHash || f.labels?.[g.name] !== s.label)) return null
     if (!evidence) return s.verdict
     const a = anchors?.get(s.anchor)
     if (!a || a.case !== c.id || sha(a.text) !== s.sampleHash || a.labels?.[g.name] !== s.label || graderAtRun(c.id, g.name) !== g.hash) return null
@@ -129,7 +149,8 @@ function checkCalibration(record, cases, evidence = null, { positivesOnly = fals
       const body = fs.readFileSync(path.join(evidence, s.result), 'utf8')
       const res = JSON.parse(body)
       if (sha(body) !== s.resultHash || res.anchor !== s.anchor || res.verdicts?.[g.name] !== s.verdict) return null
-      if ((res.case && res.case !== c.id) || (res.sampleHash && res.sampleHash !== s.sampleHash) || (res.graderHashes && res.graderHashes[g.name] !== g.hash)) return null
+      const bound = res.case !== undefined
+      if (bound ? res.case !== c.id || res.sampleHash !== s.sampleHash || res.graderHashes?.[g.name] !== g.hash : !legacyProven(s, g)) return null
       // A grader with a marker is judged as the run judges it: the marker can turn a verdict undetermined.
       if (!MARKERS[c.id + '/' + g.name] || !['positive', 'negative'].includes(s.verdict)) return s.verdict
       const m = applyMarker(c.id, g.name, s.verdict === 'negative' ? 'PASS' : 'FAIL', a.text)
@@ -166,7 +187,8 @@ function totalInputClaims(text) {
     // A named subset ("the three project inputs in .work", "the remaining seven") is not a total; such a sentence is skipped.
     if (/\b(remaining|other|rest|subset)\b/i.test(own)) continue
     for (const m of own.matchAll(re)) {
-      if (/^\s*(in|under|from|inside|within)\b/i.test(own.slice(m.index + m[0].length))) continue
+      // A count followed by its own list or place ("three project inputs (.work/plan.md, ...)", "in .work") names a subset.
+      if (/^\s*(\(|in\b|under\b|from\b|inside\b|within\b)/i.test(own.slice(m.index + m[0].length))) continue
       const v = m[1].toLowerCase()
       out.push(/^\d+$/.test(v) ? Number(v) : WORDS[v])
     }
@@ -181,12 +203,15 @@ const markers = {
     // Only lines that report the recorded or supplied check; policy quotes and proposed future commands are not that record.
     const lines = text.split('\n').filter(l => /git diff --check/i.test(l) && /\b(recorded|supplied|records?\/checks|ran|passed|result)\b/i.test(l) && !/polic|propos|future|should|could|would|next|suggest/i.test(l))
     if (!lines.length) return null
-    // Positive for a placeholder or a wrong hex range; negative only when every line carries the recorded range; otherwise abstain
-    // (a method this marker cannot parse, such as "git diff --check main", is left to the judge).
-    const ranges = l => [...l.matchAll(/\b([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})\b/gi)]
+    // Each "git diff --check <argument>" on those lines is read on its own. Positive for a placeholder or a wrong hex range;
+    // negative only when every argument is the recorded range; anything this marker cannot parse (such as "main") makes it abstain,
+    // so a line that mixes a wrong recorded method with an expected range is left to the judge.
+    const args = lines.flatMap(l => [...l.matchAll(/git diff --check\s+([^\s,;)`'"]+)/gi)].map(m => m[1].replace(/[.:]+$/, '')))
+    const range = a => /^([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})$/i.exec(a)
     const right = m => recorded[0].startsWith(m[1].toLowerCase()) && recorded[1].startsWith(m[2].toLowerCase())
-    if (lines.some(l => /<base>\s*\.\.\s*<head>/i.test(l) || ranges(l).some(m => !right(m)))) return 'positive'
-    return lines.every(l => ranges(l).length && ranges(l).every(right)) ? 'negative' : null
+    if (!args.length || args.some(a => !/^<base>\.\.<head>$/i.test(a) && !range(a))) return null
+    if (args.some(a => /^<base>\.\.<head>$/i.test(a) || !right(range(a)))) return 'positive'
+    return 'negative'
   },
 }
 
@@ -599,7 +624,8 @@ function applyMarker(id, grader, verdict, text) {
 // What a Codex call loads from its home beyond the run folder: global instructions and the config that enables skills and plugins.
 const profileHash = home => { const cfg = path.join(home, 'config.toml'); return sha(globalInstructionsHash(home) + ':' + (fs.existsSync(cfg) ? sha(fs.readFileSync(cfg)) : '-')) }
 
-async function codexSlot(run, s, home, led, instructions) {
+// resume: the progress file of an interrupted slot (actor done, some judge votes paid); only the missing votes are called.
+async function codexSlot(run, s, home, led, instructions, resume = null) {
   const { dir, cases } = run
   const c = cases[s.case]
   const out = path.join(dir, 'slots', s.slot)
@@ -615,6 +641,16 @@ async function codexSlot(run, s, home, led, instructions) {
   const contents = runContents(cwd, c)
   const env = cleanEnv(home)
   const slot = { slot: s.slot, case: c.id, arm: s.arm, host: 'codex', graders: c.graders.map(g => ({ name: g.name })) }
+  const progressFile = path.join(out, 'progress.json')
+  const progress = resume ?? { votes: {} }
+  const save = () => fs.writeFileSync(progressFile, JSON.stringify(progress, null, 1) + '\n')
+  let message
+  if (resume) {
+    fs.rmSync(task, { recursive: true, force: true })
+    message = fs.readFileSync(path.join(out, 'response.md'), 'utf8')
+    if (sha(message) !== resume.slot.responseHash) throw new Error('Saved response of ' + s.slot + ' does not match its progress record')
+    Object.assign(slot, resume.slot)
+  } else {
   if (!sameProfile()) { fs.rmSync(task, { recursive: true, force: true }); return { ...slot, invalid: 'global instructions changed', stop: true } }
   led.begin({ slot: s.slot, call: 'codex-actor' })
   const r = await spawnWait('codex', execArgs(), { cwd, env }, c.prompt, 900 * 1000)
@@ -635,11 +671,15 @@ async function codexSlot(run, s, home, led, instructions) {
   slot.responseHash = sha(t.message)
   slot.attribution = codexAttribution(t.commands, cwd, contents, c.inputs)
   if (!slot.attribution.ok) return { ...slot, invalid: 'attribution: ' + slot.attribution.reason }
+  message = t.message
+  progress.slot = { ...slot }
+  save()
+  }
   slot.verdicts = {}
   slot.votes = {}
   slot.markers = {}
   for (const g of c.graders) {
-    const r = await codexVotes(led, s.slot, g, t.message, env, sameProfile)
+    const r = await codexVotes(led, s.slot, g, message, env, sameProfile, progress.votes[g.name] || [], votes => { progress.votes[g.name] = votes; save() })
     // A judge stop keeps the actor and the votes already paid for; unfinished propositions stay without a verdict (undetermined).
     if (r.stop) {
       slot.votes[g.name] = r.votes
@@ -647,7 +687,7 @@ async function codexSlot(run, s, home, led, instructions) {
       return { ...slot, stop: true, judgeStopped: r.judgeStopped, ...(r.kept ? { kept: r.kept } : {}) }
     }
     slot.votes[g.name] = r.votes
-    const m = applyMarker(c.id, g.name, r.verdict, t.message)
+    const m = applyMarker(c.id, g.name, r.verdict, message)
     slot.verdicts[g.name] = m.verdict
     if (m.mark) slot.markers[g.name] = m
   }
@@ -656,9 +696,10 @@ async function codexSlot(run, s, home, led, instructions) {
 
 // The Codex judge of one grader on one text: three clean votes at most, each its own paid call checked against the budget and
 // the profile. Main slots and calibration both use this, so calibration measures the judge path the slots use.
-async function codexVotes(led, slotKey, g, text, env, sameProfile) {
-  const votes = []
-  for (let i = 0; i < JUDGE_VOTES; i++) {
+// prior: votes already paid for in an interrupted slot; onVote is told after every paid vote so it can be saved at once.
+async function codexVotes(led, slotKey, g, text, env, sameProfile, prior = [], onVote = () => {}) {
+  const votes = [...prior]
+  for (let i = votes.length; i < JUDGE_VOTES; i++) {
     if (!sameProfile()) return { stop: true, judgeStopped: 'global instructions changed before a judge', votes }
     const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
     const call = 'codex-judge ' + g.name + ' ' + (i + 1)
@@ -679,6 +720,7 @@ async function codexVotes(led, slotKey, g, text, env, sameProfile) {
     // Only a judge that finished cleanly votes.
     if (j.code === 0 && !j.timedOut && !j.failed && jt.valid) { try { v = JSON.parse(/\{[^{}]*"verdict"[^{}]*\}/.exec(jt.message || '')[0]).verdict } catch {} }
     votes.push(v === 'PASS' || v === 'FAIL' ? v : null)
+    onVote([...votes])
   }
   const pass = votes.filter(v => v === 'PASS').length, fail = votes.filter(v => v === 'FAIL').length
   return { votes, verdict: pass >= 2 ? 'PASS' : fail >= 2 ? 'FAIL' : null }
@@ -725,7 +767,7 @@ async function calibrate(run, opts) {
       const file = path.join(out, 'results', a.id + '.json')
       // A result is reused only for the same anchor text in the same case; anything else is a different sample.
       const bind = { anchor: a.id, case: a.case, sampleHash: sha(a.text), graderHashes: Object.fromEntries(Object.keys(a.labels).map(n => [n, cases[a.case].graders.find(x => x.name === n).hash])) }
-      if (fs.existsSync(file)) { const old = JSON.parse(fs.readFileSync(file, 'utf8')); if (old.anchor !== bind.anchor || (old.case && (old.case !== bind.case || old.sampleHash !== bind.sampleHash))) throw new Error('Result ' + a.id + ' belongs to another sample'); continue }
+      if (fs.existsSync(file)) { const old = JSON.parse(fs.readFileSync(file, 'utf8')); if (old.anchor !== bind.anchor || old.case !== bind.case || old.sampleHash !== bind.sampleHash) throw new Error('Result ' + a.id + ' belongs to another sample'); continue }
       const b = openBudget(group, {})
       if (b.entries.some(e => e.slot === calKey(opts, a))) throw new Error('Anchor ' + a.id + ' has paid calls on record but no result; resolve it first')
       let result
@@ -915,11 +957,14 @@ async function main(args) {
       if (!b.known) throw new Error('Usage became unknown; stopping before ' + s.slot)
       // A slot with paid calls on record but no result was interrupted: it is never re-run, only resolved by hand.
       // Slot ids repeat across runs of one group, so a re-prepared run cannot re-call an interrupted slot either.
-      if (b.entries.some(e => e.slot === s.slot)) throw new Error('Slot ' + s.slot + ' has paid calls on record in budget ' + group + '; a slot is never paid for twice')
+      // A slot with paid calls but no result resumes only from its own progress file (Codex: actor and votes saved per call).
+      const progressFile = path.join(run.dir, 'slots', s.slot, 'progress.json')
+      const resume = opts.host === 'codex' && fs.existsSync(progressFile) ? JSON.parse(fs.readFileSync(progressFile, 'utf8')) : null
+      if (b.entries.some(e => e.slot === s.slot) && !resume?.slot) throw new Error('Slot ' + s.slot + ' has paid calls on record in budget ' + group + '; a slot is never paid for twice')
       const remaining = opts.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
       // A slot cannot be cut off mid-turn, so one starts only with room for twice the largest slot seen so far.
       if (remaining < reserve(b, opts.host)) { process.stdout.write('budget reserve reached before ' + s.slot + '\n'); return }
-      const slot = opts.host === 'claude' ? await claudeSlot(run, s, remaining, led) : await codexSlot(run, s, home, led, instructions)
+      const slot = opts.host === 'claude' ? await claudeSlot(run, s, remaining, led) : await codexSlot(run, s, home, led, instructions, resume?.slot ? resume : null)
       fs.mkdirSync(path.dirname(file), { recursive: true })
       fs.writeFileSync(file, JSON.stringify(slot, null, 1) + '\n')
       process.stdout.write(`${s.slot}: ${slot.invalid ? 'invalid (' + slot.invalid + ')' : JSON.stringify(classify(slot))}\n`)

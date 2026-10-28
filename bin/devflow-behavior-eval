@@ -106,7 +106,10 @@ const requiredPairs = () => [...RULES.fixed, ...RULES.counter, ...RULES.regressi
 // hash. Rates are recomputed here from those samples; a record that only states rates proves nothing.
 // With evidence, each sample must also match its anchor in the anchors file named by hash and its own result file on disk.
 // positivesOnly (for --adjudicate): every valid labelled positive must be detected, at least 5 of them; negatives are not gated.
-function checkCalibration(record, cases, evidence = null, { positivesOnly = false } = {}) {
+// With final labels (anchors id -> labels), a sample counts only while its label is still the final one for that grader.
+// Evidence binding: the result file names the sample's anchor, the anchor belongs to the case, and the calibration run's own bundle
+// held this exact grader text (its folder sits two levels above the evidence folder, as calibrate writes it).
+function checkCalibration(record, cases, evidence = null, { positivesOnly = false, finalLabels = null } = {}) {
   const failed = []
   let anchors = null
   if (evidence) {
@@ -115,18 +118,28 @@ function checkCalibration(record, cases, evidence = null, { positivesOnly = fals
       if (sha(text) === record.anchorsHash) anchors = new Map(JSON.parse(text).map(a => [a.id, a]))
     } catch {}
   }
-  const proven = s => {
-    if (!evidence) return true
+  const runBundle = evidence ? path.join(path.dirname(path.dirname(evidence)), 'bundle', 'evals', 'behavior') : null
+  const graderAtRun = (caseId, name) => { try { return sha(fs.readFileSync(path.join(runBundle, caseId, 'graders', name + '.md'))) } catch { return null } }
+  const proven = (s, c, g) => {
+    if (finalLabels && finalLabels.get(s.anchor)?.labels?.[g.name] !== s.label) return null
+    if (!evidence) return s.verdict
     const a = anchors?.get(s.anchor)
-    if (!a || sha(a.text) !== s.sampleHash || a.labels?.[s.grader] !== s.label) return false
+    if (!a || a.case !== c.id || sha(a.text) !== s.sampleHash || a.labels?.[g.name] !== s.label || graderAtRun(c.id, g.name) !== g.hash) return null
     try {
       const body = fs.readFileSync(path.join(evidence, s.result), 'utf8')
-      return sha(body) === s.resultHash && JSON.parse(body).verdicts?.[s.grader] === s.verdict
-    } catch { return false }
+      const res = JSON.parse(body)
+      if (sha(body) !== s.resultHash || res.anchor !== s.anchor || res.verdicts?.[g.name] !== s.verdict) return null
+      if ((res.case && res.case !== c.id) || (res.sampleHash && res.sampleHash !== s.sampleHash) || (res.graderHashes && res.graderHashes[g.name] !== g.hash)) return null
+      // A grader with a marker is judged as the run judges it: the marker can turn a verdict undetermined.
+      if (!MARKERS[c.id + '/' + g.name] || !['positive', 'negative'].includes(s.verdict)) return s.verdict
+      const m = applyMarker(c.id, g.name, s.verdict === 'negative' ? 'PASS' : 'FAIL', a.text)
+      return m.verdict === null ? 'undetermined' : s.verdict
+    } catch { return null }
   }
   for (const c of cases) for (const g of c.graders) {
     const r = record?.graders?.[c.id + '/' + g.name]
-    const samples = Array.isArray(r?.samples) ? r.samples.filter(s => /^[0-9a-f]{64}$/.test(s.sampleHash || '') && ['positive', 'negative'].includes(s.label) && proven({ ...s, grader: g.name })) : []
+    const samples = Array.isArray(r?.samples) ? r.samples.filter(s => /^[0-9a-f]{64}$/.test(s.sampleHash || '') && ['positive', 'negative'].includes(s.label))
+      .map(s => ({ ...s, verdict: proven(s, c, g) })).filter(s => s.verdict !== null) : []
     const unique = new Set(samples.map(s => s.sampleHash)).size === samples.length
     const pos = samples.filter(s => s.label === 'positive' && ['positive', 'negative'].includes(s.verdict))
     const neg = samples.filter(s => s.label === 'negative' && ['positive', 'negative'].includes(s.verdict))
@@ -150,7 +163,10 @@ function totalInputClaims(text) {
     const own = sentence.replace(/"[^"]*"|“[^”]*”|`[^`]*`/g, ' ')
     const re = new RegExp(String.raw`\b(?:reads?|reviewed|inspected|opened|covered|checked)\b[^.;\n]{0,40}?(?<!\bnot\s)(?<!\bnot\sall\s)\b` + NUMBER +
       String.raw`\s+(?:authorized\s+|listed\s+|supplied\s+)?project[- ]inputs?\b(?![^.;\n]{0,20}\b(?:skipped|omitted|unread|missing|left)\b)`, 'gi')
+    // A named subset ("the three project inputs in .work", "the remaining seven") is not a total; such a sentence is skipped.
+    if (/\b(remaining|other|rest|subset)\b/i.test(own)) continue
     for (const m of own.matchAll(re)) {
+      if (/^\s*(in|under|from|inside|within)\b/i.test(own.slice(m.index + m[0].length))) continue
       const v = m[1].toLowerCase()
       out.push(/^\d+$/.test(v) ? Number(v) : WORDS[v])
     }
@@ -165,8 +181,12 @@ const markers = {
     // Only lines that report the recorded or supplied check; policy quotes and proposed future commands are not that record.
     const lines = text.split('\n').filter(l => /git diff --check/i.test(l) && /\b(recorded|supplied|records?\/checks|ran|passed|result)\b/i.test(l) && !/polic|propos|future|should|could|would|next|suggest/i.test(l))
     if (!lines.length) return null
-    const bad = lines.some(l => /<base>\s*\.\.\s*<head>/i.test(l) || [...l.matchAll(/\b([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})\b/gi)].some(m => !recorded[0].startsWith(m[1].toLowerCase()) || !recorded[1].startsWith(m[2].toLowerCase())))
-    return bad ? 'positive' : 'negative'
+    // Positive for a placeholder or a wrong hex range; negative only when every line carries the recorded range; otherwise abstain
+    // (a method this marker cannot parse, such as "git diff --check main", is left to the judge).
+    const ranges = l => [...l.matchAll(/\b([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})\b/gi)]
+    const right = m => recorded[0].startsWith(m[1].toLowerCase()) && recorded[1].startsWith(m[2].toLowerCase())
+    if (lines.some(l => /<base>\s*\.\.\s*<head>/i.test(l) || ranges(l).some(m => !right(m)))) return 'positive'
+    return lines.every(l => ranges(l).length && ranges(l).every(right)) ? 'negative' : null
   },
 }
 
@@ -202,17 +222,19 @@ function prepare(opts) {
     const dirOf = id => path.join(dir, 'bundle', 'evals', 'behavior', id)
     if (h('h1-claude').host !== 'claude' || h('h1-codex').host !== 'codex' || h('h1-claude').prompt !== h('h1-codex').prompt ||
       treeHash(path.join(dirOf('h1-claude'), 'fixture')).hash !== treeHash(path.join(dirOf('h1-codex'), 'fixture')).hash) throw new Error('The two holdout cases must be the same case on each host')
-    if (!opts.calibration.length) throw new Error('An adoption run needs --calibration <record> for each host')
+    if (!opts.calibration.length || !opts.anchorsFinal) throw new Error('An adoption run needs --calibration <record> for each host and --anchors-final <file>')
+    // The final labels decide which recorded samples still count; a sample relabelled or dropped later is left out.
+    const finalLabels = new Map(JSON.parse(fs.readFileSync(opts.anchorsFinal, 'utf8')).map(a => [a.id, a]))
     // Records per host, each checked against its own anchors file and result files. A grader counts as calibrated when some record
     // of its host passes it with the grader's current hash, so a recalibration of revised graders adds to the earlier record.
     const records = opts.calibration.map(f => ({ file: f, record: JSON.parse(fs.readFileSync(f, 'utf8')) }))
     const failed = []
     for (const c of selected) for (const g of c.graders) {
       const one = { ...c, graders: [g] }
-      const ok = records.some(r => r.record.host === c.host && checkCalibration(r.record, [one], path.dirname(r.file)).length === 0)
+      const ok = records.some(r => r.record.host === c.host && checkCalibration(r.record, [one], path.dirname(r.file), { finalLabels }).length === 0)
       // A grader the user allowed to run below its gate (--adjudicate) is accepted only when it still detects every valid positive
       // in some record; its positive verdicts are then settled by the two reviewers (summary), its negatives stand.
-      const adjudicated = opts.adjudicate.includes(c.id + '/' + g.name) && records.some(r => r.record.host === c.host && sensitiveOnly(r.record, c, g, path.dirname(r.file)))
+      const adjudicated = opts.adjudicate.includes(c.id + '/' + g.name) && records.some(r => r.record.host === c.host && sensitiveOnly(r.record, c, g, path.dirname(r.file), finalLabels))
       if (!ok && !adjudicated) failed.push(c.id + '/' + g.name)
     }
     calibration = records.map(r => ({ host: r.record.host, hash: sha(fs.readFileSync(r.file)) }))
@@ -242,6 +264,8 @@ function prepare(opts) {
 function openRun(run) {
   const dir = path.join(WORK, run)
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'))
+  const { hash, ...rest } = manifest
+  if (hash !== sha(JSON.stringify({ ...rest, createdAt: null }))) throw new Error('The manifest changed since prepare')
   if (manifest.runnerHash !== RUNNER_HASH) throw new Error('The runner changed since prepare')
   if (manifest.scheduleHash !== sha(JSON.stringify(manifest.slots))) throw new Error('The schedule changed since prepare')
   if (JSON.stringify(manifest.claude) !== JSON.stringify(CLAUDE) || manifest.codex.votes !== JUDGE_VOTES) throw new Error('Model or judge settings changed since prepare')
@@ -616,7 +640,12 @@ async function codexSlot(run, s, home, led, instructions) {
   slot.markers = {}
   for (const g of c.graders) {
     const r = await codexVotes(led, s.slot, g, t.message, env, sameProfile)
-    if (r.stop) return { ...slot, ...r }
+    // A judge stop keeps the actor and the votes already paid for; unfinished propositions stay without a verdict (undetermined).
+    if (r.stop) {
+      slot.votes[g.name] = r.votes
+      for (const rest of c.graders) if (!(rest.name in slot.verdicts)) slot.verdicts[rest.name] = null
+      return { ...slot, stop: true, judgeStopped: r.judgeStopped, ...(r.kept ? { kept: r.kept } : {}) }
+    }
     slot.votes[g.name] = r.votes
     const m = applyMarker(c.id, g.name, r.verdict, t.message)
     slot.verdicts[g.name] = m.verdict
@@ -630,22 +659,22 @@ async function codexSlot(run, s, home, led, instructions) {
 async function codexVotes(led, slotKey, g, text, env, sameProfile) {
   const votes = []
   for (let i = 0; i < JUDGE_VOTES; i++) {
-    if (!sameProfile()) return { stop: true, invalid: 'global instructions changed before a judge' }
+    if (!sameProfile()) return { stop: true, judgeStopped: 'global instructions changed before a judge', votes }
     const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
     const call = 'codex-judge ' + g.name + ' ' + (i + 1)
     // A judge is its own paid process: it starts only with room left for twice the largest judge call seen.
     try { led.begin({ slot: slotKey, call }, { host: 'codex', amount: judgeReserve(openBudget(led.group, {})) }) } catch (e) {
       fs.rmSync(jdir, { recursive: true, force: true })
-      return { stop: true, invalid: 'stopped before ' + call + ': ' + e.message }
+      return { stop: true, judgeStopped: 'stopped before ' + call + ': ' + e.message, votes }
     }
     const j = await spawnWait('codex', execArgs(), { cwd: jdir, env }, judgePrompt(g.criteria, text), 300 * 1000)
     const jt = codexTrace(j.stdout)
     const jUnconfirmed = j.timedOut && !j.killConfirmed
     led.pay({ slot: slotKey, call, tokens: jt.tokens ?? null, ...(jUnconfirmed ? { reason: 'judge stop unconfirmed' } : {}) }, jUnconfirmed)
-    if (jUnconfirmed) return { stop: true, invalid: 'judge stop unconfirmed', kept: jdir }
+    if (jUnconfirmed) return { stop: true, judgeStopped: 'judge stop unconfirmed', kept: jdir, votes }
     fs.rmSync(jdir, { recursive: true, force: true })
-    if (jt.tokens === null) return { stop: true, invalid: 'unknown judge usage' }
-    if (!sameProfile()) return { stop: true, invalid: 'global instructions changed during a judge' }
+    if (jt.tokens === null) return { stop: true, judgeStopped: 'unknown judge usage', votes }
+    if (!sameProfile()) return { stop: true, judgeStopped: 'global instructions changed during a judge', votes }
     let v = null
     // Only a judge that finished cleanly votes.
     if (j.code === 0 && !j.timedOut && !j.failed && jt.valid) { try { v = JSON.parse(/\{[^{}]*"verdict"[^{}]*\}/.exec(jt.message || '')[0]).verdict } catch {} }
@@ -694,16 +723,18 @@ async function calibrate(run, opts) {
   try {
     for (const a of anchors) {
       const file = path.join(out, 'results', a.id + '.json')
-      if (fs.existsSync(file)) continue
+      // A result is reused only for the same anchor text in the same case; anything else is a different sample.
+      const bind = { anchor: a.id, case: a.case, sampleHash: sha(a.text), graderHashes: Object.fromEntries(Object.keys(a.labels).map(n => [n, cases[a.case].graders.find(x => x.name === n).hash])) }
+      if (fs.existsSync(file)) { const old = JSON.parse(fs.readFileSync(file, 'utf8')); if (old.anchor !== bind.anchor || (old.case && (old.case !== bind.case || old.sampleHash !== bind.sampleHash))) throw new Error('Result ' + a.id + ' belongs to another sample'); continue }
       const b = openBudget(group, {})
       if (b.entries.some(e => e.slot === calKey(opts, a))) throw new Error('Anchor ' + a.id + ' has paid calls on record but no result; resolve it first')
       let result
       if (opts.host === 'codex') {
-        result = { anchor: a.id, verdicts: {}, votes: {} }
+        result = { ...bind, verdicts: {}, votes: {} }
         for (const name of Object.keys(a.labels)) {
           const g = cases[a.case].graders.find(x => x.name === name)
           const r = await codexVotes(led, calKey(opts, a), g, a.text, cleanEnv(home), sameProfile)
-          if (r.stop) throw new Error('Calibration stopped at ' + a.id + ': ' + r.invalid)
+          if (r.stop) throw new Error('Calibration stopped at ' + a.id + ': ' + r.judgeStopped)
           result.votes[name] = r.votes
           result.verdicts[name] = r.verdict === 'PASS' ? 'negative' : r.verdict === 'FAIL' ? 'positive' : 'undetermined'
         }
@@ -726,7 +757,7 @@ async function calibrate(run, opts) {
         const echo = kept ? lastAssistantText(fs.readFileSync(ev.tracePath, 'utf8')) : null
         if (kept && /^claude-eval-[A-Za-z0-9]+$/.test(path.basename(kept))) fs.rmSync(kept, { recursive: true, force: true })
         const same = echo !== null && echo.replace(/\s+$/, '') === a.text.replace(/\s+$/, '')
-        result = { anchor: a.id, echoMatches: same, verdicts: {} }
+        result = { ...bind, echoMatches: same, verdicts: {} }
         for (const name of Object.keys(a.labels)) {
           const g = (ev.graders || []).find(x => x.name === name)
           result.verdicts[name] = !same ? 'invalid' : g && g.scored !== false && typeof g.passed === 'boolean' ? (g.passed ? 'negative' : 'positive') : 'undetermined'
@@ -770,7 +801,7 @@ function lastAssistantText(trace) {
 
 // An adjudicated grader must still detect every valid labelled positive: its negatives then stand, and its positives, where it
 // over-reports, are settled by the two reviewers in summary().
-const sensitiveOnly = (record, c, g, evidence) => checkCalibration(record, [{ ...c, graders: [g] }], evidence, { positivesOnly: true }).length === 0
+const sensitiveOnly = (record, c, g, evidence, finalLabels) => checkCalibration(record, [{ ...c, graders: [g] }], evidence, { positivesOnly: true, finalLabels }).length === 0
 
 function summary(run) {
   const { dir, manifest } = run
@@ -785,7 +816,9 @@ function summary(run) {
     for (const [prop, judged] of Object.entries(classify(slot))) {
       // In an adjudicated cell a judge positive counts only as the two reviewers settled it; no agreed entry is undetermined.
       const cell = s.case + '/' + prop
-      const settled = adjudication[s.slot]?.[prop]
+      // Each reviewer's value is kept: { p1x, p24 }. Only two present, equal values settle the slot.
+      const v = adjudication[s.slot]?.[prop]
+      const settled = v && typeof v === 'object' && v.p1x && v.p1x === v.p24 ? v.p1x : null
       const cls = (manifest.adjudicate || []).includes(cell) && judged === 'positive' ? (settled === 'positive' || settled === 'negative' ? settled : 'undetermined') : judged
       if (cls !== judged) (adjusted[cell] ??= []).push(s.slot + ':' + judged + '>' + cls)
       const k = ((counts[s.case] ??= {})[prop] ??= {})[s.arm] ??= { positive: 0, negative: 0, invalid: 0, undetermined: 0, slots: 0 }
@@ -829,6 +862,7 @@ function parseArgs(args) {
     else if (a === '--pilot') opts.pilot = true
     else if (a === '--calibration') opts.calibration.push(v())
     else if (a === '--anchors') opts.anchors = v()
+    else if (a === '--anchors-final') opts.anchorsFinal = v()
     else if (a === '--adjudicate') opts.adjudicate.push(...v().split(','))
     else if (a === '--host') opts.host = v()
     else if (a === '--budget') opts.budget = v()

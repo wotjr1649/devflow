@@ -74,10 +74,10 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
 
 pr-review-workflow의 반복 보고 결함이 skill 본문 후보에서 줄었는지를, 같은 사례·같은 순서·같은 반복 수로 기준선과 후보를 돌려
 비교한다(#99). 트리거 eval의 계약·점수·임계값은 바꾸지 않는다. 수동 opt-in이며 기본 검사·CI·pre-push는 모델을 실행하지 않는다.
-CI는 `tests/behavior-eval.test.js`(사례·fixture·실행표·귀속·판정 계산)만 돌린다.
+CI는 `tests/behavior-eval.test.js`만 돌린다.
 
 ```bash
-node bin/devflow-behavior-eval prepare --run <name> --arm A=<기준선 rev> --arm B=<후보 rev> --expect-diff skills/pr-review-workflow/SKILL.md --budget <group> [--budget-usd <상한> --budget-tokens <상한>] [--cases <id,...>] (--pilot | --calibration <record>)
+node bin/devflow-behavior-eval prepare --run <name> --arm A=<기준선 rev> --arm B=<후보 rev> --expect-diff skills/pr-review-workflow/SKILL.md --budget <group> [--budget-usd <상한> --budget-tokens <상한>] [--cases <id,...>] (--pilot | --calibration <record>... --anchors-final <file> [--adjudicate <case/grader,...>])
 node bin/devflow-behavior-eval run --run <name> --host claude|codex
 node bin/devflow-behavior-eval calibrate --run <name> --host claude|codex --anchors <file>
 node bin/devflow-behavior-eval summary --run <name>
@@ -93,11 +93,13 @@ node bin/devflow-behavior-eval summary --run <name>
   이어 실행은 미실행 슬롯만 한다. 실행기·실행표·모델 설정·arm·사례·shim 전체·bash가 바뀌었으면 멈춘다.
   Codex profile과 전역 지침은 그 run의 첫 Codex 호출 때 값과 같아야 하고, actor·judge 호출마다 다시 확인한다.
 - 관문 미달 grader의 재판정(`prepare --adjudicate <case/grader,...>`, 사용자 결정으로만): 그 grader가 어떤 보정 기록에서 유효 양성을 모두 검출한 경우에만
-  준비를 허용한다. 본 실행에서 그 셀의 judge 양성은 두 검수자가 독립 확인해 run의 `adjudication.json`에 일치한 판정을 남기고, 없거나 엇갈리면
-  undetermined다. judge 음성은 그대로 쓴다. `summary`는 바뀐 슬롯을 `adjudicated`로 보고한다.
+  준비를 허용한다. 본 실행에서 그 셀의 judge 양성은 두 검수자가 독립 확인해 run의 `adjudication.json`에 검수자별 값(`{ p1x, p24 }`)을 남긴다.
+  두 값이 모두 있고 같을 때만 그 판정을 쓰고, 그 밖에는 undetermined다. judge 음성은 그대로 쓴다. `summary`는 바뀐 슬롯을 `adjudicated`로 보고한다.
 - 보정(`calibrate`): 앵커 파일의 각 앵커(사례, 본문, grader별 라벨)를 본 실행과 같은 grader·judge로 판정한다. Claude는 claude-haiku-5-5가 앵커를
   그대로 출력하게 하고(출력이 앵커와 다르면 그 표본은 invalid), Codex는 슬롯과 같은 judge 함수 3표다. 앵커마다 결과 파일을 남기고, 기록은
-  표본마다 앵커·결과 파일의 해시를 담는다.
+  표본마다 앵커·결과 파일의 해시를 담는다. 채택 run 준비는 결과 파일이 그 표본의 앵커·사례·본문 해시를 가리키는지, 보정 run의 bundle에
+  있던 grader가 현재와 같은지 대조하고, `--anchors-final`의 최종 라벨과 다른 표본은 뺀다. 보조 표지가 있는 grader는 본 실행처럼 표지를
+  적용해 계산한다.
 - 채택 run은 실행기에 고정된 필수 사례·명제 목록(holdout `h1-claude`·`h1-codex`의 D1·D2·D3 포함)이 모두 있어야 준비된다.
   모든 grader는 보정 기록을 통과해야 한다. 기록에는 grader 해시와 표본마다 라벨·판정·표본 해시가 있다. 실행기는 그 표본에서
   양·음성 각 5개 이상, 검출률 80%, 일치율 90% 이상을 다시 계산한다. pilot은 보정 없이 기계적 동작만 확인하며 채택 판정을 내지 않는다.

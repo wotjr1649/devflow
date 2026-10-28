@@ -72,6 +72,7 @@ test('the Claude call always carries the run, budget, publication and ablation f
   for (const flag of ['--ablation', '--no-publish', '--scaffold', '--keep-temp', '--max-cost-usd', '--model', '--judge-model', '--runs', '--case', '--json']) assert.ok(args.includes(flag), flag)
   assert.equal(args[args.indexOf('--ablation') + 1], 'none')
   assert.equal(args[args.indexOf('--runs') + 1], '1')
+  assert.equal(args[args.indexOf('--threshold') + 1], '0')
   assert.equal(args[args.indexOf('--max-cost-usd') + 1], '1.23')
   // The cap passed on is rounded down, never above what is left.
   const cap = left => { const a = claudeArgs('s', 'c', left, 'o'); return a[a.indexOf('--max-cost-usd') + 1] }

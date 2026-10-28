@@ -455,7 +455,8 @@ const expectedTree = (dir, c, arm) => joinTrees({ files: { 'project/': 'dir', 'p
   treeHash(path.join(dir, 'bundle', 'evals', 'behavior', c.id, 'fixture', 'project'), 'project/'), treeHash(path.join(dir, 'arms', arm), 'plugin/'))
 
 // Built as an argument array (no shell parsing); a missing flag here would run unbudgeted or publish, so tests pin it.
-const claudeArgs = (shim, id, remainingUsd, json) => ['plugin', 'eval', shim, '--case', id, '--runs', '1', '--ablation', 'none', '--scaffold', '--keep-temp',
+// --threshold 0: a case scoring below the default threshold of 1.0 exits 1 (pilot 2026-10-29), so only real errors may exit non-zero.
+const claudeArgs = (shim, id, remainingUsd, json) => ['plugin', 'eval', shim, '--case', id, '--runs', '1', '--ablation', 'none', '--threshold', '0', '--scaffold', '--keep-temp',
   '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remainingUsd), '--json', json]
 // Whole cents, never above what is left: floor, then step down one cent if the printed value still exceeds the remainder.
 function capUsd(remaining) {

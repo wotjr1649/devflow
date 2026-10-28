@@ -96,7 +96,7 @@ node bin/devflow-behavior-eval summary --run <name>
   양·음성 각 5개 이상, 검출률 80%, 일치율 90% 이상을 다시 계산한다. pilot은 보정 없이 기계적 동작만 확인하며 채택 판정을 내지 않는다.
 - 실행표: 사례마다 ABBA 7블록으로 arm별 14슬롯을 만든다. pilot은 사례마다 arm별 1슬롯이며 채택 판정에 쓰지 않는다.
 - Claude: 사례 폴더와 arm만 담은 shim plugin을 대상으로 슬롯마다 다음을 실행한다.
-  - 명령: `claude plugin eval <shim> --case <id> --runs 1 --ablation none --scaffold --keep-temp --no-publish --trust-plugin --model claude-opus-5-5 --judge-model claude-sonnet-5-5 --max-cost-usd <잔여> --json`
+  - 명령: `claude plugin eval <shim> --case <id> --runs 1 --ablation none --threshold 0 --scaffold --keep-temp --no-publish --trust-plugin --model claude-opus-5-5 --judge-model claude-sonnet-5-5 --max-cost-usd <잔여> --json`
   - scaffold는 `CLAUDE_CODE_GIT_BASH_PATH`와 PATH 앞에 둔 Git for Windows bash로 `project/`와 `plugin/`을 만든다.
   - 사용자 로그인을 상속한 사용자 터미널(Herdr pane 포함)에서 돌린다. 인증을 복사하거나 바꾸지 않는다.
   - 결과 JSON이 한 사례·한 실행·사례의 grader 수와 다르거나, 오류·비정상 종료·비용 미상이면 그 슬롯을 invalid로 두고 멈춘다.

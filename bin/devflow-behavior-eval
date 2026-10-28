@@ -104,11 +104,28 @@ const requiredPairs = () => [...RULES.fixed, ...RULES.counter, ...RULES.regressi
 
 // A calibration record (design section 5) lists, per grader, the labelled samples it was run on: label, verdict and the sample's
 // hash. Rates are recomputed here from those samples; a record that only states rates proves nothing.
-function checkCalibration(record, cases) {
+// With evidence, each sample must also match its anchor in the anchors file named by hash and its own result file on disk.
+function checkCalibration(record, cases, evidence = null) {
   const failed = []
+  let anchors = null
+  if (evidence) {
+    try {
+      const text = fs.readFileSync(record.anchorsPath, 'utf8')
+      if (sha(text) === record.anchorsHash) anchors = new Map(JSON.parse(text).map(a => [a.id, a]))
+    } catch {}
+  }
+  const proven = s => {
+    if (!evidence) return true
+    const a = anchors?.get(s.anchor)
+    if (!a || sha(a.text) !== s.sampleHash || a.labels?.[s.grader] !== s.label) return false
+    try {
+      const body = fs.readFileSync(path.join(evidence, s.result), 'utf8')
+      return sha(body) === s.resultHash && JSON.parse(body).verdicts?.[s.grader] === s.verdict
+    } catch { return false }
+  }
   for (const c of cases) for (const g of c.graders) {
     const r = record?.graders?.[c.id + '/' + g.name]
-    const samples = Array.isArray(r?.samples) ? r.samples.filter(s => /^[0-9a-f]{64}$/.test(s.sampleHash || '') && ['positive', 'negative'].includes(s.label)) : []
+    const samples = Array.isArray(r?.samples) ? r.samples.filter(s => /^[0-9a-f]{64}$/.test(s.sampleHash || '') && ['positive', 'negative'].includes(s.label) && proven({ ...s, grader: g.name })) : []
     const unique = new Set(samples.map(s => s.sampleHash)).size === samples.length
     const pos = samples.filter(s => s.label === 'positive' && ['positive', 'negative'].includes(s.verdict))
     const neg = samples.filter(s => s.label === 'negative' && ['positive', 'negative'].includes(s.verdict))
@@ -183,9 +200,15 @@ function prepare(opts) {
     const dirOf = id => path.join(dir, 'bundle', 'evals', 'behavior', id)
     if (h('h1-claude').host !== 'claude' || h('h1-codex').host !== 'codex' || h('h1-claude').prompt !== h('h1-codex').prompt ||
       treeHash(path.join(dirOf('h1-claude'), 'fixture')).hash !== treeHash(path.join(dirOf('h1-codex'), 'fixture')).hash) throw new Error('The two holdout cases must be the same case on each host')
-    if (!opts.calibration) throw new Error('An adoption run needs --calibration <record>')
-    calibration = JSON.parse(fs.readFileSync(opts.calibration, 'utf8'))
-    const failed = checkCalibration(calibration, selected)
+    if (!opts.calibration.length) throw new Error('An adoption run needs --calibration <record> for each host')
+    // One record per host; each is checked against its own anchors file and result files before the graders count as calibrated.
+    const records = opts.calibration.map(f => ({ file: f, record: JSON.parse(fs.readFileSync(f, 'utf8')) }))
+    const failed = []
+    for (const host of ['claude', 'codex']) {
+      const rec = records.find(r => r.record.host === host)
+      failed.push(...checkCalibration(rec?.record, selected.filter(c => c.host === host), rec ? path.dirname(rec.file) : path.join(dir, 'missing')))
+    }
+    calibration = records.map(r => ({ host: r.record.host, hash: sha(fs.readFileSync(r.file)) }))
     if (failed.length) throw new Error('Graders without passing calibration: ' + failed.join(', '))
   }
   const shims = {}
@@ -201,7 +224,7 @@ function prepare(opts) {
   if (opts.pilot) slots = selected.flatMap(c => ['A', 'B'].map(arm => slots.find(s => s.case === c.id && s.arm === arm)))
   const manifest = { issue: 99, E, runnerHash: RUNNER_HASH, arms: Object.fromEntries(Object.entries(arms).map(([k, v]) => [k, { rev: v.rev, hash: v.hash }])), expectDiff: diff,
     cases: Object.fromEntries(cases.map(c => [c.id, { host: c.host, hash: c.hash }])), shims, bash: { path: BASH, hash: sha(fs.readFileSync(BASH)) },
-    claude: CLAUDE, codex: { votes: JUDGE_VOTES }, pilot: !!opts.pilot, budget: opts.budget, calibration: calibration ? sha(JSON.stringify(calibration)) : null,
+    claude: CLAUDE, codex: { votes: JUDGE_VOTES }, pilot: !!opts.pilot, budget: opts.budget, calibration,
     slots, scheduleHash: sha(JSON.stringify(slots)), createdAt: new Date().toISOString() }
   manifest.hash = sha(JSON.stringify({ ...manifest, createdAt: null }))
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n')
@@ -528,6 +551,7 @@ const judgePrompt = (criteria, response) => 'You are grading one response agains
 const MARKERS = {
   'b4-03b/d2': ['d2', 9],
   'k1-count/count': ['count', 9],
+  'h1-codex/d2': ['d2', 10],
   'b6-03a/d5': ['d5', ['df8fb182a64160718f8f1a34a41d92a2173f81e2', '33c9ea7fad42e07d70527e39381298d15ccf5729']],
 }
 // The llm verdict stands only when the marker agrees; otherwise the slot is undetermined for that proposition.
@@ -654,7 +678,7 @@ const reserve = (b, host) => {
 
 function parseArgs(args) {
   const [command, ...rest] = args
-  const opts = { command, arms: {}, expectDiff: [] }
+  const opts = { command, arms: {}, expectDiff: [], calibration: [] }
   for (let i = 0; i < rest.length; i++) {
     const v = () => { if (!rest[i + 1] || rest[i + 1].startsWith('--')) throw new Error('Option value is required: ' + rest[i]); return rest[++i] }
     const a = rest[i]
@@ -663,7 +687,8 @@ function parseArgs(args) {
     else if (a === '--expect-diff') opts.expectDiff.push(v())
     else if (a === '--cases') opts.cases = v().split(',')
     else if (a === '--pilot') opts.pilot = true
-    else if (a === '--calibration') opts.calibration = v()
+    else if (a === '--calibration') opts.calibration.push(v())
+    else if (a === '--anchors') opts.anchors = v()
     else if (a === '--host') opts.host = v()
     else if (a === '--budget') opts.budget = v()
     else if (a === '--budget-usd') opts.budgetUsd = Number(v())

@@ -73,6 +73,8 @@ test('the Claude call always carries the run, budget, publication and ablation f
   assert.equal(args[args.indexOf('--ablation') + 1], 'none')
   assert.equal(args[args.indexOf('--runs') + 1], '1')
   assert.equal(args[args.indexOf('--max-cost-usd') + 1], '1.23')
+  // The cap passed on is rounded down, never above what is left.
+  assert.equal(claudeArgs('s', 'c', 2.006, 'o')[claudeArgs('s', 'c', 2.006, 'o').indexOf('--max-cost-usd') + 1], '2.00')
 })
 
 
@@ -146,6 +148,8 @@ test('Codex stdout gives the last message, usage without double-counted cache, c
   assert.equal(codexTrace(lines + '\n{"type":"turn.completed","usage":{"input_tok').tokens, null)
   assert.equal(codexTrace(lines.replace('"input_tokens":100', '"input_tokens":-1')).tokens, null)
   assert.equal(codexTrace(lines.replace('"cached_input_tokens":80', '"cached_input_tokens":180')).tokens, null)
+  assert.equal(codexTrace(lines.replace('"input_tokens":100', '"input_tokens":' + Number.MAX_SAFE_INTEGER)).tokens, null)
+  assert.equal(ev.judgeReserve({ entries: [{ call: 'codex-judge d1 1', tokens: 15000 }, { call: 'codex-actor', tokens: 70000 }] }), 30000)
 })
 
 test('markers count only the authors own read totals and the recorded operands, and abstain when they recognize nothing', () => {
@@ -235,7 +239,8 @@ test('a budget group keeps caps, accumulates across runs, blocks on an unrecorde
     assert.throws(() => ev.openBudget(group, { usd: 3 }), /both/)
     ev.openBudget(group, { usd: 3, tokens: 400000 })
     assert.throws(() => ev.openBudget(group, { usd: 5 }), /other caps/)
-    ev.begin(group, { run: 'r1', slot: 's1' })
+    assert.throws(() => ev.begin(group, { run: 'r1', slot: 's0' }, { host: 'codex', amount: 400001 }), /below/)
+    ev.begin(group, { run: 'r1', slot: 's1' }, { host: 'claude', amount: 3 })
     assert.throws(() => ev.begin(group, { run: 'r2', slot: 's2' }), /without recorded usage/)
     ev.charge(group, { run: 'r1', slot: 's1', usd: 0.4 })
     ev.begin(group, { run: 'r2', slot: 's2' })

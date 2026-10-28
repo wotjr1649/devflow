@@ -246,9 +246,15 @@ const writeBudget = (group, b) => {
 }
 // A paid call is marked in its budget group before it starts and cleared only when its usage is recorded, so a crash or an
 // unconfirmed stop leaves a marker that blocks every run of the group, not a gap.
-function begin(group, call) {
+// Every paid call, not only a slot's first, starts only with known usage and at least `need` left in the cap of its host.
+function begin(group, call, need = null) {
   const b = JSON.parse(fs.readFileSync(budgetPath(group), 'utf8'))
   if (b.inflight) throw new Error('Budget ' + group + ' has a call without recorded usage: ' + JSON.stringify(b.inflight))
+  if (!b.known) throw new Error('Budget ' + group + ' usage is unknown')
+  if (need) {
+    const left = need.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
+    if (left < need.amount) throw new Error('Budget ' + group + ' has ' + left + ' left, below the ' + need.amount + ' this call may need')
+  }
   b.inflight = { ...call, startedAt: new Date().toISOString() }
   writeBudget(group, b)
 }
@@ -352,7 +358,8 @@ function codexTrace(stdout) {
     }
   }
   // A turn without readable usage makes the whole call's usage unknown, not a smaller known total.
-  const total = turns && !usageBroken ? usage.input_tokens + usage.output_tokens : null
+  const sum = usage.input_tokens + usage.output_tokens
+  const total = turns && !usageBroken && Number.isSafeInteger(sum) && Object.values(usage).every(Number.isSafeInteger) ? sum : null
   return { valid: started && turns > 0 && !broken, message, tokens: total, commands: [...commands.values()] }
 }
 
@@ -449,13 +456,14 @@ const expectedTree = (dir, c, arm) => joinTrees({ files: { 'project/': 'dir', 'p
 
 // Built as an argument array (no shell parsing); a missing flag here would run unbudgeted or publish, so tests pin it.
 const claudeArgs = (shim, id, remainingUsd, json) => ['plugin', 'eval', shim, '--case', id, '--runs', '1', '--ablation', 'none', '--scaffold', '--keep-temp',
-  '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', remainingUsd.toFixed(2), '--json', json]
+  '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', (Math.floor(remainingUsd * 100 + 1e-9) / 100).toFixed(2), '--json', json]
 
 
 // Paid-call ledger of one run step: begin marks the call in the budget group, pay records it and clears the mark unless the
 // call's process could not be confirmed stopped.
 const ledger = (group, run) => ({
-  begin: call => begin(group, { run, ...call }),
+  group,
+  begin: (call, need) => begin(group, { run, ...call }, need),
   pay: (entry, keep) => charge(group, { run, ...entry }, keep ? { keepInflight: true } : {}),
 })
 
@@ -573,7 +581,11 @@ async function codexSlot(run, s, home, led, instructions) {
       if (!sameProfile()) return { ...slot, invalid: 'global instructions changed before a judge', stop: true }
       const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
       const call = 'codex-judge ' + g.name + ' ' + (i + 1)
-      led.begin({ slot: s.slot, call })
+      // A judge is its own paid process: it starts only with room left for twice the largest judge call seen.
+      try { led.begin({ slot: s.slot, call }, { host: 'codex', amount: judgeReserve(openBudget(led.group, {})) }) } catch (e) {
+        fs.rmSync(jdir, { recursive: true, force: true })
+        return { ...slot, invalid: 'stopped before ' + call + ': ' + e.message, stop: true }
+      }
       const j = await spawnWait('codex', execArgs(), { cwd: jdir, env }, judgePrompt(g.criteria, t.message), 300 * 1000)
       const jt = codexTrace(j.stdout)
       const jUnconfirmed = j.timedOut && !j.killConfirmed
@@ -620,6 +632,8 @@ function summary(run) {
   fs.writeFileSync(path.join(dir, 'summary.json'), JSON.stringify(result, null, 1) + '\n')
   return result
 }
+
+const judgeReserve = b => Math.max(20000, 2 * Math.max(0, ...b.entries.filter(e => /^codex-judge /.test(e.call || '') && Number.isSafeInteger(e.tokens)).map(e => e.tokens)))
 
 const reserve = (b, host) => {
   const seen = b.entries.map(e => host === 'claude' ? e.usd : e.tokens).filter(v => typeof v === 'number' && v > 0)
@@ -689,7 +703,8 @@ async function main(args) {
       const b = openBudget(group, {})
       if (!b.known) throw new Error('Usage became unknown; stopping before ' + s.slot)
       // A slot with paid calls on record but no result was interrupted: it is never re-run, only resolved by hand.
-      if (b.entries.some(e => e.run === opts.run && e.slot === s.slot)) throw new Error('Slot ' + s.slot + ' has paid calls on record but no result; resolve it before resuming')
+      // Slot ids repeat across runs of one group, so a re-prepared run cannot re-call an interrupted slot either.
+      if (b.entries.some(e => e.slot === s.slot)) throw new Error('Slot ' + s.slot + ' has paid calls on record in budget ' + group + '; a slot is never paid for twice')
       const remaining = opts.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
       // A slot cannot be cut off mid-turn, so one starts only with room for twice the largest slot seen so far.
       if (remaining < reserve(b, opts.host)) { process.stdout.write('budget reserve reached before ' + s.slot + '\n'); return }
@@ -703,6 +718,6 @@ async function main(args) {
 }
 
 module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun,
-  openBudget, begin, charge, lockBudget, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
+  openBudget, begin, charge, lockBudget, judgeReserve, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
   totalInputClaims, applyMarker, RULES }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

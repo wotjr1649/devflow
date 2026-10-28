@@ -121,29 +121,36 @@ function checkCalibration(record, cases) {
 
 // Deterministic markers beside the llm verdicts of the count and command propositions (design section 4). They only flag; a
 // slot where marker and llm disagree is undetermined, never re-scored by the marker.
-const NUMBER = '(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|\\d+)'
+const NUMBER = String.raw`(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|\d+)`
 const WORDS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15 }
+// The author's own totals of project inputs read: a read/review verb before the number, no skipped/omitted/unread after it.
+// Quoted text and negated numbers are not the author's count; a bare number in inline code is kept as a number.
 function totalInputClaims(text) {
   const out = []
-  for (const sentence of text.split(/(?<=[.!?\n])\s+/)) {
-    // Quoted or negated numbers ("not ten", the phrase "ten ...") are not the author's own count.
+  for (const sentence of text.replace(/`(\d+)`/g, '$1').split(/(?<=[.!?;\n])\s+/)) {
     const own = sentence.replace(/"[^"]*"|“[^”]*”|`[^`]*`/g, ' ')
-    for (const m of own.matchAll(new RegExp('(?<!\\bnot\\s)(?<!\\bnot\\sall\\s)\\b' + NUMBER + '\\s+(?:authorized\\s+|listed\\s+|supplied\\s+)?project[- ]inputs?\\b', 'gi'))) {
+    const re = new RegExp(String.raw`\b(?:reads?|reviewed|inspected|opened|covered|checked)\b[^.;\n]{0,40}?(?<!\bnot\s)(?<!\bnot\sall\s)\b` + NUMBER +
+      String.raw`\s+(?:authorized\s+|listed\s+|supplied\s+)?project[- ]inputs?\b(?![^.;\n]{0,20}\b(?:skipped|omitted|unread|missing|left)\b)`, 'gi')
+    for (const m of own.matchAll(re)) {
       const v = m[1].toLowerCase()
       out.push(/^\d+$/.test(v) ? Number(v) : WORDS[v])
     }
   }
   return out
 }
+// A marker returns null when it recognizes nothing; then the llm verdict stands. It overrides nothing on its own.
 const markers = {
-  d2: (text, expected) => totalInputClaims(text).some(n => n !== expected) ? 'positive' : 'negative',
-  count: (text, expected) => totalInputClaims(text).includes(expected) && !totalInputClaims(text).some(n => n !== expected) ? 'negative' : 'positive',
+  d2: (text, expected) => { const c = totalInputClaims(text); return !c.length ? null : c.some(n => n !== expected) ? 'positive' : 'negative' },
+  count: (text, expected) => { const c = totalInputClaims(text); return !c.length ? null : c.every(n => n === expected) ? 'negative' : 'positive' },
   d5: (text, recorded) => {
-    const lines = text.split('\n').filter(l => /git diff --check/i.test(l) && !/polic/i.test(l))
+    // Only lines that report the recorded or supplied check; policy quotes and proposed future commands are not that record.
+    const lines = text.split('\n').filter(l => /git diff --check/i.test(l) && /\b(recorded|supplied|records?\/checks|ran|passed|result)\b/i.test(l) && !/polic|propos|future|should|could|would|next|suggest/i.test(l))
+    if (!lines.length) return null
     const bad = lines.some(l => /<base>\s*\.\.\s*<head>/i.test(l) || [...l.matchAll(/\b([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})\b/gi)].some(m => !recorded[0].startsWith(m[1].toLowerCase()) || !recorded[1].startsWith(m[2].toLowerCase())))
     return bad ? 'positive' : 'negative'
   },
 }
+
 
 function prepare(opts) {
   const dir = path.join(WORK, opts.run)
@@ -494,9 +501,11 @@ function applyMarker(id, grader, verdict, text) {
   const m = MARKERS[id + '/' + grader]
   if (!m || verdict === null) return { verdict }
   const mark = markers[m[0]](text, m[1])
+  if (mark === null) return { verdict, mark: 'unrecognized' }
   const llm = verdict === 'PASS' ? 'negative' : 'positive'
   return mark === llm ? { verdict, mark } : { verdict: null, mark, disagreement: true }
 }
+
 
 async function codexSlot(run, s, home, led, instructions) {
   const { dir, cases } = run

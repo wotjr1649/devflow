@@ -34,7 +34,7 @@ test('every fixture file is tracked with the bytes on disk, even where the fixtu
   const index = new Map(r.stdout.split('\n').filter(Boolean).map(l => { const [meta, file] = l.split('\t'); return [file, meta.split(' ')[1]] }))
   const disk = Object.keys(treeHash(CASES).files).filter(f => !f.endsWith('/')).map(f => 'evals/behavior/' + f)
   assert.ok(disk.length > 0)
-  const blobs = spawnSync('git', ['hash-object', '--stdin-paths'], { cwd: ROOT, encoding: 'utf8', input: disk.join('\n') + '\n' })
+  const blobs = spawnSync('git', ['hash-object', '--no-filters', '--stdin-paths'], { cwd: ROOT, encoding: 'utf8', input: disk.join('\n') + '\n' })
   assert.equal(blobs.status, 0)
   blobs.stdout.trim().split('\n').forEach((blob, i) => assert.equal(index.get(disk[i]), blob, 'not tracked as on disk: ' + disk[i]))
   // And the other way: nothing tracked is missing from disk (a case without an input list has no other check).
@@ -97,6 +97,10 @@ test('Claude attribution needs successful whole-file reads of the skill and ever
   assert.match(claudeAttribution(skill.join('\n'), cwd, contents, ['POLICY.md']).reason, /not all read/)
   assert.equal(claudeAttribution([...skill, use('Read', { file_path: 'project/POLICY.md' }, '5'), res('5', numbered(contents['project/POLICY.md']))].join('\n'), cwd, contents, ['POLICY.md']).ok, true)
   assert.match(claudeAttribution('{broken', cwd, contents).reason, /unreadable/)
+  // Lines must appear in order and as often as in the file: a result missing a repeated line is not the whole file.
+  const twice = { ...contents, [SKILL]: 'line\nline\nend\n' }
+  assert.match(claudeAttribution([use('Read', { file_path: SKILL }, '1'), res('1', numbered('line\nend\n'))].join('\n'), cwd, twice).reason, /no full read/)
+  assert.equal(claudeAttribution([use('Read', { file_path: SKILL }, '1'), res('1', numbered(twice[SKILL]))].join('\n'), cwd, twice).ok, true)
 })
 
 test('Codex attribution counts a read only when a read command names the file and prints its whole text, and refuses unprovable targets', () => {
@@ -108,7 +112,7 @@ test('Codex attribution counts a read only when a read command names the file an
   assert.equal(codexAttribution([{ ...read, output: contents[SKILL] }], cwd, contents).ok, true)
   assert.match(codexAttribution([{ ...read, exitCode: 1 }], cwd, contents).reason, /no full read/)
   assert.match(codexAttribution([{ ...read, command: pw('Get-Content ./' + SKILL + ' -TotalCount 1'), output: '# PR workflow' }], cwd, contents).reason, /no full read/)
-  assert.match(codexAttribution([{ command: 'Write-Output ' + JSON.stringify(contents[SKILL]), exitCode: 0, output: contents[SKILL] }], cwd, contents).reason, /no full read/)
+  assert.match(codexAttribution([{ command: 'Write-Output ' + JSON.stringify(contents[SKILL]), exitCode: 0, output: contents[SKILL] }], cwd, contents).reason, /no full read|not provable/)
   assert.match(codexAttribution([{ command: 'Get-Content ./project/POLICY.md; Write-Output ./' + SKILL, exitCode: 0, output: 'policy\n./' + SKILL }], cwd, contents).reason, /no full read/)
   // Two inputs with the same text: only the one the command names counts.
   const policy = { command: 'Get-Content -LiteralPath ./project/POLICY.md -Raw', exitCode: 0, output: 'same' }
@@ -118,6 +122,10 @@ test('Codex attribution counts a read only when a read command names the file an
     assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /not provable|outside/, bad)
   for (const bad of ['Get-Content ' + ['', 'Users', 'Example', '.agents', 'skills', 'x', 'SKILL.md'].join('/'), 'Get-Content ' + C + '/elsewhere/.codex/plugins/cache/devflow/SKILL.md', 'Get-Content ../other/SKILL.md'])
     assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /outside|leaves/, bad)
+  // A comment or a drive-relative path hides the real target; a command that prints its own text proves nothing.
+  assert.match(codexAttribution([{ command: 'Write-Output x # Get-Content ./' + SKILL, exitCode: 0, output: contents[SKILL] }], cwd, contents).reason, /not provable/)
+  assert.match(codexAttribution([read, { command: 'Get-Content D:outside.md', exitCode: 0, output: '' }], cwd, contents).reason, /not provable/)
+  assert.match(codexAttribution([{ command: 'Get-Content ./' + SKILL + '; Write-Output done', exitCode: 0, output: contents[SKILL] }], cwd, contents).reason, /no full read/)
 })
 
 test('Codex stdout gives the last message, usage without double-counted cache, command output and validity; partial usage is unknown', () => {
@@ -135,6 +143,9 @@ test('Codex stdout gives the last message, usage without double-counted cache, c
   assert.deepEqual(t.commands, [{ command: 'Get-Content a', exitCode: 0, output: 'a\n' }])
   assert.equal(codexTrace(lines.replace(/.*turn.completed.*/, '')).tokens, null)
   assert.equal(codexTrace(lines + '\n' + JSON.stringify({ type: 'turn.completed' })).tokens, null)
+  assert.equal(codexTrace(lines + '\n{"type":"turn.completed","usage":{"input_tok').tokens, null)
+  assert.equal(codexTrace(lines.replace('"input_tokens":100', '"input_tokens":-1')).tokens, null)
+  assert.equal(codexTrace(lines.replace('"cached_input_tokens":80', '"cached_input_tokens":180')).tokens, null)
 })
 
 test('markers count only the authors own read totals and the recorded operands, and abstain when they recognize nothing', () => {

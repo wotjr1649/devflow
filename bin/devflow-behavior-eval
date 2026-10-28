@@ -172,11 +172,17 @@ function prepare(opts) {
   const cases = loadCases(path.join(dir, 'bundle', 'evals', 'behavior'))
   const selected = opts.cases ? cases.filter(c => opts.cases.includes(c.id)) : cases
   if (opts.cases && selected.length !== opts.cases.length) throw new Error('Unknown case in --cases')
+  if (opts.pilot && !opts.cases) throw new Error('A pilot names its cases with --cases')
   let calibration = null
   if (!opts.pilot) {
     // Adoption runs need every required case, and graders that passed calibration (design section 5).
     const absent = requiredPairs().filter(([id, p]) => !selected.some(c => c.id === id && c.graders.some(g => g.name === p)))
     if (absent.length) throw new Error('An adoption run needs every required case and proposition; missing: ' + absent.map(x => x.join('/')).join(', '))
+    // The holdout is one synthetic case run on both hosts: each id on its own host, the same prompt body and fixture.
+    const h = id => selected.find(c => c.id === id)
+    const dirOf = id => path.join(dir, 'bundle', 'evals', 'behavior', id)
+    if (h('h1-claude').host !== 'claude' || h('h1-codex').host !== 'codex' || h('h1-claude').prompt !== h('h1-codex').prompt ||
+      treeHash(path.join(dirOf('h1-claude'), 'fixture')).hash !== treeHash(path.join(dirOf('h1-codex'), 'fixture')).hash) throw new Error('The two holdout cases must be the same case on each host')
     if (!opts.calibration) throw new Error('An adoption run needs --calibration <record>')
     calibration = JSON.parse(fs.readFileSync(opts.calibration, 'utf8'))
     const failed = checkCalibration(calibration, selected)
@@ -226,7 +232,8 @@ function openBudget(group, caps) {
   if (!fs.existsSync(file)) {
     if (!(caps.usd > 0) || !(Number.isSafeInteger(caps.tokens) && caps.tokens > 0)) throw new Error('A new budget needs both --budget-usd and --budget-tokens')
     fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, JSON.stringify({ group, capUsd: caps.usd, capTokens: caps.tokens, claudeUsd: 0, codexTokens: 0, known: true, entries: [] }, null, 1) + '\n')
+    // Exclusive create: a group that appeared meanwhile is never overwritten with a zero ledger.
+    try { fs.writeFileSync(file, JSON.stringify({ group, capUsd: caps.usd, capTokens: caps.tokens, claudeUsd: 0, codexTokens: 0, known: true, entries: [] }, null, 1) + '\n', { flag: 'wx' }) } catch (e) { if (e.code !== 'EEXIST') throw e }
   }
   const b = JSON.parse(fs.readFileSync(file, 'utf8'))
   if ((caps.usd !== undefined && caps.usd !== b.capUsd) || (caps.tokens !== undefined && caps.tokens !== b.capTokens)) throw new Error('Budget ' + group + ' was created with other caps')
@@ -270,7 +277,16 @@ function lockBudget(group) {
 
 const resultText = r => typeof r?.content === 'string' ? r.content : Array.isArray(r?.content) ? r.content.map(x => typeof x === 'string' ? x : x?.text || '').join('\n') : ''
 // A Read result shows the whole file when every non-empty line of the file appears in it.
-const showsWhole = (text, body) => body.split('\n').map(l => l.trim()).filter(Boolean).every(l => text.includes(l))
+// A Read result shows the whole file when its lines appear in order, each one after the previous, duplicates included.
+const showsWhole = (text, body) => {
+  let at = 0
+  for (const line of body.split('\n').map(l => l.trim()).filter(Boolean)) {
+    const i = text.indexOf(line, at)
+    if (i < 0) return false
+    at = i + line.length
+  }
+  return true
+}
 
 // Claude: every tool_use input path must resolve inside the run folder. A read of the skill or a listed input counts only with a
 // successful tool_result that shows the whole file (contents maps run-folder paths to their text).
@@ -321,11 +337,12 @@ function codexTrace(stdout) {
   const commands = new Map()
   for (const line of stdout.split(/\r?\n/).filter(l => l.trim())) {
     let e
-    try { e = JSON.parse(line) } catch { broken = true; continue }
+    // A broken line may have carried usage, so the call's usage becomes unknown, not a smaller known total.
+    try { e = JSON.parse(line) } catch { broken = true; usageBroken = true; continue }
     if (e.type === 'thread.started') started = true
     if (e.type === 'error' || e.type === 'turn.failed') broken = true
     if (e.type === 'turn.completed') {
-      if (!e.usage || ['input_tokens', 'cached_input_tokens', 'output_tokens'].some(k => !Number.isSafeInteger(e.usage[k]))) { broken = true; usageBroken = true; continue }
+      if (!e.usage || ['input_tokens', 'cached_input_tokens', 'output_tokens'].some(k => !Number.isSafeInteger(e.usage[k]) || e.usage[k] < 0) || e.usage.cached_input_tokens > e.usage.input_tokens) { broken = true; usageBroken = true; continue }
       turns++
       for (const k of Object.keys(usage)) usage[k] += e.usage[k]
     }
@@ -347,7 +364,7 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
   const lf = s => s.replaceAll('\r\n', '\n')
   for (const { command, exitCode, output } of commands) {
     const c = norm(command.replaceAll('\\"', '"')).toLowerCase()
-    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/[a-z0-9]|%[a-z_]+%/.test(c)) return { ok: false, reason: 'command target not provable' }
+    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/[a-z0-9]|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)/.test(c)) return { ok: false, reason: 'command target not provable' }
     for (const m of c.split(PWSH).join(' ').matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
       const p = m[0].replace(/\/+$/, '')
       if (p !== root && !p.startsWith(root + '/')) return { ok: false, reason: 'command path outside the run folder' }
@@ -355,7 +372,8 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
     // A single leading slash is the current drive's root in PowerShell, outside the run folder.
     if (/(^|[\s'"(])\/(?!\/)[a-z]/.test(c.split(PWSH).join(' '))) return { ok: false, reason: 'command path outside the run folder' }
     if (/(^|[\s'"/])\.\.(\/|$)/.test(c) || c.includes('plugins/cache') || c.includes('codex_home')) return { ok: false, reason: 'command leaves the run folder' }
-    if (exitCode !== 0 || output === null || !/get-content|\bgc\b|\bcat\b|\btype\b|readalltext/.test(c)) continue
+    // A command that also prints text of its own cannot prove its output came from the file.
+    if (exitCode !== 0 || output === null || !/get-content|\bgc\b|\bcat\b|\btype\b|readalltext/.test(c) || /write-(output|host)|\becho\b|\bprintf\b/.test(c)) continue
     let text = output.replace(/\s+$/, '')
     try { const j = JSON.parse(text); if (typeof j === 'string') text = j } catch {}
     // The command must name the file it reads, and its output must be that file's whole text.
@@ -507,13 +525,16 @@ function applyMarker(id, grader, verdict, text) {
 }
 
 
+// What a Codex call loads from its home beyond the run folder: global instructions and the config that enables skills and plugins.
+const profileHash = home => { const cfg = path.join(home, 'config.toml'); return sha(globalInstructionsHash(home) + ':' + (fs.existsSync(cfg) ? sha(fs.readFileSync(cfg)) : '-')) }
+
 async function codexSlot(run, s, home, led, instructions) {
   const { dir, cases } = run
   const c = cases[s.case]
   const out = path.join(dir, 'slots', s.slot)
   fs.mkdirSync(out, { recursive: true })
   checkOutsideRepo(os.tmpdir())
-  const sameProfile = () => globalInstructionsHash(home) === instructions
+  const sameProfile = () => profileHash(home) === instructions
   const task = fs.mkdtempSync(path.join(os.tmpdir(), 'cxb-'))
   const cwd = path.join(task, 's')
   fs.cpSync(path.join(dir, 'bundle', 'evals', 'behavior', c.id, 'fixture', 'project'), path.join(cwd, 'project'), { recursive: true })
@@ -560,6 +581,7 @@ async function codexSlot(run, s, home, led, instructions) {
       if (jUnconfirmed) return { ...slot, invalid: 'judge stop unconfirmed', stop: true, kept: jdir }
       fs.rmSync(jdir, { recursive: true, force: true })
       if (jt.tokens === null) return { ...slot, invalid: 'unknown judge usage', stop: true }
+      if (!sameProfile()) return { ...slot, invalid: 'global instructions changed during a judge', stop: true }
       let v = null
       // Only a judge that finished cleanly votes.
       if (j.code === 0 && !j.timedOut && !j.failed && jt.valid) { try { v = JSON.parse(/\{[^{}]*"verdict"[^{}]*\}/.exec(jt.message || '')[0]).verdict } catch {} }
@@ -655,10 +677,10 @@ async function main(args) {
     if (opts.host === 'codex') {
       // The profile is fixed at the first Codex call of a run and checked before every call.
       const file = path.join(run.dir, 'codex-home.json')
-      const now = { ...homeIdentity(home), globalInstructionsHash: globalInstructionsHash(home) }
+      const now = { ...homeIdentity(home), profileHash: profileHash(home) }
       if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(now) + '\n')
       else if (fs.readFileSync(file, 'utf8') !== JSON.stringify(now) + '\n') throw new Error('Codex home or global instructions differ from the first Codex call of this run')
-      instructions = now.globalInstructionsHash
+      instructions = now.profileHash
     }
     const led = ledger(group, opts.run)
     for (const s of run.manifest.slots.filter(x => x.host === opts.host)) {
@@ -666,6 +688,8 @@ async function main(args) {
       if (fs.existsSync(file)) continue
       const b = openBudget(group, {})
       if (!b.known) throw new Error('Usage became unknown; stopping before ' + s.slot)
+      // A slot with paid calls on record but no result was interrupted: it is never re-run, only resolved by hand.
+      if (b.entries.some(e => e.run === opts.run && e.slot === s.slot)) throw new Error('Slot ' + s.slot + ' has paid calls on record but no result; resolve it before resuming')
       const remaining = opts.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
       // A slot cannot be cut off mid-turn, so one starts only with room for twice the largest slot seen so far.
       if (remaining < reserve(b, opts.host)) { process.stdout.write('budget reserve reached before ' + s.slot + '\n'); return }

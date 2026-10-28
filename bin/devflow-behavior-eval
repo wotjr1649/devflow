@@ -652,6 +652,9 @@ async function codexVotes(led, slotKey, g, text, env, sameProfile) {
 // positive means the grader should FAIL the text. Claude: a haiku actor echoes the anchor through the case's own graders and judge
 // in claude plugin eval (an echo that differs from the anchor is invalid); Codex: the slots' judge function on the anchor text.
 // Writes one result file per anchor and a record whose samples point at them by hash.
+// A calibration call is keyed by run, host and anchor: recalibrating a revised grader in a new run pays again, one run never twice.
+const calKey = (opts, a) => 'cal-' + opts.run + '-' + opts.host + '-' + a.id
+
 async function calibrate(run, opts) {
   const { dir, manifest, cases } = run
   const anchorsText = fs.readFileSync(opts.anchors, 'utf8')
@@ -686,13 +689,13 @@ async function calibrate(run, opts) {
       const file = path.join(out, 'results', a.id + '.json')
       if (fs.existsSync(file)) continue
       const b = openBudget(group, {})
-      if (b.entries.some(e => e.slot === 'cal-' + opts.host + '-' + a.id)) throw new Error('Anchor ' + a.id + ' has paid calls on record but no result; resolve it first')
+      if (b.entries.some(e => e.slot === calKey(opts, a))) throw new Error('Anchor ' + a.id + ' has paid calls on record but no result; resolve it first')
       let result
       if (opts.host === 'codex') {
         result = { anchor: a.id, verdicts: {}, votes: {} }
         for (const name of Object.keys(a.labels)) {
           const g = cases[a.case].graders.find(x => x.name === name)
-          const r = await codexVotes(led, 'cal-codex-' + a.id, g, a.text, cleanEnv(home), sameProfile)
+          const r = await codexVotes(led, calKey(opts, a), g, a.text, cleanEnv(home), sameProfile)
           if (r.stop) throw new Error('Calibration stopped at ' + a.id + ': ' + r.invalid)
           result.votes[name] = r.votes
           result.verdicts[name] = r.verdict === 'PASS' ? 'negative' : r.verdict === 'FAIL' ? 'positive' : 'undetermined'
@@ -704,12 +707,12 @@ async function calibrate(run, opts) {
         const args = ['plugin', 'eval', shim, '--case', a.id, '--runs', '1', '--ablation', 'none', '--threshold', '0', '--scaffold', '--keep-temp', '--no-publish', '--trust-plugin',
           '--model', 'claude-haiku-5-5', '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remaining), '--json', json]
         const env = { ...process.env, CLAUDE_CODE_GIT_BASH_PATH: BASH.replaceAll('/', path.sep), PATH: path.dirname(BASH) + path.delimiter + process.env.PATH }
-        led.begin({ slot: 'cal-claude-' + a.id, call: 'claude-eval' }, { host: 'claude', amount: 0.5 })
+        led.begin({ slot: calKey(opts, a), call: 'claude-eval' }, { host: 'claude', amount: 0.5 })
         const r = await spawnWait('claude', args, { cwd: dir, env }, undefined, 15 * 60 * 1000)
         let ev = null
         try { ev = JSON.parse(fs.readFileSync(json, 'utf8')).cases[0].arms.with[0] } catch {}
         const usd = ev && typeof ev.costUsd === 'number' && typeof ev.judgeCostUsd === 'number' ? ev.costUsd + ev.judgeCostUsd : null
-        led.pay({ slot: 'cal-claude-' + a.id, call: 'claude-eval', usd }, r.timedOut && !r.killConfirmed)
+        led.pay({ slot: calKey(opts, a), call: 'claude-eval', usd }, r.timedOut && !r.killConfirmed)
         if (!ev || usd === null || r.code !== 0 || ev.error) throw new Error('Calibration stopped at ' + a.id + ': eval failed or cost unknown')
         // The echo must be the anchor itself; otherwise the judge saw another text and the sample is invalid.
         const kept = ev.tracePath ? path.dirname(path.dirname(ev.tracePath)) : null

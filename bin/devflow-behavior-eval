@@ -456,7 +456,13 @@ const expectedTree = (dir, c, arm) => joinTrees({ files: { 'project/': 'dir', 'p
 
 // Built as an argument array (no shell parsing); a missing flag here would run unbudgeted or publish, so tests pin it.
 const claudeArgs = (shim, id, remainingUsd, json) => ['plugin', 'eval', shim, '--case', id, '--runs', '1', '--ablation', 'none', '--scaffold', '--keep-temp',
-  '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', (Math.floor(remainingUsd * 100 + 1e-9) / 100).toFixed(2), '--json', json]
+  '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remainingUsd), '--json', json]
+// Whole cents, never above what is left: floor, then step down one cent if the printed value still exceeds the remainder.
+function capUsd(remaining) {
+  let cents = Math.floor(remaining * 100)
+  while (cents > 0 && Number((cents / 100).toFixed(2)) > remaining) cents--
+  return (Math.max(cents, 0) / 100).toFixed(2)
+}
 
 
 // Paid-call ledger of one run step: begin marks the call in the budget group, pay records it and clears the mark unless the

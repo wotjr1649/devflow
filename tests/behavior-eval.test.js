@@ -74,7 +74,12 @@ test('the Claude call always carries the run, budget, publication and ablation f
   assert.equal(args[args.indexOf('--runs') + 1], '1')
   assert.equal(args[args.indexOf('--max-cost-usd') + 1], '1.23')
   // The cap passed on is rounded down, never above what is left.
-  assert.equal(claudeArgs('s', 'c', 2.006, 'o')[claudeArgs('s', 'c', 2.006, 'o').indexOf('--max-cost-usd') + 1], '2.00')
+  const cap = left => { const a = claudeArgs('s', 'c', left, 'o'); return a[a.indexOf('--max-cost-usd') + 1] }
+  assert.equal(cap(2.006), '2.00')
+  // Just below a cent boundary (cost 0.49 + 0.500000000005 of a 3 dollar cap): never rounded up past the remainder.
+  const left = 3 - (0.49 + 0.500000000005)
+  assert.ok(Number(cap(left)) <= left, cap(left))
+  assert.equal(cap(0.004), '0.00')
 })
 
 

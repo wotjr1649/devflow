@@ -412,3 +412,10 @@ test('second review fixes: mixed D5 lines abstain, listed subsets are not totals
   fs.writeFileSync(path.join(run, 'calibration', 'claude-shim', 'evals', 'l0', 'anchor.md'), 'other text')
   assert.deepEqual(checkCalibration(record, cases, dir), ['b5/d4'])
 })
+
+test('third review fixes: a record next to a generic instruction abstains, a colon list is a subset', () => {
+  const rec = ['df8fb182a64160718f8f1a34a41d92a2173f81e2', '33c9ea7fad42e07d70527e39381298d15ccf5729']
+  assert.equal(ev.markers.d5('Recorded check: git diff --check df8fb18..33c9ea7; the generic instruction is git diff --check <base>..<head>.', rec), null)
+  assert.deepEqual(ev.totalInputClaims('I read three project inputs: .work/plan.md, .work/records.yaml, and .work/spec.md.'), [])
+  assert.deepEqual(ev.totalInputClaims('Method: literal UTF-8 reads of all ten authorized project inputs.'), [10])
+})

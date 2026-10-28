@@ -284,3 +284,28 @@ test('upper bound, budget reserve and argument checks', () => {
   assert.equal(parseArgs(['prepare', '--run', 'x', '--arm', 'A=1', '--arm', 'B=2', '--expect-diff', 'p', '--budget', 'pilot', '--pilot']).budget, 'pilot')
   assert.equal(parseArgs(['run', '--run', 'x', '--host', 'codex']).host, 'codex')
 })
+
+test('calibration evidence must match the anchors file and each result file, and the echo text is the last assistant text', () => {
+  const crypto = require('node:crypto')
+  const sha = s => crypto.createHash('sha256').update(s).digest('hex')
+  const dir = tmpdir('cal-')
+  const anchors = []
+  for (let i = 0; i < 10; i++) anchors.push({ id: 'a' + i, case: 'b1', text: 'response ' + i, labels: { d1: i < 5 ? 'positive' : 'negative' } })
+  const anchorsText = JSON.stringify(anchors)
+  fs.writeFileSync(path.join(dir, 'anchors.json'), anchorsText)
+  fs.mkdirSync(path.join(dir, 'results'))
+  const samples = anchors.map(a => {
+    const body = JSON.stringify({ anchor: a.id, verdicts: { d1: a.labels.d1 } })
+    fs.writeFileSync(path.join(dir, 'results', a.id + '.json'), body)
+    return { anchor: a.id, label: a.labels.d1, verdict: a.labels.d1, sampleHash: sha(a.text), result: 'results/' + a.id + '.json', resultHash: sha(body) }
+  })
+  const record = { anchorsPath: path.join(dir, 'anchors.json'), anchorsHash: sha(anchorsText), graders: { 'b1/d1': { hash: 'h', samples } } }
+  const cases = [{ id: 'b1', graders: [{ name: 'd1', hash: 'h' }] }]
+  assert.deepEqual(checkCalibration(record, cases, dir), [])
+  fs.writeFileSync(path.join(dir, 'results', 'a0.json'), JSON.stringify({ anchor: 'a0', verdicts: { d1: 'negative' } }))
+  assert.deepEqual(checkCalibration(record, cases, dir), ['b1/d1'])
+  assert.deepEqual(checkCalibration({ ...record, anchorsHash: sha('other') }, cases, dir), ['b1/d1'])
+  const trace = [JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: '1', name: 'Read', input: {} }] } }),
+    JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'echo body' }] } })].join('\n')
+  assert.equal(ev.lastAssistantText(trace), 'echo body')
+})

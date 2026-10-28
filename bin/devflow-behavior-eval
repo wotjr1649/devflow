@@ -608,36 +608,154 @@ async function codexSlot(run, s, home, led, instructions) {
   slot.votes = {}
   slot.markers = {}
   for (const g of c.graders) {
-    const votes = []
-    for (let i = 0; i < JUDGE_VOTES; i++) {
-      if (!sameProfile()) return { ...slot, invalid: 'global instructions changed before a judge', stop: true }
-      const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
-      const call = 'codex-judge ' + g.name + ' ' + (i + 1)
-      // A judge is its own paid process: it starts only with room left for twice the largest judge call seen.
-      try { led.begin({ slot: s.slot, call }, { host: 'codex', amount: judgeReserve(openBudget(led.group, {})) }) } catch (e) {
-        fs.rmSync(jdir, { recursive: true, force: true })
-        return { ...slot, invalid: 'stopped before ' + call + ': ' + e.message, stop: true }
-      }
-      const j = await spawnWait('codex', execArgs(), { cwd: jdir, env }, judgePrompt(g.criteria, t.message), 300 * 1000)
-      const jt = codexTrace(j.stdout)
-      const jUnconfirmed = j.timedOut && !j.killConfirmed
-      led.pay({ slot: s.slot, call, tokens: jt.tokens ?? null, ...(jUnconfirmed ? { reason: 'judge stop unconfirmed' } : {}) }, jUnconfirmed)
-      if (jUnconfirmed) return { ...slot, invalid: 'judge stop unconfirmed', stop: true, kept: jdir }
-      fs.rmSync(jdir, { recursive: true, force: true })
-      if (jt.tokens === null) return { ...slot, invalid: 'unknown judge usage', stop: true }
-      if (!sameProfile()) return { ...slot, invalid: 'global instructions changed during a judge', stop: true }
-      let v = null
-      // Only a judge that finished cleanly votes.
-      if (j.code === 0 && !j.timedOut && !j.failed && jt.valid) { try { v = JSON.parse(/\{[^{}]*"verdict"[^{}]*\}/.exec(jt.message || '')[0]).verdict } catch {} }
-      votes.push(v === 'PASS' || v === 'FAIL' ? v : null)
-    }
-    slot.votes[g.name] = votes
-    const pass = votes.filter(v => v === 'PASS').length, fail = votes.filter(v => v === 'FAIL').length
-    const m = applyMarker(c.id, g.name, pass >= 2 ? 'PASS' : fail >= 2 ? 'FAIL' : null, t.message)
+    const r = await codexVotes(led, s.slot, g, t.message, env, sameProfile)
+    if (r.stop) return { ...slot, ...r }
+    slot.votes[g.name] = r.votes
+    const m = applyMarker(c.id, g.name, r.verdict, t.message)
     slot.verdicts[g.name] = m.verdict
     if (m.mark) slot.markers[g.name] = m
   }
   return slot
+}
+
+// The Codex judge of one grader on one text: three clean votes at most, each its own paid call checked against the budget and
+// the profile. Main slots and calibration both use this, so calibration measures the judge path the slots use.
+async function codexVotes(led, slotKey, g, text, env, sameProfile) {
+  const votes = []
+  for (let i = 0; i < JUDGE_VOTES; i++) {
+    if (!sameProfile()) return { stop: true, invalid: 'global instructions changed before a judge' }
+    const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
+    const call = 'codex-judge ' + g.name + ' ' + (i + 1)
+    // A judge is its own paid process: it starts only with room left for twice the largest judge call seen.
+    try { led.begin({ slot: slotKey, call }, { host: 'codex', amount: judgeReserve(openBudget(led.group, {})) }) } catch (e) {
+      fs.rmSync(jdir, { recursive: true, force: true })
+      return { stop: true, invalid: 'stopped before ' + call + ': ' + e.message }
+    }
+    const j = await spawnWait('codex', execArgs(), { cwd: jdir, env }, judgePrompt(g.criteria, text), 300 * 1000)
+    const jt = codexTrace(j.stdout)
+    const jUnconfirmed = j.timedOut && !j.killConfirmed
+    led.pay({ slot: slotKey, call, tokens: jt.tokens ?? null, ...(jUnconfirmed ? { reason: 'judge stop unconfirmed' } : {}) }, jUnconfirmed)
+    if (jUnconfirmed) return { stop: true, invalid: 'judge stop unconfirmed', kept: jdir }
+    fs.rmSync(jdir, { recursive: true, force: true })
+    if (jt.tokens === null) return { stop: true, invalid: 'unknown judge usage' }
+    if (!sameProfile()) return { stop: true, invalid: 'global instructions changed during a judge' }
+    let v = null
+    // Only a judge that finished cleanly votes.
+    if (j.code === 0 && !j.timedOut && !j.failed && jt.valid) { try { v = JSON.parse(/\{[^{}]*"verdict"[^{}]*\}/.exec(jt.message || '')[0]).verdict } catch {} }
+    votes.push(v === 'PASS' || v === 'FAIL' ? v : null)
+  }
+  const pass = votes.filter(v => v === 'PASS').length, fail = votes.filter(v => v === 'FAIL').length
+  return { votes, verdict: pass >= 2 ? 'PASS' : fail >= 2 ? 'FAIL' : null }
+}
+
+// Calibration (design section 5). Anchors file: [{ id, case, text, labels: { <grader>: 'positive'|'negative' }, source }], where
+// positive means the grader should FAIL the text. Claude: a haiku actor echoes the anchor through the case's own graders and judge
+// in claude plugin eval (an echo that differs from the anchor is invalid); Codex: the slots' judge function on the anchor text.
+// Writes one result file per anchor and a record whose samples point at them by hash.
+async function calibrate(run, opts) {
+  const { dir, manifest, cases } = run
+  const anchorsText = fs.readFileSync(opts.anchors, 'utf8')
+  const anchors = JSON.parse(anchorsText).filter(a => cases[a.case]?.host === opts.host)
+  const out = path.join(dir, 'calibration', opts.host)
+  fs.mkdirSync(path.join(out, 'results'), { recursive: true })
+  const group = manifest.budget
+  const led = ledger(group, opts.run)
+  const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+  const profile = opts.host === 'codex' ? profileHash(home) : null
+  const sameProfile = () => opts.host !== 'codex' || profileHash(home) === profile
+  let shim = null
+  if (opts.host === 'claude') {
+    // One shim holds every Claude anchor as its own echo case with only the graders the anchor is labelled for.
+    shim = path.join(dir, 'calibration', 'claude-shim')
+    fs.rmSync(shim, { recursive: true, force: true })
+    fs.mkdirSync(path.join(shim, '.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(shim, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'devflow-calibration', version: '0.0.0' }) + '\n')
+    for (const a of anchors) {
+      const cdir = path.join(shim, 'evals', a.id)
+      fs.mkdirSync(path.join(cdir, 'graders'), { recursive: true })
+      fs.writeFileSync(path.join(cdir, 'anchor.md'), a.text)
+      fs.writeFileSync(path.join(cdir, 'prompt.md'), '---\nmax_turns: 3\ntimeout_seconds: 300\nallowed_tools: [Read]\nruns: 1\ntags: [calibration]\n---\n\nRead the file anchor.md in the current directory and reply with its exact content and nothing else: no preface, no code fence, no comment.\n')
+      fs.writeFileSync(path.join(cdir, 'case.yaml'), `schema_version: "1.1"\nname: ${a.id}\ncontext:\n  scaffold_script: scaffold.sh\n`)
+      fs.writeFileSync(path.join(cdir, 'scaffold.sh'), '#!/usr/bin/env bash\nset -eu\nhere="$(cd "$(dirname "$0")" && pwd)"\ncp "$here/anchor.md" ./anchor.md\n')
+      for (const name of Object.keys(a.labels)) fs.copyFileSync(path.join(dir, 'bundle', 'evals', 'behavior', a.case, 'graders', name + '.md'), path.join(cdir, 'graders', name + '.md'))
+    }
+  }
+  const release = lockBudget(group)
+  try {
+    for (const a of anchors) {
+      const file = path.join(out, 'results', a.id + '.json')
+      if (fs.existsSync(file)) continue
+      const b = openBudget(group, {})
+      if (b.entries.some(e => e.slot === 'cal-' + opts.host + '-' + a.id)) throw new Error('Anchor ' + a.id + ' has paid calls on record but no result; resolve it first')
+      let result
+      if (opts.host === 'codex') {
+        result = { anchor: a.id, verdicts: {}, votes: {} }
+        for (const name of Object.keys(a.labels)) {
+          const g = cases[a.case].graders.find(x => x.name === name)
+          const r = await codexVotes(led, 'cal-codex-' + a.id, g, a.text, cleanEnv(home), sameProfile)
+          if (r.stop) throw new Error('Calibration stopped at ' + a.id + ': ' + r.invalid)
+          result.votes[name] = r.votes
+          result.verdicts[name] = r.verdict === 'PASS' ? 'negative' : r.verdict === 'FAIL' ? 'positive' : 'undetermined'
+        }
+      } else {
+        const remaining = b.capUsd - b.claudeUsd
+        if (remaining < 1) { process.stdout.write('budget reserve reached before ' + a.id + '\n'); return }
+        const json = path.join(out, 'results', a.id + '.eval.json')
+        const args = ['plugin', 'eval', shim, '--case', a.id, '--runs', '1', '--ablation', 'none', '--threshold', '0', '--scaffold', '--keep-temp', '--no-publish', '--trust-plugin',
+          '--model', 'claude-haiku-5-5', '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remaining), '--json', json]
+        const env = { ...process.env, CLAUDE_CODE_GIT_BASH_PATH: BASH.replaceAll('/', path.sep), PATH: path.dirname(BASH) + path.delimiter + process.env.PATH }
+        led.begin({ slot: 'cal-claude-' + a.id, call: 'claude-eval' }, { host: 'claude', amount: 0.5 })
+        const r = await spawnWait('claude', args, { cwd: dir, env }, undefined, 15 * 60 * 1000)
+        let ev = null
+        try { ev = JSON.parse(fs.readFileSync(json, 'utf8')).cases[0].arms.with[0] } catch {}
+        const usd = ev && typeof ev.costUsd === 'number' && typeof ev.judgeCostUsd === 'number' ? ev.costUsd + ev.judgeCostUsd : null
+        led.pay({ slot: 'cal-claude-' + a.id, call: 'claude-eval', usd }, r.timedOut && !r.killConfirmed)
+        if (!ev || usd === null || r.code !== 0 || ev.error) throw new Error('Calibration stopped at ' + a.id + ': eval failed or cost unknown')
+        // The echo must be the anchor itself; otherwise the judge saw another text and the sample is invalid.
+        const kept = ev.tracePath ? path.dirname(path.dirname(ev.tracePath)) : null
+        const echo = kept ? lastAssistantText(fs.readFileSync(ev.tracePath, 'utf8')) : null
+        if (kept && /^claude-eval-[A-Za-z0-9]+$/.test(path.basename(kept))) fs.rmSync(kept, { recursive: true, force: true })
+        const same = echo !== null && echo.replace(/\s+$/, '') === a.text.replace(/\s+$/, '')
+        result = { anchor: a.id, echoMatches: same, verdicts: {} }
+        for (const name of Object.keys(a.labels)) {
+          const g = (ev.graders || []).find(x => x.name === name)
+          result.verdicts[name] = !same ? 'invalid' : g && g.scored !== false && typeof g.passed === 'boolean' ? (g.passed ? 'negative' : 'positive') : 'undetermined'
+        }
+      }
+      fs.writeFileSync(file, JSON.stringify(result, null, 1) + '\n')
+      process.stdout.write(a.id + ': ' + JSON.stringify(result.verdicts) + '\n')
+    }
+  } finally { release() }
+  // The record: per case/grader, every sample with its label, verdict and the hashes that tie it to the anchor and the result file.
+  const record = { host: opts.host, run: opts.run, anchorsPath: path.resolve(opts.anchors), anchorsHash: sha(anchorsText), graders: {} }
+  for (const a of anchors) {
+    const rel = path.join('results', a.id + '.json')
+    if (!fs.existsSync(path.join(out, rel))) continue
+    const body = fs.readFileSync(path.join(out, rel), 'utf8')
+    const res = JSON.parse(body)
+    for (const [name, label] of Object.entries(a.labels)) {
+      const g = cases[a.case].graders.find(x => x.name === name)
+      const key = a.case + '/' + name
+      ;(record.graders[key] ??= { hash: g.hash, samples: [] }).samples.push({ anchor: a.id, label, verdict: res.verdicts[name], sampleHash: sha(a.text), result: rel.split(path.sep).join('/'), resultHash: sha(body) })
+    }
+  }
+  fs.writeFileSync(path.join(out, 'calibration.json'), JSON.stringify(record, null, 1) + '\n')
+  const failed = checkCalibration(record, Object.values(cases).filter(c => c.host === opts.host), out)
+  process.stdout.write('calibration ' + opts.host + ': ' + (failed.length ? 'not passing: ' + failed.join(', ') : 'every grader passes') + '\n')
+}
+
+// The final assistant text of a Claude trace: the last text block of an assistant message.
+function lastAssistantText(trace) {
+  let last = null
+  for (const line of trace.split(/\r?\n/).filter(Boolean)) {
+    let o
+    try { o = JSON.parse(line) } catch { continue }
+    const msg = o.message && (o.message.role === 'assistant' || o.type === 'assistant') ? o.message : null
+    const content = msg?.content
+    if (typeof content === 'string') last = content
+    else if (Array.isArray(content)) { const texts = content.filter(x => x?.type === 'text').map(x => x.text); if (texts.length) last = texts.join('') }
+  }
+  return last
 }
 
 function summary(run) {
@@ -697,9 +815,11 @@ function parseArgs(args) {
   }
   const usage = 'usage: devflow-behavior-eval prepare --run <name> --arm A=<rev> --arm B=<rev> --expect-diff <path> --budget <group> [--budget-usd <cap> --budget-tokens <cap>] [--cases a,b] (--pilot | --calibration <record>)\n' +
     '       devflow-behavior-eval run --run <name> --host claude|codex\n' +
+    '       devflow-behavior-eval calibrate --run <name> --host claude|codex --anchors <file>\n' +
     '       devflow-behavior-eval summary --run <name>'
   if (!opts.run || !/^[a-z0-9][a-z0-9-]*$/.test(opts.run)) throw new Error(usage)
-  if (!['prepare', 'run', 'summary'].includes(command)) throw new Error(usage)
+  if (!['prepare', 'run', 'summary', 'calibrate'].includes(command)) throw new Error(usage)
+  if (command === 'calibrate' && (!['claude', 'codex'].includes(opts.host) || !opts.anchors)) throw new Error(usage)
   if (command === 'prepare' && (!opts.arms.A || !opts.arms.B || !opts.expectDiff.length || !opts.budget || !/^[a-z0-9][a-z0-9-]*$/.test(opts.budget))) throw new Error(usage)
   if (command === 'run' && (!['claude', 'codex'].includes(opts.host) || opts.budget || opts.budgetUsd !== undefined || opts.budgetTokens !== undefined)) throw new Error(usage)
   return opts
@@ -714,6 +834,7 @@ async function main(args) {
   }
   const run = openRun(opts.run)
   if (opts.command === 'summary') { process.stdout.write(JSON.stringify(summary(run), null, 1) + '\n'); return }
+  if (opts.command === 'calibrate') return calibrate({ ...run, opts }, opts)
   const group = run.manifest.budget
   const release = lockBudget(group)
   try {
@@ -752,5 +873,5 @@ async function main(args) {
 
 module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun,
   openBudget, begin, charge, lockBudget, judgeReserve, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
-  totalInputClaims, applyMarker, RULES }
+  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, RULES }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

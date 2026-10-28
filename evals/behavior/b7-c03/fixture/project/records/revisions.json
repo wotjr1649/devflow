@@ -1,0 +1,10 @@
+{
+  "project": "accession-labels",
+  "change": "label-comparison",
+  "baseRevision": "accession-base-r1",
+  "candidateRevision": "accession-candidate-r2",
+  "changedPaths": [
+    "src/labels.cjs"
+  ],
+  "snapshotState": "The candidate source is the proposed revision; no additional working-tree changes are represented."
+}

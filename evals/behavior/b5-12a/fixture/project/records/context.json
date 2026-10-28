@@ -1,0 +1,36 @@
+{
+  "kind": "hypothetical inputs; not actual observations",
+  "repo": "example/shop",
+  "base": "main",
+  "branches": [
+    {
+      "name": "feat/40-tax",
+      "root": "verified repository root (scenario)",
+      "base": "b40",
+      "head": "h40",
+      "merge": "m40",
+      "mergeVerified": true,
+      "postMergeVerification": {
+        "state": "success",
+        "revision": "m40"
+      },
+      "scope": "local and remote branch feat/40-tax; no worktree",
+      "worktree": null
+    },
+    {
+      "name": "feat/41-coupon",
+      "root": "verified repository root (scenario)",
+      "base": "b41",
+      "head": "h41",
+      "merge": "m41",
+      "mergeVerified": true,
+      "postMergeVerification": "not supplied",
+      "scope": "branch feat/41-coupon and worktree worktrees/shop-coupon",
+      "worktree": {
+        "path": "worktrees/shop-coupon",
+        "inUseBy": "another session"
+      }
+    }
+  ],
+  "deletionAuthority": "not supplied"
+}

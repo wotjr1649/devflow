@@ -1,0 +1,463 @@
+#!/usr/bin/env node
+'use strict'
+// Opt-in outcome measurement of review-report behavior (Issue #99). Contract: docs/specs/eval.md, "결과 eval". Never run by CI.
+// The trigger runner stays byte-identical so its continuation checks keep matching; only its exported helpers are reused.
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const crypto = require('node:crypto')
+const { spawn, spawnSync } = require('node:child_process')
+const { cleanEnv, execArgs, checkOutsideRepo, homeIdentity, globalInstructionsHash } = require('./devflow-codex-eval')
+const ROOT = path.resolve(__dirname, '..')
+const norm = s => s.replaceAll('\\', '/')
+const CASES = path.join(ROOT, 'evals', 'behavior')
+const WORK = path.join(ROOT, '.work', 'behavior-eval')
+const CLAUDE = { model: 'claude-opus-5-5', judge: 'claude-sonnet-5-5' }
+const PROGRAMS = norm(process.env.ProgramFiles || path.join(process.env.SystemDrive || 'C:', 'Program Files'))
+const BASH = PROGRAMS + '/Git/bin/bash.exe'
+const SKILL = 'plugin/skills/pr-review-workflow/SKILL.md'
+const PWSH = (PROGRAMS + '/PowerShell/7/pwsh.exe').toLowerCase()
+const JUDGE_VOTES = 3
+const sha = b => crypto.createHash('sha256').update(b).digest('hex')
+
+// Case folders: prompt.md (frontmatter tags [behavior, <host>, <id>]), graders/*.md (llm), fixture/project, case.yaml, scaffold.sh.
+function loadCases(dir = CASES) {
+  return fs.readdirSync(dir).sort().map(id => {
+    if (!/^[a-z][0-9]?-[a-z0-9-]+$/.test(id)) throw new Error('Invalid behavior case name: ' + id)
+    const text = fs.readFileSync(path.join(dir, id, 'prompt.md'), 'utf8')
+    const fm = /^---\n([\s\S]*?)\n---\n\n/.exec(text)
+    const tags = fm && /^tags: \[behavior, (claude|codex), ([a-z0-9-]+)\]$/m.exec(fm[1])
+    if (!tags || tags[2] !== id) throw new Error('Missing behavior metadata in ' + id)
+    const graders = fs.readdirSync(path.join(dir, id, 'graders')).filter(f => f.endsWith('.md')).sort().map(f => {
+      const g = fs.readFileSync(path.join(dir, id, 'graders', f), 'utf8')
+      const m = /^---\ntype: llm\nweight: 1\n---\n\n([\s\S]+)$/.exec(g)
+      if (!m) throw new Error('Grader is not a plain llm grader: ' + id + '/' + f)
+      return { name: f.slice(0, -3), criteria: m[1] }
+    })
+    if (!graders.some(g => g.name === 'task') || graders.length < 2) throw new Error('Case needs a task grader and a proposition: ' + id)
+    return { id, host: tags[1], prompt: text.slice(fm[0].length), graders, hash: treeHash(path.join(dir, id)).hash }
+  })
+}
+
+// Every file under a folder by relative path, without following links; the hash covers names and bytes.
+function treeHash(dir, prefix = '') {
+  const files = {}
+  const walk = rel => {
+    for (const name of fs.readdirSync(path.join(dir, rel)).sort()) {
+      const entry = rel ? rel + '/' + name : name
+      const st = fs.lstatSync(path.join(dir, entry))
+      if (st.isDirectory()) walk(entry)
+      else if (st.isFile()) files[prefix + entry] = sha(fs.readFileSync(path.join(dir, entry)))
+      else throw new Error('Link or special file in ' + entry)
+    }
+  }
+  walk('')
+  return { files, hash: sha(JSON.stringify(Object.entries(files).sort())) }
+}
+const joinTrees = (...trees) => {
+  const files = Object.assign({}, ...trees.map(t => t.files))
+  return { files, hash: sha(JSON.stringify(Object.entries(files).sort())) }
+}
+const treeDiff = (a, b) => [...new Set([...Object.keys(a.files), ...Object.keys(b.files)])].filter(f => a.files[f] !== b.files[f]).sort()
+
+// ABBA in blocks of four, seven blocks per case: 14 slots per arm, in a fixed interleaved order.
+function schedule(cases, blocks = 7) {
+  const slots = []
+  for (const c of cases) for (let b = 0; b < blocks; b++) {
+    ['A', 'B', 'B', 'A'].forEach((arm, i) => slots.push({ slot: `${c.id}-${String(b * 2 + (i === 0 || i === 1 ? 1 : 2)).padStart(2, '0')}-${arm}`, case: c.id, host: c.host, arm }))
+  }
+  return slots
+}
+
+function git(args, cwd = ROOT) {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 })
+  if (r.status !== 0) throw new Error('git ' + args[0] + ' failed: ' + String(r.stderr).slice(0, 300))
+  return r.stdout.trim()
+}
+// Tracked files only, from a fixed revision: ignored private files never reach the actor.
+function extract(rev, dest, paths = []) {
+  fs.mkdirSync(dest, { recursive: true })
+  git(['archive', '--format=tar', '-o', path.join(dest, '.archive.tar'), rev, ...(paths.length ? ['--', ...paths] : [])])
+  const r = spawnSync('tar', ['-xf', '.archive.tar'], { cwd: dest, encoding: 'utf8', windowsHide: true })
+  fs.rmSync(path.join(dest, '.archive.tar'))
+  if (r.status !== 0) throw new Error('tar failed for ' + rev)
+}
+
+function prepare(opts) {
+  const dir = path.join(WORK, opts.run)
+  if (fs.existsSync(dir)) throw new Error('Run folder exists: ' + opts.run)
+  if (git(['status', '--porcelain', '--', 'evals/behavior', 'bin/devflow-behavior-eval', 'bin/devflow-codex-eval'])) throw new Error('Commit the evaluation bundle first; it must come from one revision')
+  const E = git(['rev-parse', 'HEAD'])
+  const arms = {}
+  for (const [name, rev] of Object.entries(opts.arms)) {
+    const full = git(['rev-parse', rev + '^{commit}'])
+    extract(full, path.join(dir, 'arms', name))
+    arms[name] = { rev: full, ...treeHash(path.join(dir, 'arms', name)) }
+  }
+  const diff = treeDiff(arms.A, arms.B)
+  if (JSON.stringify(diff) !== JSON.stringify(opts.expectDiff)) throw new Error('Arms differ in ' + (diff.join(', ') || 'nothing') + ', not only in ' + opts.expectDiff.join(', '))
+  extract(E, path.join(dir, 'bundle'), ['evals/behavior'])
+  const cases = loadCases(path.join(dir, 'bundle', 'evals', 'behavior'))
+  for (const name of Object.keys(arms)) {
+    const shim = path.join(dir, 'claude-' + name)
+    fs.mkdirSync(path.join(shim, '.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(shim, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'devflow-behavior-' + name.toLowerCase(), version: '0.0.0' }) + '\n')
+    fs.cpSync(path.join(dir, 'bundle', 'evals'), path.join(shim, 'evals'), { recursive: true })
+    fs.cpSync(path.join(dir, 'arms', name), path.join(shim, 'arm'), { recursive: true })
+  }
+  const selected = opts.cases ? cases.filter(c => opts.cases.includes(c.id)) : cases
+  if (opts.cases && selected.length !== opts.cases.length) throw new Error('Unknown case in --cases')
+  let slots = schedule(selected)
+  if (opts.pilot) slots = selected.flatMap(c => ['A', 'B'].map(arm => slots.find(s => s.case === c.id && s.arm === arm)))
+  const manifest = { issue: 99, E, arms: Object.fromEntries(Object.entries(arms).map(([k, v]) => [k, { rev: v.rev, hash: v.hash }])), expectDiff: diff,
+    cases: Object.fromEntries(cases.map(c => [c.id, { host: c.host, hash: c.hash }])), bashHash: fs.existsSync(BASH) ? sha(fs.readFileSync(BASH)) : null,
+    claude: CLAUDE, codex: { votes: JUDGE_VOTES }, pilot: !!opts.pilot, slots, createdAt: new Date().toISOString() }
+  manifest.hash = sha(JSON.stringify({ ...manifest, createdAt: null }))
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n')
+  fs.writeFileSync(path.join(dir, 'budget.json'), JSON.stringify({ claudeUsd: 0, codexTokens: 0, known: true, entries: [] }, null, 1) + '\n')
+  return manifest
+}
+
+// Re-reading a run checks that nothing it measures changed since prepare (resume identity).
+function openRun(run) {
+  const dir = path.join(WORK, run)
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'))
+  for (const [name, a] of Object.entries(manifest.arms)) {
+    if (treeHash(path.join(dir, 'arms', name)).hash !== a.hash || treeHash(path.join(dir, 'claude-' + name, 'arm')).hash !== a.hash) throw new Error('Arm ' + name + ' changed since prepare')
+  }
+  const cases = loadCases(path.join(dir, 'bundle', 'evals', 'behavior'))
+  for (const c of cases) if (manifest.cases[c.id]?.hash !== c.hash) throw new Error('Case ' + c.id + ' changed since prepare')
+  for (const name of Object.keys(manifest.arms)) {
+    if (treeHash(path.join(dir, 'claude-' + name, 'evals')).hash !== treeHash(path.join(dir, 'bundle', 'evals')).hash) throw new Error('Claude shim ' + name + ' changed since prepare')
+  }
+  if (manifest.bashHash && sha(fs.readFileSync(BASH)) !== manifest.bashHash) throw new Error('Git bash changed since prepare')
+  return { dir, manifest, cases: Object.fromEntries(cases.map(c => [c.id, c])) }
+}
+
+const budgetFile = dir => path.join(dir, 'budget.json')
+function charge(dir, entry) {
+  const b = JSON.parse(fs.readFileSync(budgetFile(dir), 'utf8'))
+  if (entry.usd === null || entry.tokens === null) b.known = false
+  b.claudeUsd += entry.usd || 0
+  b.codexTokens += entry.tokens || 0
+  b.entries.push(entry)
+  fs.writeFileSync(budgetFile(dir), JSON.stringify(b, null, 1) + '\n')
+  return b
+}
+
+// Reads a run's tool calls and decides whether the measured skill came from the run folder's plugin copy only.
+// Claude: tool_use blocks anywhere in the trace; Codex: command strings. Reads elsewhere (an installed copy) make the slot invalid.
+function claudeAttribution(traceText, cwd) {
+  const root = norm(cwd).toLowerCase().replace(/\/+$/, '') + '/'
+  const uses = []
+  const walk = v => {
+    if (Array.isArray(v)) v.forEach(walk)
+    else if (v && typeof v === 'object') {
+      if (v.type === 'tool_use' && typeof v.name === 'string') uses.push(v)
+      Object.values(v).forEach(walk)
+    }
+  }
+  for (const line of traceText.split(/\r?\n/).filter(Boolean)) { try { walk(JSON.parse(line)) } catch { return { ok: false, reason: 'unreadable trace' } } }
+  const seen = new Set()
+  let skillRead = false, outside = []
+  for (const u of uses) {
+    if (u.id && seen.has(u.id)) continue
+    if (u.id) seen.add(u.id)
+    const target = u.input?.file_path ?? u.input?.path ?? null
+    if (!target) continue
+    const abs = norm(path.isAbsolute(target) ? target : path.join(cwd, target)).toLowerCase()
+    if (!(abs + '/').startsWith(root) && abs !== root.slice(0, -1)) outside.push(u.name)
+    if (u.name === 'Read' && abs === root + SKILL.toLowerCase() && u.input.offset === undefined && u.input.limit === undefined) skillRead = true
+  }
+  if (outside.length) return { ok: false, reason: 'tool access outside the run folder (' + outside.length + ')' }
+  return skillRead ? { ok: true } : { ok: false, reason: 'no full read of the run folder skill' }
+}
+
+function codexTrace(stdout) {
+  let started = false, broken = false, message = null
+  const usage = { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0 }
+  let turns = 0
+  const commands = new Map()
+  for (const line of stdout.split(/\r?\n/).filter(l => l.trim())) {
+    let e
+    try { e = JSON.parse(line) } catch { broken = true; continue }
+    if (e.type === 'thread.started') started = true
+    if (e.type === 'error' || e.type === 'turn.failed') broken = true
+    if (e.type === 'turn.completed') {
+      if (!e.usage || ['input_tokens', 'cached_input_tokens', 'output_tokens'].some(k => !Number.isSafeInteger(e.usage[k]))) { broken = true; continue }
+      turns++
+      for (const k of Object.keys(usage)) usage[k] += e.usage[k]
+    }
+    if (e.type === 'item.completed' && e.item?.type === 'agent_message' && typeof e.item.text === 'string') message = e.item.text
+    if (/^item\./.test(e.type || '') && e.item?.type === 'command_execution' && typeof e.item.command === 'string') {
+      commands.set(e.item.id || e.item.command, { command: e.item.command, exitCode: e.item.exit_code ?? null })
+    }
+  }
+  const total = turns ? usage.input_tokens + usage.output_tokens : null
+  return { valid: started && turns > 0 && !broken, message, tokens: total, commands: [...commands.values()] }
+}
+
+function codexAttribution(commands, cwd) {
+  const root = norm(cwd).toLowerCase().replace(/\/+$/, '')
+  let skillRead = false
+  for (const { command, exitCode } of commands) {
+    const c = norm(command.replaceAll('\\"', '"')).toLowerCase()
+    // Only reads whose target is written out count; variables, aliases, expression eval or changing folder hide the target.
+    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s/.test(c)) return { ok: false, reason: 'command target not provable' }
+    // Absolute paths must stay in the run folder; the prompt names pwsh itself, which is not a read target.
+    for (const m of c.split(PWSH).join(' ').matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
+      const p = m[0].replace(/\/+$/, '')
+      if (p !== root && !p.startsWith(root + '/')) return { ok: false, reason: 'command path outside the run folder' }
+    }
+    if (/(^|[\s'"/])\.\.(\/|$)/.test(c) || c.includes('plugins/cache') || c.includes('codex_home')) return { ok: false, reason: 'command leaves the run folder' }
+    if (exitCode === 0 && /get-content|\bcat\b|readalltext/.test(c) && (c.includes(root + '/' + SKILL.toLowerCase()) || new RegExp(`(^|[\\s'"])(\\./)?${SKILL.toLowerCase().replaceAll('.', '\\.')}`).test(c))) skillRead = true
+  }
+  return skillRead ? { ok: true } : { ok: false, reason: 'no read of the run folder skill' }
+}
+
+// A proposition grader passing means the defect is absent; the task grader failing makes the whole slot invalid.
+function classify(slot) {
+  if (slot.invalid) return Object.fromEntries(slot.graders.filter(g => g.name !== 'task').map(g => [g.name, 'invalid']))
+  const task = slot.verdicts.task
+  const out = {}
+  for (const [name, v] of Object.entries(slot.verdicts)) {
+    if (name === 'task') continue
+    out[name] = task === 'FAIL' ? 'invalid' : task !== 'PASS' || v === null ? 'undetermined' : v === 'PASS' ? 'negative' : 'positive'
+  }
+  return out
+}
+
+// Adoption (design v3 section 6). counts[case][prop][arm] = { positive, negative, invalid, undetermined, slots }.
+function adopt(counts, rules) {
+  const reasons = []
+  const get = (c, p, a) => counts[c]?.[p]?.[a] ?? { positive: 0, negative: 0, invalid: 0, undetermined: 0, slots: 0 }
+  for (const c of Object.keys(counts)) for (const p of Object.keys(counts[c])) for (const a of ['A', 'B']) {
+    if (get(c, p, a).slots !== rules.slots) reasons.push(`${c}/${p}/${a}: ${get(c, p, a).slots} of ${rules.slots} slots`)
+  }
+  let fixedA = 0, fixedB = 0
+  for (const [c, p] of rules.fixed.concat(rules.counter)) {
+    for (const a of ['A', 'B']) { const k = get(c, p, a); if (k.invalid || k.undetermined) reasons.push(`${c}/${p}/${a}: not decidable`) }
+  }
+  for (const [c, p] of rules.fixed) {
+    const a = get(c, p, 'A').positive, b = get(c, p, 'B').positive
+    fixedA += a; fixedB += b
+    if (b > a) reasons.push(`${c}/${p}: candidate ${b} > baseline ${a}`)
+  }
+  if (!(fixedB < fixedA)) reasons.push(`fixed total: candidate ${fixedB} not below baseline ${fixedA}`)
+  for (const [c, p] of rules.regression) {
+    const A = get(c, p, 'A'), B = get(c, p, 'B')
+    const b = B.positive + B.invalid + B.undetermined
+    if (b > A.positive) reasons.push(`${c}/${p}: candidate ${b} (missing counted against it) > baseline ${A.positive}`)
+  }
+  for (const [c, p] of rules.counter) {
+    const a = get(c, p, 'A').positive, b = get(c, p, 'B').positive
+    if (b > a || b > rules.counterMax) reasons.push(`${c}/${p}: candidate failures ${b} (baseline ${a}, limit ${rules.counterMax})`)
+  }
+  return { adopted: reasons.length === 0, reasons }
+}
+
+// 0 of n valid: one-sided exact binomial 95% upper bound, under independence between rows.
+const upperBound = n => n > 0 ? 1 - Math.pow(0.05, 1 / n) : null
+
+function spawnWait(cmd, args, options, input, timeoutMs) {
+  return new Promise(resolve => {
+    let stdout = '', timedOut = false, failed = false
+    const child = spawn(cmd, args, { ...options, windowsHide: true, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'] })
+    const timer = setTimeout(() => {
+      timedOut = true
+      spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
+    }, timeoutMs)
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', d => { stdout += d })
+    child.on('error', () => { failed = true })
+    if (input !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(input) }
+    child.on('close', code => { clearTimeout(timer); resolve({ code, stdout, timedOut, failed }) })
+  })
+}
+
+// The run folder is what scaffold builds: the case project and the arm's plugin snapshot, nothing else.
+const expectedTree = (dir, c, arm) => joinTrees(treeHash(path.join(dir, 'bundle', 'evals', 'behavior', c.id, 'fixture', 'project'), 'project/'), treeHash(path.join(dir, 'arms', arm), 'plugin/'))
+
+// Built as an argument array (no shell parsing); a missing flag here would run unbudgeted or publish, so tests pin it.
+const claudeArgs = (shim, id, remainingUsd, json) => ['plugin', 'eval', shim, '--case', id, '--runs', '1', '--ablation', 'none', '--scaffold', '--keep-temp',
+  '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', remainingUsd.toFixed(2), '--json', json]
+
+async function claudeSlot(run, s, remainingUsd) {
+  const { dir, cases } = run
+  const c = cases[s.case]
+  const out = path.join(dir, 'slots', s.slot)
+  fs.mkdirSync(out, { recursive: true })
+  const env = { ...process.env, PATH: path.dirname(BASH) + path.delimiter + process.env.PATH }
+  const r = await spawnWait('claude', claudeArgs(path.join(dir, 'claude-' + s.arm), c.id, remainingUsd, path.join(out, 'eval.json')), { cwd: dir, env }, undefined, 30 * 60 * 1000)
+  const slot = { slot: s.slot, case: c.id, arm: s.arm, host: 'claude', exitCode: r.code, timedOut: r.timedOut, graders: c.graders.map(g => ({ name: g.name })) }
+  let result = null, shape = null
+  try {
+    const all = JSON.parse(fs.readFileSync(path.join(out, 'eval.json'), 'utf8'))
+    // One case, one run in one arm, every grader scored once: anything else is not the planned call (stop, do not count).
+    shape = all.cases.length === 1 && all.cases[0].name === c.id && all.cases[0].arms.with?.length === 1 && !all.cases[0].arms.without?.length
+    result = all.cases[0].arms.with[0]
+    shape = shape && (result.error || (result.graders || []).length === c.graders.length)
+  } catch {}
+  if (!result) return { ...slot, invalid: 'no eval result', usd: null, stop: true }
+  if (!shape) return { ...slot, invalid: 'unexpected eval shape', usd: (result.costUsd || 0) + (result.judgeCostUsd || 0), stop: true }
+  slot.usd = (result.costUsd || 0) + (result.judgeCostUsd || 0)
+  if (result.error) return { ...slot, invalid: 'run error: ' + String(result.error).slice(0, 200) }
+  slot.verdicts = Object.fromEntries(c.graders.map(g => {
+    const v = (result.graders || []).find(x => x.name === g.name)
+    return [g.name, v && v.scored !== false && typeof v.passed === 'boolean' ? (v.passed ? 'PASS' : 'FAIL') : null]
+  }))
+  slot.explanations = Object.fromEntries((result.graders || []).map(g => [g.name, String(g.explanation || '').slice(0, 1000)]))
+  const kept = result.tracePath ? path.dirname(path.dirname(result.tracePath)) : null
+  if (!kept || !/^claude-eval-[A-Za-z0-9]+$/.test(path.basename(kept)) || path.dirname(path.resolve(kept)).toLowerCase() !== path.resolve(os.tmpdir()).toLowerCase()) return { ...slot, invalid: 'no kept run folder', stop: true }
+  const cwd = path.join(kept, 'home', 'cwd')
+  const trace = fs.readFileSync(result.tracePath, 'utf8')
+  fs.writeFileSync(path.join(out, 'trace.jsonl'), trace)
+  slot.attribution = claudeAttribution(trace, cwd)
+  const after = treeHash(cwd)
+  const changed = treeDiff(after, expectedTree(dir, c, s.arm))
+  if (changed.length) return { ...slot, invalid: 'run folder changed: ' + changed.length + ' files', stop: true, kept }
+  fs.rmSync(kept, { recursive: true, force: true })
+  slot.keptRemoved = true
+  if (!slot.attribution.ok) return { ...slot, invalid: 'attribution: ' + slot.attribution.reason }
+  return slot
+}
+
+const judgePrompt = (criteria, response) => 'You are grading one response against one criterion. Use only the criterion and the response below; do not read files or run commands.\n\n' +
+  'Criterion:\n<<<CRITERION\n' + criteria + 'CRITERION>>>\n\nResponse:\n<<<RESPONSE\n' + response + '\nRESPONSE>>>\n\n' +
+  'Reply with one line of JSON only: {"verdict":"PASS"} or {"verdict":"FAIL"}, plus a "reason" field of one sentence.'
+
+async function codexSlot(run, s, home) {
+  const { dir, cases } = run
+  const c = cases[s.case]
+  const out = path.join(dir, 'slots', s.slot)
+  fs.mkdirSync(out, { recursive: true })
+  checkOutsideRepo(os.tmpdir())
+  const task = fs.mkdtempSync(path.join(os.tmpdir(), 'cxb-'))
+  const cwd = path.join(task, 's')
+  fs.cpSync(path.join(dir, 'bundle', 'evals', 'behavior', c.id, 'fixture', 'project'), path.join(cwd, 'project'), { recursive: true })
+  fs.cpSync(path.join(dir, 'arms', s.arm), path.join(cwd, 'plugin'), { recursive: true })
+  const expected = expectedTree(dir, c, s.arm)
+  if (treeHash(cwd).hash !== expected.hash) throw new Error('Codex run folder does not match the case and arm')
+  const env = cleanEnv(home)
+  const r = await spawnWait('codex', execArgs(), { cwd, env }, c.prompt, 900 * 1000)
+  const t = codexTrace(r.stdout)
+  const slot = { slot: s.slot, case: c.id, arm: s.arm, host: 'codex', exitCode: r.code, timedOut: r.timedOut, tokens: t.tokens, graders: c.graders.map(g => ({ name: g.name })) }
+  const changed = treeDiff(treeHash(cwd), expected)
+  if (changed.length) return { ...slot, invalid: 'run folder changed: ' + changed.length + ' files', stop: true, kept: task }
+  fs.rmSync(task, { recursive: true, force: true })
+  if (!t.valid || r.code !== 0 || r.timedOut || r.failed || !t.message) return { ...slot, invalid: 'run invalid' }
+  fs.writeFileSync(path.join(out, 'response.md'), t.message)
+  slot.responseHash = sha(t.message)
+  slot.attribution = codexAttribution(t.commands, cwd)
+  if (!slot.attribution.ok) return { ...slot, invalid: 'attribution: ' + slot.attribution.reason }
+  slot.verdicts = {}
+  slot.votes = {}
+  for (const g of c.graders) {
+    const votes = []
+    for (let i = 0; i < JUDGE_VOTES; i++) {
+      const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
+      const j = await spawnWait('codex', execArgs(), { cwd: jdir, env }, judgePrompt(g.criteria, t.message), 300 * 1000)
+      fs.rmSync(jdir, { recursive: true, force: true })
+      const jt = codexTrace(j.stdout)
+      slot.tokens = slot.tokens === null || jt.tokens === null ? null : slot.tokens + jt.tokens
+      let v = null
+      try { v = JSON.parse(/\{[^{}]*"verdict"[^{}]*\}/.exec(jt.message || '')[0]).verdict } catch {}
+      votes.push(v === 'PASS' || v === 'FAIL' ? v : null)
+    }
+    slot.votes[g.name] = votes
+    const pass = votes.filter(v => v === 'PASS').length, fail = votes.filter(v => v === 'FAIL').length
+    slot.verdicts[g.name] = pass >= 2 ? 'PASS' : fail >= 2 ? 'FAIL' : null
+  }
+  return slot
+}
+
+function summary(run) {
+  const { dir, manifest } = run
+  const counts = {}
+  for (const s of manifest.slots) {
+    const f = path.join(dir, 'slots', s.slot, 'slot.json')
+    if (!fs.existsSync(f)) continue
+    const slot = JSON.parse(fs.readFileSync(f, 'utf8'))
+    for (const [prop, cls] of Object.entries(classify(slot))) {
+      const k = ((counts[s.case] ??= {})[prop] ??= {})[s.arm] ??= { positive: 0, negative: 0, invalid: 0, undetermined: 0, slots: 0 }
+      k[cls]++
+      k.slots++
+    }
+  }
+  for (const c of Object.values(counts)) for (const p of Object.values(c)) for (const k of Object.values(p)) {
+    const valid = k.positive + k.negative
+    k.upperBoundIfZero = k.positive === 0 && valid ? Number(upperBound(valid).toFixed(3)) : null
+  }
+  const rules = { slots: manifest.pilot ? 1 : 14, counterMax: 2,
+    fixed: [['b1-07a', 'd1'], ['b3-02b', 'd1'], ['b3-02b', 'd3'], ['b4-03b', 'd2']],
+    counter: [['k1-count', 'count'], ['k2-approval', 'approval']],
+    regression: [['b1-07a', 'd6'], ['b2-01b', 'd1'], ['b4-03b', 'd1'], ['b5-12a', 'd4'], ['b6-03a', 'd5'], ['b7-c03', 'exclusion'],
+      ...Object.keys(manifest.cases).filter(id => id.startsWith('h1')).flatMap(id => run.cases[id].graders.filter(g => g.name !== 'task').map(g => [id, g.name]))] }
+  const result = { manifest: manifest.hash, counts, adoption: manifest.pilot ? { adopted: null, reasons: ['pilot: not an adoption run'] } : adopt(counts, rules) }
+  fs.writeFileSync(path.join(dir, 'summary.json'), JSON.stringify(result, null, 1) + '\n')
+  return result
+}
+
+const reserve = (b, host) => {
+  const seen = b.entries.map(e => host === 'claude' ? e.usd : e.tokens).filter(v => typeof v === 'number' && v > 0)
+  return Math.max(host === 'claude' ? 1 : 200000, 2 * Math.max(0, ...seen))
+}
+
+function parseArgs(args) {
+  const [command, ...rest] = args
+  const opts = { command, arms: {}, expectDiff: [] }
+  for (let i = 0; i < rest.length; i++) {
+    const v = () => { if (!rest[i + 1] || rest[i + 1].startsWith('--')) throw new Error('Option value is required: ' + rest[i]); return rest[++i] }
+    const a = rest[i]
+    if (a === '--run') opts.run = v()
+    else if (a === '--arm') { const [k, r] = v().split('='); if (!/^[AB]$/.test(k) || !r) throw new Error('--arm A=<rev> and B=<rev>'); opts.arms[k] = r }
+    else if (a === '--expect-diff') opts.expectDiff.push(v())
+    else if (a === '--cases') opts.cases = v().split(',')
+    else if (a === '--pilot') opts.pilot = true
+    else if (a === '--host') opts.host = v()
+    else if (a === '--budget-usd') opts.budgetUsd = Number(v())
+    else if (a === '--budget-tokens') opts.budgetTokens = Number(v())
+    else throw new Error('Unknown option ' + a)
+  }
+  const usage = 'usage: devflow-behavior-eval prepare --run <name> --arm A=<rev> --arm B=<rev> --expect-diff <path> [--cases a,b] [--pilot]\n' +
+    '       devflow-behavior-eval run --run <name> --host claude --budget-usd <total> | --host codex --budget-tokens <total>\n' +
+    '       devflow-behavior-eval summary --run <name>'
+  if (!opts.run || !/^[a-z0-9][a-z0-9-]*$/.test(opts.run)) throw new Error(usage)
+  if (command === 'prepare' && (!opts.arms.A || !opts.arms.B || !opts.expectDiff.length)) throw new Error(usage)
+  if (command === 'run' && !(opts.host === 'claude' ? opts.budgetUsd > 0 : opts.host === 'codex' ? Number.isSafeInteger(opts.budgetTokens) && opts.budgetTokens > 0 : false)) throw new Error(usage)
+  if (!['prepare', 'run', 'summary'].includes(command)) throw new Error(usage)
+  return opts
+}
+
+async function main(args) {
+  const opts = parseArgs(args)
+  if (opts.command === 'prepare') {
+    const m = prepare(opts)
+    process.stdout.write(`prepared ${opts.run}: ${m.slots.length} slots, manifest ${m.hash.slice(0, 12)}\n`)
+    return
+  }
+  const run = openRun(opts.run)
+  if (opts.command === 'summary') { process.stdout.write(JSON.stringify(summary(run), null, 1) + '\n'); return }
+  const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+  const startInstructions = opts.host === 'codex' ? globalInstructionsHash(home) : null
+  if (opts.host === 'codex') fs.writeFileSync(path.join(run.dir, 'codex-home.json'), JSON.stringify(homeIdentity(home)) + '\n')
+  for (const s of run.manifest.slots.filter(x => x.host === opts.host)) {
+    const file = path.join(run.dir, 'slots', s.slot, 'slot.json')
+    if (fs.existsSync(file)) continue
+    const b = JSON.parse(fs.readFileSync(budgetFile(run.dir), 'utf8'))
+    if (!b.known) throw new Error('Usage became unknown; stopping before ' + s.slot)
+    const remaining = opts.host === 'claude' ? opts.budgetUsd - b.claudeUsd : opts.budgetTokens - b.codexTokens
+    // A slot cannot be cut off mid-turn, so one starts only with room for twice the largest slot seen so far (design v4 section 8).
+    if (remaining < reserve(b, opts.host)) { process.stdout.write('budget reserve reached before ' + s.slot + '\n'); return }
+    if (opts.host === 'codex' && globalInstructionsHash(home) !== startInstructions) throw new Error('Codex global instructions changed; stopping')
+    const slot = opts.host === 'claude' ? await claudeSlot(run, s, remaining) : await codexSlot(run, s, home)
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify(slot, null, 1) + '\n')
+    charge(run.dir, { slot: s.slot, usd: opts.host === 'claude' ? (slot.usd ?? null) : 0, tokens: opts.host === 'codex' ? (slot.tokens ?? null) : 0 })
+    process.stdout.write(`${s.slot}: ${slot.invalid ? 'invalid (' + slot.invalid + ')' : JSON.stringify(classify(slot))}\n`)
+    if (slot.stop) throw new Error('Stopped at ' + s.slot + (slot.kept ? '; evidence kept in ' + slot.kept : ''))
+  }
+}
+
+module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun, charge, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve }
+if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

@@ -1,0 +1,5 @@
+{
+  "integration": "local-merge",
+  "highRisk": [],
+  "verify": "python -m unittest tests.test_watering"
+}

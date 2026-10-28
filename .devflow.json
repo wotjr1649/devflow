@@ -9,7 +9,8 @@
     "_ref/"
   ],
   "allowLocalPaths": [
-    "tests/fixtures/codex-eval/*.jsonl"
+    "tests/fixtures/codex-eval/*.jsonl",
+    "evals/behavior/*/prompt.md"
   ],
   "protected": [
     "_ref/**"

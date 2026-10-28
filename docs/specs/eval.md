@@ -9,8 +9,8 @@
   바뀌었을 때.
 - 돌리지 않는다: 스킬 본문, references, 훅, 에이전트, AGENTS.md만 바뀌었을 때. eval 실행은 격리되어 대상 플러그인만
   로드되고, 호스트는 스킬 목록만 보고 자동 호출을 정하므로 이 변경은 결과를 바꾸지 않는다([host-facts](../research/host-facts.md)).
-- 결과 eval은 두지 않는다. 스킬 본문의 변경은 리뷰와 사이클 지표(개입, 오탐, 차단)로 보고, 개입이 늘거나 같은 실수가
-  반복되면 결과 eval 장치를 만드는 Issue를 연다.
+- 스킬 본문의 변경은 리뷰와 사이클 지표(개입, 오탐, 차단)로 본다. 개입이 늘거나 같은 실수가 반복되면 결과 eval 장치를 만드는
+  Issue를 연다. 지금 있는 결과 eval은 아래 "결과 eval" 절의 pr-review-workflow 보고 결함 측정 하나다(#99).
 - Claude eval은 사용자 터미널에서 돌린다. 세션 안에서 띄우면 인증이 없어 멈춘다. 리포트는 `--no-publish`로 게시하지 않고
   결과는 체크포인트와 장부에 남긴다(#45). 판정은 오류 난 실행을 빼고 트리거 80% 이상,
   오탐 10% 이하다. ship 체크포인트에 돌렸는지와 판별 근거를 남긴다.
@@ -69,3 +69,61 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
   stderr와 세션 기록은 저장하거나 읽지 않는다. 결과 폴더는 git이 무시한다. 실행 오류와 평가 실패는 종료 코드 1이다.
 
 실행 방식과 대안의 이유: [ADR-0016](../design/decisions/ADR-0016-codex-trigger-eval.md).
+
+## 결과 eval
+
+pr-review-workflow의 반복 보고 결함이 skill 본문 후보에서 줄었는지를, 같은 사례·같은 순서·같은 반복 수로 기준선과 후보를 돌려
+비교한다(#99). 트리거 eval의 계약·점수·임계값은 바꾸지 않는다. 수동 opt-in이며 기본 검사·CI·pre-push는 모델을 실행하지 않는다.
+CI는 `tests/behavior-eval.test.js`(사례·fixture·실행표·귀속·판정 계산)만 돌린다.
+
+```bash
+node bin/devflow-behavior-eval prepare --run <name> --arm A=<기준선 rev> --arm B=<후보 rev> --expect-diff skills/pr-review-workflow/SKILL.md [--cases <id,...>] [--pilot]
+node bin/devflow-behavior-eval run --run <name> --host claude --budget-usd <총액>
+node bin/devflow-behavior-eval run --run <name> --host codex --budget-tokens <총량>
+node bin/devflow-behavior-eval summary --run <name>
+```
+
+- 사례: `evals/behavior/<id>/`
+  - `prompt.md`의 frontmatter tag는 `[behavior, <host>, <id>]`다.
+  - `graders/*.md`는 llm grader이고, 그중 `task.md`는 과업 수행 확인이다.
+  - 그 밖에 `fixture/project/`, `case.yaml`, `scaffold.sh`가 있다.
+  - fixture는 공개 가능한 합성 자료이며 prompt의 입력 목록과 파일이 같다. fixture 안의 `.gitignore`와 상관없이 모든 파일을 추적한다.
+- arm: 고정 revision의 추적 파일만 `git archive`로 뽑는다. 두 arm의 차이가 `--expect-diff` 목록과 다르면 멈춘다. 사례·grader는 실행기를
+  부른 커밋(평가 묶음) 하나에서 뽑고, 이 묶음과 실행기는 커밋된 상태여야 한다. `.work/behavior-eval/<run>/manifest.json`에 해시를 남긴다.
+  이어 실행은 미실행 슬롯만 하고, arm·사례·shim·bash가 바뀌었으면 멈춘다.
+- 실행표: 사례마다 ABBA 7블록으로 arm별 14슬롯을 만든다. pilot은 사례마다 arm별 1슬롯이며 채택 판정에 쓰지 않는다.
+- Claude: 사례 폴더와 arm만 담은 shim plugin을 대상으로 슬롯마다 다음을 실행한다.
+  - 명령: `claude plugin eval <shim> --case <id> --runs 1 --ablation none --scaffold --keep-temp --no-publish --trust-plugin --model claude-opus-5-5 --judge-model claude-sonnet-5-5 --max-cost-usd <잔여> --json`
+  - scaffold는 PATH 앞에 둔 Git for Windows bash로 `project/`와 `plugin/`을 만든다.
+  - 사용자 로그인을 상속한 사용자 터미널(Herdr pane 포함)에서 돌린다. 인증을 복사하거나 바꾸지 않는다.
+  - 결과 JSON이 한 사례·한 실행·사례의 grader 수와 다르면 멈춘다.
+  - trace를 결과 폴더로 옮긴 뒤 남긴 임시 폴더를 지운다. 실패하면 남기고 멈춘다.
+- Codex: 저장소 밖 임시 폴더에 같은 `project/`·`plugin/`을 node로 복사한다.
+  - 명령은 트리거 eval과 같다: `codex exec` read-only, gpt-6.1-sol/high, 최소 환경 변수.
+  - 판정은 같은 criteria로 `codex exec` judge를 3회 돌려 2표 이상을 따른다.
+  - CODEX_HOME에 다른 devflow가 설치돼 있어도 된다. 결과에는 실사용 여부(`default`·`override`)를 남긴다.
+- 귀속: actor가 실행 폴더의 `plugin/skills/pr-review-workflow/SKILL.md`를 전문 읽었고, 실행 폴더 밖은 어떤 경로도 읽지 않았을 때만
+  유효하다. Codex 명령은 대상이 글자로 적힌 읽기만 인정한다. 변수·식 평가·폴더 이동이 있으면 귀속 불가로 invalid다.
+- 판정 부류(슬롯×명제)
+  - positive·negative·invalid·undetermined로 나눈다. 과업 grader가 FAIL이면 invalid, 판정이 없으면 undetermined다.
+  - 실행 오류, 시간 초과, 응답 없음, 귀속 실패도 invalid다.
+  - 실행 폴더의 파일이 하나라도 바뀌면 invalid이고 전체 실행을 멈춘다.
+  - 대체하지 않는다.
+- 채택(`summary`)
+  - 모든 셀의 양 arm 14슬롯이 있어야 한다.
+  - 수정 셀과 반대 조건 셀은 전부 valid여야 한다.
+  - 수정 셀은 명제마다 후보 ≤ 기준선이고, 합은 엄격히 작아야 한다.
+  - 회귀 셀은 후보의 invalid·undetermined를 positive로 세어도 후보 ≤ 기준선이어야 한다.
+  - 반대 조건은 후보 ≤ 기준선이고 2/14 이하여야 한다.
+  - 0건 셀의 상한은 유효 판정 수 n의 단측 95% 정확 이항 상한이다(행 독립 가정). 채택은 회귀 부재나 해소의 증명이 아니다.
+- 예산
+  - Claude의 `costUsd`와 `judgeCostUsd`, Codex의 actor·judge 사용량을 run의 `budget.json`에 누적한다.
+  - 사용량을 알 수 없으면 멈춘다.
+  - 한 슬롯은 도중에 끊을 수 없으므로, 남은 예산이 지금까지 본 가장 큰 슬롯의 두 배(최소 Claude $1, Codex 20만 토큰)보다 작으면
+    다음 슬롯을 시작하지 않는다. 이 규칙으로도 진행 중인 슬롯의 초과는 완전히 막지 못한다.
+- 보존
+  - 판정·집계·해시는 `.work/behavior-eval/`(git이 무시)에 둔다.
+  - 응답 원문과 trace는 판정·검수 동안만 같은 곳에 두고, Issue를 마칠 때 지운다.
+  - 공개 텍스트에는 집계와 결론만 쓰고 응답을 인용하지 않는다.
+
+실행 방식과 대안의 이유: [ADR-0029](../design/decisions/ADR-0029-behavior-eval.md).

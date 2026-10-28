@@ -1,0 +1,14 @@
+{
+  "kind": "hypothetical inputs; not actual observations",
+  "base": "2367d22ff0f3d795bcd8f3e322a7d218c26680f0",
+  "lastCommit": "782fcb48498241720eb0b2788dd2b7e1e9f71c13",
+  "stage": "review",
+  "runMode": "M1",
+  "path": "bounded",
+  "mode": "interactive",
+  "running": [],
+  "task": {
+    "current": 1,
+    "total": 1
+  }
+}

@@ -1,0 +1,12 @@
+diff --git a/src/labels.cjs b/src/labels.cjs
+--- a/src/labels.cjs
++++ b/src/labels.cjs
+@@ -4,7 +4,7 @@ function sameAccessionLabel(left, right) {
+   if (typeof left !== 'string' || typeof right !== 'string') {
+     throw new TypeError('Accession labels must be strings');
+   }
+-  return left === right;
++  return left.normalize('NFC') === right.normalize('NFC');
+ }
+ 
+ module.exports = { sameAccessionLabel };

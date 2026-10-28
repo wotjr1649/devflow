@@ -1,0 +1,10 @@
+diff --git a/src/crates.js b/src/crates.js
+--- a/src/crates.js
++++ b/src/crates.js
+@@ -1,5 +1,5 @@
+ function crates(bottles) {
+   if (bottles === 0) return 0;
+-  return Math.ceil(bottles / 6);
++  return Math.floor(bottles / 6);
+ }
+ module.exports = { crates };

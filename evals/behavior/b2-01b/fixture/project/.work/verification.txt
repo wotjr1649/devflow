@@ -1,0 +1,1 @@
+Supplied synthetic runner output: PASS: 4 tests, 0 failures. Revision 782fcb48498241720eb0b2788dd2b7e1e9f71c13. Method python -m unittest tests.test_watering.

@@ -1,0 +1,35 @@
+{
+  "kind": "hypothetical inputs; not actual observations",
+  "repository": "bottle-crate-planner",
+  "base": "642bebf35443f6a70da409ae627c53631c9e0078",
+  "head": "cb45e23bfd0872aa55b29a92b5dc1aa599fe5cb5",
+  "branch": "fix/319-bottle-crate-planner",
+  "issue": 319,
+  "actualGitRepository": false,
+  "remote": "none configured",
+  "snapshot": {
+    "tracked": "clean at the supplied head",
+    "staged": [],
+    "unstaged": [],
+    "untracked": [],
+    "intendedDirtyFiles": []
+  },
+  "review": {
+    "independent": "not performed",
+    "formalApproval": "not granted"
+  },
+  "changedFiles": [
+    "src/crates.js"
+  ],
+  "checks": [
+    {
+      "id": "crate-boundary",
+      "kind": "local",
+      "method": "node tests/crates.test.js",
+      "environment": "synthetic Windows / Node 22 / PowerShell 7",
+      "revision": "cb45e23bfd0872aa55b29a92b5dc1aa599fe5cb5",
+      "result": "FAIL: crates(7), expected 2, actual 1",
+      "attribution": "supplied; not run by the report author"
+    }
+  ]
+}

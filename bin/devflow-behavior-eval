@@ -105,7 +105,8 @@ const requiredPairs = () => [...RULES.fixed, ...RULES.counter, ...RULES.regressi
 // A calibration record (design section 5) lists, per grader, the labelled samples it was run on: label, verdict and the sample's
 // hash. Rates are recomputed here from those samples; a record that only states rates proves nothing.
 // With evidence, each sample must also match its anchor in the anchors file named by hash and its own result file on disk.
-function checkCalibration(record, cases, evidence = null) {
+// positivesOnly (for --adjudicate): every valid labelled positive must be detected, at least 5 of them; negatives are not gated.
+function checkCalibration(record, cases, evidence = null, { positivesOnly = false } = {}) {
   const failed = []
   let anchors = null
   if (evidence) {
@@ -131,7 +132,8 @@ function checkCalibration(record, cases, evidence = null) {
     const neg = samples.filter(s => s.label === 'negative' && ['positive', 'negative'].includes(s.verdict))
     const sens = pos.length ? pos.filter(s => s.verdict === 'positive').length / pos.length : 0
     const spec = neg.length ? neg.filter(s => s.verdict === 'negative').length / neg.length : 0
-    if (!r || r.hash !== g.hash || !unique || pos.length < 5 || neg.length < 5 || sens < 0.8 || spec < 0.9) failed.push(c.id + '/' + g.name)
+    const gate = positivesOnly ? pos.length >= 5 && sens === 1 : pos.length >= 5 && neg.length >= 5 && sens >= 0.8 && spec >= 0.9
+    if (!r || r.hash !== g.hash || !unique || !gate) failed.push(c.id + '/' + g.name)
   }
   return failed
 }
@@ -208,7 +210,10 @@ function prepare(opts) {
     for (const c of selected) for (const g of c.graders) {
       const one = { ...c, graders: [g] }
       const ok = records.some(r => r.record.host === c.host && checkCalibration(r.record, [one], path.dirname(r.file)).length === 0)
-      if (!ok) failed.push(c.id + '/' + g.name)
+      // A grader the user allowed to run below its gate (--adjudicate) is accepted only when it still detects every valid positive
+      // in some record; its positive verdicts are then settled by the two reviewers (summary), its negatives stand.
+      const adjudicated = opts.adjudicate.includes(c.id + '/' + g.name) && records.some(r => r.record.host === c.host && sensitiveOnly(r.record, c, g, path.dirname(r.file)))
+      if (!ok && !adjudicated) failed.push(c.id + '/' + g.name)
     }
     calibration = records.map(r => ({ host: r.record.host, hash: sha(fs.readFileSync(r.file)) }))
     if (failed.length) throw new Error('Graders without passing calibration: ' + failed.join(', '))
@@ -226,7 +231,7 @@ function prepare(opts) {
   if (opts.pilot) slots = selected.flatMap(c => ['A', 'B'].map(arm => slots.find(s => s.case === c.id && s.arm === arm)))
   const manifest = { issue: 99, E, runnerHash: RUNNER_HASH, arms: Object.fromEntries(Object.entries(arms).map(([k, v]) => [k, { rev: v.rev, hash: v.hash }])), expectDiff: diff,
     cases: Object.fromEntries(cases.map(c => [c.id, { host: c.host, hash: c.hash }])), shims, bash: { path: BASH, hash: sha(fs.readFileSync(BASH)) },
-    claude: CLAUDE, codex: { votes: JUDGE_VOTES }, pilot: !!opts.pilot, budget: opts.budget, calibration,
+    claude: CLAUDE, codex: { votes: JUDGE_VOTES }, pilot: !!opts.pilot, budget: opts.budget, calibration, adjudicate: opts.adjudicate,
     slots, scheduleHash: sha(JSON.stringify(slots)), createdAt: new Date().toISOString() }
   manifest.hash = sha(JSON.stringify({ ...manifest, createdAt: null }))
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n')
@@ -763,14 +768,26 @@ function lastAssistantText(trace) {
   return last
 }
 
+// An adjudicated grader must still detect every valid labelled positive: its negatives then stand, and its positives, where it
+// over-reports, are settled by the two reviewers in summary().
+const sensitiveOnly = (record, c, g, evidence) => checkCalibration(record, [{ ...c, graders: [g] }], evidence, { positivesOnly: true }).length === 0
+
 function summary(run) {
   const { dir, manifest } = run
   const counts = {}
+  const adjFile = path.join(dir, 'adjudication.json')
+  const adjudication = fs.existsSync(adjFile) ? JSON.parse(fs.readFileSync(adjFile, 'utf8')) : {}
+  const adjusted = {}
   for (const s of manifest.slots) {
     const f = path.join(dir, 'slots', s.slot, 'slot.json')
     if (!fs.existsSync(f)) continue
     const slot = JSON.parse(fs.readFileSync(f, 'utf8'))
-    for (const [prop, cls] of Object.entries(classify(slot))) {
+    for (const [prop, judged] of Object.entries(classify(slot))) {
+      // In an adjudicated cell a judge positive counts only as the two reviewers settled it; no agreed entry is undetermined.
+      const cell = s.case + '/' + prop
+      const settled = adjudication[s.slot]?.[prop]
+      const cls = (manifest.adjudicate || []).includes(cell) && judged === 'positive' ? (settled === 'positive' || settled === 'negative' ? settled : 'undetermined') : judged
+      if (cls !== judged) (adjusted[cell] ??= []).push(s.slot + ':' + judged + '>' + cls)
       const k = ((counts[s.case] ??= {})[prop] ??= {})[s.arm] ??= { positive: 0, negative: 0, invalid: 0, undetermined: 0, slots: 0 }
       k[cls]++
       k.slots++
@@ -782,7 +799,7 @@ function summary(run) {
   }
   // Holdout propositions are compared like regression cells: no candidate increase, missing slots counted against it.
   const rules = { ...RULES, regression: [...RULES.regression, ...holdoutPairs()], slots: SLOTS }
-  const result = { manifest: manifest.hash, counts,
+  const result = { manifest: manifest.hash, counts, adjudicated: adjusted,
     adoption: manifest.pilot ? { adopted: null, reasons: ['pilot: not an adoption run'] } : adopt(counts, rules, requiredPairs()) }
   fs.writeFileSync(path.join(dir, 'summary.json'), JSON.stringify(result, null, 1) + '\n')
   return result
@@ -801,7 +818,7 @@ const reserve = (b, host) => {
 
 function parseArgs(args) {
   const [command, ...rest] = args
-  const opts = { command, arms: {}, expectDiff: [], calibration: [] }
+  const opts = { command, arms: {}, expectDiff: [], calibration: [], adjudicate: [] }
   for (let i = 0; i < rest.length; i++) {
     const v = () => { if (!rest[i + 1] || rest[i + 1].startsWith('--')) throw new Error('Option value is required: ' + rest[i]); return rest[++i] }
     const a = rest[i]
@@ -812,6 +829,7 @@ function parseArgs(args) {
     else if (a === '--pilot') opts.pilot = true
     else if (a === '--calibration') opts.calibration.push(v())
     else if (a === '--anchors') opts.anchors = v()
+    else if (a === '--adjudicate') opts.adjudicate.push(...v().split(','))
     else if (a === '--host') opts.host = v()
     else if (a === '--budget') opts.budget = v()
     else if (a === '--budget-usd') opts.budgetUsd = Number(v())

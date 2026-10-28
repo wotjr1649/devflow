@@ -309,3 +309,25 @@ test('calibration evidence must match the anchors file and each result file, and
     JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'echo body' }] } })].join('\n')
   assert.equal(ev.lastAssistantText(trace), 'echo body')
 })
+
+test('an adjudicated cell counts a judge positive only as the reviewers settled it, and its grader must detect every positive', () => {
+  const crypto = require('node:crypto')
+  const sha = s => crypto.createHash('sha256').update(s).digest('hex')
+  const dir = tmpdir('adj-')
+  const anchors = []
+  for (let i = 0; i < 7; i++) anchors.push({ id: 'p' + i, case: 'b3', text: 'pos ' + i, labels: { d1: 'positive' } })
+  for (let i = 0; i < 7; i++) anchors.push({ id: 'n' + i, case: 'b3', text: 'neg ' + i, labels: { d1: 'negative' } })
+  const text = JSON.stringify(anchors)
+  fs.writeFileSync(path.join(dir, 'anchors.json'), text)
+  fs.mkdirSync(path.join(dir, 'results'))
+  const verdictOf = a => a.labels.d1 === 'positive' ? 'positive' : (a.id === 'n0' || a.id === 'n1' ? 'positive' : 'negative')
+  const samples = anchors.map(a => {
+    const body = JSON.stringify({ anchor: a.id, verdicts: { d1: verdictOf(a) } })
+    fs.writeFileSync(path.join(dir, 'results', a.id + '.json'), body)
+    return { anchor: a.id, label: a.labels.d1, verdict: verdictOf(a), sampleHash: sha(a.text), result: 'results/' + a.id + '.json', resultHash: sha(body) }
+  })
+  const record = { anchorsPath: path.join(dir, 'anchors.json'), anchorsHash: sha(text), graders: { 'b3/d1': { hash: 'h', samples } } }
+  const cases = [{ id: 'b3', graders: [{ name: 'd1', hash: 'h' }] }]
+  assert.deepEqual(checkCalibration(record, cases, dir), ['b3/d1'])
+  assert.deepEqual(checkCalibration(record, cases, dir, { positivesOnly: true }), [])
+})

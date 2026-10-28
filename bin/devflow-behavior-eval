@@ -201,12 +201,14 @@ function prepare(opts) {
     if (h('h1-claude').host !== 'claude' || h('h1-codex').host !== 'codex' || h('h1-claude').prompt !== h('h1-codex').prompt ||
       treeHash(path.join(dirOf('h1-claude'), 'fixture')).hash !== treeHash(path.join(dirOf('h1-codex'), 'fixture')).hash) throw new Error('The two holdout cases must be the same case on each host')
     if (!opts.calibration.length) throw new Error('An adoption run needs --calibration <record> for each host')
-    // One record per host; each is checked against its own anchors file and result files before the graders count as calibrated.
+    // Records per host, each checked against its own anchors file and result files. A grader counts as calibrated when some record
+    // of its host passes it with the grader's current hash, so a recalibration of revised graders adds to the earlier record.
     const records = opts.calibration.map(f => ({ file: f, record: JSON.parse(fs.readFileSync(f, 'utf8')) }))
     const failed = []
-    for (const host of ['claude', 'codex']) {
-      const rec = records.find(r => r.record.host === host)
-      failed.push(...checkCalibration(rec?.record, selected.filter(c => c.host === host), rec ? path.dirname(rec.file) : path.join(dir, 'missing')))
+    for (const c of selected) for (const g of c.graders) {
+      const one = { ...c, graders: [g] }
+      const ok = records.some(r => r.record.host === c.host && checkCalibration(r.record, [one], path.dirname(r.file)).length === 0)
+      if (!ok) failed.push(c.id + '/' + g.name)
     }
     calibration = records.map(r => ({ host: r.record.host, hash: sha(fs.readFileSync(r.file)) }))
     if (failed.length) throw new Error('Graders without passing calibration: ' + failed.join(', '))

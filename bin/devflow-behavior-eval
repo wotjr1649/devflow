@@ -370,7 +370,8 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
   const read = new Set()
   const lf = s => s.replaceAll('\r\n', '\n')
   for (const { command, exitCode, output } of commands) {
-    const c = norm(command.replaceAll('\\"', '"')).toLowerCase()
+    // Codex prints the shell path with escaped (doubled) backslashes: one escaped backslash is one separator.
+    const c = norm(command.replaceAll('\\"', '"').replaceAll('\\\\', '\\')).toLowerCase()
     if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/[a-z0-9]|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)/.test(c)) return { ok: false, reason: 'command target not provable' }
     for (const m of c.split(PWSH).join(' ').matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
       const p = m[0].replace(/\/+$/, '')

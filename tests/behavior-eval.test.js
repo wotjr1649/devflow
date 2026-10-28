@@ -130,6 +130,11 @@ test('Codex attribution counts a read only when a read command names the file an
     assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /not provable|outside/, bad)
   for (const bad of ['Get-Content ' + ['', 'Users', 'Example', '.agents', 'skills', 'x', 'SKILL.md'].join('/'), 'Get-Content ' + C + '/elsewhere/.codex/plugins/cache/devflow/SKILL.md', 'Get-Content ../other/SKILL.md'])
     assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /outside|leaves/, bad)
+  // Codex prints the shell path with escaped backslashes (pilot 2026-10-29); that is still the prompt's pwsh, not an outside path.
+  const B = String.fromCharCode(92)
+  const escaped = '"' + PROGRAMS.split('/').join(B + B) + B + B + 'PowerShell' + B + B + '7' + B + B + 'pwsh.exe" -NoProfile -Command "Get-Content -LiteralPath ./' + SKILL + ' -Raw -Encoding utf8 | ConvertTo-Json -Compress"'
+  assert.equal(codexAttribution([{ ...read, command: escaped }], cwd, contents).ok, true)
+  assert.match(codexAttribution([read, { command: 'Get-Content ' + B + B + 'server' + B + 'share' + B + 'x', exitCode: 0, output: '' }], cwd, contents).reason, /not provable|outside/)
   // A comment or a drive-relative path hides the real target; a command that prints its own text proves nothing.
   assert.match(codexAttribution([{ command: 'Write-Output x # Get-Content ./' + SKILL, exitCode: 0, output: contents[SKILL] }], cwd, contents).reason, /not provable/)
   assert.match(codexAttribution([read, { command: 'Get-Content D:outside.md', exitCode: 0, output: '' }], cwd, contents).reason, /not provable/)

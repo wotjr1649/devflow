@@ -498,3 +498,16 @@ test('integration fourth review: joined argument pieces, provider paths and driv
     "Get-Content 'env:/USERPROFILE'", "Get-Content 'function:/prompt'", 'Get-ChildItem hklm:/software', 'Get-Content //?/' + C + '/x', 'Get-Content --% ../x'])
     assert.equal(codexAttribution([read, { command: pw(bad), exitCode: 0, output: '' }], cwd, contents).ok, false, bad)
 })
+
+test('integration fifth review: combining marks in path words and colons in quoted search text are literal; non-file drives stay unprovable', () => {
+  const pw = cmd => '"' + PROGRAMS + '/PowerShell/7/pwsh.exe" -NoProfile -Command "' + cmd + '"'
+  const contents = { [SKILL]: '# PR workflow\nbody\n' }
+  for (const cwd of [C + '/tmp/cafe' + String.fromCharCode(0x301) + '/cxb-1/s', C + '/tmp/' + 'İpek'.toLowerCase() + '/cxb-1/s'])
+    assert.equal(codexAttribution([{ command: pw('Get-Content -LiteralPath ' + cwd + '/' + SKILL + ' -Raw'), exitCode: 0, output: contents[SKILL] }], cwd, contents).ok, true, cwd)
+  const cwd = C + '/Temp/cxb-1/s'
+  const read = { command: pw('Get-Content -LiteralPath ./' + SKILL + ' -Raw'), exitCode: 0, output: contents[SKILL] }
+  const search = { command: pw("Select-String -LiteralPath ./project/records.json -SimpleMatch -Pattern 'PASS: exit 0'"), exitCode: 0, output: '' }
+  assert.equal(codexAttribution([read, search], cwd, contents).ok, true)
+  for (const bad of ["Get-Content 'temp:/x'", "Get-Content 'Microsoft.PowerShell.Core/FileSystem::x'", "Get-ChildItem 'variable:'"])
+    assert.equal(codexAttribution([read, { command: pw(bad), exitCode: 0, output: '' }], cwd, contents).ok, false, bad)
+})

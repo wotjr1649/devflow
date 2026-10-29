@@ -469,9 +469,10 @@ function literalPipeline(c) {
   if (text.replace(token, '').trim()) return false
   const statements = [[]]
   for (const t of text.match(token) || []) t === '|' || t === ';' ? statements.push([]) : statements.at(-1).push(t)
-  // A colon is a drive only as a leading letter; any other (env:, function:, hklm:, -Name:value aside) names a provider path.
-  const word = /^(?:-[\p{L}\p{N}]+(?::[\p{L}\p{N}_./*-]+)?|(?:[a-z]:)?[\p{L}\p{N}_./*-]+)$/u
-  const quoted = a => /^'[^']*'$/.test(a) && !a.slice(1, -1).replace(/^[a-z]:\//, '').includes(':')
+  // In a bare word a colon is a drive only as a leading letter (-Name:value aside). A quoted literal may hold a search text
+  // with a colon, so only the built-in non-file drives and provider-qualified paths are refused there.
+  const word = /^(?:-[\p{L}\p{N}]+(?::[\p{L}\p{M}\p{N}_./*-]+)?|(?:[a-z]:)?[\p{L}\p{M}\p{N}_./*-]+)$/u
+  const quoted = a => /^'[^']*'$/.test(a) && !/^(alias|env|function|variable|cert|hklm|hkcu|wsman|temp):|::/.test(a.slice(1, -1))
   const used = statements.filter(st => st.length)
   return used.length > 0 && used.every(([cmd, ...args]) => READ_CMDLETS.has(cmd) && args.every(a => quoted(a) || word.test(a)))
 }

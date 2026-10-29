@@ -495,6 +495,6 @@ test('integration fourth review: joined argument pieces, provider paths and driv
   const cwd = C + '/Temp/cxb-1/s'
   const read = { command: pw('Get-Content -LiteralPath ./' + SKILL + ' -Raw'), exitCode: 0, output: contents[SKILL] }
   for (const bad of ["Get-Content -LiteralPath ..'/'..'/'x/README.md -Raw", 'Get-Item -LiteralPath /', 'Get-Content -Path:../x', 'Get-ChildItem -Path:/',
-    "Get-Content 'env:/USERPROFILE'", "Get-Content 'function:/prompt'", 'Get-ChildItem hklm:/software', 'Get-Content //?/c:/x', 'Get-Content --% ../x'])
+    "Get-Content 'env:/USERPROFILE'", "Get-Content 'function:/prompt'", 'Get-ChildItem hklm:/software', 'Get-Content //?/' + C + '/x', 'Get-Content --% ../x'])
     assert.equal(codexAttribution([read, { command: pw(bad), exitCode: 0, output: '' }], cwd, contents).ok, false, bad)
 })

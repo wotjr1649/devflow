@@ -460,22 +460,57 @@ function literalPipeline(c) {
   let script = c
   if (c.startsWith(head)) {
     const m = /^((?:-(?:noprofile|noninteractive|nologo)\s+)*)-command\s+"(.*)"$/s.exec(c.slice(head.length).trim())
-    if (!m) return false
+    if (!m) return null
     script = m[2]
   }
   // Each token stands alone between separators: PowerShell joins adjacent pieces (..'/'x) into one computed argument.
   const token = /'[^']*'(?=[\s|;]|$)|[|;]|[^\s'|;]+(?=[\s|;]|$)/g
   const text = script.replace(/\r?\n/g, ';')
-  if (text.replace(token, '').trim()) return false
+  if (text.replace(token, '').trim()) return null
   const statements = [[]]
   for (const t of text.match(token) || []) t === '|' || t === ';' ? statements.push([]) : statements.at(-1).push(t)
-  // In a bare word a colon is a drive only as a leading letter (-Name:value aside). A quoted literal may hold a search text
-  // with a colon, so only the built-in non-file drives and provider-qualified paths are refused there.
-  const word = /^(?:-[\p{L}\p{N}]+(?::[\p{L}\p{M}\p{N}_./*-]+)?|(?:[a-z]:)?[\p{L}\p{M}\p{N}_./*-]+)$/u
-  const quoted = a => /^'[^']*'$/.test(a) && !/^(alias|env|function|variable|cert|hklm|hkcu|wsman|temp):|::/.test(a.slice(1, -1))
+  // A value of a listed non-path parameter (a search pattern, an encoding, a count) is free text. Every other argument may be a
+  // path: there a colon is allowed only as a leading drive letter, so no other drive (built in or defined by a profile) is used.
+  const free = /^'[^']*'$|^[\p{L}\p{M}\p{N}_./*:-]+$/u
+  const pathArg = /^'(?:[a-z]:\/)?[^':]*'$|^(?:[a-z]:)?[\p{L}\p{M}\p{N}_./*-]+$/u
   const used = statements.filter(st => st.length)
-  return used.length > 0 && used.every(([cmd, ...args]) => READ_CMDLETS.has(cmd) && args.every(a => quoted(a) || word.test(a)))
+  if (!used.length) return null
+  const kept = []
+  for (const [cmd, ...args] of used) {
+    if (!READ_CMDLETS.has(cmd)) return null
+    // Select-String takes its pattern as the first positional argument unless -Pattern names it.
+    const param = /^-([\p{L}\p{N}]+)(?::(.*))?$/u
+    // A prefix that could also name a path parameter (-pat, -pa) is never taken as a value parameter.
+    const isValue = n => n.length >= 3 && VALUE_PARAMS.some(v => v.startsWith(n)) && !['path', 'literalpath', 'pspath'].some(v => v.startsWith(n))
+    let pattern = (cmd === 'select-string' || cmd === 'sls') && !args.some(a => param.test(a) && isValue(param.exec(a)[1]) && 'pattern'.startsWith(param.exec(a)[1]))
+    const out = [cmd]
+    for (let i = 0; i < args.length; i++) {
+      const p = param.exec(args[i])
+      if (p) {
+        const value = isValue(p[1])
+        const takes = !value && !SWITCHES.some(n => n.startsWith(p[1]))
+        if (p[2] !== undefined) { if (!(value ? free : pathArg).test(p[2])) return null; out.push(value ? '-' + p[1] + ":'v'" : args[i]); continue }
+        out.push(args[i])
+        if (i + 1 >= args.length || param.test(args[i + 1])) continue
+        // A value parameter's value is free text; any other parameter that takes a value (-Path, unknown ones) gets a path.
+        if (value) { if (!free.test(args[++i])) return null; out.push("'v'") } else if (takes) { if (!pathArg.test(args[++i])) return null; out.push(args[i]) }
+        continue
+      }
+      if (pattern) { if (!free.test(args[i])) return null; pattern = false; out.push("'v'"); continue }
+      if (!pathArg.test(args[i])) return null
+      out.push(args[i])
+    }
+    kept.push(out.join(' '))
+  }
+  // The pipeline with free values blanked, for the path checks that follow.
+  return kept.join(' | ')
 }
+// Parameters whose value is never a path; a prefix of three or more letters selects one, as PowerShell allows.
+const VALUE_PARAMS = ['pattern', 'encoding', 'delimiter', 'filter', 'include', 'exclude', 'depth', 'totalcount', 'head', 'tail', 'first',
+  'last', 'skip', 'property', 'escapehandling', 'context', 'readcount', 'culture']
+// Switches take no value, so the word after one is positional.
+const SWITCHES = ['raw', 'simplematch', 'compress', 'recurse', 'force', 'casesensitive', 'list', 'quiet', 'notmatch', 'allmatches',
+  'noemphasis', 'asbytestream', 'name', 'directory', 'file', 'hidden', 'unique', 'descending', 'asarray', 'stream', 'nonewline']
 
 // Codex: a read counts only when a successful command's output is the file's full content (the prompt's JSON transport, or the
 // raw text). Any command whose targets cannot be shown to stay in the run folder makes the slot invalid.
@@ -486,15 +521,17 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
   for (const { command, exitCode, output } of commands) {
     // Codex prints the shell path with escaped (doubled) backslashes: one escaped backslash is one separator.
     const c = norm(command.replaceAll('\\"', '"').replaceAll('\\\\', '\\')).toLowerCase()
-    if (!literalPipeline(c)) return { ok: false, reason: 'command target not provable' }
-    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)|\benv:|\b(join|resolve|split|convert)-path\b|\[(environment|system\.|io\.)|\$\(|\(\s*get-/.test(c)) return { ok: false, reason: 'command target not provable' }
-    for (const m of c.split(PWSH).join(' ').matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
+    // Path checks see the pipeline with its free values (search patterns and the like) blanked.
+    const pipe = literalPipeline(c)
+    if (pipe === null) return { ok: false, reason: 'command target not provable' }
+    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)|\benv:|\b(join|resolve|split|convert)-path\b|\[(environment|system\.|io\.)|\$\(|\(\s*get-/.test(pipe)) return { ok: false, reason: 'command target not provable' }
+    for (const m of pipe.matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
       const p = m[0].replace(/\/+$/, '')
       if (p !== root && !p.startsWith(root + '/')) return { ok: false, reason: 'command path outside the run folder' }
     }
     // A single leading slash is the current drive's root in PowerShell, outside the run folder.
-    if (/(^|[\s'"(:])\/(?!\/)/.test(c.split(PWSH).join(' ').replace(/(?<![\w/])[a-z]:\//g, ''))) return { ok: false, reason: 'command path outside the run folder' }
-    if (/(^|[\s'"/:])\.\.(?=[/'"\s;|]|$)/.test(c) || c.includes('plugins/cache') || c.includes('codex_home')) return { ok: false, reason: 'command leaves the run folder' }
+    if (/(^|[\s'"(:])\/(?!\/)/.test(pipe.replace(/(?<![\w/])[a-z]:\//g, ''))) return { ok: false, reason: 'command path outside the run folder' }
+    if (/(^|[\s'"/:])\.\.(?=[/'"\s;|]|$)/.test(pipe) || pipe.includes('plugins/cache') || pipe.includes('codex_home')) return { ok: false, reason: 'command leaves the run folder' }
     // A command that also prints text of its own cannot prove its output came from the file.
     if (exitCode !== 0 || output === null || !/get-content|\bgc\b|\bcat\b|\btype\b|readalltext/.test(c) || /write-(output|host)|\becho\b|\bprintf\b/.test(c)) continue
     let text = output.replace(/\s+$/, '')

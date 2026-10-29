@@ -511,3 +511,17 @@ test('integration fifth review: combining marks in path words and colons in quot
   for (const bad of ["Get-Content 'temp:/x'", "Get-Content 'Microsoft.PowerShell.Core/FileSystem::x'", "Get-ChildItem 'variable:'"])
     assert.equal(codexAttribution([read, { command: pw(bad), exitCode: 0, output: '' }], cwd, contents).ok, false, bad)
 })
+
+test('integration sixth review: search text is free, path arguments allow no drive but a leading letter', () => {
+  const pw = cmd => '"' + PROGRAMS + '/PowerShell/7/pwsh.exe" -NoProfile -Command "' + cmd + '"'
+  const contents = { [SKILL]: '# PR workflow\nbody\n' }
+  const cwd = C + '/Temp/cxb-1/s'
+  const read = { command: pw('Get-Content -LiteralPath ./' + SKILL + ' -Raw'), exitCode: 0, output: contents[SKILL] }
+  const run = cmd => codexAttribution([read, { command: pw(cmd), exitCode: 0, output: '' }], cwd, contents)
+  for (const ok of ["Select-String -LiteralPath ./project/records.json -SimpleMatch -Pattern 'A: PASS'", "Select-String -LiteralPath ./project/records.json -Pattern 'env:'",
+    "Select-String -Path ./project/records.json -Pattern 'status::ready'", "Select-String 'A: PASS' ./project/records.json", "sls -SimpleMatch 'c:x' -Path ./project/records.json"])
+    assert.equal(run(ok).ok, true, ok)
+  for (const bad of ["Get-Content -LiteralPath 'ReviewProbe:README.md' -Raw", 'Get-Content ReviewProbe:README.md', "Select-String -Pattern x 'probe:README.md'",
+    "Select-String ./project/x -Pattern 'a' -Path 'probe:x'", "Select-String -Path ../x 'a'", "Select-String 'a' 'env:/x'", 'Get-Content -pat ../x', 'Get-Content -pa probe:x'])
+    assert.equal(run(bad).ok, false, bad)
+})

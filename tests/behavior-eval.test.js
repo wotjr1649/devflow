@@ -11,6 +11,8 @@ const ROOT = path.resolve(__dirname, '..')
 const CASES = path.join(ROOT, 'evals', 'behavior')
 // Synthetic paths are assembled so the public-text check never sees a literal local path.
 const C = ['C', ''].join(':')
+// Claude attribution resolves real paths, so its synthetic absolute paths follow the platform running the test.
+const ABS = process.platform === 'win32' ? C : ''
 const PROGRAMS = (process.env.ProgramFiles || [C, 'Program Files'].join('/')).replaceAll(String.fromCharCode(92), '/')
 const SKILL = 'plugin/skills/pr-review-workflow/SKILL.md'
 
@@ -89,7 +91,7 @@ const res = (id, content, error) => JSON.stringify({ message: { content: [{ type
 const numbered = body => body.split('\n').map((l, i) => String(i + 1).padStart(6) + '\t' + l).join('\n')
 
 test('Claude attribution needs successful whole-file reads of the skill and every listed input, and nothing outside the run folder', () => {
-  const cwd = C + '/tmp/claude-eval-x/home/cwd'
+  const cwd = ABS + '/tmp/claude-eval-x/home/cwd'
   const contents = { [SKILL]: '# PR workflow\nbody line\n', 'project/POLICY.md': 'policy text\n' }
   const skill = [use('Read', { file_path: cwd + '/' + SKILL }, '1'), res('1', numbered(contents[SKILL]))]
   assert.equal(claudeAttribution(skill.join('\n'), cwd, contents).ok, true)
@@ -99,8 +101,8 @@ test('Claude attribution needs successful whole-file reads of the skill and ever
   assert.match(claudeAttribution([use('Read', { file_path: cwd + '/' + SKILL }, '1'), res('1', numbered(contents[SKILL]), true)].join('\n'), cwd, contents).reason, /no full read/)
   assert.match(claudeAttribution([use('Read', { file_path: cwd + '/' + SKILL, offset: 1, limit: 5 }, '1'), res('1', numbered(contents[SKILL]))].join('\n'), cwd, contents).reason, /no full read/)
   assert.match(claudeAttribution([...skill, use('Read', { file_path: cwd + '/../../../other/SKILL.md' }, '2'), res('2', 'x')].join('\n'), cwd, contents).reason, /outside/)
-  assert.match(claudeAttribution([...skill, use('Glob', { pattern: C + '/elsewhere/**/*.md' }, '3')].join('\n'), cwd, contents).reason, /outside/)
-  assert.match(claudeAttribution([...skill, use('Glob', { pattern: '**/*', path: C + '/elsewhere/.claude' }, '3')].join('\n'), cwd, contents).reason, /outside/)
+  assert.match(claudeAttribution([...skill, use('Glob', { pattern: ABS + '/elsewhere/**/*.md' }, '3')].join('\n'), cwd, contents).reason, /outside/)
+  assert.match(claudeAttribution([...skill, use('Glob', { pattern: '**/*', path: ABS + '/elsewhere/.claude' }, '3')].join('\n'), cwd, contents).reason, /outside/)
   assert.match(claudeAttribution([...skill, use('Bash', { command: 'ls' }, '4')].join('\n'), cwd, contents).reason, /unexpected tool/)
   assert.match(claudeAttribution(skill.join('\n'), cwd, contents, ['POLICY.md']).reason, /not all read/)
   assert.equal(claudeAttribution([...skill, use('Read', { file_path: 'project/POLICY.md' }, '5'), res('5', numbered(contents['project/POLICY.md']))].join('\n'), cwd, contents, ['POLICY.md']).ok, true)
@@ -421,8 +423,8 @@ test('third review fixes: a record next to a generic instruction abstains, a col
 })
 
 test('main-run fixes: a Grep regex is not a path, and the Claude report never lands in the shim', () => {
-  const C = ['C', ''].join(':')
-  const cwd = C + '/tmp/claude-eval-x/home/cwd'
+  // (uses the file-level ABS)
+  const cwd = ABS + '/tmp/claude-eval-x/home/cwd'
   const contents = { 'plugin/skills/pr-review-workflow/SKILL.md': '# s\nbody\n' }
   const use = (name, input, id) => JSON.stringify({ message: { content: [{ type: 'tool_use', id, name, input }] } })
   const res = (id, content) => JSON.stringify({ message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
@@ -430,7 +432,7 @@ test('main-run fixes: a Grep regex is not a path, and the Claude report never la
   const trace = [use('Read', { file_path: 'plugin/skills/pr-review-workflow/SKILL.md' }, '1'), res('1', '1\t# s\n2\tbody'),
     use('Grep', { path: cwd + '/project', pattern: B + 'x{0301}|' + B + 'x{00E9}' }, '2')].join('\n')
   assert.equal(claudeAttribution(trace, cwd, contents).ok, true)
-  assert.match(claudeAttribution([trace, use('Grep', { path: C + '/elsewhere', pattern: 'x' }, '3')].join('\n'), cwd, contents).reason, /outside/)
+  assert.match(claudeAttribution([trace, use('Grep', { path: ABS + '/elsewhere', pattern: 'x' }, '3')].join('\n'), cwd, contents).reason, /outside/)
   const args = claudeArgs('shim', 'b1-07a', 1, path.join('run', 'slots', 's', 'eval.json'))
   assert.equal(args[args.indexOf('--output-dir') + 1], path.join('run', 'slots', 's', 'report'))
 })

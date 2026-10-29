@@ -49,7 +49,11 @@ function loadCases(dir = CASES) {
     if (!graders.some(g => g.name === 'task') || graders.length < 2) throw new Error('Case needs a task grader and a proposition: ' + id)
     const prompt = text.slice(fm[0].length)
     const listed = /^Project inputs: (.+)\.$/m.exec(prompt)
-    return { id, host: tags[1], prompt, inputs: listed ? listed[1].split('; ') : [], graders, hash: treeHash(path.join(dir, id)).hash }
+    // A prompt without an input list (free exploration) names the reads attribution requires in required-reads.txt, which the
+    // actor never sees (scaffold copies only fixture/project).
+    const required = fs.existsSync(path.join(dir, id, 'required-reads.txt')) ? fs.readFileSync(path.join(dir, id, 'required-reads.txt'), 'utf8').split('\n').map(l => l.trim()).filter(Boolean) : []
+    if (!listed && !required.length) throw new Error('Case needs a Project inputs list or required-reads.txt: ' + id)
+    return { id, host: tags[1], prompt, inputs: listed ? listed[1].split('; ') : required, graders, hash: treeHash(path.join(dir, id)).hash }
   })
 }
 
@@ -454,7 +458,8 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
   for (const { command, exitCode, output } of commands) {
     // Codex prints the shell path with escaped (doubled) backslashes: one escaped backslash is one separator.
     const c = norm(command.replaceAll('\\"', '"').replaceAll('\\\\', '\\')).toLowerCase()
-    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/[a-z0-9]|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)/.test(c)) return { ok: false, reason: 'command target not provable' }
+    // Paths built at run time (environment provider, path cmdlets, .NET calls, subexpressions) are not provable either.
+    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/[a-z0-9]|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)|\benv:|\b(join|resolve|split|convert)-path\b|\[(environment|system\.|io\.)|\$\(|\(\s*get-/.test(c)) return { ok: false, reason: 'command target not provable' }
     for (const m of c.split(PWSH).join(' ').matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
       const p = m[0].replace(/\/+$/, '')
       if (p !== root && !p.startsWith(root + '/')) return { ok: false, reason: 'command path outside the run folder' }
@@ -537,6 +542,14 @@ function spawnWait(cmd, args, options, input, timeoutMs) {
 const expectedTree = (dir, c, arm) => joinTrees({ files: { 'project/': 'dir', 'plugin/': 'dir' } },
   treeHash(path.join(dir, 'bundle', 'evals', 'behavior', c.id, 'fixture', 'project'), 'project/'), treeHash(path.join(dir, 'arms', arm), 'plugin/'))
 
+// The cost of a whole plugin eval result: every run of every arm of every case, actor and judge. Any run without both numbers,
+// or no run at all, makes the cost unknown, so an unexpected result shape can never charge less than it spent.
+function sumEvalCost(all) {
+  const runs = (all?.cases || []).flatMap(c => Object.values(c?.arms || {}).flat())
+  if (!runs.length || runs.some(r => typeof r?.costUsd !== 'number' || typeof r?.judgeCostUsd !== 'number')) return null
+  return runs.reduce((n, r) => n + r.costUsd + r.judgeCostUsd, 0)
+}
+
 // Built as an argument array (no shell parsing); a missing flag here would run unbudgeted or publish, so tests pin it.
 // --threshold 0: a case scoring below the default threshold of 1.0 exits 1 (pilot 2026-10-29), so only real errors may exit non-zero.
 // --output-dir: the report goes beside the slot's JSON, not into <shim>/evals/results, so the shim keeps its prepare hash.
@@ -574,7 +587,7 @@ async function claudeSlot(run, s, remainingUsd, led) {
   let all = null
   try { all = JSON.parse(fs.readFileSync(path.join(out, 'eval.json'), 'utf8')) } catch {}
   const result = all?.cases?.[0]?.arms?.with?.[0] ?? null
-  const usd = result && typeof result.costUsd === 'number' && typeof result.judgeCostUsd === 'number' ? result.costUsd + result.judgeCostUsd : null
+  const usd = sumEvalCost(all)
   const unconfirmed = r.timedOut && !r.killConfirmed
   led.pay({ slot: s.slot, call: 'claude-eval', usd, ...(unconfirmed ? { reason: 'claude stop unconfirmed' } : {}) }, unconfirmed)
   if (unconfirmed) return { ...slot, invalid: 'process stop unconfirmed', stop: true }
@@ -751,7 +764,10 @@ async function calibrate(run, opts) {
   const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
   const profile = opts.host === 'codex' ? profileHash(home) : null
   const sameProfile = () => opts.host !== 'codex' || profileHash(home) === profile
+  // The group lock comes first, so a second calibrate fails before it touches the shared shim.
+  const release = lockBudget(group)
   let shim = null
+  try {
   if (opts.host === 'claude') {
     // One shim holds every Claude anchor as its own echo case with only the graders the anchor is labelled for.
     shim = path.join(dir, 'calibration', 'claude-shim')
@@ -768,8 +784,6 @@ async function calibrate(run, opts) {
       for (const name of Object.keys(a.labels)) fs.copyFileSync(path.join(dir, 'bundle', 'evals', 'behavior', a.case, 'graders', name + '.md'), path.join(cdir, 'graders', name + '.md'))
     }
   }
-  const release = lockBudget(group)
-  try {
     for (const a of anchors) {
       const file = path.join(out, 'results', a.id + '.json')
       // A result is reused only for the same anchor text in the same case; anything else is a different sample.
@@ -796,11 +810,13 @@ async function calibrate(run, opts) {
         const env = { ...process.env, CLAUDE_CODE_GIT_BASH_PATH: BASH.replaceAll('/', path.sep), PATH: path.dirname(BASH) + path.delimiter + process.env.PATH }
         led.begin({ slot: calKey(opts, a), call: 'claude-eval' }, { host: 'claude', amount: 0.5 })
         const r = await spawnWait('claude', args, { cwd: dir, env }, undefined, 15 * 60 * 1000)
-        let ev = null
-        try { ev = JSON.parse(fs.readFileSync(json, 'utf8')).cases[0].arms.with[0] } catch {}
-        const usd = ev && typeof ev.costUsd === 'number' && typeof ev.judgeCostUsd === 'number' ? ev.costUsd + ev.judgeCostUsd : null
+        let all = null
+        try { all = JSON.parse(fs.readFileSync(json, 'utf8')) } catch {}
+        const ev = all?.cases?.[0]?.arms?.with?.[0] ?? null
+        const usd = sumEvalCost(all)
         led.pay({ slot: calKey(opts, a), call: 'claude-eval', usd }, r.timedOut && !r.killConfirmed)
-        if (!ev || usd === null || r.code !== 0 || ev.error) throw new Error('Calibration stopped at ' + a.id + ': eval failed or cost unknown')
+        const shape = all?.cases?.length === 1 && all.cases[0].arms.with?.length === 1 && !all.cases[0].arms.without?.length
+        if (!ev || usd === null || !shape || r.code !== 0 || ev.error) throw new Error('Calibration stopped at ' + a.id + ': eval failed, unexpected shape or cost unknown')
         // The echo must be the anchor itself; otherwise the judge saw another text and the sample is invalid.
         const kept = ev.tracePath ? path.dirname(path.dirname(ev.tracePath)) : null
         const echo = kept ? lastAssistantText(fs.readFileSync(ev.tracePath, 'utf8')) : null
@@ -967,7 +983,10 @@ async function main(args) {
       // A slot with paid calls but no result resumes only from its own progress file (Codex: actor and votes saved per call).
       const progressFile = path.join(run.dir, 'slots', s.slot, 'progress.json')
       const resume = opts.host === 'codex' && fs.existsSync(progressFile) ? JSON.parse(fs.readFileSync(progressFile, 'utf8')) : null
-      if (b.entries.some(e => e.slot === s.slot) && !resume?.slot) throw new Error('Slot ' + s.slot + ' has paid calls on record in budget ' + group + '; a slot is never paid for twice')
+      // Another run's paid calls for the same slot id block only while that run's slot has no saved result (interrupted);
+      // a completed slot of an earlier run is a different measurement, not a repeat.
+      const unfinished = e => e.slot === s.slot && (e.run === opts.run || !fs.existsSync(path.join(WORK, e.run, 'slots', s.slot, 'slot.json')))
+      if (b.entries.some(unfinished) && !resume?.slot) throw new Error('Slot ' + s.slot + ' has paid calls on record in budget ' + group + ' without a result; a slot is never paid for twice')
       const remaining = opts.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
       // A slot cannot be cut off mid-turn, so one starts only with room for twice the largest slot seen so far.
       if (remaining < reserve(b, opts.host)) { process.stdout.write('budget reserve reached before ' + s.slot + '\n'); return }
@@ -991,5 +1010,5 @@ async function main(args) {
 
 module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun,
   openBudget, begin, charge, lockBudget, judgeReserve, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
-  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, RULES }
+  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, RULES }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

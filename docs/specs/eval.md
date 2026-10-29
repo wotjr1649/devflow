@@ -72,8 +72,7 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
 
 ## 결과 eval
 
-pr-review-workflow의 반복 보고 결함이 skill 본문 후보에서 줄었는지를, 같은 사례·같은 순서·같은 반복 수로 기준선과 후보를 돌려
-비교한다(#99). 트리거 eval의 계약·점수·임계값은 바꾸지 않는다. 수동 opt-in이며 기본 검사·CI·pre-push는 모델을 실행하지 않는다.
+skill 본문 후보의 반복 보고 결함을 같은 사례·순서·반복 수로 기준선과 비교한다(#99). 트리거 eval 계약은 그대로다. 수동 opt-in이며
 CI는 `tests/behavior-eval.test.js`만 돌린다.
 
 ```bash
@@ -85,9 +84,8 @@ node bin/devflow-behavior-eval summary --run <name>
 
 - 사례: `evals/behavior/<id>/`
   - `prompt.md`의 frontmatter tag는 `[behavior, <host>, <id>]`다.
-  - `graders/*.md`는 llm grader이고, 그중 `task.md`는 과업 수행 확인이다.
-  - 그 밖에 `fixture/project/`, `case.yaml`, `scaffold.sh`가 있다.
-  - fixture는 공개 가능한 합성 자료이며 prompt의 입력 목록과 파일이 같다. fixture 안의 `.gitignore`와 상관없이 모든 파일을 추적한다.
+  - `graders/*.md`는 llm grader이고 `task.md`는 과업 수행 확인이다. `fixture/project/`, `case.yaml`, `scaffold.sh`도 둔다.
+  - fixture는 공개 가능한 합성 자료이며 prompt의 입력 목록과 파일이 같다. 목록 없는 자유 탐색 사례는 `required-reads.txt`에 귀속이 요구할 읽기를 둔다. fixture 안의 `.gitignore`와 상관없이 모든 파일을 추적한다.
 - arm: 고정 revision의 추적 파일만 `git archive`로 뽑는다. 두 arm의 차이가 `--expect-diff` 목록과 다르면 멈춘다. 사례·grader는 실행기를
   부른 커밋(평가 묶음) 하나에서 뽑고, 이 묶음과 실행기는 커밋된 상태여야 한다. `.work/behavior-eval/<run>/manifest.json`에 해시를 남긴다.
   이어 실행은 미실행 슬롯만 한다. 실행기·실행표·모델 설정·arm·사례·shim 전체·bash가 바뀌었으면 멈춘다.
@@ -121,7 +119,7 @@ node bin/devflow-behavior-eval summary --run <name>
   - 실행 폴더 밖은 어떤 경로도 건드리지 않았다.
   - 읽기의 증거: Claude는 성공한 tool_result가 있는 offset·limit 없는 Read, Codex는 성공한 명령 출력이 파일 전문(prompt의 JSON 전송
     또는 원문)과 같은 것이다.
-  - 경로를 입증할 수 없는 명령(변수, 식 평가, 폴더 이동, `~`, UNC, 환경 변수 확장)이나 실행 폴더 밖 절대 경로, `..`가 있으면 invalid다.
+  - 경로를 입증할 수 없는 명령(변수, 식 평가, 폴더 이동, `~`, UNC, 환경 변수·경로 cmdlet·.NET 호출)이나 실행 폴더 밖 절대 경로, `..`가 있으면 invalid다.
 - 판정 부류(슬롯×명제)
   - positive·negative·invalid·undetermined로 나눈다. 과업 grader가 FAIL이면 invalid, 판정이 없으면 undetermined다.
   - 실행 오류, 시간 초과, 응답 없음, 귀속 실패도 invalid다.

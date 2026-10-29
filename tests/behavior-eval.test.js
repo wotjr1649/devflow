@@ -24,9 +24,11 @@ test('every behavior case has metadata, a task grader, a proposition and a fixtu
     const dir = path.join(CASES, c.id)
     assert.equal(fs.readFileSync(path.join(dir, 'scaffold.sh'), 'utf8'), scaffold, c.id + ' scaffold')
     assert.equal(fs.readFileSync(path.join(dir, 'case.yaml'), 'utf8'), `schema_version: "1.1"\nname: ${c.id}\ncontext:\n  scaffold_script: scaffold.sh\n`)
-    if (!c.inputs.length) continue
     const files = Object.keys(treeHash(path.join(dir, 'fixture', 'project')).files).filter(f => !f.endsWith('/')).sort()
-    assert.deepEqual(files, [...c.inputs].sort(), c.id + ' fixture differs from the prompt list')
+    assert.ok(c.inputs.length > 0, c.id + ' needs listed inputs or required reads')
+    // A listed case's fixture is exactly its list; a free-exploration case's required reads all exist in its fixture.
+    if (/^Project inputs: /m.test(c.prompt)) assert.deepEqual(files, [...c.inputs].sort(), c.id + ' fixture differs from the prompt list')
+    else for (const r of c.inputs) assert.ok(files.includes(r), c.id + ' required read missing from fixture: ' + r)
   }
 })
 
@@ -435,4 +437,19 @@ test('main-run fixes: a Grep regex is not a path, and the Claude report never la
   assert.match(claudeAttribution([trace, use('Grep', { path: ABS + '/elsewhere', pattern: 'x' }, '3')].join('\n'), cwd, contents).reason, /outside/)
   const args = claudeArgs('shim', 'b1-07a', 1, path.join('run', 'slots', 's', 'eval.json'))
   assert.equal(args[args.indexOf('--output-dir') + 1], path.join('run', 'slots', 's', 'report'))
+})
+
+test('integration review fixes: run-time Codex paths, whole-result Claude cost, required reads without a list', () => {
+  const cwd = C + '/Temp/cxb-1/s'
+  const contents = { [SKILL]: '# PR workflow\nbody\n' }
+  const read = { command: 'Get-Content -LiteralPath ./' + SKILL + ' -Raw', exitCode: 0, output: contents[SKILL] }
+  for (const bad of ["Get-Content (Join-Path (Get-Item Env:USERPROFILE).Value 'outside.txt')", 'Get-Content (Resolve-Path ./x)', 'Get-Content ([System.IO.Path]::Combine("a","b"))', 'Get-Content $(Get-Location)/x'])
+    assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /not provable/, bad)
+  const run = (usd, judge) => ({ costUsd: usd, judgeCostUsd: judge })
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: [run(0.2, 0.05)] } }] }), 0.25)
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: [run(0.2, 0.05), run(0.3, 0.05)] } }, { arms: { with: [run(0.1, 0)] } }] }).toFixed(2), '0.70')
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: [run(0.2, 0.05)], without: [{ costUsd: 0.1 }] } }] }), null)
+  assert.equal(ev.sumEvalCost({ cases: [] }), null)
+  const b7 = loadCases().find(c => c.id === 'b7-c03')
+  assert.deepEqual(b7.inputs, ['changes/labels.patch', 'changes/base/labels.cjs', 'src/labels.cjs'])
 })

@@ -484,3 +484,17 @@ test('integration third review: only literal read pipelines are provable, every 
   const src = fs.readFileSync(path.join(__dirname, '..', 'bin', 'devflow-behavior-eval'), 'utf8')
   assert.match(src, /if \(b\.entries\.some\(other\) \|\| \(b\.entries\.some\(own\) && !resume\?\.slot\)\) throw/)
 })
+
+test('integration fourth review: joined argument pieces, provider paths and drive roots are unprovable; trailing separators and Unicode words are literal', () => {
+  const pw = cmd => '"' + PROGRAMS + '/PowerShell/7/pwsh.exe" -NoProfile -Command "' + cmd + '"'
+  const contents = { [SKILL]: '# PR workflow\nbody\n' }
+  for (const cwd of [C + '/Temp/cxb-1/s', C + '/tmp/사용자/cxb-1/s']) {
+    for (const ok of ['Get-Content -LiteralPath ./' + SKILL + ' -Raw;', 'Get-Content -LiteralPath ./' + SKILL + ' -Raw\n', 'Get-Content -LiteralPath ' + cwd + '/' + SKILL + ' -Raw'])
+      assert.equal(codexAttribution([{ command: pw(ok), exitCode: 0, output: contents[SKILL] }], cwd, contents).ok, true, JSON.stringify(ok))
+  }
+  const cwd = C + '/Temp/cxb-1/s'
+  const read = { command: pw('Get-Content -LiteralPath ./' + SKILL + ' -Raw'), exitCode: 0, output: contents[SKILL] }
+  for (const bad of ["Get-Content -LiteralPath ..'/'..'/'x/README.md -Raw", 'Get-Item -LiteralPath /', 'Get-Content -Path:../x', 'Get-ChildItem -Path:/',
+    "Get-Content 'env:/USERPROFILE'", "Get-Content 'function:/prompt'", 'Get-ChildItem hklm:/software', 'Get-Content //?/c:/x', 'Get-Content --% ../x'])
+    assert.equal(codexAttribution([read, { command: pw(bad), exitCode: 0, output: '' }], cwd, contents).ok, false, bad)
+})

@@ -463,11 +463,17 @@ function literalPipeline(c) {
     if (!m) return false
     script = m[2]
   }
-  const token = /'[^']*'|[|;]|[^\s'|;]+/g
-  if (script.replace(/\r?\n/g, ';').replace(token, '').trim()) return false
+  // Each token stands alone between separators: PowerShell joins adjacent pieces (..'/'x) into one computed argument.
+  const token = /'[^']*'(?=[\s|;]|$)|[|;]|[^\s'|;]+(?=[\s|;]|$)/g
+  const text = script.replace(/\r?\n/g, ';')
+  if (text.replace(token, '').trim()) return false
   const statements = [[]]
-  for (const t of script.replace(/\r?\n/g, ';').match(token) || []) t === '|' || t === ';' ? statements.push([]) : statements.at(-1).push(t)
-  return statements.every(([cmd, ...args]) => READ_CMDLETS.has(cmd) && args.every(a => /^'[^']*'$/.test(a) || /^-?[\w./:*-]+$/.test(a)))
+  for (const t of text.match(token) || []) t === '|' || t === ';' ? statements.push([]) : statements.at(-1).push(t)
+  // A colon is a drive only as a leading letter; any other (env:, function:, hklm:, -Name:value aside) names a provider path.
+  const word = /^(?:-[\p{L}\p{N}]+(?::[\p{L}\p{N}_./*-]+)?|(?:[a-z]:)?[\p{L}\p{N}_./*-]+)$/u
+  const quoted = a => /^'[^']*'$/.test(a) && !a.slice(1, -1).replace(/^[a-z]:\//, '').includes(':')
+  const used = statements.filter(st => st.length)
+  return used.length > 0 && used.every(([cmd, ...args]) => READ_CMDLETS.has(cmd) && args.every(a => quoted(a) || word.test(a)))
 }
 
 // Codex: a read counts only when a successful command's output is the file's full content (the prompt's JSON transport, or the
@@ -480,14 +486,14 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
     // Codex prints the shell path with escaped (doubled) backslashes: one escaped backslash is one separator.
     const c = norm(command.replaceAll('\\"', '"').replaceAll('\\\\', '\\')).toLowerCase()
     if (!literalPipeline(c)) return { ok: false, reason: 'command target not provable' }
-    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/[a-z0-9]|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)|\benv:|\b(join|resolve|split|convert)-path\b|\[(environment|system\.|io\.)|\$\(|\(\s*get-/.test(c)) return { ok: false, reason: 'command target not provable' }
+    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)|\benv:|\b(join|resolve|split|convert)-path\b|\[(environment|system\.|io\.)|\$\(|\(\s*get-/.test(c)) return { ok: false, reason: 'command target not provable' }
     for (const m of c.split(PWSH).join(' ').matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
       const p = m[0].replace(/\/+$/, '')
       if (p !== root && !p.startsWith(root + '/')) return { ok: false, reason: 'command path outside the run folder' }
     }
     // A single leading slash is the current drive's root in PowerShell, outside the run folder.
-    if (/(^|[\s'"(])\/(?!\/)[a-z]/.test(c.split(PWSH).join(' '))) return { ok: false, reason: 'command path outside the run folder' }
-    if (/(^|[\s'"/])\.\.(\/|$)/.test(c) || c.includes('plugins/cache') || c.includes('codex_home')) return { ok: false, reason: 'command leaves the run folder' }
+    if (/(^|[\s'"(:])\/(?!\/)/.test(c.split(PWSH).join(' ').replace(/(?<![\w/])[a-z]:\//g, ''))) return { ok: false, reason: 'command path outside the run folder' }
+    if (/(^|[\s'"/:])\.\.(?=[/'"\s;|]|$)/.test(c) || c.includes('plugins/cache') || c.includes('codex_home')) return { ok: false, reason: 'command leaves the run folder' }
     // A command that also prints text of its own cannot prove its output came from the file.
     if (exitCode !== 0 || output === null || !/get-content|\bgc\b|\bcat\b|\btype\b|readalltext/.test(c) || /write-(output|host)|\becho\b|\bprintf\b/.test(c)) continue
     let text = output.replace(/\s+$/, '')

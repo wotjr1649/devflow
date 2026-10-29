@@ -453,3 +453,18 @@ test('integration review fixes: run-time Codex paths, whole-result Claude cost, 
   const b7 = loadCases().find(c => c.id === 'b7-c03')
   assert.deepEqual(b7.inputs, ['changes/labels.patch', 'changes/base/labels.cjs', 'src/labels.cjs'])
 })
+
+test('integration re-review fixes: assembled Codex paths, malformed or negative Claude costs, run-scoped judge resume', () => {
+  const cwd = C + '/Temp/cxb-1/s'
+  const contents = { [SKILL]: '# PR workflow\nbody\n' }
+  const read = { command: 'Get-Content -LiteralPath ./' + SKILL + ' -Raw', exitCode: 0, output: contents[SKILL] }
+  for (const bad of ["Get-Content -LiteralPath (('..', 'AGENTS.md') -join [char]92) -Raw", 'Get-Content -LiteralPath .`./x', 'Get-ChildItem | ForEach-Object { Get-Content $_ }'])
+    assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /not provable/, bad)
+  assert.equal(codexAttribution([read], cwd, contents).ok, true)
+  const run = (usd, judge) => ({ costUsd: usd, judgeCostUsd: judge })
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: [run(0.2, 0.05)] } }, { name: 'x' }] }), null)
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: [run(0.2, 0.05)] } }, { arms: { with: [run(-0.2, 0)] } }] }), null)
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: [run(0.2, Infinity)] } }] }), null)
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: {} } }] }), null)
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'bin', 'devflow-behavior-eval'), 'utf8'), /const paid = b\.entries\.filter\(e => e\.run === opts\.run && e\.slot === s\.slot/)
+})

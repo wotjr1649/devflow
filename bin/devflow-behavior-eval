@@ -458,7 +458,9 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
   for (const { command, exitCode, output } of commands) {
     // Codex prints the shell path with escaped (doubled) backslashes: one escaped backslash is one separator.
     const c = norm(command.replaceAll('\\"', '"').replaceAll('\\\\', '\\')).toLowerCase()
-    // Paths built at run time (environment provider, path cmdlets, .NET calls, subexpressions) are not provable either.
+    // Paths built at run time (environment provider, path cmdlets, .NET calls, expressions) are not provable either: PowerShell
+    // needs parentheses, brackets, braces or a backtick escape to compute an argument, and no recorded actor command used them.
+    if (/[()[\]{}`]/.test(c.split(PWSH).join(' '))) return { ok: false, reason: 'command target not provable' }
     if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/[a-z0-9]|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)|\benv:|\b(join|resolve|split|convert)-path\b|\[(environment|system\.|io\.)|\$\(|\(\s*get-/.test(c)) return { ok: false, reason: 'command target not provable' }
     for (const m of c.split(PWSH).join(' ').matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
       const p = m[0].replace(/\/+$/, '')
@@ -545,8 +547,10 @@ const expectedTree = (dir, c, arm) => joinTrees({ files: { 'project/': 'dir', 'p
 // The cost of a whole plugin eval result: every run of every arm of every case, actor and judge. Any run without both numbers,
 // or no run at all, makes the cost unknown, so an unexpected result shape can never charge less than it spent.
 function sumEvalCost(all) {
-  const runs = (all?.cases || []).flatMap(c => Object.values(c?.arms || {}).flat())
-  if (!runs.length || runs.some(r => typeof r?.costUsd !== 'number' || typeof r?.judgeCostUsd !== 'number')) return null
+  const cost = v => Number.isFinite(v) && v >= 0
+  if (!Array.isArray(all?.cases) || !all.cases.length || all.cases.some(c => !c?.arms || typeof c.arms !== 'object' || !Object.values(c.arms).every(Array.isArray))) return null
+  const runs = all.cases.flatMap(c => Object.values(c.arms).flat())
+  if (!runs.length || runs.some(r => !cost(r?.costUsd) || !cost(r?.judgeCostUsd))) return null
   return runs.reduce((n, r) => n + r.costUsd + r.judgeCostUsd, 0)
 }
 
@@ -993,7 +997,7 @@ async function main(args) {
       if (resume?.slot) {
         // Resuming is safe only when every judge call on record for this slot has its vote saved, grader by grader.
         for (const g of run.cases[s.case].graders) {
-          const paid = b.entries.filter(e => e.slot === s.slot && (e.call || '').startsWith('codex-judge ' + g.name + ' ')).length
+          const paid = b.entries.filter(e => e.run === opts.run && e.slot === s.slot && (e.call || '').startsWith('codex-judge ' + g.name + ' ')).length
           if (paid !== (resume.votes[g.name] || []).length) throw new Error('Slot ' + s.slot + ' has ' + paid + ' paid ' + g.name + ' judge calls but ' + (resume.votes[g.name] || []).length + ' saved votes; resolve by hand')
         }
       }

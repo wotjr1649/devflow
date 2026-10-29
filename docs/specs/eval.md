@@ -119,7 +119,7 @@ node bin/devflow-behavior-eval summary --run <name>
   - 실행 폴더 밖은 어떤 경로도 건드리지 않았다.
   - 읽기의 증거: Claude는 성공한 tool_result가 있는 offset·limit 없는 Read, Codex는 성공한 명령 출력이 파일 전문(prompt의 JSON 전송
     또는 원문)과 같은 것이다.
-  - 경로를 입증할 수 없는 명령(변수, 식 평가, 폴더 이동, `~`, UNC, 환경 변수·경로 cmdlet·.NET 호출)이나 실행 폴더 밖 절대 경로, `..`가 있으면 invalid다.
+  - 경로를 입증할 수 없는 명령(변수, 식 평가, 폴더 이동, `~`, UNC, 환경 변수·경로 cmdlet, 괄호·중괄호·backtick이 든 식)이나 실행 폴더 밖 절대 경로, `..`가 있으면 invalid다.
 - 판정 부류(슬롯×명제)
   - positive·negative·invalid·undetermined로 나눈다. 과업 grader가 FAIL이면 invalid, 판정이 없으면 undetermined다.
   - 실행 오류, 시간 초과, 응답 없음, 귀속 실패도 invalid다.

@@ -449,6 +449,27 @@ function codexTrace(stdout) {
   return { valid: started && turns > 0 && !broken, message, tokens: total, commands: [...commands.values()] }
 }
 
+// A path computed at run time cannot be proved, and a deny list of ways to compute one is never complete. So a command is
+// provable only as pipelines of listed read and format cmdlets whose arguments are parameters, single-quoted literals or
+// plain path words; every main-run actor command was one such pipeline. c is the normalized, lower-case command.
+const READ_CMDLETS = new Set(['get-content', 'gc', 'cat', 'type', 'get-childitem', 'gci', 'ls', 'dir', 'get-item', 'select-string',
+  'sls', 'select-object', 'measure-object', 'sort-object', 'convertto-json', 'out-string', 'format-list', 'format-table', 'write-output',
+  'echo', 'write-host'])
+function literalPipeline(c) {
+  const head = '"' + PWSH + '" '
+  let script = c
+  if (c.startsWith(head)) {
+    const m = /^((?:-(?:noprofile|noninteractive|nologo)\s+)*)-command\s+"(.*)"$/s.exec(c.slice(head.length).trim())
+    if (!m) return false
+    script = m[2]
+  }
+  const token = /'[^']*'|[|;]|[^\s'|;]+/g
+  if (script.replace(/\r?\n/g, ';').replace(token, '').trim()) return false
+  const statements = [[]]
+  for (const t of script.replace(/\r?\n/g, ';').match(token) || []) t === '|' || t === ';' ? statements.push([]) : statements.at(-1).push(t)
+  return statements.every(([cmd, ...args]) => READ_CMDLETS.has(cmd) && args.every(a => /^'[^']*'$/.test(a) || /^-?[\w./:*-]+$/.test(a)))
+}
+
 // Codex: a read counts only when a successful command's output is the file's full content (the prompt's JSON transport, or the
 // raw text). Any command whose targets cannot be shown to stay in the run folder makes the slot invalid.
 function codexAttribution(commands, cwd, contents, inputs = []) {
@@ -458,9 +479,7 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
   for (const { command, exitCode, output } of commands) {
     // Codex prints the shell path with escaped (doubled) backslashes: one escaped backslash is one separator.
     const c = norm(command.replaceAll('\\"', '"').replaceAll('\\\\', '\\')).toLowerCase()
-    // Paths built at run time (environment provider, path cmdlets, .NET calls, expressions) are not provable either: PowerShell
-    // needs parentheses, brackets, braces or a backtick escape to compute an argument, and no recorded actor command used them.
-    if (/[()[\]{}`]/.test(c.split(PWSH).join(' '))) return { ok: false, reason: 'command target not provable' }
+    if (!literalPipeline(c)) return { ok: false, reason: 'command target not provable' }
     if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/[a-z0-9]|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)|\benv:|\b(join|resolve|split|convert)-path\b|\[(environment|system\.|io\.)|\$\(|\(\s*get-/.test(c)) return { ok: false, reason: 'command target not provable' }
     for (const m of c.split(PWSH).join(' ').matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
       const p = m[0].replace(/\/+$/, '')
@@ -548,10 +567,13 @@ const expectedTree = (dir, c, arm) => joinTrees({ files: { 'project/': 'dir', 'p
 // or no run at all, makes the cost unknown, so an unexpected result shape can never charge less than it spent.
 function sumEvalCost(all) {
   const cost = v => Number.isFinite(v) && v >= 0
-  if (!Array.isArray(all?.cases) || !all.cases.length || all.cases.some(c => !c?.arms || typeof c.arms !== 'object' || !Object.values(c.arms).every(Array.isArray))) return null
+  // Every case is a plain object of arm arrays with at least one run; anything else is an unproven cost.
+  const arms = c => c?.arms && typeof c.arms === 'object' && !Array.isArray(c.arms) && Object.values(c.arms).every(Array.isArray) && Object.values(c.arms).flat().length > 0
+  if (!Array.isArray(all?.cases) || !all.cases.length || !all.cases.every(arms)) return null
   const runs = all.cases.flatMap(c => Object.values(c.arms).flat())
-  if (!runs.length || runs.some(r => !cost(r?.costUsd) || !cost(r?.judgeCostUsd))) return null
-  return runs.reduce((n, r) => n + r.costUsd + r.judgeCostUsd, 0)
+  if (runs.some(r => !cost(r?.costUsd) || !cost(r?.judgeCostUsd))) return null
+  const total = runs.reduce((n, r) => n + r.costUsd + r.judgeCostUsd, 0)
+  return Number.isFinite(total) ? total : null
 }
 
 // Built as an argument array (no shell parsing); a missing flag here would run unbudgeted or publish, so tests pin it.
@@ -989,8 +1011,10 @@ async function main(args) {
       const resume = opts.host === 'codex' && fs.existsSync(progressFile) ? JSON.parse(fs.readFileSync(progressFile, 'utf8')) : null
       // Another run's paid calls for the same slot id block only while that run's slot has no saved result (interrupted);
       // a completed slot of an earlier run is a different measurement, not a repeat.
-      const unfinished = e => e.slot === s.slot && (e.run === opts.run || !fs.existsSync(path.join(WORK, e.run, 'slots', s.slot, 'slot.json')))
-      if (b.entries.some(unfinished) && !resume?.slot) throw new Error('Slot ' + s.slot + ' has paid calls on record in budget ' + group + ' without a result; a slot is never paid for twice')
+      // Resuming covers only this run's own calls; another run's unfinished calls always block.
+      const other = e => e.slot === s.slot && e.run !== opts.run && !fs.existsSync(path.join(WORK, e.run, 'slots', s.slot, 'slot.json'))
+      const own = e => e.slot === s.slot && e.run === opts.run
+      if (b.entries.some(other) || (b.entries.some(own) && !resume?.slot)) throw new Error('Slot ' + s.slot + ' has paid calls on record in budget ' + group + ' without a result; a slot is never paid for twice')
       const remaining = opts.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
       // A slot cannot be cut off mid-turn, so one starts only with room for twice the largest slot seen so far.
       if (remaining < reserve(b, opts.host)) { process.stdout.write('budget reserve reached before ' + s.slot + '\n'); return }
@@ -1014,5 +1038,5 @@ async function main(args) {
 
 module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun,
   openBudget, begin, charge, lockBudget, judgeReserve, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
-  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, RULES }
+  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, literalPipeline, RULES }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

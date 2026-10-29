@@ -468,3 +468,19 @@ test('integration re-review fixes: assembled Codex paths, malformed or negative 
   assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: {} } }] }), null)
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'bin', 'devflow-behavior-eval'), 'utf8'), /const paid = b\.entries\.filter\(e => e\.run === opts\.run && e\.slot === s\.slot/)
 })
+
+test('integration third review: only literal read pipelines are provable, every case must carry a finite cost, other runs block resume', () => {
+  const cwd = C + '/Temp/user{1}/cxb-1/s'
+  const contents = { [SKILL]: '# PR workflow\nbody\n' }
+  const pw = cmd => '"' + PROGRAMS + '/PowerShell/7/pwsh.exe" -NoProfile -Command "' + cmd + '"'
+  const quoted = { command: pw("Get-Content -LiteralPath '" + cwd + '/' + SKILL + "' -Raw -Encoding utf8 | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii"), exitCode: 0, output: JSON.stringify(contents[SKILL]) }
+  assert.equal(codexAttribution([quoted], cwd, contents).ok, true, 'a quoted literal path with braces is still a literal')
+  for (const bad of ["'..' + '/' + 'README.md' | Get-Item | Get-Content -Raw", 'Get-Content -LiteralPath ./x && Get-Content ./y', 'Copy-Item ./a ./b', "Get-Content -LiteralPath './x','../y'"])
+    assert.match(codexAttribution([quoted, { command: pw(bad), exitCode: 0, output: '' }], cwd, contents).reason, /not provable|leaves/, bad)
+  const run = (usd, judge) => ({ costUsd: usd, judgeCostUsd: judge })
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: [run(0.2, 0.05)] } }, { arms: [] }] }), null)
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: [run(0.2, 0.05)] } }, { arms: {} }] }), null)
+  assert.equal(ev.sumEvalCost({ cases: [{ arms: { with: [run(1e308, 0), run(1e308, 0)] } }] }), null)
+  const src = fs.readFileSync(path.join(__dirname, '..', 'bin', 'devflow-behavior-eval'), 'utf8')
+  assert.match(src, /if \(b\.entries\.some\(other\) \|\| \(b\.entries\.some\(own\) && !resume\?\.slot\)\) throw/)
+})

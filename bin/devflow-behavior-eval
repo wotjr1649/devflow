@@ -393,7 +393,8 @@ function claudeAttribution(traceText, cwd, contents = {}, inputs = []) {
   const read = new Set()
   for (const [id, u] of uses) {
     if (!['Read', 'Glob', 'Grep'].includes(u.name)) return { ok: false, reason: 'unexpected tool ' + u.name }
-    for (const key of ['file_path', 'path', 'pattern', 'glob']) {
+    // A Grep pattern is a regular expression, not a path ("\x{0301}" resolved as a Windows root path in the main run).
+    for (const key of u.name === 'Grep' ? ['path', 'glob'] : ['file_path', 'path', 'pattern', 'glob']) {
       const v = u.input?.[key]
       if (typeof v !== 'string') continue
       if (/^~|^\/\/|^\\\\/.test(v)) return { ok: false, reason: 'tool path not provable' }
@@ -538,8 +539,10 @@ const expectedTree = (dir, c, arm) => joinTrees({ files: { 'project/': 'dir', 'p
 
 // Built as an argument array (no shell parsing); a missing flag here would run unbudgeted or publish, so tests pin it.
 // --threshold 0: a case scoring below the default threshold of 1.0 exits 1 (pilot 2026-10-29), so only real errors may exit non-zero.
+// --output-dir: the report goes beside the slot's JSON, not into <shim>/evals/results, so the shim keeps its prepare hash.
 const claudeArgs = (shim, id, remainingUsd, json) => ['plugin', 'eval', shim, '--case', id, '--runs', '1', '--ablation', 'none', '--threshold', '0', '--scaffold', '--keep-temp',
-  '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remainingUsd), '--json', json]
+  '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remainingUsd), '--json', json,
+  '--output-dir', path.join(path.dirname(json), 'report')]
 // Whole cents, never above what is left: floor, then step down one cent if the printed value still exceeds the remainder.
 function capUsd(remaining) {
   let cents = Math.floor(remaining * 100)
@@ -789,7 +792,7 @@ async function calibrate(run, opts) {
         if (remaining < 1) { process.stdout.write('budget reserve reached before ' + a.id + '\n'); return }
         const json = path.join(out, 'results', a.id + '.eval.json')
         const args = ['plugin', 'eval', shim, '--case', a.id, '--runs', '1', '--ablation', 'none', '--threshold', '0', '--scaffold', '--keep-temp', '--no-publish', '--trust-plugin',
-          '--model', 'claude-haiku-5-5', '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remaining), '--json', json]
+          '--model', 'claude-haiku-5-5', '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remaining), '--json', json, '--output-dir', path.join(out, 'reports', a.id)]
         const env = { ...process.env, CLAUDE_CODE_GIT_BASH_PATH: BASH.replaceAll('/', path.sep), PATH: path.dirname(BASH) + path.delimiter + process.env.PATH }
         led.begin({ slot: calKey(opts, a), call: 'claude-eval' }, { host: 'claude', amount: 0.5 })
         const r = await spawnWait('claude', args, { cwd: dir, env }, undefined, 15 * 60 * 1000)

@@ -419,3 +419,18 @@ test('third review fixes: a record next to a generic instruction abstains, a col
   assert.deepEqual(ev.totalInputClaims('I read three project inputs: .work/plan.md, .work/records.yaml, and .work/spec.md.'), [])
   assert.deepEqual(ev.totalInputClaims('Method: literal UTF-8 reads of all ten authorized project inputs.'), [10])
 })
+
+test('main-run fixes: a Grep regex is not a path, and the Claude report never lands in the shim', () => {
+  const C = ['C', ''].join(':')
+  const cwd = C + '/tmp/claude-eval-x/home/cwd'
+  const contents = { 'plugin/skills/pr-review-workflow/SKILL.md': '# s\nbody\n' }
+  const use = (name, input, id) => JSON.stringify({ message: { content: [{ type: 'tool_use', id, name, input }] } })
+  const res = (id, content) => JSON.stringify({ message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
+  const B = String.fromCharCode(92)
+  const trace = [use('Read', { file_path: 'plugin/skills/pr-review-workflow/SKILL.md' }, '1'), res('1', '1\t# s\n2\tbody'),
+    use('Grep', { path: cwd + '/project', pattern: B + 'x{0301}|' + B + 'x{00E9}' }, '2')].join('\n')
+  assert.equal(claudeAttribution(trace, cwd, contents).ok, true)
+  assert.match(claudeAttribution([trace, use('Grep', { path: C + '/elsewhere', pattern: 'x' }, '3')].join('\n'), cwd, contents).reason, /outside/)
+  const args = claudeArgs('shim', 'b1-07a', 1, path.join('run', 'slots', 's', 'eval.json'))
+  assert.equal(args[args.indexOf('--output-dir') + 1], path.join('run', 'slots', 's', 'report'))
+})

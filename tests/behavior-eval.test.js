@@ -560,3 +560,15 @@ test('spawnWait returns a normal exit, and after a timeout reports the stop inst
   // taskkill exists only on Windows; elsewhere the stop is unconfirmed and the grace timer ends the wait.
   if (process.platform === 'win32') assert.equal(slow.killConfirmed, true)
 })
+
+test('the run Codex profile baseline is created once and refuses a changed profile', () => {
+  const run = tmpdir('prof-'), home = tmpdir('home-')
+  fs.writeFileSync(path.join(home, 'config.toml'), 'model = "a"\n')
+  const first = ev.runProfile(run, home)
+  assert.equal(ev.runProfile(run, home), first)
+  fs.writeFileSync(path.join(home, 'config.toml'), 'model = "b"\n')
+  assert.throws(() => ev.runProfile(run, home), /differ from the first Codex call/)
+  const src = fs.readFileSync(path.join(__dirname, '..', 'bin', 'devflow-behavior-eval'), 'utf8')
+  // Calibration takes the group lock before it creates the baseline.
+  assert.ok(src.indexOf('const release = lockBudget(group)\n  let shim = null') < src.indexOf("const profile = opts.host === 'codex' ? runProfile(dir, home) : null"))
+})

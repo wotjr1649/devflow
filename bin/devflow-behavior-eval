@@ -593,8 +593,9 @@ const upperBound = n => n > 0 ? 1 - Math.pow(0.05, 1 / n) : null
 function runProfile(dir, home) {
   const file = path.join(dir, 'codex-home.json')
   const now = { ...homeIdentity(home), profileHash: profileHash(home) }
-  if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(now) + '\n')
-  else if (fs.readFileSync(file, 'utf8') !== JSON.stringify(now) + '\n') throw new Error('Codex home or global instructions differ from the first Codex call of this run')
+  // Created exclusively ('wx'), so two first callers cannot both write it; the loser compares against the winner's value.
+  try { fs.writeFileSync(file, JSON.stringify(now) + '\n', { flag: 'wx' }) } catch (e) { if (e.code !== 'EEXIST') throw e }
+  if (fs.readFileSync(file, 'utf8') !== JSON.stringify(now) + '\n') throw new Error('Codex home or global instructions differ from the first Codex call of this run')
   return now.profileHash
 }
 
@@ -606,9 +607,15 @@ function spawnWait(cmd, args, options, input, timeoutMs) {
     const finish = code => { if (done) return; done = true; clearTimeout(timer); clearTimeout(grace); resolve({ code, stdout, timedOut, failed, killConfirmed }) }
     const timer = setTimeout(() => {
       timedOut = true
-      killConfirmed = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }).status === 0
+      killConfirmed = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: KILL_GRACE_MS }).status === 0
       // If the process never reports closing, stop waiting: the caller records the stop as unconfirmed and keeps the evidence.
-      grace = setTimeout(() => { killConfirmed = false; finish(null) }, KILL_GRACE_MS)
+      // Its pipes are released and it is unreferenced, so a live child no longer holds this process open.
+      grace = setTimeout(() => {
+        killConfirmed = false
+        for (const s of [child.stdin, child.stdout]) s?.destroy()
+        child.unref()
+        finish(null)
+      }, KILL_GRACE_MS)
     }, timeoutMs)
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', d => { stdout += d })
@@ -847,13 +854,13 @@ async function calibrate(run, opts) {
   const group = manifest.budget
   const led = ledger(group, opts.run)
   const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
-  // Calibration judges under the run's Codex profile too, so every sample of a record shares one environment.
-  const profile = opts.host === 'codex' ? runProfile(dir, home) : null
-  const sameProfile = () => opts.host !== 'codex' || profileHash(home) === profile
-  // The group lock comes first, so a second calibrate fails before it touches the shared shim.
+  // The group lock comes first, so a second calibrate fails before it touches the shared shim or the profile baseline.
   const release = lockBudget(group)
   let shim = null
   try {
+  // Calibration judges under the run's Codex profile too, so every sample of a record shares one environment.
+  const profile = opts.host === 'codex' ? runProfile(dir, home) : null
+  const sameProfile = () => opts.host !== 'codex' || profileHash(home) === profile
   if (opts.host === 'claude') {
     // One shim holds every Claude anchor as its own echo case with only the graders the anchor is labelled for.
     shim = path.join(dir, 'calibration', 'claude-shim')
@@ -1090,5 +1097,5 @@ async function main(args) {
 
 module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun,
   openBudget, begin, charge, lockBudget, judgeReserve, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
-  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, literalPipeline, spawnWait, RULES }
+  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, literalPipeline, spawnWait, runProfile, RULES }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

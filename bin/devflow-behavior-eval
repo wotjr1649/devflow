@@ -457,12 +457,12 @@ const READ_CMDLETS = new Set(['get-content', 'gc', 'cat', 'type', 'get-childitem
   'echo', 'write-host'])
 function literalPipeline(c) {
   const head = '"' + PWSH + '" '
-  let script = c
-  if (c.startsWith(head)) {
-    const m = /^((?:-(?:noprofile|noninteractive|nologo)\s+)*)-command\s+"(.*)"$/s.exec(c.slice(head.length).trim())
-    if (!m) return null
-    script = m[2]
-  }
+  // Only the prompt's pwsh with -NoProfile: a profile could map a drive (even a letter) to a root outside the run folder, and
+  // the listed cmdlets cannot map one. Every recorded actor command used this form.
+  if (!c.startsWith(head)) return null
+  const m = /^((?:-(?:noprofile|noninteractive|nologo)\s+)*)-command\s+"(.*)"$/s.exec(c.slice(head.length).trim())
+  if (!m || !/(^|\s)-noprofile\s/.test(m[1])) return null
+  const script = m[2]
   // Each token stands alone between separators: PowerShell joins adjacent pieces (..'/'x) into one computed argument.
   const token = /'[^']*'(?=[\s|;]|$)|[|;]|[^\s'|;]+(?=[\s|;]|$)/g
   const text = script.replace(/\r?\n/g, ';')

@@ -5,7 +5,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 const ev = require('../bin/devflow-behavior-eval')
-const { loadCases, treeHash, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, claudeArgs, reserve, parseArgs, requiredPairs, checkCalibration, RULES } = ev
+const { loadCases, treeHash, treeDiff, schedule, claudeAttribution, codexTrace, classify, adopt, upperBound, claudeArgs, reserve, parseArgs, requiredPairs, checkCalibration, RULES } = ev
 const tmpdir = require('./tmpdir')
 const ROOT = path.resolve(__dirname, '..')
 const CASES = path.join(ROOT, 'evals', 'behavior')
@@ -14,6 +14,9 @@ const C = ['C', ''].join(':')
 // Claude attribution resolves real paths, so its synthetic absolute paths follow the platform running the test.
 const ABS = process.platform === 'win32' ? C : ''
 const PROGRAMS = (process.env.ProgramFiles || [C, 'Program Files'].join('/')).replaceAll(String.fromCharCode(92), '/')
+// Codex runs every command through the prompt's pwsh -NoProfile; a bare command in a test is that wrapper's script.
+const PW = cmd => '"' + PROGRAMS + '/PowerShell/7/pwsh.exe" -NoProfile -Command "' + cmd + '"'
+const codexAttribution = (cmds, ...rest) => ev.codexAttribution(cmds.map(x => /pwsh\.exe/i.test(x.command) ? x : { ...x, command: PW(x.command) }), ...rest)
 const SKILL = 'plugin/skills/pr-review-workflow/SKILL.md'
 
 test('every behavior case has metadata, a task grader, a proposition and a fixture holding exactly its listed inputs', () => {
@@ -118,7 +121,7 @@ test('Claude attribution needs successful whole-file reads of the skill and ever
 test('Codex attribution counts a read only when a read command names the file and prints its whole text, and refuses unprovable targets', () => {
   const cwd = C + '/Temp/cxb-1/s'
   const contents = { [SKILL]: '# PR workflow\nbody\n', 'project/POLICY.md': 'same\n', 'project/README.md': 'same\n' }
-  const pw = cmd => '"' + PROGRAMS + '/PowerShell/7/pwsh.exe" -Command "' + cmd + '"'
+  const pw = PW
   const read = { command: pw('Get-Content -LiteralPath ./' + SKILL + ' -Raw -Encoding utf8 | ConvertTo-Json -Compress'), exitCode: 0, output: JSON.stringify(contents[SKILL]) + '\n' }
   assert.equal(codexAttribution([read], cwd, contents).ok, true)
   assert.equal(codexAttribution([{ ...read, output: contents[SKILL] }], cwd, contents).ok, true)
@@ -524,4 +527,16 @@ test('integration sixth review: search text is free, path arguments allow no dri
   for (const bad of ["Get-Content -LiteralPath 'ReviewProbe:README.md' -Raw", 'Get-Content ReviewProbe:README.md', "Select-String -Pattern x 'probe:README.md'",
     "Select-String ./project/x -Pattern 'a' -Path 'probe:x'", "Select-String -Path ../x 'a'", "Select-String 'a' 'env:/x'", 'Get-Content -pat ../x', 'Get-Content -pa probe:x'])
     assert.equal(run(bad).ok, false, bad)
+})
+
+test('integration seventh review: only the -NoProfile pwsh is provable, since a profile could remap a drive letter', () => {
+  const contents = { [SKILL]: '# PR workflow\nbody\n' }
+  const cwd = C + '/Temp/cxb-1/s'
+  const script = "Get-Content -LiteralPath '" + cwd + '/' + SKILL + "' -Raw"
+  const exe = '"' + PROGRAMS + '/PowerShell/7/pwsh.exe"'
+  const call = command => ev.codexAttribution([{ command, exitCode: 0, output: contents[SKILL] }], cwd, contents)
+  assert.equal(call(exe + ' -NoProfile -Command "' + script + '"').ok, true)
+  assert.equal(call(exe + ' -NoLogo -NoProfile -Command "' + script + '"').ok, true)
+  for (const bad of [exe + ' -Command "' + script + '"', script, 'pwsh -NoProfile -Command "' + script + '"'])
+    assert.match(call(bad).reason, /not provable/, bad)
 })

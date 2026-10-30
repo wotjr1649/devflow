@@ -588,3 +588,16 @@ test('the profile gate fixes the baseline at the first attempted call and refuse
   assert.equal(gate.same(), false)
   assert.match(gate.fix(), /differ/)
 })
+
+test('PR review thread: a path cmdlet cannot take piped objects, and no navigation property leaves the read object', () => {
+  const contents = { [SKILL]: '# PR workflow\nbody\n' }
+  const cwd = C + '/Temp/cxb-1/s'
+  const read = { command: 'Get-Content -LiteralPath ./' + SKILL + ' -Raw | ConvertTo-Json -Compress', exitCode: 0, output: JSON.stringify(contents[SKILL]) }
+  assert.equal(codexAttribution([read], cwd, contents).ok, true)
+  for (const ok of ['Get-ChildItem -Recurse ./project | Select-Object -ExpandProperty Name', 'Get-Content ./project/a.md; Get-Content ./project/b.md'])
+    assert.equal(codexAttribution([read, { command: ok, exitCode: 0, output: '' }], cwd, contents).ok, true, ok)
+  for (const bad of ['Get-Item . | Select-Object -ExpandProperty Parent | Select-Object -ExpandProperty FullName | Get-ChildItem',
+    "Write-Output './x' | Get-Content", 'Get-ChildItem ./project | Select-String x', 'Get-Item . | Select-Object -ExpandProperty Parent | ConvertTo-Json',
+    'Get-Item ./project | Format-List -Property Root'])
+    assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /not provable/, bad)
+})

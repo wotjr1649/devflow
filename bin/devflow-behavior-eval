@@ -456,6 +456,7 @@ function codexTrace(stdout) {
 const READ_CMDLETS = new Set(['get-content', 'gc', 'cat', 'type', 'get-childitem', 'gci', 'ls', 'dir', 'get-item', 'select-string',
   'sls', 'select-object', 'measure-object', 'sort-object', 'convertto-json', 'out-string', 'format-list', 'format-table', 'write-output',
   'echo', 'write-host'])
+const PATH_CMDLETS = new Set(['get-content', 'gc', 'cat', 'type', 'get-childitem', 'gci', 'ls', 'dir', 'get-item', 'select-string', 'sls'])
 function literalPipeline(c) {
   const head = '"' + PWSH + '" '
   // Only the prompt's pwsh with -NoProfile: a profile could map a drive (even a letter) to a root outside the run folder, and
@@ -468,8 +469,11 @@ function literalPipeline(c) {
   const token = /'[^']*'(?=[\s|;]|$)|[|;]|[^\s'|;]+(?=[\s|;]|$)/g
   const text = script.replace(/\r?\n/g, ';')
   if (text.replace(token, '').trim()) return null
+  // Each statement remembers whether it takes pipeline input (follows a |).
   const statements = [[]]
-  for (const t of text.match(token) || []) t === '|' || t === ';' ? statements.push([]) : statements.at(-1).push(t)
+  for (const t of text.match(token) || []) {
+    if (t === '|' || t === ';') { statements.push([]); statements.at(-1).piped = t === '|' } else statements.at(-1).push(t)
+  }
   // A value of a listed non-path parameter (a search pattern, an encoding, a count) is free text. Every other argument may be a
   // path: there a colon is allowed only as a leading drive letter, so no other drive (built in or defined by a profile) is used.
   const free = /^'[^']*'$|^[\p{L}\p{M}\p{N}_./*:-]+$/u
@@ -477,8 +481,14 @@ function literalPipeline(c) {
   const used = statements.filter(st => st.length)
   if (!used.length) return null
   const kept = []
-  for (const [cmd, ...args] of used) {
+  for (const st of used) {
+    const [cmd, ...args] = st
     if (!READ_CMDLETS.has(cmd)) return null
+    // A cmdlet that takes a path also binds one from piped objects (Get-Item . | ... Parent ... | Get-ChildItem), so it may
+    // only start a pipeline; after a | come only formatters of the text and objects already read.
+    if (st.piped && PATH_CMDLETS.has(cmd)) return null
+    // Nor may a formatter step from a read object to a folder above it through a navigation property.
+    if (args.some(a => /^'?(parent|directory|directoryname|root|psparentpath|pspath|psdrive|psprovider|target|linktarget|resolvedtarget)'?$/.test(a))) return null
     // Select-String takes its pattern as the first positional argument unless -Pattern names it.
     const param = /^-([\p{L}\p{N}]+)(?::(.*))?$/u
     // A prefix that could also name a path parameter (-pat, -pa) is never taken as a value parameter.

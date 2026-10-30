@@ -457,6 +457,7 @@ const READ_CMDLETS = new Set(['get-content', 'gc', 'cat', 'type', 'get-childitem
   'sls', 'select-object', 'measure-object', 'sort-object', 'convertto-json', 'out-string', 'format-list', 'format-table', 'write-output',
   'echo', 'write-host'])
 const PATH_CMDLETS = new Set(['get-content', 'gc', 'cat', 'type', 'get-childitem', 'gci', 'ls', 'dir', 'get-item', 'select-string', 'sls'])
+const OBJECT_CMDLETS = new Set(['get-childitem', 'gci', 'ls', 'dir', 'get-item'])
 function literalPipeline(c) {
   const head = '"' + PWSH + '" '
   // Only the prompt's pwsh with -NoProfile: a profile could map a drive (even a letter) to a root outside the run folder, and
@@ -481,14 +482,15 @@ function literalPipeline(c) {
   const used = statements.filter(st => st.length)
   if (!used.length) return null
   const kept = []
-  for (const st of used) {
+  for (const [n, st] of used.entries()) {
     const [cmd, ...args] = st
     if (!READ_CMDLETS.has(cmd)) return null
     // A cmdlet that takes a path also binds one from piped objects (Get-Item . | ... Parent ... | Get-ChildItem), so it may
-    // only start a pipeline; after a | come only formatters of the text and objects already read.
+    // only start a pipeline; after a | come only formatters of the text already read.
     if (st.piped && PATH_CMDLETS.has(cmd)) return null
-    // Nor may a formatter step from a read object to a folder above it through a navigation property.
-    if (args.some(a => /^'?(parent|directory|directoryname|root|psparentpath|pspath|psdrive|psprovider|target|linktarget|resolvedtarget)'?$/.test(a))) return null
+    // File and folder objects lead outside through their properties (Parent, Directory, Root, also by wildcard), so a cmdlet
+    // that emits them ends its pipeline: only its own listing is printed.
+    if (OBJECT_CMDLETS.has(cmd) && used[n + 1]?.piped) return null
     // Select-String takes its pattern as the first positional argument unless -Pattern names it.
     const param = /^-([\p{L}\p{N}]+)(?::(.*))?$/u
     // A prefix that could also name a path parameter (-pat, -pa) is never taken as a value parameter.

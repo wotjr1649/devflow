@@ -858,9 +858,18 @@ async function calibrate(run, opts) {
   const release = lockBudget(group)
   let shim = null
   try {
-  // Calibration judges under the run's Codex profile too, so every sample of a record shares one environment.
-  const profile = opts.host === 'codex' ? runProfile(dir, home) : null
-  const sameProfile = () => opts.host !== 'codex' || profileHash(home) === profile
+  // Calibration judges under the run's Codex profile too, so every sample of a record shares one environment. The baseline is
+  // the first Codex call's profile: it is fixed only once a call may start (begin() would refuse otherwise, fixing nothing).
+  let profile = null
+  const sameProfile = () => {
+    if (opts.host !== 'codex') return true
+    if (profile === null) {
+      const b = openBudget(group, {})
+      if (b.inflight || !b.known || b.capTokens - b.codexTokens < judgeReserve(b)) return true
+      profile = runProfile(dir, home)
+    }
+    return profileHash(home) === profile
+  }
   if (opts.host === 'claude') {
     // One shim holds every Claude anchor as its own echo case with only the graders the anchor is labelled for.
     shim = path.join(dir, 'calibration', 'claude-shim')
@@ -1056,7 +1065,8 @@ async function main(args) {
     const first = openBudget(group, {})
     if (first.inflight) throw new Error('Budget ' + group + ' has a call without recorded usage: ' + JSON.stringify(first.inflight) + '; confirm its process ended and record its usage before resuming')
     const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
-    const instructions = opts.host === 'codex' ? runProfile(run.dir, home) : null
+    // The Codex profile baseline is fixed just before the run's first Codex slot starts, after the checks that could stop it.
+    let instructions = null
     const led = ledger(group, opts.run)
     for (const s of run.manifest.slots.filter(x => x.host === opts.host)) {
       const file = path.join(run.dir, 'slots', s.slot, 'slot.json')
@@ -1084,6 +1094,7 @@ async function main(args) {
           if (paid !== (resume.votes[g.name] || []).length) throw new Error('Slot ' + s.slot + ' has ' + paid + ' paid ' + g.name + ' judge calls but ' + (resume.votes[g.name] || []).length + ' saved votes; resolve by hand')
         }
       }
+      if (opts.host === 'codex' && instructions === null) instructions = runProfile(run.dir, home)
       const slot = opts.host === 'claude' ? await claudeSlot(run, s, remaining, led) : await codexSlot(run, s, home, led, instructions, resume?.slot ? resume : null)
       // A judge stop keeps the progress file instead of a result, so the slot's remaining judge calls can be resumed later.
       if (slot.judgeStopped) throw new Error('Stopped during the judges of ' + s.slot + ': ' + slot.judgeStopped + '; its progress is kept for resuming')

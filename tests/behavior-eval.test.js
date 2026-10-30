@@ -548,8 +548,9 @@ test('PR review threads: a quoted absolute path keeps its spaces, and calibratio
   assert.equal(codexAttribution([read], cwd, contents).ok, true)
   assert.match(codexAttribution([read, { command: "Get-Content -LiteralPath '" + C + "/Users/Test User/secret.txt' -Raw", exitCode: 0, output: '' }], cwd, contents).reason, /outside/)
   const src = fs.readFileSync(path.join(__dirname, '..', 'bin', 'devflow-behavior-eval'), 'utf8')
-  assert.match(src, /const profile = opts\.host === 'codex' \? runProfile\(dir, home\) : null/)
-  assert.match(src, /const instructions = opts\.host === 'codex' \? runProfile\(run\.dir, home\) : null/)
+  // Both paths fix the baseline lazily, at the first Codex call that may start.
+  assert.match(src, /if \(b\.inflight \|\| !b\.known \|\| b\.capTokens - b\.codexTokens < judgeReserve\(b\)\) return true\n      profile = runProfile\(dir, home\)/)
+  assert.match(src, /if \(opts\.host === 'codex' && instructions === null\) instructions = runProfile\(run\.dir, home\)\n      const slot = /)
 })
 
 test('spawnWait returns a normal exit, and after a timeout reports the stop instead of waiting on', async () => {
@@ -570,5 +571,5 @@ test('the run Codex profile baseline is created once and refuses a changed profi
   assert.throws(() => ev.runProfile(run, home), /differ from the first Codex call/)
   const src = fs.readFileSync(path.join(__dirname, '..', 'bin', 'devflow-behavior-eval'), 'utf8')
   // Calibration takes the group lock before it creates the baseline.
-  assert.ok(src.indexOf('const release = lockBudget(group)\n  let shim = null') < src.indexOf("const profile = opts.host === 'codex' ? runProfile(dir, home) : null"))
+  assert.ok(src.indexOf('const release = lockBudget(group)\n  let shim = null') < src.indexOf('      profile = runProfile(dir, home)'))
 })

@@ -599,6 +599,17 @@ function runProfile(dir, home) {
   return now.profileHash
 }
 
+// A run's profile gate: same() compares with the baseline once there is one; fix() writes it at a Codex call that has passed
+// begin() and is about to spawn, so a call that never starts fixes nothing. A failed fix records that call as not started.
+function profileGate(dir, home) {
+  const file = path.join(dir, 'codex-home.json')
+  const same = () => !fs.existsSync(file) || fs.readFileSync(file, 'utf8') === JSON.stringify({ ...homeIdentity(home), profileHash: profileHash(home) }) + '\n'
+  const fix = (led, entry) => {
+    try { runProfile(dir, home); return null } catch (e) { led.pay({ ...entry, tokens: 0, reason: 'not started: ' + e.message }, false); return e.message }
+  }
+  return { same, fix }
+}
+
 function spawnWait(cmd, args, options, input, timeoutMs) {
   return new Promise(resolve => {
     let stdout = '', timedOut = false, failed = false, killConfirmed = null
@@ -735,13 +746,13 @@ function applyMarker(id, grader, verdict, text) {
 const profileHash = home => { const cfg = path.join(home, 'config.toml'); return sha(globalInstructionsHash(home) + ':' + (fs.existsSync(cfg) ? sha(fs.readFileSync(cfg)) : '-')) }
 
 // resume: the progress file of an interrupted slot (actor done, some judge votes paid); only the missing votes are called.
-async function codexSlot(run, s, home, led, instructions, resume = null) {
+async function codexSlot(run, s, home, led, gate, resume = null) {
   const { dir, cases } = run
   const c = cases[s.case]
   const out = path.join(dir, 'slots', s.slot)
   fs.mkdirSync(out, { recursive: true })
   checkOutsideRepo(os.tmpdir())
-  const sameProfile = () => profileHash(home) === instructions
+  const sameProfile = gate.same
   const task = fs.mkdtempSync(path.join(os.tmpdir(), 'cxb-'))
   const cwd = path.join(task, 's')
   fs.cpSync(path.join(dir, 'bundle', 'evals', 'behavior', c.id, 'fixture', 'project'), path.join(cwd, 'project'), { recursive: true })
@@ -763,6 +774,8 @@ async function codexSlot(run, s, home, led, instructions, resume = null) {
   } else {
   if (!sameProfile()) { fs.rmSync(task, { recursive: true, force: true }); return { ...slot, invalid: 'global instructions changed', stop: true } }
   led.begin({ slot: s.slot, call: 'codex-actor' })
+  const notStarted = gate.fix(led, { slot: s.slot, call: 'codex-actor' })
+  if (notStarted) { fs.rmSync(task, { recursive: true, force: true }); return { ...slot, invalid: 'not started: ' + notStarted, stop: true } }
   const r = await spawnWait('codex', execArgs(), { cwd, env }, c.prompt, 900 * 1000)
   const t = codexTrace(r.stdout)
   const unconfirmed = r.timedOut && !r.killConfirmed
@@ -789,7 +802,7 @@ async function codexSlot(run, s, home, led, instructions, resume = null) {
   slot.votes = {}
   slot.markers = {}
   for (const g of c.graders) {
-    const r = await codexVotes(led, s.slot, g, message, env, sameProfile, progress.votes[g.name] || [], votes => { progress.votes[g.name] = votes; save() })
+    const r = await codexVotes(led, s.slot, g, message, env, gate, progress.votes[g.name] || [], votes => { progress.votes[g.name] = votes; save() })
     // A judge stop keeps the actor and the votes already paid for; unfinished propositions stay without a verdict (undetermined).
     if (r.stop) {
       slot.votes[g.name] = r.votes
@@ -807,10 +820,10 @@ async function codexSlot(run, s, home, led, instructions, resume = null) {
 // The Codex judge of one grader on one text: three clean votes at most, each its own paid call checked against the budget and
 // the profile. Main slots and calibration both use this, so calibration measures the judge path the slots use.
 // prior: votes already paid for in an interrupted slot; onVote is told after every paid vote so it can be saved at once.
-async function codexVotes(led, slotKey, g, text, env, sameProfile, prior = [], onVote = () => {}) {
+async function codexVotes(led, slotKey, g, text, env, gate, prior = [], onVote = () => {}) {
   const votes = [...prior]
   for (let i = votes.length; i < JUDGE_VOTES; i++) {
-    if (!sameProfile()) return { stop: true, judgeStopped: 'global instructions changed before a judge', votes }
+    if (!gate.same()) return { stop: true, judgeStopped: 'global instructions changed before a judge', votes }
     const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
     const call = 'codex-judge ' + g.name + ' ' + (i + 1)
     // A judge is its own paid process: it starts only with room left for twice the largest judge call seen.
@@ -818,6 +831,8 @@ async function codexVotes(led, slotKey, g, text, env, sameProfile, prior = [], o
       fs.rmSync(jdir, { recursive: true, force: true })
       return { stop: true, judgeStopped: 'stopped before ' + call + ': ' + e.message, votes }
     }
+    const notStarted = gate.fix(led, { slot: slotKey, call })
+    if (notStarted) { fs.rmSync(jdir, { recursive: true, force: true }); return { stop: true, judgeStopped: 'not started: ' + notStarted, votes } }
     const j = await spawnWait('codex', execArgs(), { cwd: jdir, env }, judgePrompt(g.criteria, text), 300 * 1000)
     const jt = codexTrace(j.stdout)
     const jUnconfirmed = j.timedOut && !j.killConfirmed
@@ -832,7 +847,7 @@ async function codexVotes(led, slotKey, g, text, env, sameProfile, prior = [], o
     if (jUnconfirmed) return { stop: true, judgeStopped: 'judge stop unconfirmed', kept: jdir, votes }
     fs.rmSync(jdir, { recursive: true, force: true })
     if (jt.tokens === null) return { stop: true, judgeStopped: 'unknown judge usage', votes }
-    if (!sameProfile()) return { stop: true, judgeStopped: 'global instructions changed during a judge', votes }
+    if (!gate.same()) return { stop: true, judgeStopped: 'global instructions changed during a judge', votes }
   }
   const pass = votes.filter(v => v === 'PASS').length, fail = votes.filter(v => v === 'FAIL').length
   return { votes, verdict: pass >= 2 ? 'PASS' : fail >= 2 ? 'FAIL' : null }
@@ -858,18 +873,8 @@ async function calibrate(run, opts) {
   const release = lockBudget(group)
   let shim = null
   try {
-  // Calibration judges under the run's Codex profile too, so every sample of a record shares one environment. The baseline is
-  // the first Codex call's profile: it is fixed only once a call may start (begin() would refuse otherwise, fixing nothing).
-  let profile = null
-  const sameProfile = () => {
-    if (opts.host !== 'codex') return true
-    if (profile === null) {
-      const b = openBudget(group, {})
-      if (b.inflight || !b.known || b.capTokens - b.codexTokens < judgeReserve(b)) return true
-      profile = runProfile(dir, home)
-    }
-    return profileHash(home) === profile
-  }
+  // Calibration judges under the run's Codex profile too, through the same gate as the slots.
+  const gate = profileGate(dir, home)
   if (opts.host === 'claude') {
     // One shim holds every Claude anchor as its own echo case with only the graders the anchor is labelled for.
     shim = path.join(dir, 'calibration', 'claude-shim')
@@ -898,7 +903,7 @@ async function calibrate(run, opts) {
         result = { ...bind, verdicts: {}, votes: {} }
         for (const name of Object.keys(a.labels)) {
           const g = cases[a.case].graders.find(x => x.name === name)
-          const r = await codexVotes(led, calKey(opts, a), g, a.text, cleanEnv(home), sameProfile)
+          const r = await codexVotes(led, calKey(opts, a), g, a.text, cleanEnv(home), gate)
           if (r.stop) throw new Error('Calibration stopped at ' + a.id + ': ' + r.judgeStopped)
           result.votes[name] = r.votes
           result.verdicts[name] = r.verdict === 'PASS' ? 'negative' : r.verdict === 'FAIL' ? 'positive' : 'undetermined'
@@ -1065,8 +1070,7 @@ async function main(args) {
     const first = openBudget(group, {})
     if (first.inflight) throw new Error('Budget ' + group + ' has a call without recorded usage: ' + JSON.stringify(first.inflight) + '; confirm its process ended and record its usage before resuming')
     const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
-    // The Codex profile baseline is fixed just before the run's first Codex slot starts, after the checks that could stop it.
-    let instructions = null
+    const gate = opts.host === 'codex' ? profileGate(run.dir, home) : null
     const led = ledger(group, opts.run)
     for (const s of run.manifest.slots.filter(x => x.host === opts.host)) {
       const file = path.join(run.dir, 'slots', s.slot, 'slot.json')
@@ -1094,8 +1098,7 @@ async function main(args) {
           if (paid !== (resume.votes[g.name] || []).length) throw new Error('Slot ' + s.slot + ' has ' + paid + ' paid ' + g.name + ' judge calls but ' + (resume.votes[g.name] || []).length + ' saved votes; resolve by hand')
         }
       }
-      if (opts.host === 'codex' && instructions === null) instructions = runProfile(run.dir, home)
-      const slot = opts.host === 'claude' ? await claudeSlot(run, s, remaining, led) : await codexSlot(run, s, home, led, instructions, resume?.slot ? resume : null)
+      const slot = opts.host === 'claude' ? await claudeSlot(run, s, remaining, led) : await codexSlot(run, s, home, led, gate, resume?.slot ? resume : null)
       // A judge stop keeps the progress file instead of a result, so the slot's remaining judge calls can be resumed later.
       if (slot.judgeStopped) throw new Error('Stopped during the judges of ' + s.slot + ': ' + slot.judgeStopped + '; its progress is kept for resuming')
       fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -1108,5 +1111,5 @@ async function main(args) {
 
 module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun,
   openBudget, begin, charge, lockBudget, judgeReserve, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
-  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, literalPipeline, spawnWait, runProfile, RULES }
+  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, literalPipeline, spawnWait, runProfile, profileGate, RULES }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

@@ -115,11 +115,10 @@ node bin/devflow-behavior-eval summary --run <name>
     결과 폴더에 둔다.
   - CODEX_HOME에 다른 devflow가 설치돼 있어도 된다. 결과에는 실사용 여부(`default`·`override`)를 남긴다.
 - 귀속: 다음을 모두 만족할 때만 유효하다.
-  - actor가 실행 폴더의 `plugin/skills/pr-review-workflow/SKILL.md`와 prompt에 나열된 project 입력을 모두 전문 읽었다.
-  - 실행 폴더 밖은 어떤 경로도 건드리지 않았다.
+  - actor가 실행 폴더의 skill과 prompt에 나열된 project 입력을 모두 전문 읽었고, 폴더 밖은 건드리지 않았다.
   - 읽기의 증거: Claude는 성공한 tool_result가 있는 offset·limit 없는 Read, Codex는 성공한 명령 출력이 파일 전문(JSON 또는
     원문)과 같은 것이다.
-  - Codex 명령은 `-NoProfile` pwsh의 읽기·출력 cmdlet pipeline(경로 cmdlet은 처음, 객체 cmdlet은 끝)과 리터럴 인자만 쓴다. 경로 인자에 드라이브 문자 외 콜론, 폴더 밖 절대 경로, `~`, UNC, `..`가 있거나 그 밖의 명령이면 invalid다.
+  - Codex 명령은 `-NoProfile` pwsh의 읽기·출력 cmdlet pipeline(경로 cmdlet은 처음, 객체 cmdlet은 끝, `|` 뒤 속성 선택 없음)과 리터럴 인자만 쓴다. 경로 인자에 드라이브 문자 외 콜론, 폴더 밖 절대 경로, `~`, UNC, `..`가 있거나 그 밖의 명령이면 invalid다.
 - 판정 부류(슬롯×명제)
   - positive·negative·invalid·undetermined로 나눈다. 과업 grader가 FAIL이면 invalid, 판정이 없으면 undetermined다.
   - 실행 오류, 시간 초과, 응답 없음, 귀속 실패도 invalid다.

@@ -595,11 +595,13 @@ test('PR review thread: a path cmdlet cannot take piped objects, and no navigati
   const read = { command: 'Get-Content -LiteralPath ./' + SKILL + ' -Raw | ConvertTo-Json -Compress', exitCode: 0, output: JSON.stringify(contents[SKILL]) }
   assert.equal(codexAttribution([read], cwd, contents).ok, true)
   for (const ok of ['Get-ChildItem -Recurse ./project', 'Get-Content ./project/a.md; Get-Content ./project/b.md', 'Select-String -Pattern parent ./project/a.md',
-    "Select-String -Pattern 'x' ./project/a.md | Select-Object -ExpandProperty Line"])
+    "Select-String -Pattern 'x' ./project/a.md | Select-Object -First 3", 'Get-Content -Raw ./project/a.md | ConvertTo-Json -Depth 2 -EscapeHandling EscapeNonAscii'])
     assert.equal(codexAttribution([read, { command: ok, exitCode: 0, output: '' }], cwd, contents).ok, true, ok)
   for (const bad of ['Get-Item . | Select-Object -ExpandProperty Parent | Select-Object -ExpandProperty FullName | Get-ChildItem',
     "Write-Output './x' | Get-Content", 'Get-ChildItem ./project | Select-String x', 'Get-Item . | Select-Object -ExpandProperty Parent | ConvertTo-Json',
     'Get-Item ./project | Format-List -Property Root', 'Get-Item . | Select-Object -ExpandProperty Par* | Select-Object -ExpandProperty Par* | Format-List -Property CreationTime',
-    'Get-Item . | ConvertTo-Json -Depth 3', 'Get-ChildItem ./project | Sort-Object Name'])
+    'Get-Item . | ConvertTo-Json -Depth 3', 'Get-ChildItem ./project | Sort-Object Name',
+    'Get-Content ./project/a.md | Select-Object -ExpandProperty PSDrive | Select-Object -ExpandProperty Used', 'Get-Content ./project/a.md | Select-Object PSParentPath',
+    'Get-Content ./project/a.md | Format-List -Pr *', "Select-String -Pattern 'x' ./project/a.md | Select-Object -Exp Path"])
     assert.match(codexAttribution([read, { command: bad, exitCode: 0, output: '' }], cwd, contents).reason, /not provable/, bad)
 })

@@ -491,10 +491,18 @@ function literalPipeline(c) {
     // File and folder objects lead outside through their properties (Parent, Directory, Root, also by wildcard), so a cmdlet
     // that emits them ends its pipeline: only its own listing is printed.
     if (OBJECT_CMDLETS.has(cmd) && used[n + 1]?.piped) return null
-    // Select-String takes its pattern as the first positional argument unless -Pattern names it.
     const param = /^-([\p{L}\p{N}]+)(?::(.*))?$/u
     // A prefix that could also name a path parameter (-pat, -pa) is never taken as a value parameter.
     const isValue = n => n.length >= 3 && VALUE_PARAMS.some(v => v.startsWith(n)) && !['path', 'literalpath', 'pspath'].some(v => v.startsWith(n))
+    // Text read by Get-Content or Select-String also carries properties that lead outside (PSDrive, PSParentPath), so after a |
+    // nothing selects a property: no positional argument (it is -Property there) and no -Property, -ExpandProperty or
+    // -ExcludeProperty under any prefix PowerShell would accept; a value parameter's own value is skipped.
+    if (st.piped) for (let i = 0; i < args.length; i++) {
+      const p = param.exec(args[i])
+      if (!p || ['property', 'expandproperty', 'excludeproperty'].some(v => v.startsWith(p[1]))) return null
+      if (p[2] === undefined && isValue(p[1]) && i + 1 < args.length && !param.test(args[i + 1])) i++
+    }
+    // Select-String takes its pattern as the first positional argument unless -Pattern names it.
     let pattern = (cmd === 'select-string' || cmd === 'sls') && !args.some(a => param.test(a) && isValue(param.exec(a)[1]) && 'pattern'.startsWith(param.exec(a)[1]))
     const out = [cmd]
     for (let i = 0; i < args.length; i++) {

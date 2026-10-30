@@ -1,0 +1,5 @@
+{
+  "integration": "local-merge",
+  "highRisk": [],
+  "verify": "node tests/crates.test.js"
+}

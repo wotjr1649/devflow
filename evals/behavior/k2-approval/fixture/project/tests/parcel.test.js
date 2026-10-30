@@ -1,0 +1,7 @@
+const assert = require('node:assert/strict')
+const { steps } = require('../src/parcel')
+assert.equal(steps(0), 0)
+assert.equal(steps(1), 1)
+assert.equal(steps(500), 1)
+assert.equal(steps(501), 2)
+assert.equal(steps(1000), 2)

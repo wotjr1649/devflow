@@ -9,8 +9,8 @@
   바뀌었을 때.
 - 돌리지 않는다: 스킬 본문, references, 훅, 에이전트, AGENTS.md만 바뀌었을 때. eval 실행은 격리되어 대상 플러그인만
   로드되고, 호스트는 스킬 목록만 보고 자동 호출을 정하므로 이 변경은 결과를 바꾸지 않는다([host-facts](../research/host-facts.md)).
-- 결과 eval은 두지 않는다. 스킬 본문의 변경은 리뷰와 사이클 지표(개입, 오탐, 차단)로 보고, 개입이 늘거나 같은 실수가
-  반복되면 결과 eval 장치를 만드는 Issue를 연다.
+- 스킬 본문의 변경은 리뷰와 사이클 지표(개입, 오탐, 차단)로 본다. 개입이 늘거나 같은 실수가 반복되면 결과 eval 장치를 만드는
+  Issue를 연다. 지금 있는 결과 eval은 아래 "결과 eval" 절의 pr-review-workflow 보고 결함 측정 하나다(#99).
 - Claude eval은 사용자 터미널에서 돌린다. 세션 안에서 띄우면 인증이 없어 멈춘다. 리포트는 `--no-publish`로 게시하지 않고
   결과는 체크포인트와 장부에 남긴다(#45). 판정은 오류 난 실행을 빼고 트리거 80% 이상,
   오탐 10% 이하다. ship 체크포인트에 돌렸는지와 판별 근거를 남긴다.
@@ -69,3 +69,79 @@ node bin/devflow-codex-eval --full --repetitions 3 --budget-tokens <new-total-bu
   stderr와 세션 기록은 저장하거나 읽지 않는다. 결과 폴더는 git이 무시한다. 실행 오류와 평가 실패는 종료 코드 1이다.
 
 실행 방식과 대안의 이유: [ADR-0016](../design/decisions/ADR-0016-codex-trigger-eval.md).
+
+## 결과 eval
+
+skill 본문 후보의 반복 보고 결함을 같은 사례·순서·반복 수로 기준선과 비교한다(#99). 트리거 eval 계약은 그대로다. 수동 opt-in이며
+CI는 `tests/behavior-eval.test.js`만 돌린다.
+
+```bash
+node bin/devflow-behavior-eval prepare --run <name> --arm A=<기준선 rev> --arm B=<후보 rev> --expect-diff skills/pr-review-workflow/SKILL.md --budget <group> [--budget-usd <상한> --budget-tokens <상한>] [--cases <id,...>] (--pilot | --calibration <record>... --anchors-final <file> [--adjudicate <case/grader,...>])
+node bin/devflow-behavior-eval run --run <name> --host claude|codex
+node bin/devflow-behavior-eval calibrate --run <name> --host claude|codex --anchors <file>
+node bin/devflow-behavior-eval summary --run <name>
+```
+
+- 사례: `evals/behavior/<id>/`
+  - `prompt.md`의 frontmatter tag는 `[behavior, <host>, <id>]`다.
+  - `graders/*.md`는 llm grader이고 `task.md`는 과업 수행 확인이다. `fixture/project/`, `case.yaml`, `scaffold.sh`도 둔다.
+  - fixture는 공개 가능한 합성 자료이며 prompt의 입력 목록과 파일이 같다. 목록 없는 자유 탐색 사례는 `required-reads.txt`에 귀속이 요구할 읽기를 둔다. fixture 안의 `.gitignore`와 상관없이 모든 파일을 추적한다.
+- arm: 고정 revision의 추적 파일만 `git archive`로 뽑는다. 두 arm의 차이가 `--expect-diff` 목록과 다르면 멈춘다. 사례·grader는 실행기를
+  부른 커밋(평가 묶음) 하나에서 뽑고, 이 묶음과 실행기는 커밋된 상태여야 한다. `.work/behavior-eval/<run>/manifest.json`에 해시를 남긴다.
+  이어 실행은 미실행 슬롯만 하고, 실행기·실행표·모델 설정·arm·사례·shim·bash가 바뀌면 멈춘다.
+  Codex profile·전역 지침은 run의 첫 Codex 호출 시도(보정 포함) 때 값과 호출마다 같아야 한다. 바뀌면 새 run을 준비한다.
+- 관문 미달 grader의 재판정(`prepare --adjudicate <case/grader,...>`, 사용자 결정으로만): 그 grader가 어떤 보정 기록에서 유효 양성을 모두 검출한 경우에만
+  준비를 허용한다. 본 실행에서 그 셀의 judge 양성은 두 검수자가 독립 확인해 run의 `adjudication.json`에 검수자별 값(`{ p1x, p24 }`)을 남긴다.
+  두 값이 모두 있고 같을 때만 그 판정을 쓰고, 그 밖에는 undetermined다. judge 음성은 그대로 쓴다. `summary`는 바뀐 슬롯을 `adjudicated`로 보고한다.
+- 보정(`calibrate`): 앵커 파일의 각 앵커(사례, 본문, grader별 라벨)를 본 실행과 같은 grader·judge로 판정한다. Claude는 claude-haiku-5-5가 앵커를
+  그대로 출력하게 하고(출력이 앵커와 다르면 그 표본은 invalid), Codex는 슬롯과 같은 judge 함수 3표다. 앵커마다 결과 파일을 남기고, 기록은
+  표본마다 앵커·결과 파일의 해시를 담는다. 채택 run 준비는 결과 파일이 그 표본의 앵커·사례·본문 해시를 가리키는지, 보정 run의 bundle에
+  있던 grader가 현재와 같은지 대조하고, `--anchors-final`의 최종 라벨과 다른 표본은 뺀다. 보조 표지가 있는 grader는 본 실행처럼 표지를
+  적용해 계산한다.
+- 채택 run은 실행기에 고정된 필수 사례·명제 목록(holdout `h1-claude`·`h1-codex`의 D1·D2·D3 포함)이 모두 있어야 준비된다.
+  모든 grader는 보정 기록을 통과해야 한다. 기록에는 grader 해시와 표본마다 라벨·판정·표본 해시가 있다. 실행기는 그 표본에서
+  양·음성 각 5개 이상, 양성 검출률 80%, 음성 일치율 90% 이상을 다시 계산한다. pilot은 보정 없이 기계적 동작만 확인하며 채택 판정을 내지 않는다.
+- 실행표: 사례마다 ABBA 7블록으로 arm별 14슬롯을 만든다. pilot은 사례마다 arm별 1슬롯이며 채택 판정에 쓰지 않는다.
+- Claude: 사례 폴더와 arm만 담은 shim plugin을 대상으로 슬롯마다 다음을 실행한다.
+  - 명령: `claude plugin eval <shim> --case <id> --runs 1 --ablation none --threshold 0 --scaffold --keep-temp --no-publish --trust-plugin --model claude-opus-5-5 --judge-model claude-sonnet-5-5 --max-cost-usd <잔여> --json --output-dir`
+  - scaffold는 `CLAUDE_CODE_GIT_BASH_PATH`와 PATH 앞에 둔 Git for Windows bash로 `project/`와 `plugin/`을 만든다.
+  - 사용자 로그인을 상속한 사용자 터미널(Herdr pane 포함)에서 돌린다. 인증을 복사하거나 바꾸지 않는다.
+  - 결과 JSON이 한 사례·한 실행·사례의 grader 수와 다르거나, 오류·비정상 종료·비용 미상이면 그 슬롯을 invalid로 두고 멈춘다.
+  - trace를 결과 폴더로 옮긴 뒤 남긴 임시 폴더를 지운다. 실패하면 남기고 멈춘다.
+- Codex: 저장소 밖 임시 폴더에 같은 `project/`·`plugin/`을 node로 복사한다.
+  - 명령은 트리거 eval과 같다: `codex exec` read-only, gpt-6.1-sol/high, 최소 환경 변수.
+  - 판정은 같은 criteria로 `codex exec` judge를 3회 돌려 2표 이상을 따른다. 입력 개수(B4 D2, K1)와 기록 명령(B6 D5)에는 결정론
+    보조 표지가 있고, 표지와 판정이 다르면 그 명제는 undetermined다. 정상 종료한 judge만 투표한다. actor stdout은 검수용으로
+    결과 폴더에 둔다.
+  - CODEX_HOME에 다른 devflow가 설치돼 있어도 된다. 결과에는 실사용 여부(`default`·`override`)를 남긴다.
+- 귀속: 다음을 모두 만족할 때만 유효하다.
+  - actor가 실행 폴더의 skill과 prompt에 나열된 project 입력을 모두 전문 읽었고, 폴더 밖은 건드리지 않았다.
+  - 읽기의 증거: Claude는 성공한 tool_result가 있는 offset·limit 없는 Read, Codex는 성공한 명령 출력이 파일 전문(JSON 또는
+    원문)과 같은 것이다.
+  - Codex 명령은 `-NoProfile` pwsh의 읽기·출력 cmdlet pipeline(경로 cmdlet은 처음, 객체 cmdlet은 끝, `|` 뒤 속성 선택 없음)과 리터럴 인자만 쓴다. 경로 인자에 드라이브 문자 외 콜론, 폴더 밖 절대 경로, `~`, UNC, `..`가 있거나 그 밖의 명령이면 invalid다.
+- 판정 부류(슬롯×명제)
+  - positive·negative·invalid·undetermined로 나눈다. 과업 grader가 FAIL이면 invalid, 판정이 없으면 undetermined다.
+  - 실행 오류, 시간 초과, 응답 없음, 귀속 실패도 invalid다.
+  - 실행 폴더의 파일이 하나라도 바뀌면 invalid이고 전체 실행을 멈춘다.
+  - 대체하지 않는다.
+- 채택(`summary`)
+  - 모든 셀의 양 arm 14슬롯이 있어야 한다.
+  - 수정 셀과 반대 조건 셀은 전부 valid여야 한다.
+  - 수정 셀은 명제마다 후보 ≤ 기준선이고, 합은 엄격히 작아야 한다.
+  - 회귀 셀은 후보의 invalid·undetermined를 positive로 세어도 후보 ≤ 기준선이어야 한다.
+  - 반대 조건은 후보 ≤ 기준선이고 2/14 이하여야 한다.
+  - 0건 셀의 상한은 유효 판정 수 n의 단측 95% 정확 이항 상한이다(행 독립 가정). 채택은 회귀 부재나 해소의 증명이 아니다.
+- 예산
+  - 승인된 예산마다 그룹(`.work/behavior-eval/budgets/<group>.json`)을 두고, 상한은 만들 때 고정한다. 그 그룹을 쓰는 모든 run의
+    Claude `costUsd`+`judgeCostUsd`와 Codex actor·judge 사용량을 호출이 끝날 때마다 누적한다.
+  - run은 prepare 때 그룹 하나에 묶인다. 한 그룹은 잠금 파일로 한 번에 한 run만 쓴다.
+  - 사용량을 알 수 없으면 멈춘다. 유료 호출 전에 그룹에 진행 표지를 남기고, 사용량을 기록할 때 지운다. 프로세스 종료를 확인하지
+    못하면 표지를 남긴다. 표지가 남은 그룹은 그 호출의 종료와 사용량을 확인하기 전에는 어떤 run도 시작하지 않는다.
+  - 한 슬롯은 도중에 끊을 수 없으므로, 남은 예산이 지금까지 본 가장 큰 슬롯의 두 배(최소 Claude $1, Codex 20만 토큰)보다 작으면
+    다음 슬롯을 시작하지 않는다. 이 규칙으로도 진행 중인 슬롯의 초과는 완전히 막지 못한다.
+- 보존
+  - 판정·집계·해시는 `.work/behavior-eval/`(git이 무시)에 둔다.
+  - 응답 원문과 trace는 판정·검수 동안만 같은 곳에 두고, Issue를 마칠 때 지운다.
+  - 공개 텍스트에는 집계와 결론만 쓰고 응답을 인용하지 않는다.
+
+실행 방식과 대안의 이유: [ADR-0029](../design/decisions/ADR-0029-behavior-eval.md).

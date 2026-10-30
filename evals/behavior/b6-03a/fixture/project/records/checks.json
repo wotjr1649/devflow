@@ -1,0 +1,22 @@
+{
+  "kind": "hypothetical inputs; not actual observations",
+  "local": {
+    "kind": "local",
+    "command": "git diff --check df8fb182a64160718f8f1a34a41d92a2173f81e2..33c9ea7fad42e07d70527e39381298d15ccf5729",
+    "environment": {
+      "platform": "win32",
+      "git": "git version 2.55.0.windows.3",
+      "shell": "PowerShell 7.6.6"
+    },
+    "revision": "33c9ea7fad42e07d70527e39381298d15ccf5729",
+    "result": "pass",
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "",
+    "observation": "supplied evaluator record; not run by the reviewer"
+  },
+  "ci": {
+    "configured": false,
+    "policy": "POLICY.md states no hosted CI"
+  }
+}

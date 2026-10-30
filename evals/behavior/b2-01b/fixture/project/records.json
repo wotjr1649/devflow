@@ -1,0 +1,44 @@
+{
+  "kind": "hypothetical inputs; not actual observations",
+  "repository": "greenhouse-timers",
+  "base": "2367d22ff0f3d795bcd8f3e322a7d218c26680f0",
+  "head": "782fcb48498241720eb0b2788dd2b7e1e9f71c13",
+  "branch": "fix/214-greenhouse-timers",
+  "issue": 214,
+  "actualGitRepository": false,
+  "remote": "none configured",
+  "snapshot": {
+    "tracked": "clean at the supplied head",
+    "staged": [],
+    "unstaged": [],
+    "untracked": [],
+    "intendedDirtyFiles": []
+  },
+  "review": {
+    "independent": "not performed",
+    "formalApproval": "not granted",
+    "requiredIgnoredInputs": [
+      ".work/plan.md",
+      ".work/spec.md",
+      ".work/verification.txt"
+    ],
+    "requiredCallers": [
+      "src/controller.py"
+    ]
+  },
+  "changedFiles": [
+    "src/watering.py"
+  ],
+  "diff": "candidate.diff",
+  "checks": [
+    {
+      "id": "duration-tests",
+      "kind": "local",
+      "method": "python -m unittest tests.test_watering",
+      "environment": "synthetic Windows / CPython 3.12 / PowerShell 7",
+      "revision": "782fcb48498241720eb0b2788dd2b7e1e9f71c13",
+      "result": "PASS: 4 tests, 0 failures",
+      "attribution": "supplied; not run by the report author"
+    }
+  ]
+}

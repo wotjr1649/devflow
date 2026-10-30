@@ -1,0 +1,16 @@
+{
+  "kind": "hypothetical inputs; not actual observations",
+  "branch": "fix/68-m0-review-fixture",
+  "base": "df8fb182a64160718f8f1a34a41d92a2173f81e2",
+  "head": "33c9ea7fad42e07d70527e39381298d15ccf5729",
+  "subject": "docs: correct receive spelling",
+  "diff": "candidate.diff",
+  "mode": "M0",
+  "repositoryState": "clean tracked tree after the candidate commit (supplied)",
+  "ignoredInputs": ".work plan/spec and records are supplied directly",
+  "remote": "none configured",
+  "issue": {
+    "provided": false,
+    "existence": "unverified"
+  }
+}

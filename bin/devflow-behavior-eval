@@ -1,0 +1,1134 @@
+#!/usr/bin/env node
+'use strict'
+// Opt-in outcome measurement of review-report behavior (Issue #99). Contract: docs/specs/eval.md, "결과 eval". Never run by CI.
+// The trigger runner stays byte-identical so its continuation checks keep matching; only its exported helpers are reused.
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const crypto = require('node:crypto')
+const { spawn, spawnSync } = require('node:child_process')
+const { cleanEnv, execArgs, checkOutsideRepo, homeIdentity, globalInstructionsHash } = require('./devflow-codex-eval')
+const ROOT = path.resolve(__dirname, '..')
+const norm = s => s.replaceAll('\\', '/')
+const CASES = path.join(ROOT, 'evals', 'behavior')
+const WORK = path.join(ROOT, '.work', 'behavior-eval')
+const CLAUDE = { model: 'claude-opus-5-5', judge: 'claude-sonnet-5-5' }
+const PROGRAMS = norm(process.env.ProgramFiles || path.join(process.env.SystemDrive || 'C:', 'Program Files'))
+const BASH = PROGRAMS + '/Git/bin/bash.exe'
+const SKILL = 'plugin/skills/pr-review-workflow/SKILL.md'
+const PWSH = (PROGRAMS + '/PowerShell/7/pwsh.exe').toLowerCase()
+const JUDGE_VOTES = 3
+const KILL_GRACE_MS = 30 * 1000
+const SLOTS = 14
+const sha = b => crypto.createHash('sha256').update(b).digest('hex')
+// The trigger runner's helpers fix the Codex model, effort and arguments, so both files are part of the runner identity.
+const RUNNER_HASH = sha(Buffer.concat([fs.readFileSync(__filename), fs.readFileSync(path.join(__dirname, 'devflow-codex-eval'))]))
+// Every case and proposition an adoption run must hold (design v4 section 6); a missing one blocks adoption.
+const RULES = {
+  fixed: [['b1-07a', 'd1'], ['b3-02b', 'd1'], ['b3-02b', 'd3'], ['b4-03b', 'd2']],
+  counter: [['k1-count', 'count'], ['k2-approval', 'approval']],
+  regression: [['b1-07a', 'd6'], ['b2-01b', 'd1'], ['b4-03b', 'd1'], ['b5-12a', 'd4'], ['b6-03a', 'd5'], ['b7-c03', 'exclusion']],
+  // Holdout cases and the propositions each must carry; their positives are compared like regression cells.
+  holdout: { 'h1-claude': ['d1', 'd2', 'd3'], 'h1-codex': ['d1', 'd2', 'd3'] },
+  counterMax: 2,
+}
+
+// Case folders: prompt.md (frontmatter tags [behavior, <host>, <id>]), graders/*.md (llm), fixture/project, case.yaml, scaffold.sh.
+function loadCases(dir = CASES) {
+  return fs.readdirSync(dir).sort().map(id => {
+    if (!/^[a-z][0-9]?[a-z]?-[a-z0-9-]+$/.test(id)) throw new Error('Invalid behavior case name: ' + id)
+    const text = fs.readFileSync(path.join(dir, id, 'prompt.md'), 'utf8')
+    const fm = /^---\n([\s\S]*?)\n---\n\n/.exec(text)
+    const tags = fm && /^tags: \[behavior, (claude|codex), ([a-z0-9-]+)\]$/m.exec(fm[1])
+    if (!tags || tags[2] !== id) throw new Error('Missing behavior metadata in ' + id)
+    const graders = fs.readdirSync(path.join(dir, id, 'graders')).filter(f => f.endsWith('.md')).sort().map(f => {
+      const g = fs.readFileSync(path.join(dir, id, 'graders', f), 'utf8')
+      const m = /^---\ntype: llm\nweight: 1\n---\n\n([\s\S]+)$/.exec(g)
+      if (!m) throw new Error('Grader is not a plain llm grader: ' + id + '/' + f)
+      return { name: f.slice(0, -3), criteria: m[1], hash: sha(g) }
+    })
+    if (!graders.some(g => g.name === 'task') || graders.length < 2) throw new Error('Case needs a task grader and a proposition: ' + id)
+    const prompt = text.slice(fm[0].length)
+    const listed = /^Project inputs: (.+)\.$/m.exec(prompt)
+    // A prompt without an input list (free exploration) names the reads attribution requires in required-reads.txt, which the
+    // actor never sees (scaffold copies only fixture/project).
+    const required = fs.existsSync(path.join(dir, id, 'required-reads.txt')) ? fs.readFileSync(path.join(dir, id, 'required-reads.txt'), 'utf8').split('\n').map(l => l.trim()).filter(Boolean) : []
+    if (!listed && !required.length) throw new Error('Case needs a Project inputs list or required-reads.txt: ' + id)
+    return { id, host: tags[1], prompt, inputs: listed ? listed[1].split('; ') : required, graders, hash: treeHash(path.join(dir, id)).hash }
+  })
+}
+
+// Every entry under a folder by relative path, without following links: files by bytes, folders as entries, so an added or
+// removed empty folder also changes the hash.
+function treeHash(dir, prefix = '') {
+  const files = {}
+  const walk = rel => {
+    for (const name of fs.readdirSync(path.join(dir, rel)).sort()) {
+      const entry = rel ? rel + '/' + name : name
+      const st = fs.lstatSync(path.join(dir, entry))
+      if (st.isDirectory()) { files[prefix + entry + '/'] = 'dir'; walk(entry) }
+      else if (st.isFile()) files[prefix + entry] = sha(fs.readFileSync(path.join(dir, entry)))
+      else throw new Error('Link or special file in ' + entry)
+    }
+  }
+  walk('')
+  return { files, hash: sha(JSON.stringify(Object.entries(files).sort())) }
+}
+const joinTrees = (...trees) => {
+  const files = Object.assign({}, ...trees.map(t => t.files))
+  return { files, hash: sha(JSON.stringify(Object.entries(files).sort())) }
+}
+const treeDiff = (a, b) => [...new Set([...Object.keys(a.files), ...Object.keys(b.files)])].filter(f => a.files[f] !== b.files[f]).sort()
+
+// ABBA in blocks of four, seven blocks per case: 14 slots per arm, in a fixed interleaved order.
+function schedule(cases, blocks = SLOTS / 2) {
+  const slots = []
+  for (const c of cases) for (let b = 0; b < blocks; b++) {
+    ['A', 'B', 'B', 'A'].forEach((arm, i) => slots.push({ slot: `${c.id}-${String(b * 2 + (i < 2 ? 1 : 2)).padStart(2, '0')}-${arm}`, case: c.id, host: c.host, arm }))
+  }
+  return slots
+}
+
+function git(args, cwd = ROOT) {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 })
+  if (r.status !== 0) throw new Error('git ' + args[0] + ' failed: ' + String(r.stderr).slice(0, 300))
+  return r.stdout.trim()
+}
+// Tracked files only, from a fixed revision: ignored private files never reach the actor.
+function extract(rev, dest, paths = []) {
+  fs.mkdirSync(dest, { recursive: true })
+  git(['archive', '--format=tar', '-o', path.join(dest, '.archive.tar'), rev, ...(paths.length ? ['--', ...paths] : [])])
+  const r = spawnSync('tar', ['-xf', '.archive.tar'], { cwd: dest, encoding: 'utf8', windowsHide: true })
+  fs.rmSync(path.join(dest, '.archive.tar'))
+  if (r.status !== 0) throw new Error('tar failed for ' + rev)
+}
+
+const holdoutPairs = () => Object.entries(RULES.holdout).flatMap(([id, props]) => props.map(p => [id, p]))
+// Every cell an adoption run must hold, fixed by the design, not taken from whichever cases exist.
+const requiredPairs = () => [...RULES.fixed, ...RULES.counter, ...RULES.regression, ...holdoutPairs()]
+
+// A calibration record (design section 5) lists, per grader, the labelled samples it was run on: label, verdict and the sample's
+// hash. Rates are recomputed here from those samples; a record that only states rates proves nothing.
+// With evidence, each sample must also match its anchor in the anchors file named by hash and its own result file on disk.
+// positivesOnly (for --adjudicate): every valid labelled positive must be detected, at least 5 of them; negatives are not gated.
+// With final labels (anchors id -> labels), a sample counts only while its label is still the final one for that grader.
+// Evidence binding: the result file names the sample's anchor, the anchor belongs to the case, and the calibration run's own bundle
+// held this exact grader text (its folder sits two levels above the evidence folder, as calibrate writes it).
+function checkCalibration(record, cases, evidence = null, { positivesOnly = false, finalLabels = null } = {}) {
+  const failed = []
+  let anchors = null
+  if (evidence) {
+    try {
+      const text = fs.readFileSync(record.anchorsPath, 'utf8')
+      if (sha(text) === record.anchorsHash) anchors = new Map(JSON.parse(text).map(a => [a.id, a]))
+    } catch {}
+  }
+  const runBundle = evidence ? path.join(path.dirname(path.dirname(evidence)), 'bundle', 'evals', 'behavior') : null
+  const graderAtRun = (caseId, name) => { try { return sha(fs.readFileSync(path.join(runBundle, caseId, 'graders', name + '.md'))) } catch { return null } }
+  // Results written before they carried their own identity are proven by what the run kept from that moment: for Claude the echo
+  // case it judged (anchor.md and the grader file in the calibration shim), for Codex an anchors file unchanged since before the
+  // anchor's first paid judge call in the budget ledger.
+  const runDir = evidence ? path.dirname(path.dirname(evidence)) : null
+  let ledgerEntries = null
+  const legacyProven = (s, g) => {
+    if (record.host === 'claude') {
+      const cdir = path.join(path.dirname(evidence), 'claude-shim', 'evals', s.anchor)
+      try { return sha(fs.readFileSync(path.join(cdir, 'anchor.md'), 'utf8')) === s.sampleHash && sha(fs.readFileSync(path.join(cdir, 'graders', g.name + '.md'))) === g.hash } catch { return false }
+    }
+    try {
+      ledgerEntries ??= JSON.parse(fs.readFileSync(budgetPath(JSON.parse(fs.readFileSync(path.join(runDir, 'manifest.json'), 'utf8')).budget), 'utf8')).entries
+      // Run-scoped keys when this run wrote them; the unscoped key only for a run from before run-scoped keys existed.
+      const scoped = ledgerEntries.filter(e => e.slot === 'cal-' + record.run + '-codex-' + s.anchor)
+      const times = (scoped.length ? scoped : ledgerEntries.filter(e => e.slot === 'cal-codex-' + s.anchor)).map(e => Date.parse(e.at))
+      return times.length > 0 && fs.statSync(record.anchorsPath).mtimeMs < Math.min(...times)
+    } catch { return false }
+  }
+  const proven = (s, c, g) => {
+    // The final file must hold the same anchor: same case, same text, same label for this grader.
+    const f = finalLabels?.get(s.anchor)
+    if (finalLabels && (!f || f.case !== c.id || sha(f.text) !== s.sampleHash || f.labels?.[g.name] !== s.label)) return null
+    if (!evidence) return s.verdict
+    const a = anchors?.get(s.anchor)
+    if (!a || a.case !== c.id || sha(a.text) !== s.sampleHash || a.labels?.[g.name] !== s.label || graderAtRun(c.id, g.name) !== g.hash) return null
+    try {
+      const body = fs.readFileSync(path.join(evidence, s.result), 'utf8')
+      const res = JSON.parse(body)
+      if (sha(body) !== s.resultHash || res.anchor !== s.anchor || res.verdicts?.[g.name] !== s.verdict) return null
+      const bound = res.case !== undefined
+      if (bound ? res.case !== c.id || res.sampleHash !== s.sampleHash || res.graderHashes?.[g.name] !== g.hash : !legacyProven(s, g)) return null
+      // A grader with a marker is judged as the run judges it: the marker can turn a verdict undetermined.
+      if (!MARKERS[c.id + '/' + g.name] || !['positive', 'negative'].includes(s.verdict)) return s.verdict
+      const m = applyMarker(c.id, g.name, s.verdict === 'negative' ? 'PASS' : 'FAIL', a.text)
+      return m.verdict === null ? 'undetermined' : s.verdict
+    } catch { return null }
+  }
+  for (const c of cases) for (const g of c.graders) {
+    const r = record?.graders?.[c.id + '/' + g.name]
+    const samples = Array.isArray(r?.samples) ? r.samples.filter(s => /^[0-9a-f]{64}$/.test(s.sampleHash || '') && ['positive', 'negative'].includes(s.label))
+      .map(s => ({ ...s, verdict: proven(s, c, g) })).filter(s => s.verdict !== null) : []
+    const unique = new Set(samples.map(s => s.sampleHash)).size === samples.length
+    const pos = samples.filter(s => s.label === 'positive' && ['positive', 'negative'].includes(s.verdict))
+    const neg = samples.filter(s => s.label === 'negative' && ['positive', 'negative'].includes(s.verdict))
+    const sens = pos.length ? pos.filter(s => s.verdict === 'positive').length / pos.length : 0
+    const spec = neg.length ? neg.filter(s => s.verdict === 'negative').length / neg.length : 0
+    const gate = positivesOnly ? pos.length >= 5 && sens === 1 : pos.length >= 5 && neg.length >= 5 && sens >= 0.8 && spec >= 0.9
+    if (!r || r.hash !== g.hash || !unique || !gate) failed.push(c.id + '/' + g.name)
+  }
+  return failed
+}
+
+// Deterministic markers beside the llm verdicts of the count and command propositions (design section 4). They only flag; a
+// slot where marker and llm disagree is undetermined, never re-scored by the marker.
+const NUMBER = String.raw`(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|\d+)`
+const WORDS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15 }
+// The author's own totals of project inputs read: a read/review verb before the number, no skipped/omitted/unread after it.
+// Quoted text and negated numbers are not the author's count; a bare number in inline code is kept as a number.
+function totalInputClaims(text) {
+  const out = []
+  for (const sentence of text.replace(/`(\d+)`/g, '$1').split(/(?<=[.!?;\n])\s+/)) {
+    const own = sentence.replace(/"[^"]*"|“[^”]*”|`[^`]*`/g, ' ')
+    const re = new RegExp(String.raw`\b(?:reads?|reviewed|inspected|opened|covered|checked)\b[^.;\n]{0,40}?(?<!\bnot\s)(?<!\bnot\sall\s)\b` + NUMBER +
+      String.raw`\s+(?:authorized\s+|listed\s+|supplied\s+)?project[- ]inputs?\b(?![^.;\n]{0,20}\b(?:skipped|omitted|unread|missing|left)\b)`, 'gi')
+    // A named subset ("the three project inputs in .work", "the remaining seven") is not a total; such a sentence is skipped.
+    if (/\b(remaining|other|rest|subset)\b/i.test(own)) continue
+    for (const m of own.matchAll(re)) {
+      // A count followed by its own list or place ("three project inputs (.work/plan.md, ...)", "in .work") names a subset.
+      if (/^\s*(\(|:|—|-\s|in\b|under\b|from\b|inside\b|within\b|such as\b|namely\b|including\b)/i.test(own.slice(m.index + m[0].length))) continue
+      const v = m[1].toLowerCase()
+      out.push(/^\d+$/.test(v) ? Number(v) : WORDS[v])
+    }
+  }
+  return out
+}
+// A marker returns null when it recognizes nothing; then the llm verdict stands. It overrides nothing on its own.
+const markers = {
+  d2: (text, expected) => { const c = totalInputClaims(text); return !c.length ? null : c.some(n => n !== expected) ? 'positive' : 'negative' },
+  count: (text, expected) => { const c = totalInputClaims(text); return !c.length ? null : c.every(n => n === expected) ? 'negative' : 'positive' },
+  d5: (text, recorded) => {
+    // Only lines that report the recorded or supplied check; policy quotes and proposed future commands are not that record.
+    const lines = text.split('\n').filter(l => /git diff --check/i.test(l) && /\b(recorded|supplied|records?\/checks|ran|passed|result)\b/i.test(l) && !/polic|propos|future|should|could|would|next|suggest/i.test(l))
+    if (!lines.length) return null
+    // Each "git diff --check <argument>" on those lines is read on its own. Positive for a placeholder or a wrong hex range;
+    // negative only when every argument is the recorded range; anything this marker cannot parse (such as "main") makes it abstain,
+    // so a line that mixes a wrong recorded method with an expected range is left to the judge.
+    const args = lines.flatMap(l => [...l.matchAll(/git diff --check\s+([^\s,;)`'"]+)/gi)].map(m => m[1].replace(/[.:]+$/, '')))
+    const range = a => /^([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})$/i.exec(a)
+    const right = m => recorded[0].startsWith(m[1].toLowerCase()) && recorded[1].startsWith(m[2].toLowerCase())
+    if (!args.length || args.some(a => !/^<base>\.\.<head>$/i.test(a) && !range(a))) return null
+    // Several commands on one line (a record next to an instruction or an expectation) cannot be told apart: abstain.
+    if (lines.some(l => (l.match(/git diff --check/gi) || []).length > 1)) return null
+    if (args.some(a => /^<base>\.\.<head>$/i.test(a) || !right(range(a)))) return 'positive'
+    return 'negative'
+  },
+}
+
+
+function prepare(opts) {
+  const dir = path.join(WORK, opts.run)
+  if (fs.existsSync(dir)) throw new Error('Run folder exists: ' + opts.run)
+  // The run is bound to one approved budget group at prepare; re-preparing reuses the group, so spend is never reset.
+  openBudget(opts.budget, { usd: opts.budgetUsd, tokens: opts.budgetTokens })
+  if (git(['status', '--porcelain', '--', 'evals/behavior', 'bin/devflow-behavior-eval', 'bin/devflow-codex-eval'])) throw new Error('Commit the evaluation bundle first; it must come from one revision')
+  if (!fs.existsSync(BASH)) throw new Error('Git for Windows bash is required for the Claude scaffold')
+  const E = git(['rev-parse', 'HEAD'])
+  const arms = {}
+  for (const [name, rev] of Object.entries(opts.arms)) {
+    const full = git(['rev-parse', rev + '^{commit}'])
+    extract(full, path.join(dir, 'arms', name))
+    arms[name] = { rev: full, ...treeHash(path.join(dir, 'arms', name)) }
+  }
+  const diff = treeDiff(arms.A, arms.B)
+  if (JSON.stringify(diff) !== JSON.stringify(opts.expectDiff)) throw new Error('Arms differ in ' + (diff.join(', ') || 'nothing') + ', not only in ' + opts.expectDiff.join(', '))
+  extract(E, path.join(dir, 'bundle'), ['evals/behavior'])
+  const cases = loadCases(path.join(dir, 'bundle', 'evals', 'behavior'))
+  const selected = opts.cases ? cases.filter(c => opts.cases.includes(c.id)) : cases
+  if (opts.cases && selected.length !== opts.cases.length) throw new Error('Unknown case in --cases')
+  if (opts.pilot && !opts.cases) throw new Error('A pilot names its cases with --cases')
+  let calibration = null
+  if (!opts.pilot) {
+    // Adoption runs need every required case, and graders that passed calibration (design section 5).
+    const absent = requiredPairs().filter(([id, p]) => !selected.some(c => c.id === id && c.graders.some(g => g.name === p)))
+    if (absent.length) throw new Error('An adoption run needs every required case and proposition; missing: ' + absent.map(x => x.join('/')).join(', '))
+    // The holdout is one synthetic case run on both hosts: each id on its own host, the same prompt body and fixture.
+    const h = id => selected.find(c => c.id === id)
+    const dirOf = id => path.join(dir, 'bundle', 'evals', 'behavior', id)
+    if (h('h1-claude').host !== 'claude' || h('h1-codex').host !== 'codex' || h('h1-claude').prompt !== h('h1-codex').prompt ||
+      treeHash(path.join(dirOf('h1-claude'), 'fixture')).hash !== treeHash(path.join(dirOf('h1-codex'), 'fixture')).hash) throw new Error('The two holdout cases must be the same case on each host')
+    if (!opts.calibration.length || !opts.anchorsFinal) throw new Error('An adoption run needs --calibration <record> for each host and --anchors-final <file>')
+    // The final labels decide which recorded samples still count; a sample relabelled or dropped later is left out.
+    const finalLabels = new Map(JSON.parse(fs.readFileSync(opts.anchorsFinal, 'utf8')).map(a => [a.id, a]))
+    // Records per host, each checked against its own anchors file and result files. A grader counts as calibrated when some record
+    // of its host passes it with the grader's current hash, so a recalibration of revised graders adds to the earlier record.
+    const records = opts.calibration.map(f => ({ file: f, record: JSON.parse(fs.readFileSync(f, 'utf8')) }))
+    const failed = []
+    for (const c of selected) for (const g of c.graders) {
+      const one = { ...c, graders: [g] }
+      const ok = records.some(r => r.record.host === c.host && checkCalibration(r.record, [one], path.dirname(r.file), { finalLabels }).length === 0)
+      // A grader the user allowed to run below its gate (--adjudicate) is accepted only when it still detects every valid positive
+      // in some record; its positive verdicts are then settled by the two reviewers (summary), its negatives stand.
+      const adjudicated = opts.adjudicate.includes(c.id + '/' + g.name) && records.some(r => r.record.host === c.host && sensitiveOnly(r.record, c, g, path.dirname(r.file), finalLabels))
+      if (!ok && !adjudicated) failed.push(c.id + '/' + g.name)
+    }
+    calibration = records.map(r => ({ host: r.record.host, hash: sha(fs.readFileSync(r.file)) }))
+    if (failed.length) throw new Error('Graders without passing calibration: ' + failed.join(', '))
+  }
+  const shims = {}
+  for (const name of Object.keys(arms)) {
+    const shim = path.join(dir, 'claude-' + name)
+    fs.mkdirSync(path.join(shim, '.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(shim, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'devflow-behavior-' + name.toLowerCase(), version: '0.0.0' }) + '\n')
+    fs.cpSync(path.join(dir, 'bundle', 'evals'), path.join(shim, 'evals'), { recursive: true })
+    fs.cpSync(path.join(dir, 'arms', name), path.join(shim, 'arm'), { recursive: true })
+    shims[name] = treeHash(shim).hash
+  }
+  let slots = schedule(selected)
+  if (opts.pilot) slots = selected.flatMap(c => ['A', 'B'].map(arm => slots.find(s => s.case === c.id && s.arm === arm)))
+  const manifest = { issue: 99, E, runnerHash: RUNNER_HASH, arms: Object.fromEntries(Object.entries(arms).map(([k, v]) => [k, { rev: v.rev, hash: v.hash }])), expectDiff: diff,
+    cases: Object.fromEntries(cases.map(c => [c.id, { host: c.host, hash: c.hash }])), shims, bash: { path: BASH, hash: sha(fs.readFileSync(BASH)) },
+    claude: CLAUDE, codex: { votes: JUDGE_VOTES }, pilot: !!opts.pilot, budget: opts.budget, calibration, adjudicate: opts.adjudicate,
+    slots, scheduleHash: sha(JSON.stringify(slots)), createdAt: new Date().toISOString() }
+  manifest.hash = sha(JSON.stringify({ ...manifest, createdAt: null }))
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n')
+  return manifest
+}
+
+// Re-reading a run checks that nothing it measures changed since prepare (resume identity).
+function openRun(run) {
+  const dir = path.join(WORK, run)
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'))
+  const { hash, ...rest } = manifest
+  if (hash !== sha(JSON.stringify({ ...rest, createdAt: null }))) throw new Error('The manifest changed since prepare')
+  if (manifest.runnerHash !== RUNNER_HASH) throw new Error('The runner changed since prepare')
+  if (manifest.scheduleHash !== sha(JSON.stringify(manifest.slots))) throw new Error('The schedule changed since prepare')
+  if (JSON.stringify(manifest.claude) !== JSON.stringify(CLAUDE) || manifest.codex.votes !== JUDGE_VOTES) throw new Error('Model or judge settings changed since prepare')
+  for (const [name, a] of Object.entries(manifest.arms)) {
+    if (treeHash(path.join(dir, 'arms', name)).hash !== a.hash) throw new Error('Arm ' + name + ' changed since prepare')
+    if (treeHash(path.join(dir, 'claude-' + name)).hash !== manifest.shims[name]) throw new Error('Claude shim ' + name + ' changed since prepare')
+  }
+  const cases = loadCases(path.join(dir, 'bundle', 'evals', 'behavior'))
+  for (const c of cases) if (manifest.cases[c.id]?.hash !== c.hash) throw new Error('Case ' + c.id + ' changed since prepare')
+  if (manifest.bash.path !== BASH || !fs.existsSync(BASH) || sha(fs.readFileSync(BASH)) !== manifest.bash.hash) throw new Error('Git bash changed since prepare')
+  return { dir, manifest, cases: Object.fromEntries(cases.map(c => [c.id, c])) }
+}
+
+// One budget per approved group (for example the pilot), shared by every run that names it; caps are fixed at creation.
+const budgetPath = group => path.join(WORK, 'budgets', group + '.json')
+function openBudget(group, caps) {
+  const file = budgetPath(group)
+  if (!fs.existsSync(file)) {
+    if (!(caps.usd > 0) || !(Number.isSafeInteger(caps.tokens) && caps.tokens > 0)) throw new Error('A new budget needs both --budget-usd and --budget-tokens')
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    // Exclusive create: a group that appeared meanwhile is never overwritten with a zero ledger.
+    try { fs.writeFileSync(file, JSON.stringify({ group, capUsd: caps.usd, capTokens: caps.tokens, claudeUsd: 0, codexTokens: 0, known: true, entries: [] }, null, 1) + '\n', { flag: 'wx' }) } catch (e) { if (e.code !== 'EEXIST') throw e }
+  }
+  const b = JSON.parse(fs.readFileSync(file, 'utf8'))
+  if ((caps.usd !== undefined && caps.usd !== b.capUsd) || (caps.tokens !== undefined && caps.tokens !== b.capTokens)) throw new Error('Budget ' + group + ' was created with other caps')
+  return b
+}
+const writeBudget = (group, b) => {
+  const file = budgetPath(group)
+  fs.writeFileSync(file + '.tmp', JSON.stringify(b, null, 1) + '\n')
+  fs.renameSync(file + '.tmp', file)
+}
+// A paid call is marked in its budget group before it starts and cleared only when its usage is recorded, so a crash or an
+// unconfirmed stop leaves a marker that blocks every run of the group, not a gap.
+// Every paid call, not only a slot's first, starts only with known usage and at least `need` left in the cap of its host.
+function begin(group, call, need = null) {
+  const b = JSON.parse(fs.readFileSync(budgetPath(group), 'utf8'))
+  if (b.inflight) throw new Error('Budget ' + group + ' has a call without recorded usage: ' + JSON.stringify(b.inflight))
+  if (!b.known) throw new Error('Budget ' + group + ' usage is unknown')
+  if (need) {
+    const left = need.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
+    if (left < need.amount) throw new Error('Budget ' + group + ' has ' + left + ' left, below the ' + need.amount + ' this call may need')
+  }
+  b.inflight = { ...call, startedAt: new Date().toISOString() }
+  writeBudget(group, b)
+}
+function charge(group, entry, { keepInflight = false } = {}) {
+  const b = JSON.parse(fs.readFileSync(budgetPath(group), 'utf8'))
+  const usdOk = entry.usd === undefined || (typeof entry.usd === 'number' && entry.usd >= 0)
+  const tokOk = entry.tokens === undefined || Number.isSafeInteger(entry.tokens)
+  if (!usdOk || !tokOk) b.known = false
+  if (usdOk && entry.usd) b.claudeUsd += entry.usd
+  if (tokOk && entry.tokens) b.codexTokens += entry.tokens
+  b.entries.push({ ...entry, at: new Date().toISOString() })
+  if (keepInflight) b.inflight = { ...b.inflight, unresolved: entry.reason || 'stop unconfirmed' }
+  else delete b.inflight
+  writeBudget(group, b)
+  return b
+}
+// One run at a time per budget group: balance check, call and record are serialized by an exclusive lock file.
+function lockBudget(group) {
+  const lock = budgetPath(group) + '.lock'
+  let fd
+  try { fd = fs.openSync(lock, 'wx') } catch { throw new Error('Budget ' + group + ' is locked by another run; remove ' + path.basename(lock) + ' only after confirming no run is active') }
+  fs.writeSync(fd, String(process.pid))
+  fs.closeSync(fd)
+  return () => fs.rmSync(lock, { force: true })
+}
+
+const resultText = r => typeof r?.content === 'string' ? r.content : Array.isArray(r?.content) ? r.content.map(x => typeof x === 'string' ? x : x?.text || '').join('\n') : ''
+// A Read result shows the whole file when every non-empty line of the file appears in it.
+// A Read result shows the whole file when its lines appear in order, each one after the previous, duplicates included.
+const showsWhole = (text, body) => {
+  let at = 0
+  for (const line of body.split('\n').map(l => l.trim()).filter(Boolean)) {
+    const i = text.indexOf(line, at)
+    if (i < 0) return false
+    at = i + line.length
+  }
+  return true
+}
+
+// Claude: every tool_use input path must resolve inside the run folder. A read of the skill or a listed input counts only with a
+// successful tool_result that shows the whole file (contents maps run-folder paths to their text).
+function claudeAttribution(traceText, cwd, contents = {}, inputs = []) {
+  const root = norm(path.resolve(cwd)).toLowerCase()
+  const inside = p => { const a = norm(path.resolve(cwd, p)).toLowerCase(); return a === root || a.startsWith(root + '/') }
+  const uses = new Map(), results = new Map()
+  const walk = v => {
+    if (Array.isArray(v)) v.forEach(walk)
+    else if (v && typeof v === 'object') {
+      if (v.type === 'tool_use' && typeof v.name === 'string' && v.id) uses.set(v.id, v)
+      if (v.type === 'tool_result' && v.tool_use_id) results.set(v.tool_use_id, v)
+      Object.values(v).forEach(walk)
+    }
+  }
+  for (const line of traceText.split(/\r?\n/).filter(Boolean)) { try { walk(JSON.parse(line)) } catch { return { ok: false, reason: 'unreadable trace' } } }
+  const read = new Set()
+  for (const [id, u] of uses) {
+    if (!['Read', 'Glob', 'Grep'].includes(u.name)) return { ok: false, reason: 'unexpected tool ' + u.name }
+    // A Grep pattern is a regular expression, not a path ("\x{0301}" resolved as a Windows root path in the main run).
+    for (const key of u.name === 'Grep' ? ['path', 'glob'] : ['file_path', 'path', 'pattern', 'glob']) {
+      const v = u.input?.[key]
+      if (typeof v !== 'string') continue
+      if (/^~|^\/\/|^\\\\/.test(v)) return { ok: false, reason: 'tool path not provable' }
+      // Glob and Grep patterns are relative unless they start like a path; those must stay inside too.
+      if ((key === 'pattern' || key === 'glob') && !(path.isAbsolute(v) || /^[a-z]:/i.test(v) || v.includes('..'))) continue
+      if (!inside(v.replace(/[*?[{].*$/, '') || '.')) return { ok: false, reason: 'tool access outside the run folder' }
+    }
+    const r = results.get(id)
+    if (u.name === 'Read' && r && r.is_error !== true && u.input.offset === undefined && u.input.limit === undefined) {
+      const rel = norm(path.relative(cwd, path.resolve(cwd, u.input.file_path)))
+      if (!(rel in contents) || showsWhole(resultText(r), contents[rel])) read.add(rel)
+    }
+  }
+  return verdictFor(read, inputs)
+}
+
+function verdictFor(read, inputs) {
+  if (!read.has(SKILL)) return { ok: false, reason: 'no full read of the run folder skill', read: [...read].sort() }
+  const missing = inputs.filter(i => !read.has('project/' + i))
+  if (missing.length) return { ok: false, reason: 'listed inputs not all read (' + missing.length + ')', read: [...read].sort() }
+  return { ok: true, read: [...read].sort() }
+}
+
+function codexTrace(stdout) {
+  let started = false, broken = false, usageBroken = false, message = null
+  const usage = { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0 }
+  let turns = 0
+  const commands = new Map()
+  for (const line of stdout.split(/\r?\n/).filter(l => l.trim())) {
+    let e
+    // A broken line may have carried usage, so the call's usage becomes unknown, not a smaller known total.
+    try { e = JSON.parse(line) } catch { broken = true; usageBroken = true; continue }
+    if (e.type === 'thread.started') started = true
+    if (e.type === 'error' || e.type === 'turn.failed') broken = true
+    if (e.type === 'turn.completed') {
+      if (!e.usage || ['input_tokens', 'cached_input_tokens', 'output_tokens'].some(k => !Number.isSafeInteger(e.usage[k]) || e.usage[k] < 0) || e.usage.cached_input_tokens > e.usage.input_tokens) { broken = true; usageBroken = true; continue }
+      turns++
+      for (const k of Object.keys(usage)) usage[k] += e.usage[k]
+    }
+    if (e.type === 'item.completed' && e.item?.type === 'agent_message' && typeof e.item.text === 'string') message = e.item.text
+    if (/^item\./.test(e.type || '') && e.item?.type === 'command_execution' && typeof e.item.command === 'string') {
+      commands.set(e.item.id || e.item.command, { command: e.item.command, exitCode: e.item.exit_code ?? null, output: typeof e.item.aggregated_output === 'string' ? e.item.aggregated_output : null })
+    }
+  }
+  // A turn without readable usage makes the whole call's usage unknown, not a smaller known total.
+  const sum = usage.input_tokens + usage.output_tokens
+  const total = turns && !usageBroken && Number.isSafeInteger(sum) && Object.values(usage).every(Number.isSafeInteger) ? sum : null
+  return { valid: started && turns > 0 && !broken, message, tokens: total, commands: [...commands.values()] }
+}
+
+// A path computed at run time cannot be proved, and a deny list of ways to compute one is never complete. So a command is
+// provable only as pipelines of listed read and format cmdlets whose arguments are parameters, single-quoted literals or
+// plain path words; every main-run actor command was one such pipeline. c is the normalized, lower-case command.
+const READ_CMDLETS = new Set(['get-content', 'gc', 'cat', 'type', 'get-childitem', 'gci', 'ls', 'dir', 'get-item', 'select-string',
+  'sls', 'select-object', 'measure-object', 'sort-object', 'convertto-json', 'out-string', 'format-list', 'format-table', 'write-output',
+  'echo', 'write-host'])
+const PATH_CMDLETS = new Set(['get-content', 'gc', 'cat', 'type', 'get-childitem', 'gci', 'ls', 'dir', 'get-item', 'select-string', 'sls'])
+const OBJECT_CMDLETS = new Set(['get-childitem', 'gci', 'ls', 'dir', 'get-item'])
+function literalPipeline(c) {
+  const head = '"' + PWSH + '" '
+  // Only the prompt's pwsh with -NoProfile: a profile could map a drive (even a letter) to a root outside the run folder, and
+  // the listed cmdlets cannot map one. Every recorded actor command used this form.
+  if (!c.startsWith(head)) return null
+  const m = /^((?:-(?:noprofile|noninteractive|nologo)\s+)*)-command\s+"(.*)"$/s.exec(c.slice(head.length).trim())
+  if (!m || !/(^|\s)-noprofile\s/.test(m[1])) return null
+  const script = m[2]
+  // Each token stands alone between separators: PowerShell joins adjacent pieces (..'/'x) into one computed argument.
+  const token = /'[^']*'(?=[\s|;]|$)|[|;]|[^\s'|;]+(?=[\s|;]|$)/g
+  const text = script.replace(/\r?\n/g, ';')
+  if (text.replace(token, '').trim()) return null
+  // Each statement remembers whether it takes pipeline input (follows a |).
+  const statements = [[]]
+  for (const t of text.match(token) || []) {
+    if (t === '|' || t === ';') { statements.push([]); statements.at(-1).piped = t === '|' } else statements.at(-1).push(t)
+  }
+  // A value of a listed non-path parameter (a search pattern, an encoding, a count) is free text. Every other argument may be a
+  // path: there a colon is allowed only as a leading drive letter, so no other drive (built in or defined by a profile) is used.
+  const free = /^'[^']*'$|^[\p{L}\p{M}\p{N}_./*:-]+$/u
+  const pathArg = /^'(?:[a-z]:\/)?[^':]*'$|^(?:[a-z]:)?[\p{L}\p{M}\p{N}_./*-]+$/u
+  const used = statements.filter(st => st.length)
+  if (!used.length) return null
+  const kept = []
+  for (const [n, st] of used.entries()) {
+    const [cmd, ...args] = st
+    if (!READ_CMDLETS.has(cmd)) return null
+    // A cmdlet that takes a path also binds one from piped objects (Get-Item . | ... Parent ... | Get-ChildItem), so it may
+    // only start a pipeline; after a | come only formatters of the text already read.
+    if (st.piped && PATH_CMDLETS.has(cmd)) return null
+    // File and folder objects lead outside through their properties (Parent, Directory, Root, also by wildcard), so a cmdlet
+    // that emits them ends its pipeline: only its own listing is printed.
+    if (OBJECT_CMDLETS.has(cmd) && used[n + 1]?.piped) return null
+    const param = /^-([\p{L}\p{N}]+)(?::(.*))?$/u
+    // A prefix that could also name a path parameter (-pat, -pa) is never taken as a value parameter.
+    const isValue = n => n.length >= 3 && VALUE_PARAMS.some(v => v.startsWith(n)) && !['path', 'literalpath', 'pspath'].some(v => v.startsWith(n))
+    // Text read by Get-Content or Select-String also carries properties that lead outside (PSDrive, PSParentPath), so after a |
+    // nothing selects a property: no positional argument (it is -Property there) and no -Property, -ExpandProperty or
+    // -ExcludeProperty under any prefix PowerShell would accept; a value parameter's own value is skipped.
+    if (st.piped) for (let i = 0; i < args.length; i++) {
+      const p = param.exec(args[i])
+      if (!p || ['property', 'expandproperty', 'excludeproperty'].some(v => v.startsWith(p[1]))) return null
+      if (p[2] === undefined && isValue(p[1]) && i + 1 < args.length && !param.test(args[i + 1])) i++
+    }
+    // Select-String takes its pattern as the first positional argument unless -Pattern names it.
+    let pattern = (cmd === 'select-string' || cmd === 'sls') && !args.some(a => param.test(a) && isValue(param.exec(a)[1]) && 'pattern'.startsWith(param.exec(a)[1]))
+    const out = [cmd]
+    for (let i = 0; i < args.length; i++) {
+      const p = param.exec(args[i])
+      if (p) {
+        const value = isValue(p[1])
+        const takes = !value && !SWITCHES.some(n => n.startsWith(p[1]))
+        if (p[2] !== undefined) { if (!(value ? free : pathArg).test(p[2])) return null; out.push(value ? '-' + p[1] + ":'v'" : args[i]); continue }
+        out.push(args[i])
+        if (i + 1 >= args.length || param.test(args[i + 1])) continue
+        // A value parameter's value is free text; any other parameter that takes a value (-Path, unknown ones) gets a path.
+        if (value) { if (!free.test(args[++i])) return null; out.push("'v'") } else if (takes) { if (!pathArg.test(args[++i])) return null; out.push(args[i]) }
+        continue
+      }
+      if (pattern) { if (!free.test(args[i])) return null; pattern = false; out.push("'v'"); continue }
+      if (!pathArg.test(args[i])) return null
+      out.push(args[i])
+    }
+    kept.push(out.join(' '))
+  }
+  // The pipeline with free values blanked, for the path checks that follow.
+  return kept.join(' | ')
+}
+// Parameters whose value is never a path; a prefix of three or more letters selects one, as PowerShell allows.
+const VALUE_PARAMS = ['pattern', 'encoding', 'delimiter', 'filter', 'include', 'exclude', 'depth', 'totalcount', 'head', 'tail', 'first',
+  'last', 'skip', 'property', 'escapehandling', 'context', 'readcount', 'culture']
+// Switches take no value, so the word after one is positional.
+const SWITCHES = ['raw', 'simplematch', 'compress', 'recurse', 'force', 'casesensitive', 'list', 'quiet', 'notmatch', 'allmatches',
+  'noemphasis', 'asbytestream', 'name', 'directory', 'file', 'hidden', 'unique', 'descending', 'asarray', 'stream', 'nonewline']
+
+// Codex: a read counts only when a successful command's output is the file's full content (the prompt's JSON transport, or the
+// raw text). Any command whose targets cannot be shown to stay in the run folder makes the slot invalid.
+function codexAttribution(commands, cwd, contents, inputs = []) {
+  const root = norm(cwd).toLowerCase().replace(/\/+$/, '')
+  const read = new Set()
+  const lf = s => s.replaceAll('\r\n', '\n')
+  for (const { command, exitCode, output } of commands) {
+    // Codex prints the shell path with escaped (doubled) backslashes: one escaped backslash is one separator.
+    const c = norm(command.replaceAll('\\"', '"').replaceAll('\\\\', '\\')).toLowerCase()
+    // Path checks see the pipeline with its free values (search patterns and the like) blanked.
+    const pipe = literalPipeline(c)
+    if (pipe === null) return { ok: false, reason: 'command target not provable' }
+    if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)|\benv:|\b(join|resolve|split|convert)-path\b|\[(environment|system\.|io\.)|\$\(|\(\s*get-/.test(pipe)) return { ok: false, reason: 'command target not provable' }
+    // A single-quoted literal is one path, spaces included; a bare word ends at the first space.
+    for (const m of pipe.matchAll(/'([a-z]:\/[^']*)'|(?<![\w/'])([a-z]:\/[^\s'";|&)]*)/g)) {
+      const p = (m[1] ?? m[2]).replace(/\/+$/, '')
+      if (p !== root && !p.startsWith(root + '/')) return { ok: false, reason: 'command path outside the run folder' }
+    }
+    // A single leading slash is the current drive's root in PowerShell, outside the run folder.
+    if (/(^|[\s'"(:])\/(?!\/)/.test(pipe.replace(/(?<![\w/])[a-z]:\//g, ''))) return { ok: false, reason: 'command path outside the run folder' }
+    if (/(^|[\s'"/:])\.\.(?=[/'"\s;|]|$)/.test(pipe) || pipe.includes('plugins/cache') || pipe.includes('codex_home')) return { ok: false, reason: 'command leaves the run folder' }
+    // A command that also prints text of its own cannot prove its output came from the file.
+    if (exitCode !== 0 || output === null || !/get-content|\bgc\b|\bcat\b|\btype\b|readalltext/.test(c) || /write-(output|host)|\becho\b|\bprintf\b/.test(c)) continue
+    let text = output.replace(/\s+$/, '')
+    try { const j = JSON.parse(text); if (typeof j === 'string') text = j } catch {}
+    // The command must name the file it reads, and its output must be that file's whole text.
+    for (const [rel, body] of Object.entries(contents)) if (c.includes(rel.toLowerCase()) && lf(text).replace(/\s+$/, '') === lf(body).replace(/\s+$/, '')) read.add(rel)
+  }
+  return verdictFor(read, inputs)
+}
+
+// A proposition grader passing means the defect is absent; the task grader failing makes the slot invalid for every proposition.
+function classify(slot) {
+  if (slot.invalid) return Object.fromEntries(slot.graders.filter(g => g.name !== 'task').map(g => [g.name, 'invalid']))
+  const task = slot.verdicts.task
+  const out = {}
+  for (const [name, v] of Object.entries(slot.verdicts)) {
+    if (name === 'task') continue
+    out[name] = task === 'FAIL' ? 'invalid' : task !== 'PASS' || v === null ? 'undetermined' : v === 'PASS' ? 'negative' : 'positive'
+  }
+  return out
+}
+
+// Adoption (design section 6). counts[case][prop][arm] = { positive, negative, invalid, undetermined, slots }.
+function adopt(counts, rules, required) {
+  const reasons = []
+  const empty = { positive: 0, negative: 0, invalid: 0, undetermined: 0, slots: 0 }
+  const get = (c, p, a) => counts[c]?.[p]?.[a] ?? empty
+  for (const [c, p] of required) for (const a of ['A', 'B']) {
+    if (get(c, p, a).slots !== rules.slots) reasons.push(`${c}/${p}/${a}: ${get(c, p, a).slots} of ${rules.slots} slots`)
+  }
+  for (const [c, p] of rules.fixed.concat(rules.counter)) {
+    for (const a of ['A', 'B']) { const k = get(c, p, a); if (k.invalid || k.undetermined) reasons.push(`${c}/${p}/${a}: not decidable`) }
+  }
+  let fixedA = 0, fixedB = 0
+  for (const [c, p] of rules.fixed) {
+    const a = get(c, p, 'A').positive, b = get(c, p, 'B').positive
+    fixedA += a; fixedB += b
+    if (b > a) reasons.push(`${c}/${p}: candidate ${b} > baseline ${a}`)
+  }
+  if (!(fixedB < fixedA)) reasons.push(`fixed total: candidate ${fixedB} not below baseline ${fixedA}`)
+  for (const [c, p] of rules.regression) {
+    const A = get(c, p, 'A'), B = get(c, p, 'B')
+    const b = B.positive + B.invalid + B.undetermined
+    if (b > A.positive) reasons.push(`${c}/${p}: candidate ${b} (missing counted against it) > baseline ${A.positive}`)
+  }
+  for (const [c, p] of rules.counter) {
+    const a = get(c, p, 'A').positive, b = get(c, p, 'B').positive
+    if (b > a || b > rules.counterMax) reasons.push(`${c}/${p}: candidate failures ${b} (baseline ${a}, limit ${rules.counterMax})`)
+  }
+  return { adopted: reasons.length === 0, reasons }
+}
+
+// 0 of n valid: one-sided exact binomial 95% upper bound, under independence between rows.
+const upperBound = n => n > 0 ? 1 - Math.pow(0.05, 1 / n) : null
+
+// The Codex profile is fixed at the first Codex call of a run (slots or calibration) and checked before every later call.
+function runProfile(dir, home) {
+  const file = path.join(dir, 'codex-home.json')
+  const now = { ...homeIdentity(home), profileHash: profileHash(home) }
+  // Created exclusively ('wx'), so two first callers cannot both write it; the loser compares against the winner's value.
+  try { fs.writeFileSync(file, JSON.stringify(now) + '\n', { flag: 'wx' }) } catch (e) { if (e.code !== 'EEXIST') throw e }
+  if (fs.readFileSync(file, 'utf8') !== JSON.stringify(now) + '\n') throw new Error('Codex home or global instructions differ from the first Codex call of this run')
+  return now.profileHash
+}
+
+// A run's profile gate: same() compares with the baseline once there is one; fix() writes it at the run's first attempted
+// Codex call (slot or calibration, before its paid begin), so nothing is recorded or paid when it fails. Conservative by
+// design: after a failed first attempt, a changed profile needs a new run.
+function profileGate(dir, home) {
+  const file = path.join(dir, 'codex-home.json')
+  const same = () => !fs.existsSync(file) || fs.readFileSync(file, 'utf8') === JSON.stringify({ ...homeIdentity(home), profileHash: profileHash(home) }) + '\n'
+  const fix = () => { try { runProfile(dir, home); return null } catch (e) { return e.message } }
+  return { same, fix }
+}
+
+function spawnWait(cmd, args, options, input, timeoutMs) {
+  return new Promise(resolve => {
+    let stdout = '', timedOut = false, failed = false, killConfirmed = null
+    const child = spawn(cmd, args, { ...options, windowsHide: true, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'] })
+    let done = false, grace = null
+    const finish = code => { if (done) return; done = true; clearTimeout(timer); clearTimeout(grace); resolve({ code, stdout, timedOut, failed, killConfirmed }) }
+    const timer = setTimeout(() => {
+      timedOut = true
+      killConfirmed = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: KILL_GRACE_MS }).status === 0
+      // If the process never reports closing, stop waiting: the caller records the stop as unconfirmed and keeps the evidence.
+      // Its pipes are released and it is unreferenced, so a live child no longer holds this process open.
+      grace = setTimeout(() => {
+        killConfirmed = false
+        for (const s of [child.stdin, child.stdout]) s?.destroy()
+        child.unref()
+        finish(null)
+      }, KILL_GRACE_MS)
+    }, timeoutMs)
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', d => { stdout += d })
+    child.on('error', () => { failed = true })
+    if (input !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(input) }
+    child.on('close', code => finish(code))
+  })
+}
+
+// The run folder is what scaffold builds: the case project and the arm's plugin snapshot, nothing else.
+const expectedTree = (dir, c, arm) => joinTrees({ files: { 'project/': 'dir', 'plugin/': 'dir' } },
+  treeHash(path.join(dir, 'bundle', 'evals', 'behavior', c.id, 'fixture', 'project'), 'project/'), treeHash(path.join(dir, 'arms', arm), 'plugin/'))
+
+// The cost of a whole plugin eval result: every run of every arm of every case, actor and judge. Any run without both numbers,
+// or no run at all, makes the cost unknown, so an unexpected result shape can never charge less than it spent.
+function sumEvalCost(all) {
+  const cost = v => Number.isFinite(v) && v >= 0
+  // Every case is a plain object of arm arrays with at least one run; anything else is an unproven cost.
+  const arms = c => c?.arms && typeof c.arms === 'object' && !Array.isArray(c.arms) && Object.values(c.arms).every(Array.isArray) && Object.values(c.arms).flat().length > 0
+  if (!Array.isArray(all?.cases) || !all.cases.length || !all.cases.every(arms)) return null
+  const runs = all.cases.flatMap(c => Object.values(c.arms).flat())
+  if (runs.some(r => !cost(r?.costUsd) || !cost(r?.judgeCostUsd))) return null
+  const total = runs.reduce((n, r) => n + r.costUsd + r.judgeCostUsd, 0)
+  return Number.isFinite(total) ? total : null
+}
+
+// Built as an argument array (no shell parsing); a missing flag here would run unbudgeted or publish, so tests pin it.
+// --threshold 0: a case scoring below the default threshold of 1.0 exits 1 (pilot 2026-10-29), so only real errors may exit non-zero.
+// --output-dir: the report goes beside the slot's JSON, not into <shim>/evals/results, so the shim keeps its prepare hash.
+const claudeArgs = (shim, id, remainingUsd, json) => ['plugin', 'eval', shim, '--case', id, '--runs', '1', '--ablation', 'none', '--threshold', '0', '--scaffold', '--keep-temp',
+  '--no-publish', '--trust-plugin', '--model', CLAUDE.model, '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remainingUsd), '--json', json,
+  '--output-dir', path.join(path.dirname(json), 'report')]
+// Whole cents, never above what is left: floor, then step down one cent if the printed value still exceeds the remainder.
+function capUsd(remaining) {
+  let cents = Math.floor(remaining * 100)
+  while (cents > 0 && Number((cents / 100).toFixed(2)) > remaining) cents--
+  return (Math.max(cents, 0) / 100).toFixed(2)
+}
+
+
+// Paid-call ledger of one run step: begin marks the call in the budget group, pay records it and clears the mark unless the
+// call's process could not be confirmed stopped.
+const ledger = (group, run) => ({
+  group,
+  begin: (call, need) => begin(group, { run, ...call }, need),
+  pay: (entry, keep) => charge(group, { run, ...entry }, keep ? { keepInflight: true } : {}),
+})
+
+const runContents = (cwd, c) => Object.fromEntries([SKILL, ...c.inputs.map(i => 'project/' + i)].map(rel => [rel, fs.readFileSync(path.join(cwd, rel), 'utf8')]))
+
+async function claudeSlot(run, s, remainingUsd, led) {
+  const { dir, cases } = run
+  const c = cases[s.case]
+  const out = path.join(dir, 'slots', s.slot)
+  fs.mkdirSync(out, { recursive: true })
+  // Claude Code on Windows takes its Git Bash from CLAUDE_CODE_GIT_BASH_PATH; PATH points at the same one for the scaffold.
+  const env = { ...process.env, CLAUDE_CODE_GIT_BASH_PATH: BASH.replaceAll('/', path.sep), PATH: path.dirname(BASH) + path.delimiter + process.env.PATH }
+  led.begin({ slot: s.slot, call: 'claude-eval' })
+  const r = await spawnWait('claude', claudeArgs(path.join(dir, 'claude-' + s.arm), c.id, remainingUsd, path.join(out, 'eval.json')), { cwd: dir, env }, undefined, 30 * 60 * 1000)
+  const slot = { slot: s.slot, case: c.id, arm: s.arm, host: 'claude', exitCode: r.code, timedOut: r.timedOut, graders: c.graders.map(g => ({ name: g.name })) }
+  let all = null
+  try { all = JSON.parse(fs.readFileSync(path.join(out, 'eval.json'), 'utf8')) } catch {}
+  const result = all?.cases?.[0]?.arms?.with?.[0] ?? null
+  const usd = sumEvalCost(all)
+  const unconfirmed = r.timedOut && !r.killConfirmed
+  led.pay({ slot: s.slot, call: 'claude-eval', usd, ...(unconfirmed ? { reason: 'claude stop unconfirmed' } : {}) }, unconfirmed)
+  if (unconfirmed) return { ...slot, invalid: 'process stop unconfirmed', stop: true }
+  if (!result || usd === null) return { ...slot, invalid: 'no eval result or unknown cost', stop: true }
+  // One case, one run in one arm, every grader scored once: anything else is not the planned call.
+  const shape = all.cases.length === 1 && all.cases[0].name === c.id && all.cases[0].arms.with.length === 1 && !all.cases[0].arms.without?.length
+  if (!shape) return { ...slot, invalid: 'unexpected eval shape', stop: true }
+  if (r.timedOut || r.failed || r.code !== 0 || result.error) return { ...slot, invalid: 'run error: ' + String(result.error || 'exit ' + r.code).slice(0, 200), stop: true }
+  if ((result.graders || []).length !== c.graders.length) return { ...slot, invalid: 'grader count differs', stop: true }
+  slot.verdicts = Object.fromEntries(c.graders.map(g => {
+    const v = result.graders.find(x => x.name === g.name)
+    return [g.name, v && v.scored !== false && typeof v.passed === 'boolean' ? (v.passed ? 'PASS' : 'FAIL') : null]
+  }))
+  slot.explanations = Object.fromEntries(result.graders.map(g => [g.name, String(g.explanation || '').slice(0, 1000)]))
+  const kept = result.tracePath ? path.dirname(path.dirname(result.tracePath)) : null
+  if (!kept || !/^claude-eval-[A-Za-z0-9]+$/.test(path.basename(kept)) || path.dirname(path.resolve(kept)).toLowerCase() !== path.resolve(os.tmpdir()).toLowerCase()) return { ...slot, invalid: 'no kept run folder', stop: true }
+  const cwd = path.join(kept, 'home', 'cwd')
+  const trace = fs.readFileSync(result.tracePath, 'utf8')
+  fs.writeFileSync(path.join(out, 'trace.jsonl'), trace)
+  let changed
+  try { changed = treeDiff(treeHash(cwd), expectedTree(dir, c, s.arm)) } catch (e) { return { ...slot, invalid: 'run folder unreadable: ' + e.message, stop: true, kept } }
+  if (changed.length) return { ...slot, invalid: 'run folder changed: ' + changed.length + ' entries', stop: true, kept }
+  slot.attribution = claudeAttribution(trace, cwd, runContents(cwd, c), c.inputs)
+  fs.rmSync(kept, { recursive: true, force: true })
+  slot.keptRemoved = true
+  if (!slot.attribution.ok) return { ...slot, invalid: 'attribution: ' + slot.attribution.reason }
+  return slot
+}
+
+const judgePrompt = (criteria, response) => 'You are grading one response against one criterion. Use only the criterion and the response below; do not read files or run commands.\n\n' +
+  'Criterion:\n<<<CRITERION\n' + criteria + 'CRITERION>>>\n\nResponse:\n<<<RESPONSE\n' + response + '\nRESPONSE>>>\n\n' +
+  'Reply with one line of JSON only: {"verdict":"PASS"} or {"verdict":"FAIL"}, plus a "reason" field of one sentence.'
+
+// Marker settings per case and grader (design section 4): the expected total, or the recorded operands.
+const MARKERS = {
+  'b4-03b/d2': ['d2', 9],
+  'k1-count/count': ['count', 9],
+  'h1-codex/d2': ['d2', 10],
+  'b6-03a/d5': ['d5', ['df8fb182a64160718f8f1a34a41d92a2173f81e2', '33c9ea7fad42e07d70527e39381298d15ccf5729']],
+}
+// The llm verdict stands only when the marker agrees; otherwise the slot is undetermined for that proposition.
+function applyMarker(id, grader, verdict, text) {
+  const m = MARKERS[id + '/' + grader]
+  if (!m || verdict === null) return { verdict }
+  const mark = markers[m[0]](text, m[1])
+  if (mark === null) return { verdict, mark: 'unrecognized' }
+  const llm = verdict === 'PASS' ? 'negative' : 'positive'
+  return mark === llm ? { verdict, mark } : { verdict: null, mark, disagreement: true }
+}
+
+
+// What a Codex call loads from its home beyond the run folder: global instructions and the config that enables skills and plugins.
+const profileHash = home => { const cfg = path.join(home, 'config.toml'); return sha(globalInstructionsHash(home) + ':' + (fs.existsSync(cfg) ? sha(fs.readFileSync(cfg)) : '-')) }
+
+// resume: the progress file of an interrupted slot (actor done, some judge votes paid); only the missing votes are called.
+async function codexSlot(run, s, home, led, gate, resume = null) {
+  const { dir, cases } = run
+  const c = cases[s.case]
+  const out = path.join(dir, 'slots', s.slot)
+  fs.mkdirSync(out, { recursive: true })
+  checkOutsideRepo(os.tmpdir())
+  const sameProfile = gate.same
+  const task = fs.mkdtempSync(path.join(os.tmpdir(), 'cxb-'))
+  const cwd = path.join(task, 's')
+  fs.cpSync(path.join(dir, 'bundle', 'evals', 'behavior', c.id, 'fixture', 'project'), path.join(cwd, 'project'), { recursive: true })
+  fs.cpSync(path.join(dir, 'arms', s.arm), path.join(cwd, 'plugin'), { recursive: true })
+  const expected = expectedTree(dir, c, s.arm)
+  if (treeHash(cwd).hash !== expected.hash) throw new Error('Codex run folder does not match the case and arm')
+  const contents = runContents(cwd, c)
+  const env = cleanEnv(home)
+  const slot = { slot: s.slot, case: c.id, arm: s.arm, host: 'codex', graders: c.graders.map(g => ({ name: g.name })) }
+  const progressFile = path.join(out, 'progress.json')
+  const progress = resume ?? { votes: {} }
+  const save = () => fs.writeFileSync(progressFile, JSON.stringify(progress, null, 1) + '\n')
+  let message
+  if (resume) {
+    fs.rmSync(task, { recursive: true, force: true })
+    message = fs.readFileSync(path.join(out, 'response.md'), 'utf8')
+    if (sha(message) !== resume.slot.responseHash) throw new Error('Saved response of ' + s.slot + ' does not match its progress record')
+    Object.assign(slot, resume.slot)
+  } else {
+  if (!sameProfile()) { fs.rmSync(task, { recursive: true, force: true }); return { ...slot, invalid: 'global instructions changed', stop: true } }
+  const notStarted = gate.fix()
+  if (notStarted) { fs.rmSync(task, { recursive: true, force: true }); return { ...slot, invalid: 'not started: ' + notStarted, stop: true } }
+  led.begin({ slot: s.slot, call: 'codex-actor' })
+  const r = await spawnWait('codex', execArgs(), { cwd, env }, c.prompt, 900 * 1000)
+  const t = codexTrace(r.stdout)
+  const unconfirmed = r.timedOut && !r.killConfirmed
+  led.pay({ slot: s.slot, call: 'codex-actor', tokens: t.tokens ?? null, ...(unconfirmed ? { reason: 'codex stop unconfirmed' } : {}) }, unconfirmed)
+  fs.writeFileSync(path.join(out, 'actor.jsonl'), r.stdout)
+  Object.assign(slot, { exitCode: r.code, timedOut: r.timedOut, tokens: t.tokens })
+  if (unconfirmed) return { ...slot, invalid: 'process stop unconfirmed', stop: true, kept: task }
+  if (!sameProfile()) return { ...slot, invalid: 'global instructions changed during the run', stop: true, kept: task }
+  let changed
+  try { changed = treeDiff(treeHash(cwd), expected) } catch (e) { return { ...slot, invalid: 'run folder unreadable: ' + e.message, stop: true, kept: task } }
+  if (changed.length) return { ...slot, invalid: 'run folder changed: ' + changed.length + ' entries', stop: true, kept: task }
+  fs.rmSync(task, { recursive: true, force: true })
+  if (t.tokens === null) return { ...slot, invalid: 'unknown usage', stop: true }
+  if (!t.valid || r.code !== 0 || r.timedOut || r.failed || !t.message) return { ...slot, invalid: 'run invalid' }
+  fs.writeFileSync(path.join(out, 'response.md'), t.message)
+  slot.responseHash = sha(t.message)
+  slot.attribution = codexAttribution(t.commands, cwd, contents, c.inputs)
+  if (!slot.attribution.ok) return { ...slot, invalid: 'attribution: ' + slot.attribution.reason }
+  message = t.message
+  progress.slot = { ...slot }
+  save()
+  }
+  slot.verdicts = {}
+  slot.votes = {}
+  slot.markers = {}
+  for (const g of c.graders) {
+    const r = await codexVotes(led, s.slot, g, message, env, gate, progress.votes[g.name] || [], votes => { progress.votes[g.name] = votes; save() })
+    // A judge stop keeps the actor and the votes already paid for; unfinished propositions stay without a verdict (undetermined).
+    if (r.stop) {
+      slot.votes[g.name] = r.votes
+      for (const rest of c.graders) if (!(rest.name in slot.verdicts)) slot.verdicts[rest.name] = null
+      return { ...slot, stop: true, judgeStopped: r.judgeStopped, ...(r.kept ? { kept: r.kept } : {}) }
+    }
+    slot.votes[g.name] = r.votes
+    const m = applyMarker(c.id, g.name, r.verdict, message)
+    slot.verdicts[g.name] = m.verdict
+    if (m.mark) slot.markers[g.name] = m
+  }
+  return slot
+}
+
+// The Codex judge of one grader on one text: three clean votes at most, each its own paid call checked against the budget and
+// the profile. Main slots and calibration both use this, so calibration measures the judge path the slots use.
+// prior: votes already paid for in an interrupted slot; onVote is told after every paid vote so it can be saved at once.
+async function codexVotes(led, slotKey, g, text, env, gate, prior = [], onVote = () => {}) {
+  const votes = [...prior]
+  for (let i = votes.length; i < JUDGE_VOTES; i++) {
+    if (!gate.same()) return { stop: true, judgeStopped: 'global instructions changed before a judge', votes }
+    const notStarted = gate.fix()
+    if (notStarted) return { stop: true, judgeStopped: 'not started: ' + notStarted, votes }
+    const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
+    const call = 'codex-judge ' + g.name + ' ' + (i + 1)
+    // A judge is its own paid process: it starts only with room left for twice the largest judge call seen.
+    try { led.begin({ slot: slotKey, call }, { host: 'codex', amount: judgeReserve(openBudget(led.group, {})) }) } catch (e) {
+      fs.rmSync(jdir, { recursive: true, force: true })
+      return { stop: true, judgeStopped: 'stopped before ' + call + ': ' + e.message, votes }
+    }
+    const j = await spawnWait('codex', execArgs(), { cwd: jdir, env }, judgePrompt(g.criteria, text), 300 * 1000)
+    const jt = codexTrace(j.stdout)
+    const jUnconfirmed = j.timedOut && !j.killConfirmed
+    let v = null
+    // Only a judge that finished cleanly votes.
+    if (!jUnconfirmed && j.code === 0 && !j.timedOut && !j.failed && jt.valid) { try { v = JSON.parse(/\{[^{}]*"verdict"[^{}]*\}/.exec(jt.message || '')[0]).verdict } catch {} }
+    votes.push(v === 'PASS' || v === 'FAIL' ? v : null)
+    // The vote is saved before its usage is recorded: a crash in between leaves the group's in-flight marker, which blocks every
+    // run until resolved by hand, so a paid call is never repeated and a recorded call never lacks its vote.
+    onVote([...votes])
+    led.pay({ slot: slotKey, call, tokens: jt.tokens ?? null, ...(jUnconfirmed ? { reason: 'judge stop unconfirmed' } : {}) }, jUnconfirmed)
+    if (jUnconfirmed) return { stop: true, judgeStopped: 'judge stop unconfirmed', kept: jdir, votes }
+    fs.rmSync(jdir, { recursive: true, force: true })
+    if (jt.tokens === null) return { stop: true, judgeStopped: 'unknown judge usage', votes }
+    if (!gate.same()) return { stop: true, judgeStopped: 'global instructions changed during a judge', votes }
+  }
+  const pass = votes.filter(v => v === 'PASS').length, fail = votes.filter(v => v === 'FAIL').length
+  return { votes, verdict: pass >= 2 ? 'PASS' : fail >= 2 ? 'FAIL' : null }
+}
+
+// Calibration (design section 5). Anchors file: [{ id, case, text, labels: { <grader>: 'positive'|'negative' }, source }], where
+// positive means the grader should FAIL the text. Claude: a haiku actor echoes the anchor through the case's own graders and judge
+// in claude plugin eval (an echo that differs from the anchor is invalid); Codex: the slots' judge function on the anchor text.
+// Writes one result file per anchor and a record whose samples point at them by hash.
+// A calibration call is keyed by run, host and anchor: recalibrating a revised grader in a new run pays again, one run never twice.
+const calKey = (opts, a) => 'cal-' + opts.run + '-' + opts.host + '-' + a.id
+
+async function calibrate(run, opts) {
+  const { dir, manifest, cases } = run
+  const anchorsText = fs.readFileSync(opts.anchors, 'utf8')
+  const anchors = JSON.parse(anchorsText).filter(a => cases[a.case]?.host === opts.host)
+  const out = path.join(dir, 'calibration', opts.host)
+  fs.mkdirSync(path.join(out, 'results'), { recursive: true })
+  const group = manifest.budget
+  const led = ledger(group, opts.run)
+  const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+  // The group lock comes first, so a second calibrate fails before it touches the shared shim or the profile baseline.
+  const release = lockBudget(group)
+  let shim = null
+  try {
+  // Calibration judges under the run's Codex profile too, through the same gate as the slots.
+  const gate = profileGate(dir, home)
+  if (opts.host === 'claude') {
+    // One shim holds every Claude anchor as its own echo case with only the graders the anchor is labelled for.
+    shim = path.join(dir, 'calibration', 'claude-shim')
+    fs.rmSync(shim, { recursive: true, force: true })
+    fs.mkdirSync(path.join(shim, '.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(shim, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'devflow-calibration', version: '0.0.0' }) + '\n')
+    for (const a of anchors) {
+      const cdir = path.join(shim, 'evals', a.id)
+      fs.mkdirSync(path.join(cdir, 'graders'), { recursive: true })
+      fs.writeFileSync(path.join(cdir, 'anchor.md'), a.text)
+      fs.writeFileSync(path.join(cdir, 'prompt.md'), '---\nmax_turns: 3\ntimeout_seconds: 300\nallowed_tools: [Read]\nruns: 1\ntags: [calibration]\n---\n\nRead the file anchor.md in the current directory and reply with its exact content and nothing else: no preface, no code fence, no comment.\n')
+      fs.writeFileSync(path.join(cdir, 'case.yaml'), `schema_version: "1.1"\nname: ${a.id}\ncontext:\n  scaffold_script: scaffold.sh\n`)
+      fs.writeFileSync(path.join(cdir, 'scaffold.sh'), '#!/usr/bin/env bash\nset -eu\nhere="$(cd "$(dirname "$0")" && pwd)"\ncp "$here/anchor.md" ./anchor.md\n')
+      for (const name of Object.keys(a.labels)) fs.copyFileSync(path.join(dir, 'bundle', 'evals', 'behavior', a.case, 'graders', name + '.md'), path.join(cdir, 'graders', name + '.md'))
+    }
+  }
+    for (const a of anchors) {
+      const file = path.join(out, 'results', a.id + '.json')
+      // A result is reused only for the same anchor text in the same case; anything else is a different sample.
+      const bind = { anchor: a.id, case: a.case, sampleHash: sha(a.text), graderHashes: Object.fromEntries(Object.keys(a.labels).map(n => [n, cases[a.case].graders.find(x => x.name === n).hash])) }
+      if (fs.existsSync(file)) { const old = JSON.parse(fs.readFileSync(file, 'utf8')); if (old.anchor !== bind.anchor || old.case !== bind.case || old.sampleHash !== bind.sampleHash) throw new Error('Result ' + a.id + ' belongs to another sample'); continue }
+      const b = openBudget(group, {})
+      if (b.entries.some(e => e.slot === calKey(opts, a))) throw new Error('Anchor ' + a.id + ' has paid calls on record but no result; resolve it first')
+      let result
+      if (opts.host === 'codex') {
+        result = { ...bind, verdicts: {}, votes: {} }
+        for (const name of Object.keys(a.labels)) {
+          const g = cases[a.case].graders.find(x => x.name === name)
+          const r = await codexVotes(led, calKey(opts, a), g, a.text, cleanEnv(home), gate)
+          if (r.stop) throw new Error('Calibration stopped at ' + a.id + ': ' + r.judgeStopped)
+          result.votes[name] = r.votes
+          result.verdicts[name] = r.verdict === 'PASS' ? 'negative' : r.verdict === 'FAIL' ? 'positive' : 'undetermined'
+        }
+      } else {
+        const remaining = b.capUsd - b.claudeUsd
+        if (remaining < 1) { process.stdout.write('budget reserve reached before ' + a.id + '\n'); return }
+        const json = path.join(out, 'results', a.id + '.eval.json')
+        const args = ['plugin', 'eval', shim, '--case', a.id, '--runs', '1', '--ablation', 'none', '--threshold', '0', '--scaffold', '--keep-temp', '--no-publish', '--trust-plugin',
+          '--model', 'claude-haiku-5-5', '--judge-model', CLAUDE.judge, '--max-cost-usd', capUsd(remaining), '--json', json, '--output-dir', path.join(out, 'reports', a.id)]
+        const env = { ...process.env, CLAUDE_CODE_GIT_BASH_PATH: BASH.replaceAll('/', path.sep), PATH: path.dirname(BASH) + path.delimiter + process.env.PATH }
+        led.begin({ slot: calKey(opts, a), call: 'claude-eval' }, { host: 'claude', amount: 0.5 })
+        const r = await spawnWait('claude', args, { cwd: dir, env }, undefined, 15 * 60 * 1000)
+        let all = null
+        try { all = JSON.parse(fs.readFileSync(json, 'utf8')) } catch {}
+        const ev = all?.cases?.[0]?.arms?.with?.[0] ?? null
+        const usd = sumEvalCost(all)
+        led.pay({ slot: calKey(opts, a), call: 'claude-eval', usd }, r.timedOut && !r.killConfirmed)
+        const shape = all?.cases?.length === 1 && all.cases[0].arms.with?.length === 1 && !all.cases[0].arms.without?.length
+        if (!ev || usd === null || !shape || r.code !== 0 || ev.error) throw new Error('Calibration stopped at ' + a.id + ': eval failed, unexpected shape or cost unknown')
+        // The echo must be the anchor itself; otherwise the judge saw another text and the sample is invalid.
+        const kept = ev.tracePath ? path.dirname(path.dirname(ev.tracePath)) : null
+        const echo = kept ? lastAssistantText(fs.readFileSync(ev.tracePath, 'utf8')) : null
+        if (kept && /^claude-eval-[A-Za-z0-9]+$/.test(path.basename(kept))) fs.rmSync(kept, { recursive: true, force: true })
+        const same = echo !== null && echo.replace(/\s+$/, '') === a.text.replace(/\s+$/, '')
+        result = { ...bind, echoMatches: same, verdicts: {} }
+        for (const name of Object.keys(a.labels)) {
+          const g = (ev.graders || []).find(x => x.name === name)
+          result.verdicts[name] = !same ? 'invalid' : g && g.scored !== false && typeof g.passed === 'boolean' ? (g.passed ? 'negative' : 'positive') : 'undetermined'
+        }
+      }
+      fs.writeFileSync(file, JSON.stringify(result, null, 1) + '\n')
+      process.stdout.write(a.id + ': ' + JSON.stringify(result.verdicts) + '\n')
+    }
+  } finally { release() }
+  // The record: per case/grader, every sample with its label, verdict and the hashes that tie it to the anchor and the result file.
+  const record = { host: opts.host, run: opts.run, anchorsPath: path.resolve(opts.anchors), anchorsHash: sha(anchorsText), graders: {} }
+  for (const a of anchors) {
+    const rel = path.join('results', a.id + '.json')
+    if (!fs.existsSync(path.join(out, rel))) continue
+    const body = fs.readFileSync(path.join(out, rel), 'utf8')
+    const res = JSON.parse(body)
+    for (const [name, label] of Object.entries(a.labels)) {
+      const g = cases[a.case].graders.find(x => x.name === name)
+      const key = a.case + '/' + name
+      ;(record.graders[key] ??= { hash: g.hash, samples: [] }).samples.push({ anchor: a.id, label, verdict: res.verdicts[name], sampleHash: sha(a.text), result: rel.split(path.sep).join('/'), resultHash: sha(body) })
+    }
+  }
+  fs.writeFileSync(path.join(out, 'calibration.json'), JSON.stringify(record, null, 1) + '\n')
+  const failed = checkCalibration(record, Object.values(cases).filter(c => c.host === opts.host), out)
+  process.stdout.write('calibration ' + opts.host + ': ' + (failed.length ? 'not passing: ' + failed.join(', ') : 'every grader passes') + '\n')
+}
+
+// The final assistant text of a Claude trace: the last text block of an assistant message.
+function lastAssistantText(trace) {
+  let last = null
+  for (const line of trace.split(/\r?\n/).filter(Boolean)) {
+    let o
+    try { o = JSON.parse(line) } catch { continue }
+    const msg = o.message && (o.message.role === 'assistant' || o.type === 'assistant') ? o.message : null
+    const content = msg?.content
+    if (typeof content === 'string') last = content
+    else if (Array.isArray(content)) { const texts = content.filter(x => x?.type === 'text').map(x => x.text); if (texts.length) last = texts.join('') }
+  }
+  return last
+}
+
+// An adjudicated grader must still detect every valid labelled positive: its negatives then stand, and its positives, where it
+// over-reports, are settled by the two reviewers in summary().
+const sensitiveOnly = (record, c, g, evidence, finalLabels) => checkCalibration(record, [{ ...c, graders: [g] }], evidence, { positivesOnly: true, finalLabels }).length === 0
+
+function summary(run) {
+  const { dir, manifest } = run
+  const counts = {}
+  const adjFile = path.join(dir, 'adjudication.json')
+  const adjudication = fs.existsSync(adjFile) ? JSON.parse(fs.readFileSync(adjFile, 'utf8')) : {}
+  const adjusted = {}
+  for (const s of manifest.slots) {
+    const f = path.join(dir, 'slots', s.slot, 'slot.json')
+    if (!fs.existsSync(f)) continue
+    const slot = JSON.parse(fs.readFileSync(f, 'utf8'))
+    for (const [prop, judged] of Object.entries(classify(slot))) {
+      // In an adjudicated cell a judge positive counts only as the two reviewers settled it; no agreed entry is undetermined.
+      const cell = s.case + '/' + prop
+      // Each reviewer's value is kept: { p1x, p24 }. Only two present, equal values settle the slot.
+      const v = adjudication[s.slot]?.[prop]
+      const settled = v && typeof v === 'object' && v.p1x && v.p1x === v.p24 ? v.p1x : null
+      const cls = (manifest.adjudicate || []).includes(cell) && judged === 'positive' ? (settled === 'positive' || settled === 'negative' ? settled : 'undetermined') : judged
+      if (cls !== judged) (adjusted[cell] ??= []).push(s.slot + ':' + judged + '>' + cls)
+      const k = ((counts[s.case] ??= {})[prop] ??= {})[s.arm] ??= { positive: 0, negative: 0, invalid: 0, undetermined: 0, slots: 0 }
+      k[cls]++
+      k.slots++
+    }
+  }
+  for (const c of Object.values(counts)) for (const p of Object.values(c)) for (const k of Object.values(p)) {
+    const valid = k.positive + k.negative
+    k.upperBoundIfZero = k.positive === 0 && valid ? Number(upperBound(valid).toFixed(3)) : null
+  }
+  // Holdout propositions are compared like regression cells: no candidate increase, missing slots counted against it.
+  const rules = { ...RULES, regression: [...RULES.regression, ...holdoutPairs()], slots: SLOTS }
+  const result = { manifest: manifest.hash, counts, adjudicated: adjusted,
+    adoption: manifest.pilot ? { adopted: null, reasons: ['pilot: not an adoption run'] } : adopt(counts, rules, requiredPairs()) }
+  fs.writeFileSync(path.join(dir, 'summary.json'), JSON.stringify(result, null, 1) + '\n')
+  return result
+}
+
+const judgeReserve = b => Math.max(20000, 2 * Math.max(0, ...b.entries.filter(e => /^codex-judge /.test(e.call || '') && Number.isSafeInteger(e.tokens)).map(e => e.tokens)))
+
+const reserve = (b, host) => {
+  const seen = b.entries.map(e => host === 'claude' ? e.usd : e.tokens).filter(v => typeof v === 'number' && v > 0)
+  // Codex slots are actor plus judges; the reserve uses the largest whole slot seen.
+  const bySlot = {}
+  for (const e of b.entries) if (host === 'codex' && Number.isSafeInteger(e.tokens)) bySlot[e.run + '/' + e.slot] = (bySlot[e.run + '/' + e.slot] || 0) + e.tokens
+  const largest = host === 'claude' ? Math.max(0, ...seen) : Math.max(0, ...Object.values(bySlot))
+  return Math.max(host === 'claude' ? 1 : 200000, 2 * largest)
+}
+
+function parseArgs(args) {
+  const [command, ...rest] = args
+  const opts = { command, arms: {}, expectDiff: [], calibration: [], adjudicate: [] }
+  for (let i = 0; i < rest.length; i++) {
+    const v = () => { if (!rest[i + 1] || rest[i + 1].startsWith('--')) throw new Error('Option value is required: ' + rest[i]); return rest[++i] }
+    const a = rest[i]
+    if (a === '--run') opts.run = v()
+    else if (a === '--arm') { const [k, r] = v().split('='); if (!/^[AB]$/.test(k) || !r) throw new Error('--arm A=<rev> and B=<rev>'); opts.arms[k] = r }
+    else if (a === '--expect-diff') opts.expectDiff.push(v())
+    else if (a === '--cases') opts.cases = v().split(',')
+    else if (a === '--pilot') opts.pilot = true
+    else if (a === '--calibration') opts.calibration.push(v())
+    else if (a === '--anchors') opts.anchors = v()
+    else if (a === '--anchors-final') opts.anchorsFinal = v()
+    else if (a === '--adjudicate') opts.adjudicate.push(...v().split(','))
+    else if (a === '--host') opts.host = v()
+    else if (a === '--budget') opts.budget = v()
+    else if (a === '--budget-usd') opts.budgetUsd = Number(v())
+    else if (a === '--budget-tokens') opts.budgetTokens = Number(v())
+    else throw new Error('Unknown option ' + a)
+  }
+  const usage = 'usage: devflow-behavior-eval prepare --run <name> --arm A=<rev> --arm B=<rev> --expect-diff <path> --budget <group> [--budget-usd <cap> --budget-tokens <cap>] [--cases a,b] (--pilot | --calibration <record>)\n' +
+    '       devflow-behavior-eval run --run <name> --host claude|codex\n' +
+    '       devflow-behavior-eval calibrate --run <name> --host claude|codex --anchors <file>\n' +
+    '       devflow-behavior-eval summary --run <name>'
+  if (!opts.run || !/^[a-z0-9][a-z0-9-]*$/.test(opts.run)) throw new Error(usage)
+  if (!['prepare', 'run', 'summary', 'calibrate'].includes(command)) throw new Error(usage)
+  if (command === 'calibrate' && (!['claude', 'codex'].includes(opts.host) || !opts.anchors)) throw new Error(usage)
+  if (command === 'prepare' && (!opts.arms.A || !opts.arms.B || !opts.expectDiff.length || !opts.budget || !/^[a-z0-9][a-z0-9-]*$/.test(opts.budget))) throw new Error(usage)
+  if (command === 'run' && (!['claude', 'codex'].includes(opts.host) || opts.budget || opts.budgetUsd !== undefined || opts.budgetTokens !== undefined)) throw new Error(usage)
+  return opts
+}
+
+async function main(args) {
+  const opts = parseArgs(args)
+  if (opts.command === 'prepare') {
+    const m = prepare(opts)
+    process.stdout.write(`prepared ${opts.run}: ${m.slots.length} slots, budget ${m.budget}, manifest ${m.hash.slice(0, 12)}\n`)
+    return
+  }
+  const run = openRun(opts.run)
+  if (opts.command === 'summary') { process.stdout.write(JSON.stringify(summary(run), null, 1) + '\n'); return }
+  if (opts.command === 'calibrate') return calibrate({ ...run, opts }, opts)
+  const group = run.manifest.budget
+  const release = lockBudget(group)
+  try {
+    const first = openBudget(group, {})
+    if (first.inflight) throw new Error('Budget ' + group + ' has a call without recorded usage: ' + JSON.stringify(first.inflight) + '; confirm its process ended and record its usage before resuming')
+    const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+    const gate = opts.host === 'codex' ? profileGate(run.dir, home) : null
+    const led = ledger(group, opts.run)
+    for (const s of run.manifest.slots.filter(x => x.host === opts.host)) {
+      const file = path.join(run.dir, 'slots', s.slot, 'slot.json')
+      if (fs.existsSync(file)) continue
+      const b = openBudget(group, {})
+      if (!b.known) throw new Error('Usage became unknown; stopping before ' + s.slot)
+      // A slot with paid calls on record but no result was interrupted: it is never re-run, only resolved by hand.
+      // Slot ids repeat across runs of one group, so a re-prepared run cannot re-call an interrupted slot either.
+      // A slot with paid calls but no result resumes only from its own progress file (Codex: actor and votes saved per call).
+      const progressFile = path.join(run.dir, 'slots', s.slot, 'progress.json')
+      const resume = opts.host === 'codex' && fs.existsSync(progressFile) ? JSON.parse(fs.readFileSync(progressFile, 'utf8')) : null
+      // Another run's paid calls for the same slot id block only while that run's slot has no saved result (interrupted);
+      // a completed slot of an earlier run is a different measurement, not a repeat.
+      // Resuming covers only this run's own calls; another run's unfinished calls always block.
+      const other = e => e.slot === s.slot && e.run !== opts.run && !fs.existsSync(path.join(WORK, e.run, 'slots', s.slot, 'slot.json'))
+      const own = e => e.slot === s.slot && e.run === opts.run
+      if (b.entries.some(other) || (b.entries.some(own) && !resume?.slot)) throw new Error('Slot ' + s.slot + ' has paid calls on record in budget ' + group + ' without a result; a slot is never paid for twice')
+      const remaining = opts.host === 'claude' ? b.capUsd - b.claudeUsd : b.capTokens - b.codexTokens
+      // A slot cannot be cut off mid-turn, so one starts only with room for twice the largest slot seen so far.
+      if (remaining < reserve(b, opts.host)) { process.stdout.write('budget reserve reached before ' + s.slot + '\n'); return }
+      if (resume?.slot) {
+        // Resuming is safe only when every judge call on record for this slot has its vote saved, grader by grader.
+        for (const g of run.cases[s.case].graders) {
+          const paid = b.entries.filter(e => e.run === opts.run && e.slot === s.slot && (e.call || '').startsWith('codex-judge ' + g.name + ' ')).length
+          if (paid !== (resume.votes[g.name] || []).length) throw new Error('Slot ' + s.slot + ' has ' + paid + ' paid ' + g.name + ' judge calls but ' + (resume.votes[g.name] || []).length + ' saved votes; resolve by hand')
+        }
+      }
+      const slot = opts.host === 'claude' ? await claudeSlot(run, s, remaining, led) : await codexSlot(run, s, home, led, gate, resume?.slot ? resume : null)
+      // A judge stop keeps the progress file instead of a result, so the slot's remaining judge calls can be resumed later.
+      if (slot.judgeStopped) throw new Error('Stopped during the judges of ' + s.slot + ': ' + slot.judgeStopped + '; its progress is kept for resuming')
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, JSON.stringify(slot, null, 1) + '\n')
+      process.stdout.write(`${s.slot}: ${slot.invalid ? 'invalid (' + slot.invalid + ')' : JSON.stringify(classify(slot))}\n`)
+      if (slot.stop) throw new Error('Stopped at ' + s.slot + (slot.kept ? '; evidence kept in ' + slot.kept : ''))
+    }
+  } finally { release() }
+}
+
+module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun,
+  openBudget, begin, charge, lockBudget, judgeReserve, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
+  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, literalPipeline, spawnWait, runProfile, profileGate, RULES }
+if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

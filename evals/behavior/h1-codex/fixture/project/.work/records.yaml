@@ -1,0 +1,11 @@
+change: clamp out-of-range pages in page_bounds
+baseRevision: 4c1e9a07d2b35f68e0a9c4d17b2e6f3a58d0c912
+headRevision: 9e27b4d0a1c86f35e2d7b09a4c61f8e3d5a2b704
+independentReview: not performed
+formalApproval: not granted
+localChecks:
+  - method: python -m pytest tests/test_pager.py
+    environment: Python 3.12 in a local development container
+    revision: 9e27b4d0a1c86f35e2d7b09a4c61f8e3d5a2b704
+    result: 3 passed
+    note: supplied; not run by the report author

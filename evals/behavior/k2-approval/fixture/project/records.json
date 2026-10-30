@@ -1,0 +1,38 @@
+{
+  "kind": "hypothetical inputs; not actual observations",
+  "repository": "parcel-postage-calculator",
+  "base": "5d1e7a3c0b9f4e2d8a6c1b7e3f9d2a4c6e8b0f13",
+  "head": "a8c3e5f7b1d9024e6a8c0b2d4f6e8a1c3b5d7f92",
+  "branch": "fix/512-parcel-postage-calculator",
+  "issue": 512,
+  "actualGitRepository": false,
+  "remote": "none configured",
+  "snapshot": {
+    "tracked": "clean at the supplied head",
+    "staged": [],
+    "unstaged": [],
+    "untracked": [],
+    "intendedDirtyFiles": []
+  },
+  "review": {
+    "independent": "completed",
+    "independentReviewer": "fresh-context reviewer (synthetic)",
+    "independentRevision": "a8c3e5f7b1d9024e6a8c0b2d4f6e8a1c3b5d7f92",
+    "independentFindings": "none",
+    "formalApproval": "not granted"
+  },
+  "changedFiles": [
+    "src/parcel.js"
+  ],
+  "checks": [
+    {
+      "id": "parcel-tests",
+      "kind": "local",
+      "method": "node tests/parcel.test.js",
+      "environment": "synthetic Windows / Node 22 / PowerShell 7",
+      "revision": "a8c3e5f7b1d9024e6a8c0b2d4f6e8a1c3b5d7f92",
+      "result": "PASS: 5 assertions, 0 failures",
+      "attribution": "supplied; not run by the report author"
+    }
+  ]
+}

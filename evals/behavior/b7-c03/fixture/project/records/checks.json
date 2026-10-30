@@ -1,0 +1,22 @@
+{
+  "checks": [
+    {
+      "name": "unit",
+      "kind": "local",
+      "method": "node --test test/accession.test.cjs",
+      "environment": "fictional Node.js 22 runner",
+      "revision": "accession-candidate-r2",
+      "result": "passed",
+      "provenance": "supplied synthetic execution record"
+    },
+    {
+      "name": "lint",
+      "kind": "configuration",
+      "method": null,
+      "environment": "snapshot",
+      "revision": null,
+      "result": "not configured",
+      "provenance": "supplied synthetic project configuration record"
+    }
+  ]
+}

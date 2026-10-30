@@ -100,7 +100,7 @@ node bin/devflow-behavior-eval summary --run <name>
   적용해 계산한다.
 - 채택 run은 실행기에 고정된 필수 사례·명제 목록(holdout `h1-claude`·`h1-codex`의 D1·D2·D3 포함)이 모두 있어야 준비된다.
   모든 grader는 보정 기록을 통과해야 한다. 기록에는 grader 해시와 표본마다 라벨·판정·표본 해시가 있다. 실행기는 그 표본에서
-  양·음성 각 5개 이상, 검출률 80%, 일치율 90% 이상을 다시 계산한다. pilot은 보정 없이 기계적 동작만 확인하며 채택 판정을 내지 않는다.
+  양·음성 각 5개 이상, 양성 검출률 80%, 음성 일치율 90% 이상을 다시 계산한다. pilot은 보정 없이 기계적 동작만 확인하며 채택 판정을 내지 않는다.
 - 실행표: 사례마다 ABBA 7블록으로 arm별 14슬롯을 만든다. pilot은 사례마다 arm별 1슬롯이며 채택 판정에 쓰지 않는다.
 - Claude: 사례 폴더와 arm만 담은 shim plugin을 대상으로 슬롯마다 다음을 실행한다.
   - 명령: `claude plugin eval <shim> --case <id> --runs 1 --ablation none --threshold 0 --scaffold --keep-temp --no-publish --trust-plugin --model claude-opus-5-5 --judge-model claude-sonnet-5-5 --max-cost-usd <잔여> --json --output-dir`

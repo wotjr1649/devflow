@@ -18,6 +18,7 @@ const BASH = PROGRAMS + '/Git/bin/bash.exe'
 const SKILL = 'plugin/skills/pr-review-workflow/SKILL.md'
 const PWSH = (PROGRAMS + '/PowerShell/7/pwsh.exe').toLowerCase()
 const JUDGE_VOTES = 3
+const KILL_GRACE_MS = 30 * 1000
 const SLOTS = 14
 const sha = b => crypto.createHash('sha256').update(b).digest('hex')
 // The trigger runner's helpers fix the Codex model, effort and arguments, so both files are part of the runner identity.
@@ -525,8 +526,9 @@ function codexAttribution(commands, cwd, contents, inputs = []) {
     const pipe = literalPipeline(c)
     if (pipe === null) return { ok: false, reason: 'command target not provable' }
     if (/\$(?!true\b|false\b|null\b|_\b|psitem\b)[a-z_{]|\binvoke-expression\b|\biex\b|\bset-location\b|\bpush-location\b|(^|[;&|]\s*)(cd|sl|pushd)\s|(^|[\s'"])~|(^|[\s'"])\/\/|%[a-z_]+%|#|(?<![\w/])[a-z]:(?!\/)|\benv:|\b(join|resolve|split|convert)-path\b|\[(environment|system\.|io\.)|\$\(|\(\s*get-/.test(pipe)) return { ok: false, reason: 'command target not provable' }
-    for (const m of pipe.matchAll(/(?<![\w/])[a-z]:\/[^\s'";|&)]*/g)) {
-      const p = m[0].replace(/\/+$/, '')
+    // A single-quoted literal is one path, spaces included; a bare word ends at the first space.
+    for (const m of pipe.matchAll(/'([a-z]:\/[^']*)'|(?<![\w/'])([a-z]:\/[^\s'";|&)]*)/g)) {
+      const p = (m[1] ?? m[2]).replace(/\/+$/, '')
       if (p !== root && !p.startsWith(root + '/')) return { ok: false, reason: 'command path outside the run folder' }
     }
     // A single leading slash is the current drive's root in PowerShell, outside the run folder.
@@ -587,19 +589,32 @@ function adopt(counts, rules, required) {
 // 0 of n valid: one-sided exact binomial 95% upper bound, under independence between rows.
 const upperBound = n => n > 0 ? 1 - Math.pow(0.05, 1 / n) : null
 
+// The Codex profile is fixed at the first Codex call of a run (slots or calibration) and checked before every later call.
+function runProfile(dir, home) {
+  const file = path.join(dir, 'codex-home.json')
+  const now = { ...homeIdentity(home), profileHash: profileHash(home) }
+  if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(now) + '\n')
+  else if (fs.readFileSync(file, 'utf8') !== JSON.stringify(now) + '\n') throw new Error('Codex home or global instructions differ from the first Codex call of this run')
+  return now.profileHash
+}
+
 function spawnWait(cmd, args, options, input, timeoutMs) {
   return new Promise(resolve => {
     let stdout = '', timedOut = false, failed = false, killConfirmed = null
     const child = spawn(cmd, args, { ...options, windowsHide: true, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'] })
+    let done = false, grace = null
+    const finish = code => { if (done) return; done = true; clearTimeout(timer); clearTimeout(grace); resolve({ code, stdout, timedOut, failed, killConfirmed }) }
     const timer = setTimeout(() => {
       timedOut = true
       killConfirmed = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }).status === 0
+      // If the process never reports closing, stop waiting: the caller records the stop as unconfirmed and keeps the evidence.
+      grace = setTimeout(() => { killConfirmed = false; finish(null) }, KILL_GRACE_MS)
     }, timeoutMs)
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', d => { stdout += d })
     child.on('error', () => { failed = true })
     if (input !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(input) }
-    child.on('close', code => { clearTimeout(timer); resolve({ code, stdout, timedOut, failed, killConfirmed }) })
+    child.on('close', code => finish(code))
   })
 }
 
@@ -832,7 +847,8 @@ async function calibrate(run, opts) {
   const group = manifest.budget
   const led = ledger(group, opts.run)
   const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
-  const profile = opts.host === 'codex' ? profileHash(home) : null
+  // Calibration judges under the run's Codex profile too, so every sample of a record shares one environment.
+  const profile = opts.host === 'codex' ? runProfile(dir, home) : null
   const sameProfile = () => opts.host !== 'codex' || profileHash(home) === profile
   // The group lock comes first, so a second calibrate fails before it touches the shared shim.
   const release = lockBudget(group)
@@ -1033,15 +1049,7 @@ async function main(args) {
     const first = openBudget(group, {})
     if (first.inflight) throw new Error('Budget ' + group + ' has a call without recorded usage: ' + JSON.stringify(first.inflight) + '; confirm its process ended and record its usage before resuming')
     const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
-    let instructions = null
-    if (opts.host === 'codex') {
-      // The profile is fixed at the first Codex call of a run and checked before every call.
-      const file = path.join(run.dir, 'codex-home.json')
-      const now = { ...homeIdentity(home), profileHash: profileHash(home) }
-      if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(now) + '\n')
-      else if (fs.readFileSync(file, 'utf8') !== JSON.stringify(now) + '\n') throw new Error('Codex home or global instructions differ from the first Codex call of this run')
-      instructions = now.profileHash
-    }
+    const instructions = opts.host === 'codex' ? runProfile(run.dir, home) : null
     const led = ledger(group, opts.run)
     for (const s of run.manifest.slots.filter(x => x.host === opts.host)) {
       const file = path.join(run.dir, 'slots', s.slot, 'slot.json')
@@ -1082,5 +1090,5 @@ async function main(args) {
 
 module.exports = { loadCases, treeHash, joinTrees, treeDiff, schedule, claudeAttribution, codexTrace, codexAttribution, classify, adopt, upperBound, prepare, openRun,
   openBudget, begin, charge, lockBudget, judgeReserve, extract, judgePrompt, summary, parseArgs, claudeArgs, reserve, requiredPairs, holdoutPairs, checkCalibration, markers,
-  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, literalPipeline, RULES }
+  totalInputClaims, applyMarker, codexVotes, calibrate, lastAssistantText, sumEvalCost, literalPipeline, spawnWait, RULES }
 if (require.main === module) main(process.argv.slice(2)).catch(e => { process.stderr.write(e.message + '\n'); process.exitCode = 1 })

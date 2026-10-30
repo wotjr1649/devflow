@@ -540,3 +540,23 @@ test('integration seventh review: only the -NoProfile pwsh is provable, since a 
   for (const bad of [exe + ' -Command "' + script + '"', script, 'pwsh -NoProfile -Command "' + script + '"'])
     assert.match(call(bad).reason, /not provable/, bad)
 })
+
+test('PR review threads: a quoted absolute path keeps its spaces, and calibration shares the run profile baseline', () => {
+  const contents = { [SKILL]: '# PR workflow\nbody\n' }
+  const cwd = C + '/Users/Test User/AppData/Local/Temp/cxb-1/s'
+  const read = { command: "Get-Content -LiteralPath '" + cwd + '/' + SKILL + "' -Raw", exitCode: 0, output: contents[SKILL] }
+  assert.equal(codexAttribution([read], cwd, contents).ok, true)
+  assert.match(codexAttribution([read, { command: "Get-Content -LiteralPath '" + C + "/Users/Test User/secret.txt' -Raw", exitCode: 0, output: '' }], cwd, contents).reason, /outside/)
+  const src = fs.readFileSync(path.join(__dirname, '..', 'bin', 'devflow-behavior-eval'), 'utf8')
+  assert.match(src, /const profile = opts\.host === 'codex' \? runProfile\(dir, home\) : null/)
+  assert.match(src, /const instructions = opts\.host === 'codex' \? runProfile\(run\.dir, home\) : null/)
+})
+
+test('spawnWait returns a normal exit, and after a timeout reports the stop instead of waiting on', async () => {
+  const ok = await ev.spawnWait(process.execPath, ['-e', 'process.stdout.write("hi")'], {}, undefined, 10000)
+  assert.deepEqual([ok.code, ok.stdout, ok.timedOut], [0, 'hi', false])
+  const slow = await ev.spawnWait(process.execPath, ['-e', 'setTimeout(() => {}, 3000)'], {}, undefined, 200)
+  assert.equal(slow.timedOut, true)
+  // taskkill exists only on Windows; elsewhere the stop is unconfirmed and the grace timer ends the wait.
+  if (process.platform === 'win32') assert.equal(slow.killConfirmed, true)
+})

@@ -548,8 +548,10 @@ test('PR review threads: a quoted absolute path keeps its spaces, and calibratio
   assert.equal(codexAttribution([read], cwd, contents).ok, true)
   assert.match(codexAttribution([read, { command: "Get-Content -LiteralPath '" + C + "/Users/Test User/secret.txt' -Raw", exitCode: 0, output: '' }], cwd, contents).reason, /outside/)
   const src = fs.readFileSync(path.join(__dirname, '..', 'bin', 'devflow-behavior-eval'), 'utf8')
-  // Every Codex call, slot or calibration, goes through the profile gate.
-  assert.equal((src.match(/gate\.fix\(led, /g) || []).length, 2)
+  // Every Codex call, slot or calibration, fixes the profile through the gate before its paid begin.
+  assert.equal((src.match(/const notStarted = gate\.fix\(\)/g) || []).length, 2)
+  assert.ok(src.indexOf('    const notStarted = gate.fix()') < src.indexOf('    try { led.begin({ slot: slotKey, call }'))
+  assert.ok(src.indexOf('  const notStarted = gate.fix()') < src.indexOf("  led.begin({ slot: s.slot, call: 'codex-actor' })"))
   assert.doesNotMatch(src, /let instructions|const sameProfile = \(\) =>/)
 })
 
@@ -574,19 +576,15 @@ test('the run Codex profile baseline is created once and refuses a changed profi
   assert.ok(src.indexOf('const release = lockBudget(group)\n  let shim = null') < src.indexOf('  const gate = profileGate(dir, home)'))
 })
 
-test('the profile gate fixes the baseline only when a call starts, and a failed fix records that call as not started', () => {
+test('the profile gate fixes the baseline at the first attempted call and refuses a changed profile without paying', () => {
   const run = tmpdir('gate-'), home = tmpdir('home-')
   fs.writeFileSync(path.join(home, 'config.toml'), 'model = "a"\n')
-  const paid = []
-  const led = { pay: (e, unconfirmed) => paid.push({ ...e, unconfirmed }) }
   const gate = ev.profileGate(run, home)
   assert.equal(gate.same(), true)
-  assert.equal(fs.existsSync(path.join(run, 'codex-home.json')), false, 'no baseline before a call starts')
-  assert.equal(gate.fix(led, { slot: 's', call: 'codex-actor' }), null)
+  assert.equal(fs.existsSync(path.join(run, 'codex-home.json')), false, 'no baseline before a call is attempted')
+  assert.equal(gate.fix(), null)
   assert.equal(gate.same(), true)
   fs.writeFileSync(path.join(home, 'config.toml'), 'model = "b"\n')
   assert.equal(gate.same(), false)
-  assert.match(gate.fix(led, { slot: 's', call: 'codex-judge task 1' }), /differ/)
-  assert.equal(paid.length, 1)
-  assert.deepEqual([paid[0].call, paid[0].tokens, paid[0].unconfirmed], ['codex-judge task 1', 0, false])
+  assert.match(gate.fix(), /differ/)
 })

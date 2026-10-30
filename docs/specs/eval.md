@@ -88,8 +88,8 @@ node bin/devflow-behavior-eval summary --run <name>
   - fixture는 공개 가능한 합성 자료이며 prompt의 입력 목록과 파일이 같다. 목록 없는 자유 탐색 사례는 `required-reads.txt`에 귀속이 요구할 읽기를 둔다. fixture 안의 `.gitignore`와 상관없이 모든 파일을 추적한다.
 - arm: 고정 revision의 추적 파일만 `git archive`로 뽑는다. 두 arm의 차이가 `--expect-diff` 목록과 다르면 멈춘다. 사례·grader는 실행기를
   부른 커밋(평가 묶음) 하나에서 뽑고, 이 묶음과 실행기는 커밋된 상태여야 한다. `.work/behavior-eval/<run>/manifest.json`에 해시를 남긴다.
-  이어 실행은 미실행 슬롯만 한다. 실행기·실행표·모델 설정·arm·사례·shim 전체·bash가 바뀌었으면 멈춘다.
-  Codex profile과 전역 지침은 그 run의 첫 Codex 호출 때 값과 같아야 하고, actor·judge 호출마다 다시 확인한다.
+  이어 실행은 미실행 슬롯만 하고, 실행기·실행표·모델 설정·arm·사례·shim·bash가 바뀌면 멈춘다.
+  Codex profile·전역 지침은 run의 첫 Codex 호출 시도(보정 포함) 때 값과 호출마다 같아야 한다. 바뀌면 새 run을 준비한다.
 - 관문 미달 grader의 재판정(`prepare --adjudicate <case/grader,...>`, 사용자 결정으로만): 그 grader가 어떤 보정 기록에서 유효 양성을 모두 검출한 경우에만
   준비를 허용한다. 본 실행에서 그 셀의 judge 양성은 두 검수자가 독립 확인해 run의 `adjudication.json`에 검수자별 값(`{ p1x, p24 }`)을 남긴다.
   두 값이 모두 있고 같을 때만 그 판정을 쓰고, 그 밖에는 undetermined다. judge 음성은 그대로 쓴다. `summary`는 바뀐 슬롯을 `adjudicated`로 보고한다.

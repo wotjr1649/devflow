@@ -599,14 +599,13 @@ function runProfile(dir, home) {
   return now.profileHash
 }
 
-// A run's profile gate: same() compares with the baseline once there is one; fix() writes it at a Codex call that has passed
-// begin() and is about to spawn, so a call that never starts fixes nothing. A failed fix records that call as not started.
+// A run's profile gate: same() compares with the baseline once there is one; fix() writes it at the run's first attempted
+// Codex call (slot or calibration, before its paid begin), so nothing is recorded or paid when it fails. Conservative by
+// design: after a failed first attempt, a changed profile needs a new run.
 function profileGate(dir, home) {
   const file = path.join(dir, 'codex-home.json')
   const same = () => !fs.existsSync(file) || fs.readFileSync(file, 'utf8') === JSON.stringify({ ...homeIdentity(home), profileHash: profileHash(home) }) + '\n'
-  const fix = (led, entry) => {
-    try { runProfile(dir, home); return null } catch (e) { led.pay({ ...entry, tokens: 0, reason: 'not started: ' + e.message }, false); return e.message }
-  }
+  const fix = () => { try { runProfile(dir, home); return null } catch (e) { return e.message } }
   return { same, fix }
 }
 
@@ -773,9 +772,9 @@ async function codexSlot(run, s, home, led, gate, resume = null) {
     Object.assign(slot, resume.slot)
   } else {
   if (!sameProfile()) { fs.rmSync(task, { recursive: true, force: true }); return { ...slot, invalid: 'global instructions changed', stop: true } }
-  led.begin({ slot: s.slot, call: 'codex-actor' })
-  const notStarted = gate.fix(led, { slot: s.slot, call: 'codex-actor' })
+  const notStarted = gate.fix()
   if (notStarted) { fs.rmSync(task, { recursive: true, force: true }); return { ...slot, invalid: 'not started: ' + notStarted, stop: true } }
+  led.begin({ slot: s.slot, call: 'codex-actor' })
   const r = await spawnWait('codex', execArgs(), { cwd, env }, c.prompt, 900 * 1000)
   const t = codexTrace(r.stdout)
   const unconfirmed = r.timedOut && !r.killConfirmed
@@ -824,6 +823,8 @@ async function codexVotes(led, slotKey, g, text, env, gate, prior = [], onVote =
   const votes = [...prior]
   for (let i = votes.length; i < JUDGE_VOTES; i++) {
     if (!gate.same()) return { stop: true, judgeStopped: 'global instructions changed before a judge', votes }
+    const notStarted = gate.fix()
+    if (notStarted) return { stop: true, judgeStopped: 'not started: ' + notStarted, votes }
     const jdir = fs.mkdtempSync(path.join(os.tmpdir(), 'cxj-'))
     const call = 'codex-judge ' + g.name + ' ' + (i + 1)
     // A judge is its own paid process: it starts only with room left for twice the largest judge call seen.
@@ -831,8 +832,6 @@ async function codexVotes(led, slotKey, g, text, env, gate, prior = [], onVote =
       fs.rmSync(jdir, { recursive: true, force: true })
       return { stop: true, judgeStopped: 'stopped before ' + call + ': ' + e.message, votes }
     }
-    const notStarted = gate.fix(led, { slot: slotKey, call })
-    if (notStarted) { fs.rmSync(jdir, { recursive: true, force: true }); return { stop: true, judgeStopped: 'not started: ' + notStarted, votes } }
     const j = await spawnWait('codex', execArgs(), { cwd: jdir, env }, judgePrompt(g.criteria, text), 300 * 1000)
     const jt = codexTrace(j.stdout)
     const jUnconfirmed = j.timedOut && !j.killConfirmed

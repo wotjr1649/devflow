@@ -22,8 +22,8 @@ CLAUDE.md는 두지 않고 AGENTS.md 하나만 쓴다.
 ## 결과
 
 - AGENTS.md의 Gotcha가 CLAUDE.md, `.claude/CLAUDE.md`, `CLAUDE.local.md`를 만들지 말라고 경고한다.
-- compact 뒤 AGENTS.md가 다시 주입되는지는 계속 확인한다. 다시 주입되지 않으면 compact 매처가 있는 SessionStart
-  재개 카드가 AGENTS.md를 다시 가리키게 한다.
+- 당시 compact 재주입 후속 검증은 이후 관찰로 해소됐다. 현행 로드 조건과 관찰 범위는
+  [host-facts](../../research/host-facts.md)가 소유하며, 이 옛 검증 항목은 새 실행을 요구하지 않는다.
 
 ## 검토한 대안
 

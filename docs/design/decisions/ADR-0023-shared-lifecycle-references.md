@@ -1,6 +1,6 @@
 # ADR-0023: 생명주기 references를 플러그인 루트로 옮긴다
 
-상태: 채택 (#74).
+상태: 채택 (#74). 0.4.0에서 doctor와 그 크기 예산 검사가 없어졌다. 예산은 리뷰가 본다([ADR-0031](ADR-0031-guidance-over-enforcement.md)).
 
 ## 맥락
 

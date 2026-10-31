@@ -1,7 +1,7 @@
 Verify start record or establish repo/linked Issues/milestones/closure gate/tracker authority.
 Close only satisfied Issues/milestones with reviewed criteria/dependency evidence; resolve Issues as completed. Reconcile findings/linked work; paginate all milestone Issues/PRs, including moved/cancelled/unverified work. Report inventory completeness and counter scope from their own evidence. Record evidence/remnants; others stay open with next action. State/checkboxes/merge/successors/counts prove nothing. Never weaken criteria; rescope/deferral needs authority, retaining blockers. Report/reopen premature closure; no duplicate closures/comments.
 
-With `.devflow.json`: [ship](../../../references/ship.md) sequence; card `Tool:` for all Issue I/O; queue unattended writes.
+With `.devflow.json`: [ship](../../../references/ship.md) sequence; card `Tool:` for all Issue I/O; unattended runs keep Issue text in ledger notes.
 Assess each Issue against its own criteria/dependencies. When a supplied PR or commit links it, verify full/partial scope; hold linked closure until applicable post-merge/release gates pass. Unlinked Issues keep independent eligibility. Authorized local-only: agreed install/artifact-identity gate.
 
 Devflow: create successors now only for user-decided deferrals/reproduced defects; propose other remnants with ledger followups as one ship list.

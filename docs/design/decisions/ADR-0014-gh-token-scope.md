@@ -41,7 +41,7 @@
 - 전제: 스크립트 위치만으로는 경계가 되지 않는다. sandbox 밖에서 도는 `devflow-state`는 sandbox가 쓸 수 있는 작업 저장소의
   상태를 믿는다.
   - 쓰기 대상: `.git/config`의 origin, 그리고 쓸 Issue 번호를 정하는 지금 브랜치 이름
-  - 무인 판단과 게시 대기: 장부의 `mode`와 `pendingPosts`
+  - 무인 판단: 장부의 `mode`(0.4.0 전에는 게시 대기 `pendingPosts`도. 지금은 자율 모드의 Issue 쓰기를 거부한다, [ADR-0031](ADR-0031-guidance-over-enforcement.md))
   - git 실행: `.git/config` 전체와 cwd
 - 경계로 쓰려면 다음을 sandbox 밖에서 정해야 한다.
   - 스크립트와 그 환경을 sandbox가 쓸 수 없는 곳(플러그인 캐시 등)에 둔다.

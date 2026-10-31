@@ -5,7 +5,7 @@ here.
 
 ## Counting interventions
 
-Count as it happens, not at the end: when the user corrects the stage, path, method or an output, or a devflow guard
+In a measured cycle ([metrics](../docs/specs/metrics.md)), count as it happens, not at the end: when the user corrects the stage, path, method or an output, or a devflow guard
 blocked something legitimate, run `metric <issue> interventions` or `metric <issue> filterFalsePositives` with a
 one-line note on stdin ([수동 지표](../docs/specs/metrics.md#수동-지표)). Guard blocks themselves are logged automatically.
 

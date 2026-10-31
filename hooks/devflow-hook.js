@@ -1,7 +1,7 @@
 'use strict'
-// SessionStart prints the resume card; PreToolUse blocks Issue writes that bypass devflow-state.
+// SessionStart prints the resume card; PreToolUse blocks Issue text writes that bypass devflow-state.
 // Both run only in repositories with .devflow.json. Rules: docs/specs/issues.md (Issue I/O, resume card),
-// docs/specs/repository.md (profile protection, analysis deadline).
+// docs/specs/repository.md (test lock), docs/specs/hooks.md (analysis deadline).
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
@@ -11,7 +11,6 @@ const state = require('../bin/devflow-state')
 const GH_COMMANDS = new Set(('auth browse codespace discussion gist issue org pr project release repo skill cache run workflow ' +
   'agent-task alias api attestation completion config copilot extension gpg-key label licenses preview ruleset search ' +
   'secret ssh-key status variable accessibility actions environment exit-codes formatting mintty reference telemetry help').split(' '))
-const ISSUE_WRITE_OPS = new Set('create new close comment delete develop edit lock pin reopen transfer unlock unpin'.split(' '))
 const LEADERS = new Set(('timeout time nice nohup stdbuf command builtin noglob nocorrect env sudo exec watch setsid ionice flock ' +
   'if then else elif do while until ! { } call start').split(' '))
 const PRINTERS = new Set(['echo', 'printf', 'write-output', 'write-host'])
@@ -23,8 +22,7 @@ const SOURCERS = new Set(['.', 'source'])
 const API_VALUE_FLAGS = new Set(['-X', '--method', '-f', '-F', '--field', '--raw-field', '-H', '--header', '--input', '-q', '--jq',
   '-t', '--template', '--hostname', '-p', '--preview', '--cache'])
 const API_FIELD_FLAGS = new Set(['-f', '-F', '--field', '--raw-field', '--input'])
-const HTTP_ISSUES = /api\.github\.com\/[^\s'"]*issues/i
-const HTTP_WRITE = /(?:-X|--request|-Method)\s*['"]?(?:POST|PATCH|PUT|DELETE)\b|\s(?:-d|--data[\w-]*|--json|-Body)\b|\bmethod\s*:\s*['"](?:POST|PATCH|PUT|DELETE)/i
+const HTTP_ISSUES = /api\.github\.com\/[^\s'"]*\/issues(?:\/|$|[?\s])/i
 // Commands that change every path they name, and those that change only the last one (the destination).
 const WRITE_ALL = new Set(['rm', 'rmdir', 'mv', 'touch', 'tee', 'truncate', 'chmod', 'chown', 'shred', 'unlink', 'mkdir',
   'remove-item', 'ri', 'del', 'erase', 'rd', 'move-item', 'mi', 'move', 'set-content', 'sc', 'add-content', 'ac',
@@ -35,7 +33,9 @@ const CONTENT_WRITES = new Set(['set-content', 'sc', 'add-content', 'ac', 'out-f
 const GIT_WRITES = new Set(['rm', 'mv', 'checkout', 'restore', 'clean'])
 const SCRIPT_FLAG =/^(-[A-Za-z]*c[A-Za-z]*|-com\w*|-e|-ec|-en\w*|\/[ck])$/i
 const HTTP_GRAPHQL = /api\.github\.com\/graphql/i
-const SHELL_AMBIGUITY = 'shell ambiguity: possible PowerShell here-string; the execution shell is not identified'
+// A mutation naming an Issue text field anywhere: two linear tests, no GraphQL lexing. A name only in a comment or
+// string blocks too, which is the accepted conservative side.
+const issueMutation = q => /\bmutation\b/.test(q) && /\b(createIssue|updateIssue|addComment|updateIssueComment)\b/.test(q)
 const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
@@ -302,7 +302,7 @@ function yamlScalar(v) {
 
 function aliasesOf(ctx) {
   if (ctx.aliasMap === undefined) {
-    // Shorter than the hook's own timeout, so a slow gh ends in a denial rather than the hook being cut off.
+    // Keep alias lookup within the hook's analysis budget.
     const remaining = Math.floor(ctx.deadline - performance.now())
     if (remaining <= 0) throw new Error('analysis deadline exceeded')
     const r = ctx.env.run('gh', ['alias', 'list'], { cwd: ctx.cwd, timeout: Math.min(ALIAS_TIMEOUT_MS, remaining) })
@@ -313,11 +313,12 @@ function aliasesOf(ctx) {
   return ctx.aliasMap
 }
 
-function apiWrite(args) {
+function apiWrite(args, ctx) {
   let endpoint = null
   let method = null
   let fields = false
-  let unreadableQuery = false
+  let textField = false
+  let queries = []
   for (let i = 0; i < args.length; i++) {
     const t = args[i].text
     let flag = t
@@ -341,19 +342,31 @@ function apiWrite(args) {
     if (flag === '-X' || flag === '--method') method = String(value).toUpperCase()
     if (API_FIELD_FLAGS.has(flag)) {
       fields = true
-      if (flag === '--input' || (/^query=/.test(value || '') && (dynamic || /^query=@/.test(value)))) unreadableQuery = true
+      if (flag === '--input') {
+        for (const cwd of ctx.cwds || [ctx.cwd]) {
+          try {
+            const payload = JSON.parse(!dynamic && value !== '-' ? readScript(cwd, value) : '')
+            textField ||= Object.hasOwn(payload, 'title') || Object.hasOwn(payload, 'body')
+            if (typeof payload.query === 'string') queries.push(payload.query)
+          } catch { textField = true }
+        }
+      } else {
+        if (/^(title|body)=/.test(value || '')) textField = true
+        if (/^query=/.test(value || '')) {
+          queries = dynamic ? [] : value.startsWith('query=@')
+            ? (ctx.cwds || [ctx.cwd]).map(cwd => readScript(cwd, value.slice(7))) : [value.slice(6)]
+        }
+      }
     }
   }
   if (!endpoint) return null
   const route = endpoint.text.replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+/, '').replace(/^api\/v3\//i, '').toLowerCase()
   if (!endpoint.dynamic && route === 'graphql') {
-    // A query read from a file or built at run time cannot be checked, so it counts as a mutation.
-    return unreadableQuery || args.some(a => /\bmutation\b/i.test(a.text)) ? 'gh api graphql mutation' : null
+    return queries.some(issueMutation) ? 'gh api graphql Issue text mutation' : null
   }
-  if (!endpoint.dynamic && !/issues/.test(route)) return null
+  if (endpoint.dynamic || !/(^|\/)issues(?:\/|$|\?)/.test(route)) return null
   const writes = method ? method !== 'GET' : fields
-  if (!writes) return null
-  return endpoint.dynamic ? 'gh api write to a path built at run time' : 'gh api Issue write'
+  return writes && textField ? 'gh api Issue write' : null
 }
 
 function ghWrite(args, ctx, depth) {
@@ -364,27 +377,74 @@ function ghWrite(args, ctx, depth) {
   skipFlags()
   const sub = args[i]
   if (!sub) return null
-  if (sub.dynamic) return 'gh subcommand built at run time'
+  if (sub.dynamic) return null
   const s = sub.text.toLowerCase()
+  // Help only where no bare option before it can take it as a value (--title -h posts "-h").
+  if (['issue', 'api'].includes(s) && args.some((a, k) => (a.text === '--help' || a.text === '-h') &&
+    !/^-[^=]*$/.test(args[k - 1]?.text ?? ''))) return null
   if (s === 'issue') {
     i++
     skipFlags()
     const op = args[i]
     if (!op) return null
-    if (op.dynamic) return 'gh issue operation built at run time'
-    return ISSUE_WRITE_OPS.has(op.text.toLowerCase()) ? 'gh issue write' : null
+    if (op.dynamic) return null
+    const operation = op.text.toLowerCase()
+    const flags = args.slice(i + 1).map(a => a.text)
+    const text = ['create', 'new', 'comment'].includes(operation) ||
+      (operation === 'edit' && flags.some(f => /^--(title|body|body-file)(=|$)|^-[tbF]/.test(f))) ||
+      (['close', 'reopen'].includes(operation) && flags.some(f => /^--comment(=|$)|^-c/.test(f)))
+    return text ? 'gh issue write' : null
   }
-  if (s === 'api') return apiWrite(args.slice(i + 1))
+  if (s === 'api') return apiWrite(args.slice(i + 1), ctx)
   if (GH_COMMANDS.has(s)) return null
   const aliases = aliasesOf(ctx)
-  if (aliases === null) return `gh alias lookup failed for "${s}"`
+  if (aliases === null) return null
   const expansion = aliases[s]
   if (expansion === undefined) return null // an extension
-  if (expansion === null) return `gh alias "${s}" could not be read`
-  if (depth >= MAX_DEPTH) return 'gh alias nested too deeply to check'
+  if (expansion === null) return null
+  if (depth >= MAX_DEPTH) return ctx.protect ? TOO_DEEP : null
   const rest = args.slice(i + 1)
   if (expansion.startsWith('!')) return analyze(`${expansion.slice(1)} ${rest.map(a => a.raw).join(' ')}`, ctx, depth + 1)
   return ghWrite([...flatten([word(expansion)]), ...rest], ctx, depth + 1)
+}
+
+function httpWrite(args, ctx, client) {
+  const src = args.map(a => a.text).join(' ')
+  if (!HTTP_ISSUES.test(src) && !HTTP_GRAPHQL.test(src)) return null
+  const payloads = []
+  const httpie = client === 'http' || client === 'https'
+  for (let i = 0; i < args.length; i++) {
+    // shortcut: ordinary flags and items only (not stdin bodies or every client option); the hook is a guardrail, not isolation.
+    // The method is not read (another option's value can look like one), so a text body blocks even on GET.
+    const item = httpie && /^(title|body|query)(:=|=)([\s\S]*)$/.exec(args[i].text)
+    const m = /^(--data[\w-]*|--(?:post|body)-(?:data|file)|--json|--raw|-Body|--input|-InFile)(?:=([\s\S]*))?$|^(-d)([\s\S]*)$/i.exec(args[i].text)
+    // HTTPie's --json is a switch and only HTTPie's --raw takes a body; curl's --raw is a switch.
+    if (m && m[1]?.toLowerCase() === (httpie ? '--json' : '--raw')) continue
+    if (!item && !m && !(httpie && args[i].text.startsWith('@'))) continue
+    const value = item ? item[3] : m ? m[2] ?? (m[4] || undefined) : args[i].text
+    const payload = value === undefined ? args[++i] : { ...args[i], text: value }
+    if (!payload) continue
+    const file = /^(--input|-InFile|--(?:post|body)-file)$/i.test(m?.[1]) ? payload.text
+      : payload.text.startsWith('@') && !payload.text.startsWith('@{') ? payload.text.slice(1) : null
+    const texts = payload.dynamic ? [''] : file === null ? [payload.text]
+      : (ctx.cwds || [ctx.cwd]).map(cwd => readScript(cwd, file))
+    payloads.push(...texts.map(text => item ? JSON.stringify({ [item[1]]: text }) : text))
+  }
+  if (HTTP_GRAPHQL.test(src) && payloads.some(p => {
+    let query = p
+    try { query = JSON.parse(p)?.query } catch {}
+    return typeof query === 'string' && issueMutation(query)
+  })) return 'direct GitHub GraphQL Issue text mutation'
+  // One command may also reach a REST Issue path (curl --next), so that is checked as well.
+  if (!HTTP_ISSUES.test(src)) return null
+  // curl joins repeated --json and --data values into one body.
+  return [...payloads, ...(payloads.length > 1 ? [payloads.join('')] : [])].some(p => {
+    if (!p) return true
+    try {
+      const body = JSON.parse(p)
+      return body !== null && (Object.hasOwn(body, 'title') || Object.hasOwn(body, 'body'))
+    } catch { return /["']?\b(title|body)["']?\s*[:=]/.test(p) }
+  }) ? 'direct GitHub API Issue write' : null
 }
 
 function shellWrite(cmd, k, ctx, depth) {
@@ -470,7 +530,7 @@ function checkCommand(cmd, ctx, depth) {
   if (ctx.protect) {
     const targets = writeTargets(cmd, names)
     const hit = ctx.protect((ctx.cwds || [ctx.cwd]).flatMap(c => targets.map(t => ({ ...t, path: path.resolve(c, nativePath(t.path)) }))))
-    if (hit) return PROTECTED + hit
+    if (hit) return TEST_LOCKED + hit
   }
   // env -S splits its argument into a command line of its own.
   const split = words.findIndex((w, k) => names[k - 1] === 'env' && /^(-S|--split-string)/.test(w.text))
@@ -489,7 +549,8 @@ function checkCommand(cmd, ctx, depth) {
   }
   const lead = leadOf(words, names)
   if (lead < 0) return null
-  if (words[lead].dynamic && words.some(w => /^(issue|api)$/i.test(w.text))) return 'command name built at run time with Issue words'
+  // A dynamic runner passes, but while tests are locked the static shell it may start is still checked.
+  if (words[lead].dynamic && !ctx.protect) return null
   if (PRINTERS.has(names[lead])) return null
   if (/\.(sh|bash|ps1|cmd|bat)$/i.test(words[lead].text) || /^\.{0,2}[\\/]/.test(words[lead].text)) {
     // Every reading that names a script is checked: a file under one reading's name must not hide the other's.
@@ -504,6 +565,7 @@ function checkCommand(cmd, ctx, depth) {
     const n = names[k]
     let r = null
     if (n === 'gh') r = ghWrite(k === lead ? words.slice(k + 1) : flatten(words.slice(k + 1)), ctx, depth)
+    else if (/^(curl|wget|http|https|invoke-restmethod|invoke-webrequest|irm|iwr)$/.test(n)) r = httpWrite(words.slice(k + 1), ctx, n)
     else if (k === lead && (SH.has(n) || PWSH.has(n) || EVALS.has(n) || SOURCERS.has(n) || n === 'cmd')) r = shellWrite(cmd, k, ctx, depth)
     else if (k > lead && (SH.has(n) || PWSH.has(n) || n === 'cmd') && words.slice(k + 1).some(a => SCRIPT_FLAG.test(a.text))) {
       // A shell started by another command (xargs, sudo, Start-Process) counts when it is given a script.
@@ -581,9 +643,8 @@ function cwdsAlong(cmds, start, narrow) {
 // ctx.cwds holds the folders the command being checked may run in; text it runs (a script, a substitution) starts there.
 function analyze(src, ctx, depth = 0, cmdShell = false, powershell = false) {
   if (!src) return null
-  if (depth > MAX_DEPTH) return 'command nested too deeply to check'
-  if (HTTP_ISSUES.test(src) && HTTP_WRITE.test(src)) return 'direct GitHub API Issue write'
-  if (HTTP_GRAPHQL.test(src) && /\bmutation\b/i.test(src)) return 'direct GitHub GraphQL mutation'
+  // Too deep to check: passes, except while tests are locked (the lock still holds, docs/specs/hooks.md).
+  if (depth > MAX_DEPTH) return ctx.protect ? TOO_DEEP : null
   // Shell-specific quotes and comments can hide writes from the other reading. PowerShell block comments end at
   // the first #>, backslashes are literal, and backticks escape rather than substitute. Keep the Bash reading too.
   if (!powershell && (src.includes('<#') || src.includes("$'") || /[\\`]/.test(src))) {
@@ -624,16 +685,13 @@ function analyze(src, ctx, depth = 0, cmdShell = false, powershell = false) {
 // substitutions, shells given a script, eval, piped or heredoc input to a shell, script files and gh aliases.
 // A guardrail, not a sandbox: words built from variables, encodings it does not decode, or HTTP from other
 // languages get past it; a narrow gh token limits where those reach (docs/specs/issues.md, Issue 입출력).
-// With protect (files => the first protected one, or null), a write to a protected path counts as well.
+// With protect (files => the first locked test path, or null), a write to a locked test counts as well.
 function issueWrite(command, { cwd = process.cwd(), env = state.realEnv, protect = null,
   deadline = performance.now() + ANALYSIS_TIMEOUT_MS - 1000 } = {}) {
   // Leave a second for the child to return before the outer deadline, including after a slow alias lookup.
   const ctx = { cwd, env, protect, aliasMap: undefined, deadline }
   if (Array.isArray(command)) return checkCommand({ words: command.map(word), stdin: [], redirects: [], pipedFrom: null }, ctx, 0)
-  const src = String(command || '')
-  const kind = analyze(src, ctx)
-  // Codex supplies no shell identity: keep the denial, but do not claim literal-looking data is a proven write (#69).
-  return kind === 'command name built at run time with Issue words' && /^[ \t]*@'\r?\n/.test(src) ? SHELL_AMBIGUITY : kind
+  return analyze(String(command || ''), ctx)
 }
 
 // The paths a simple command writes, each marked deep when the command can change everything under it (rm -rf,
@@ -682,13 +740,16 @@ function writeTargets(cmd, names) {
   return targets
 }
 
-// GitHub MCP tools that write Issues: issue_write, sub_issue_write, add_issue_comment, assign_copilot_to_issue, ...
-function mcpIssueWrite(tool) {
+// GitHub MCP tools that can publish Issue text. Relationship and assignment tools pass.
+function mcpIssueWrite(tool, input = {}) {
   const cut = tool.lastIndexOf('__')
   const server = tool.slice(5, cut)
   const name = tool.slice(cut + 2).toLowerCase()
-  if (!/github/i.test(server) || !/issue/.test(name)) return null
-  return /^(get|list|search)_|_read$/.test(name) ? null : `GitHub MCP Issue write (${name})`
+  if (!/github/i.test(server)) return null
+  const text = input && (Object.hasOwn(input, 'title') || Object.hasOwn(input, 'body'))
+  return /^(add_issue_comment|create_issue_comment|update_issue_comment)$/.test(name) ||
+    (text && /^(issue_write|create_issue|update_issue|edit_issue)$/.test(name))
+    ? `GitHub MCP Issue write (${name})` : null
 }
 
 // The nearest folder at or above dir with a .devflow.json, or null.
@@ -724,7 +785,7 @@ const nativePath = f => (process.platform !== 'win32' ? f : f
   .replace(/^[\\/]{2}(?:localhost|127\.0\.0\.1)[\\/]([a-zA-Z])\$(?=[\\/]|$)/i, '$1:'))
 
 function relativeTo(root, cwd, files, { keepRoot = false } = {}) {
-  // Root, folder and file spelled alike: a \\?\ root must not drop its own files from the protected and locked checks.
+  // Root, folder and file spelled alike: a \\?\ root must not drop its own files from the lock checks.
   return files.map(f => path.relative(path.resolve(nativePath(root)), path.resolve(nativePath(cwd), nativePath(f))))
     // On Windows a path on another drive or share comes back absolute: it is outside the root too.
     .filter(r => !path.isAbsolute(r)).map(r => r.split(path.sep).join('/'))
@@ -732,23 +793,11 @@ function relativeTo(root, cwd, files, { keepRoot = false } = {}) {
     .map(r => (keepRoot && r === '' ? '.' : r)).filter(r => r && r !== '..' && !r.startsWith('../'))
 }
 
-// targets => the first protected path or the unreadable-profile marker, or null. An unreadable profile permits only
-// its own repair. A target counts when it matches a protected glob, is the protected folder itself, or - for a
+// targets => the first locked test path, or null. A target counts when it matches a test glob, is the folder itself, or - for a
 // deep write - contains it or is a pattern that names it (rm -rf _ref, rm -rf ., rm -rf *). Windows and macOS file
 // systems ignore case, so _REF/x must match _ref/** there.
-function protectionFor(root, cwd, extra = []) {
+function protectionFor(root, cwd, globs) {
   const fold = /^(win32|darwin)$/.test(process.platform) ? s => s.toLowerCase() : s => s
-  let globs
-  try {
-    const profile = JSON.parse(smallFile(path.join(root, '.devflow.json'), MAX_SCRIPT_BYTES))
-    if (!profile || typeof profile !== 'object' || Array.isArray(profile)) throw new Error('invalid profile')
-    globs = profile.protected === undefined ? [] : profile.protected
-    if (!Array.isArray(globs) || globs.some(g => typeof g !== 'string')) throw new Error('invalid protected paths')
-    globs = [...globs, ...extra]
-  } catch {
-    return targets => relativeTo(root, cwd, targets.map(t => t.path), { keepRoot: true })
-      .some(r => fold(r) !== '.devflow.json') ? PROFILE_UNREADABLE : null
-  }
   const bases = globs.map(g => fold(g).split(/[*?[{]/)[0].replace(/\/+$/, '')).filter(Boolean)
   return targets => {
     for (const t of targets) {
@@ -802,16 +851,8 @@ const testLocked = (root, r, unconfirmed) => unconfirmed
   : `devflow: ${r} is a test file, locked for this fix. Fix the code, not the test. If the test itself is wrong, say why ` +
     'and unlock it: devflow-state tests <issue> unlock < reason.')
 
-const PROTECTED = 'write to protected path '
-const PROFILE_UNREADABLE = 'unreadable profile'
-
-// Edit tools write files; an unreadable profile leaves only the profile itself editable, so it can be repaired.
-function protectedEdit(root, cwd, toolInput, tests = []) {
-  const protect = protectionFor(root, cwd, tests)
-  const files = editedFiles(toolInput)
-  const hit = protect(files.map(p => ({ path: p, deep: false })))
-  return hit === PROFILE_UNREADABLE ? { unreadable: true } : hit ? { path: hit } : null
-}
+const TEST_LOCKED = 'write to locked test path '
+const TOO_DEEP = 'command nested too deeply to check'
 
 // After an instruction file changes, report what doctor finds about it; nothing when it finds nothing.
 function auditEdit(root, cwd, toolInput) {
@@ -1087,8 +1128,7 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       if (!root) return ''
       const tool = String(input.tool_name || '')
       const tests = lockedTests(root)
-      // A hit the profile's own protected paths do not cover is the test lock's.
-      const byLock = hit => tests.length > 0 && !protectionFor(root, cwd)([{ path: path.join(root, hit), deep: true }])
+      const protect = tests.length ? protectionFor(root, cwd, tests) : null
       if (EDIT_TOOLS.test(tool)) {
         const same = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
         if (tests.ledger && editedFiles(input.tool_input).some(f => same(path.resolve(cwd, nativePath(f)), path.resolve(tests.ledger)))) {
@@ -1110,31 +1150,15 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
         if (tests.unconfirmed && editedFiles(input.tool_input).some(f => outside(f) || record(f))) {
           return testLocked(root, 'a file outside this task worktree or an Issue record', true)
         }
-        const hit = protectedEdit(root, cwd, input.tool_input, tests)
-        if (!hit) return ''
-        if (hit.path && byLock(hit.path)) return testLocked(root, hit.path, tests.unconfirmed)
-        return hit.unreadable
-          ? blocked(root, 'profile-unreadable', 'devflow: .devflow.json does not parse, so its protected paths are unknown; fix .devflow.json first.')
-          : blocked(root, 'protected-path', `devflow: ${hit.path} is a protected path in .devflow.json; leave it as it is.`)
+        const hit = protect && protect(editedFiles(input.tool_input).map(p => ({ path: p, deep: false })))
+        return hit ? testLocked(root, hit, tests.unconfirmed) : ''
       }
-      const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool)
-        : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect: protectionFor(root, cwd, tests), deadline })
+      const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool, input.tool_input)
+        : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect, deadline })
       if (!kind) return ''
-      if (kind === PROTECTED + PROFILE_UNREADABLE) {
-        return blocked(root, 'profile-unreadable', 'devflow: .devflow.json cannot be read, so its protected paths are unknown; fix .devflow.json first.')
-      }
-      if (kind.startsWith(PROTECTED) && kind !== PROTECTED + PROFILE_UNREADABLE && byLock(kind.slice(PROTECTED.length))) {
-        return testLocked(root, kind.slice(PROTECTED.length), tests.unconfirmed)
-      }
-      if (kind.startsWith(PROTECTED)) {
-        return blocked(root, 'protected-path', `devflow: ${kind.slice(PROTECTED.length)} is a protected path in .devflow.json; leave it as it is.`)
-      }
-      if (kind === SHELL_AMBIGUITY) {
-        return blocked(root, 'issue-write', `devflow: cannot establish command safety. Blocked: ${kind}. The other shell readings must remain checked.`)
-      }
-      if (kind === 'command name built at run time with Issue words') {
-        return blocked(root, 'issue-write', `devflow: cannot establish command safety: the parsed command name is unresolved and Issue/API tokens are present. Blocked: ${kind}.`)
-      }
+      if (kind === TOO_DEEP) return blocked(root, 'test-locked', 'devflow: tests are locked for this fix, and this command nests ' +
+        'scripts too deeply to check for test writes. Run the steps directly.')
+      if (kind.startsWith(TEST_LOCKED)) return testLocked(root, kind.slice(TEST_LOCKED.length), tests.unconfirmed)
       return blocked(root, 'issue-write', `devflow: Issue writes go through devflow-state (${[...state.WRITE_OPS].join(', ')}), which filters ` +
         `paths, secrets and length before posting. Blocked: ${kind}.`)
     } catch (e) {

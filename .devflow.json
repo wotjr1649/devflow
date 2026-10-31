@@ -12,9 +12,6 @@
     "tests/fixtures/codex-eval/*.jsonl",
     "evals/behavior/*/prompt.md"
   ],
-  "protected": [
-    "_ref/**"
-  ],
   "tests": [
     "tests/**"
   ],

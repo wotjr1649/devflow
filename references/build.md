@@ -42,8 +42,8 @@ never in the agent definition, which would put M2 in worktrees too. Record each 
 without it counts as locked. `running <n> done <label>` takes the record out. Those worktrees start from the remote default branch,
 so a brief whose BASE is not on it begins with `git merge --ff-only <BASE>` in its worktree, and every brief asks for a
 commit there. The main session merges one result at a time into the Issue branch (fast-forward, then cherry-pick), runs
-the full checks after each merge. The worktrees and their branches stay until cleanup, after ship has measured the
-cycle: removing a worktree removes its reflog, which the measurement reads. Creating these worktrees has
+the full checks after each merge. The worktrees and their branches stay until cleanup; in a measured cycle, until ship has measured
+it: removing a worktree removes its reflog, which the measurement reads. Creating these worktrees has
 rewritten the shared `core.hooksPath` to an absolute path; doctor accepts that as the same gate.
 
 The main session keeps decisions, Issue writes, integration and the ledger; a subagent gets one task through a brief

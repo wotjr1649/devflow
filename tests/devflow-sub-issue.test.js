@@ -280,9 +280,9 @@ test('list refuses missing, repeated or oversized cursors and malformed nodes', 
   }
 })
 
-test('the official relation command leaves direct Issue writes and old branch restrictions intact', () => {
-  assert.ok(hook.issueWrite('gh api -X POST repos/o/r/issues/294/sub_issues -F sub_issue_id=3500000000'))
-  assert.ok(hook.mcpIssueWrite('mcp__github__sub_issue_write'))
+test('relation writes pass the hook while official command branch restrictions stay intact', () => {
+  assert.equal(hook.issueWrite('gh api -X POST repos/o/r/issues/294/sub_issues -F sub_issue_id=3500000000'), null)
+  assert.equal(hook.mcpIssueWrite('mcp__github__sub_issue_write'), null)
   assert.equal(hook.issueWrite('node bin/devflow-state sub-issue add 294 320'), null)
   const f = fixture()
   assert.equal(state.write(f.e, f.root, 'comment', 294, '### Checkpoint build — x\n- test').code, 1)

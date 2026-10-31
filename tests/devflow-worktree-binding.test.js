@@ -704,10 +704,10 @@ test('R39: a relative edit from a long-path cwd stays inside the worktree', { sk
   assert.equal(decision(hook.handle(pre(long, { file_path: 'src/a.js' }, { session: 'S' }))), 'allow')
 })
 
-test('R40: names that start with two dots keep their protected and test locks', () => {
+test('R40: names that start with two dots keep their test locks', () => {
   const p = project('main')
   const child = agent(p)
-  fs.writeFileSync(path.join(child, '.devflow.json'), JSON.stringify({ protected: ['..env'], tests: ['..config/**'] }))
+  fs.writeFileSync(path.join(child, '.devflow.json'), JSON.stringify({ tests: ['..env', '..config/**'] }))
   for (const name of ['..env', path.join('..config', 'a.js')]) {
     assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, name) }, { session: 'S' }))), 'deny', name)
   }

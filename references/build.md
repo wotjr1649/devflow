@@ -20,9 +20,11 @@ passing, and the ledger holds the last commit and the next task.
 - Fix the code, not the test. Change a test only when the requirement changed or its expectation is wrong, and say which
   in the commit or the checkpoint: review reads test changes for this
   ([ADR-0031](../docs/design/decisions/ADR-0031-guidance-over-enforcement.md)).
-- Run the checks that execute the change - the project's tests for the paths touched - and `verify` before the work
-  leaves build. Syntax checks and checks that never started are not verification; name any check
-  that could not run and why.
+- Run the checks that execute the change and the behaviour it affects - the project's tests for the paths touched and
+  their callers. Widen to the full `verify` when nothing justifies a narrower set (shared code, configuration, test
+  tooling). The full `verify` follows the integration profile ([.devflow.json](../docs/specs/repository.md#devflowjson)):
+  under `pr-ci`, CI's success on the same revision is its evidence; otherwise run it before the work leaves build.
+  Syntax checks and checks that never started are not verification; name any check that could not run and why.
 - A missing dependency the project already declares is installed with the project's package manager and lockfile.
 
 ## Delegating (M2, M3)
@@ -39,7 +41,7 @@ never in the agent definition, which would put M2 in worktrees too. Record each 
 its end with `running <n> done <label>`; a task worktree writes no ledger and posts no Issue text. Those worktrees start from the remote default branch,
 so a brief whose BASE is not on it begins with `git merge --ff-only <BASE>` in its worktree, and every brief asks for a
 commit there. The main session merges one result at a time into the Issue branch (fast-forward, then cherry-pick), runs
-the full checks after each merge. The worktrees and their branches stay until cleanup.
+the checks the merged result affects after each merge. The worktrees and their branches stay until cleanup.
 
 The main session keeps decisions, Issue writes, integration and the ledger; a subagent gets one task through a brief
 in the shape of [위임 지시서](../docs/specs/orchestration.md#위임-지시서). Models and effort come from

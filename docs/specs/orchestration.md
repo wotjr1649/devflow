@@ -51,8 +51,8 @@ Workflow는 실행 모드가 아니다. 사용자가 devflow 밖에서 직접 �
 새 컨텍스트가 필요하므로([자율 실행](ledger.md#자율-실행)) 이 예외가 없다.
 
 M3에서는 Claude의 Agent 호출마다 `isolation: "worktree"`를 주어 구현 에이전트를 띄운다. 에이전트 정의에 넣으면 M2 위임까지
-worktree로 바뀌므로 정의에는 넣지 않는다. 메인이 결과를 하나씩 머지하고, 머지할 때마다 전체 검사를 돌린다(절차는 build
-reference). 첫 실사용은 #28이다([ADR-0015](../design/decisions/ADR-0015-paper-features.md)).
+worktree로 바뀌므로 정의에는 넣지 않는다. 메인이 결과를 하나씩 머지하고, 머지할 때마다 머지한 결과가 영향을 주는 검사를 돌린다(절차는 build
+reference). 전체 `verify`의 근거는 통합 방식을 따른다([repository](repository.md#devflowjson)). 첫 실사용은 #28이다([ADR-0015](../design/decisions/ADR-0015-paper-features.md)).
 
 ### M0의 적용과 마무리
 

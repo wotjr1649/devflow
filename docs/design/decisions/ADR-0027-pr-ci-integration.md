@@ -1,6 +1,7 @@
 # ADR-0027: devflow 자체 통합을 PR과 서버 보호로 옮긴다
 
-상태: 채택 (#73, 2026-10-24 사용자 결정, 같은 날 main ruleset 활성화). [ADR-0008](ADR-0008-license-and-integration.md)의
+상태: 채택 (#73, 2026-10-24 사용자 결정, 같은 날 main ruleset 활성화). 갱신: #103(2026-10-31) Windows job,
+`verify` 근거를 CI로. [ADR-0008](ADR-0008-license-and-integration.md)의
 통합 부분을 대체하고 라이선스 결정은 유지한다.
 
 ## 맥락
@@ -16,17 +17,18 @@ ADR-0008은 리뷰할 다른 사람이 없다는 이유로 main 직접 통합(fa
   리뷰·CI·통합 기록을 맡는다. #73 전체나 이미 통합한 증분에는 PR을 만들지 않는다. PR 본문은 공개 요약·리뷰 근거(리뷰한
   SHA)·`Refs #<n>`을 담고, 본문·커밋·merge commit 메시지에 닫는 키워드를 쓰지 않는다. Issue 종료는 `devflow-state`가
   병합 확인 뒤에 한다.
-- 흐름: 작은 증분 → 로컬 검증 → 브랜치 HEAD의 push CI → PR에 독립 리뷰 근거(리뷰한 SHA) 연결 → 최신 head와 병합
+- 흐름: 작은 증분 → 변경과 영향 범위의 로컬 검사 → 브랜치 HEAD의 push CI(전체 `verify`의 근거, #103) → PR에 독립 리뷰 근거(리뷰한 SHA) 연결 → 최신 head와 병합
   결과의 CI 확인 → merge commit으로 통합 → 실제 main SHA와 main CI 확인 → 완료·정리. 문서만 바뀐 PR과 M0도 같다.
-- merge commit: 기존 제품 커밋과 그 SHA(시험 잠금·리뷰 패키지·CI 근거)가 그대로 main 이력에 남는다. squash·rebase는
-  SHA를 바꿔 잠금·정리 대응을 다시 설계해야 하므로 쓰지 않는다. 선형 이력 강제와 함께 쓰지 않는다. 뒤처진 브랜치는 main을
+- merge commit: 기존 제품 커밋과 그 SHA(리뷰 패키지·CI 근거, 0.4.0 전에는 시험 잠금도)가 그대로 main 이력에 남는다.
+  squash·rebase는 SHA를 바꿔 리뷰·정리 대응을 다시 설계해야 하므로 쓰지 않는다. 선형 이력 강제와 함께 쓰지 않는다. 뒤처진 브랜치는 main을
   병합해 갱신한다.
 - 서버 보호: main에 활성 ruleset 하나, 우회 주체 없음. 규칙은 삭제 금지, 강제 push 금지, PR 경유(승인 0, 대화 해결,
   merge만), 필수 check 네 개의 strict 통과다. check는 `test (ubuntu-latest, 22)`, `test (ubuntu-latest, 24)`,
   `test (macos-latest, 22)`, `test (macos-latest, 24)`이고 출처는 GitHub Actions 앱(integration id 15368)의
   `.github/workflows/test.yml`이다. 혼자 운영하므로 자기 승인을 요구하지 않고, 다른 호스트 리뷰를 GitHub 승인으로
-  위장하지 않는다. 서버 보호가 이와 다르면 통합하지 않는다.
-- 로컬 pre-push: `local-merge`의 통합 관문이다. `pr-ci`에서는 doctor가 훅 설정을 요구하지 않으며, 켜 둔 클론에서만 브랜치
+  위장하지 않는다. 서버 보호가 이와 다르면 통합하지 않는다. Windows job(#103)은 필수 check에 넣지 않았지만 통합
+  조건의 CI 전부 성공에 든다. 필수 check로 바꾸는 일은 ruleset 변경이라 별도 사용자 지시로 한다.
+- 로컬 pre-push: `local-merge`의 통합 관문이다. `pr-ci`에서는 훅을 켜지 않아도 되며, 켜 둔 클론에서만 브랜치
   push 전 검사로 돈다. 통합 관문은 서버의 ruleset과 PR check다.
 - 전환 시점: 열린 증분을 현행 방식으로 마친 뒤, 이 결정의 커밋을 마지막 local-merge로 통합하고 곧바로 ruleset을 켠다.
   그 사이에는 통합하지 않는다. 다음 실제 증분이 이 흐름을 처음 적용한다.

@@ -300,6 +300,11 @@ test('HTTPie items and static files enforce the REST and GraphQL text boundary',
       assert.equal(check(`${client} PATCH ${endpoint} ${item}`, d), null, item)
     }
     assert.equal(check(`${client} GET ${endpoint} body=x`, d), null)
+    assert.equal(check(`${client} --verbose GET ${endpoint} body=x`, d), null)
+    assert.equal(check(`${client} --json PATCH ${endpoint} labels:='["body=x"]'`, d), null)
+    assert.ok(check(`${client} --raw '{"body":"x"}' PATCH ${endpoint}`, d))
+    assert.equal(check(`${client} --raw='{"state":"closed"}' PATCH ${endpoint}`, d), null)
+    assert.ok(check(`${client} --raw '{"query":"${query}"}' POST ${graphql}`, d))
     for (const item of [`query='${query}'`, 'query=@query.txt', 'query:=@query.txt', '@query.json']) {
       assert.ok(check(`${client} POST ${graphql} ${item}`, d), item)
     }

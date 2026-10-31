@@ -410,7 +410,8 @@ function httpWrite(args, ctx, client) {
   const httpie = client === 'http' || client === 'https'
   let method = null
   for (let i = 0; i < args.length; i++) {
-    if (httpie && i === 0 && /^(GET|HEAD|OPTIONS|POST|PATCH|PUT|DELETE)$/i.test(args[i].text)) {
+    // shortcut: ordinary flags and items only (not stdin bodies or every client option); the hook is a guardrail, not isolation
+    if (httpie && method === null && /^(GET|HEAD|OPTIONS|POST|PATCH|PUT|DELETE)$/i.test(args[i].text)) {
       method = args[i].text
       continue
     }
@@ -420,7 +421,9 @@ function httpWrite(args, ctx, client) {
       continue
     }
     const item = httpie && /^(title|body|query)(:=|=)([\s\S]*)$/.exec(args[i].text)
-    const m = /^(--data[\w-]*|--(?:post|body)-(?:data|file)|--json|-Body|--input|-InFile)(?:=([\s\S]*))?$|^(-d)([\s\S]*)$/i.exec(args[i].text)
+    const m = /^(--data[\w-]*|--(?:post|body)-(?:data|file)|--json|--raw|-Body|--input|-InFile)(?:=([\s\S]*))?$|^(-d)([\s\S]*)$/i.exec(args[i].text)
+    // HTTPie's --json is a switch and only HTTPie's --raw takes a body; curl's --raw is a switch.
+    if (m && m[1]?.toLowerCase() === (httpie ? '--json' : '--raw')) continue
     if (!item && !m && !(httpie && args[i].text.startsWith('@'))) continue
     const value = item ? item[3] : m ? m[2] ?? (m[4] || undefined) : args[i].text
     const payload = value === undefined ? args[++i] : { ...args[i], text: value }

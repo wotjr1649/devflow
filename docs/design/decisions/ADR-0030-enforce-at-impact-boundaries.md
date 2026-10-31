@@ -1,7 +1,7 @@
 # ADR-0030: 강제는 영향 경계에만, 나머지는 안내로
 
 상태: 채택 (#104, 2026-10-31 사용자 결정). [ADR-0004](ADR-0004-enforcement-layers.md)의 훅 범위,
-[ADR-0013](ADR-0013-local-session-metrics.md)의 매 사이클 측정, [ADR-0029](ADR-0029-behavior-eval.md) 결과 eval의 위치를 좁힌다.
+[ADR-0013](ADR-0013-local-session-metrics.md)의 매 사이클 측정, [ADR-0029](ADR-0029-behavior-eval.md) 결과 eval의 위치를 좁힌다. 훅 범위와 2단계 보류는 [ADR-0031](ADR-0031-guidance-over-enforcement.md)가 대체했다.
 
 ## 맥락
 

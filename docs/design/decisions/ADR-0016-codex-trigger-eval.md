@@ -1,6 +1,6 @@
 # ADR-0016 — Codex 트리거 eval은 실행별 stdout의 읽기 시도를 잰다
 
-상태: 채택. Issue #38. 2026-10-04. 격리 모드는 #39에서 실제 CODEX_HOME 모드로 대체됐다(맨 아래 절).
+상태: 채택. Issue #38. 2026-10-04. 격리 모드는 #39에서 실제 CODEX_HOME 모드로 대체됐다(맨 아래 절). 대체: [ADR-0031](ADR-0031-guidance-over-enforcement.md)(#104 2단계). devflow-codex-eval을 지운다.
 
 개정(#51): 아래 격리·guard·전용 CODEX_HOME·옵션 설명은 결정 이력이다. #39에서 superseded됐으며
 현재 실행 조건과 옵션은 [eval](../../specs/eval.md#codex-트리거-eval)이 소유한다.

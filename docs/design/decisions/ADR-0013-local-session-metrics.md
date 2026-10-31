@@ -1,6 +1,6 @@
 # ADR-0013: 사이클 지표를 로컬 세션 기록에서 읽기 전용 명령으로 센다
 
-상태: 채택 (사용자 결정, #4)
+상태: 채택 (사용자 결정, #4) 대체: [ADR-0031](ADR-0031-guidance-over-enforcement.md)(#104 2단계). devflow-metrics와 metric 명령을 지운다.
 
 ## 맥락
 

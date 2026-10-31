@@ -2,7 +2,7 @@
 // Issue #73 G1: a linked worktree that is not on an Issue branch no longer works for the main work tree's Issue. Only
 // an explicit M3 delegation shares the parent Issue: a record the main session leaves before launching, the same
 // session, and an agent worktree git proves. A task worktree never writes the ledger or the Issue, and one whose
-// delegation cannot be confirmed counts as locked. git runs for real; gh answers from a stub; nothing reaches GitHub.
+// delegation cannot be confirmed remains unconfirmed in devflow-state. git runs for real; gh answers from a stub; nothing reaches GitHub.
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const crypto = require('crypto')
@@ -11,7 +11,6 @@ const path = require('path')
 const tmpdir = require('./tmpdir')
 const { spawnSync } = require('child_process')
 const state = require('../bin/devflow-state')
-const hook = require('../hooks/devflow-hook')
 const { doctor } = require('../bin/devflow-doctor')
 
 // The session decides a delegation, so none may leak in from the shell that runs the tests.
@@ -60,7 +59,6 @@ const delegate = (root, n, session, label = 't1') => {
   ledger(root, n, { ...l, running: [...(Array.isArray(l.running) ? l.running : []), label] })
 }
 const snapshot = (root, n) => ['ledger.json', 'sessions.json', 'guard-events.jsonl', 'delegates.json'].map(f => read(root, n, f))
-const guards = (root, n) => (read(root, n, 'guard-events.jsonl') || '').trim().split('\n').filter(Boolean).map(l => JSON.parse(l).guard)
 
 const block = branch => ['## 현재 상태', '', '- 단계: build', `- 브랜치/PR: ${branch}`].join('\n')
 const BODY = '## 문제\nx\n\n## 수용 기준\n- [ ] a\n'
@@ -90,11 +88,6 @@ function env(branch, session) {
 const run = (e, cwd, argv, input = '') => state.main(argv, () => input, e, cwd)
 const posts = e => e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue').length
 
-const pre = (cwd, toolInput, { tool = 'Edit', session } = {}) => JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: tool,
-  tool_input: toolInput, cwd, ...(session ? { session_id: session } : {}) })
-const editTest = (cwd, opts) => hook.handle(pre(cwd, { file_path: path.join(cwd, 'tests', 'a.test.js') }, opts))
-const decision = out => (out ? JSON.parse(out).hookSpecificOutput.permissionDecision : 'allow')
-const reason = out => JSON.parse(out).hookSpecificOutput.permissionDecisionReason
 const lockTests = (p, n) => ledger(p.main, n, { stage: 'build', testsLocked: { at: p.at } })
 const testFails = root => doctor(root).lines.filter(l => l.startsWith('FAIL tests'))
 // The recovery a create refusal names: the run's owner or the user, never a mode change or a route without this check.
@@ -153,33 +146,9 @@ test('R2: create from an independent worktree is refused while the main work tre
   assert.deepEqual(snapshot(p.main, 14), before)
 })
 
-test('R3: an independent worktree takes neither the main work tree Issue test lock nor its guard log', () => {
-  const p = project('feat/14-x')
-  const wt = plain(p)
-  lockTests(p, 14)
-  assert.equal(decision(editTest(wt, { session: 'S' })), 'allow')
-  assert.equal(read(p.main, 14, 'guard-events.jsonl'), null)
-})
-
-test('R5: a recorded delegation follows its parent Issue, wherever the parent session works', () => {
-  const p = project('main')
-  plain(p, 'feat/7-parent')
-  const child = agent(p)
-  lockTests(p, 7)
-  delegate(p.main, 7, 'S')
-  const out = editTest(child, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /tests\/a\.test\.js is a test file, locked/)
-  assert.deepEqual(guards(p.main, 7), ['test-locked'])
-})
-
-test('R6: an agent worktree with no delegation counts as locked, posts nothing and fails doctor', () => {
+test('R6: an agent worktree with no delegation posts nothing and fails doctor', () => {
   const p = project('main')
   const child = agent(p)
-  const out = editTest(child, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
-  assert.match(reason(out), /running <issue> add <label> --worktree/)
   const e = env('없음', 'S')
   const r = run(e, child, ['create', '--title', 'new'], BODY)
   assert.equal(r.code, 1)
@@ -188,16 +157,12 @@ test('R6: an agent worktree with no delegation counts as locked, posts nothing a
   assert.match(testFails(child).join('\n'), /^FAIL tests: .*no confirmed delegation/)
 })
 
-test('R6b: a delegation taken out while its agent still works leaves the agent locked, not independent', () => {
+test('R6b: a delegation taken out while its agent still works still refuses create', () => {
   const p = project('main')
   const child = agent(p)
   lockTests(p, 7)
   delegate(p.main, 7, 'S')
-  assert.equal(decision(editTest(child, { session: 'S' })), 'deny')
   fs.rmSync(path.join(folder(p.main, 7), 'delegates.json'))
-  const out = editTest(child, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
   const e = env('없음', 'S')
   assert.equal(run(e, child, ['create', '--title', 'new'], BODY).code, 1)
   assert.equal(posts(e), 0)
@@ -285,7 +250,6 @@ test('R11c: an unattended ledger nobody is recorded for refuses create from a wo
 test('R13: without a session id an agent worktree counts as unconfirmed', () => {
   const p = project('main')
   const child = agent(p)
-  assert.equal(decision(editTest(child, {})), 'deny')
   const e = env('없음')
   assert.equal(run(e, child, ['create', '--title', 'new'], BODY).code, 1)
   assert.equal(posts(e), 0)
@@ -326,26 +290,7 @@ test('R15: an agent worktree git cannot prove posts nothing, keeps no ledger of 
     assert.equal(posts(e), 0, argv.join(' '))
   }
   assert.equal(fs.existsSync(path.join(child, '.work')), false)
-  assert.equal(decision(editTest(child, { session: 'S' })), 'deny')
   assert.match(testFails(child).join('\n'), /^FAIL tests: .*no confirmed delegation/)
-})
-
-test('R16: the hook decides by the session in its input, not by its own environment, also when analysis fails', () => {
-  const p = project('main')
-  plain(p, 'feat/7-parent')
-  const child = agent(p)
-  lockTests(p, 7)
-  delegate(p.main, 7, 'S')
-  const other = { ...state.realEnv, vars: { DEVFLOW_SESSION_ID: 'T' } }
-  assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, 'tests', 'a.test.js') }, { session: 'S' }), other)), 'deny')
-  assert.deepEqual(guards(p.main, 7), ['test-locked'])
-  // The logger the hook starts when its analysis runs out of time.
-  const raw = pre(child, { command: 'gh issue close 1' }, { tool: 'Bash', session: 'S' })
-  const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main("analysis-deadline")', require.resolve('../hooks/devflow-hook')],
-    { input: raw, encoding: 'utf8', env: { ...cleanEnv, DEVFLOW_SESSION_ID: 'T' }, timeout: 20000 })
-  assert.equal(r.status, 0, r.stderr)
-  assert.equal(decision(r.stdout.trim()), 'deny')
-  assert.deepEqual(guards(p.main, 7), ['test-locked', 'analysis-deadline'])
 })
 
 test('R17: a refusal in an independent worktree is logged under no Issue', () => {
@@ -373,12 +318,10 @@ test('R19: a worktree with no agent marker is independent even when its session 
   const outside = plain(p)
   const slot = worktree(p, path.join(p.main, '.claude', 'worktrees', 'analysis'), 'task-analysis')
   for (const wt of [outside, slot]) {
-    assert.equal(decision(editTest(wt, { session: 'S' })), 'allow', wt)
     const ctx = state.repoContext(env('feat/14-x', 'S'), wt)
     assert.equal(ctx.issue, null, wt)
     assert.doesNotMatch(state.card(env('feat/14-x', 'S'), wt), /#14/, wt)
   }
-  assert.equal(read(p.main, 14, 'guard-events.jsonl'), null)
 })
 
 test('R20: a bound task worktree card points at the main session instead of the parent state', () => {
@@ -396,7 +339,6 @@ test('R21: a worktree that keeps the agent branch after moving out of the isolat
   const p = project('feat/7-x')
   lockTests(p, 7)
   const moved = worktree(p, path.join(p.base, 'moved'), 'worktree-agent-a2')
-  assert.equal(decision(editTest(moved, { session: 'S' })), 'deny')
   const e = env('feat/7-x', 'S')
   const r = run(e, moved, ['create', '--title', 'new'], BODY)
   assert.equal(r.code, 1)
@@ -414,16 +356,6 @@ test('R22: a delegation record inside a worktree git cannot prove binds nothing'
   const e = env('없음', 'S')
   assert.equal(run(e, child, ['create', '--title', 'new'], BODY).code, 1)
   assert.equal(posts(e), 0)
-})
-
-test('P1: a recorded delegation keeps its parent test lock and guard log', () => {
-  const p = project('feat/7-x')
-  const child = agent(p)
-  lockTests(p, 7)
-  delegate(p.main, 7, 'S')
-  assert.equal(decision(editTest(child, { session: 'S' })), 'deny')
-  assert.deepEqual(guards(p.main, 7), ['test-locked'])
-  assert.equal(fs.existsSync(path.join(child, '.work')), false)
 })
 
 test('P12: a normal start from an independent worktree posts while another session runs its own Issue unattended', () => {
@@ -463,35 +395,12 @@ test('new: the main session records a worktree delegation before launching and t
   assert.deepEqual(JSON.parse(read(p.main, 7, 'ledger.json')).running, [])
 })
 
-test('new: two Issues holding the same session make its agent worktree unconfirmed', () => {
-  const p = project('main')
-  const child = agent(p)
-  lockTests(p, 7)
-  delegate(p.main, 7, 'S')
-  delegate(p.main, 9, 'S', 't9')
-  const out = editTest(child, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
-})
-
 test('new: mode records the session that switched it', () => {
   const p = project('main')
   const own = plain(p, 'feat/14-x')
   ledger(p.main, 14, { stage: 'build' })
   assert.equal(run(env('feat/14-x', 'S'), own, ['mode', '14', 'autonomous'], 'away').code, 0)
   assert.equal(JSON.parse(read(p.main, 14, 'ledger.json')).modeChanged.session, hashOf('S'))
-})
-
-// Review findings on 91a61e2 (Claude security review, Codex cross-host review).
-test('R23: an unconfirmed task worktree cannot edit an Issue ledger or delegation record in the main work tree', () => {
-  const p = project('feat/7-x')
-  const child = agent(p)
-  lockTests(p, 7)
-  for (const file of ['ledger.json', 'delegates.json']) {
-    const out = hook.handle(pre(child, { file_path: path.join(folder(p.main, 7), file) }, { session: 'S' }))
-    assert.equal(decision(out), 'deny', file)
-    assert.match(reason(out), /no confirmed delegation/, file)
-  }
 })
 
 test('R24: an Issue folder whose name differs only in case is still that Issue where the file system ignores case', t => {
@@ -530,40 +439,9 @@ test('R25: when the Issue folders cannot be listed, a worktree create is refused
     assert.equal(r.code, 1)
     ownerOnly(r.out)
     assert.equal(posts(e), 0)
-    assert.match(reason(editTest(child, { session: 'S' })), /no confirmed delegation/)
   } finally {
     fs.readdirSync = list
   }
-})
-
-test('R26: a delegation record whose label is not running binds nothing, so an unlocked parent does not unlock its agent', () => {
-  const p = project('feat/7-x')
-  const child = agent(p)
-  ledger(p.main, 7, { stage: 'build', running: [] })
-  put(p.main, 7, 'delegates.json', { t1: { session: hashOf('S'), host: 'claude', at: '2026-10-24T00:00:00.000Z' } })
-  const out = editTest(child, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
-})
-
-test('R27: an agent worktree whose git metadata cannot be read still counts as locked', () => {
-  const p = project('main')
-  const child = agent(p)
-  // Removed first: Windows refuses to overwrite the hidden file git made.
-  fs.rmSync(path.join(child, '.git'))
-  fs.writeFileSync(path.join(child, '.git'), 'garbage\n')
-  const out = editTest(child, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
-})
-
-test('R28: an unconfirmed task worktree keeps the profile locked even with no tests listed', () => {
-  const p = project('main')
-  const child = agent(p)
-  fs.writeFileSync(path.join(child, '.devflow.json'), '{}\n')
-  const out = hook.handle(pre(child, { file_path: path.join(child, '.devflow.json') }, { session: 'S' }))
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
 })
 
 test('R29: any label is recorded as its own entry, and only a recorded or running label can be taken out', () => {
@@ -591,30 +469,6 @@ test('R30: a record that would pass the size its readers accept is refused, leav
   assert.deepEqual(snapshot(p.main, 7), before)
 })
 
-// Narrow re-review findings on eb71e6c (Claude security, Codex cross-host).
-test('R31: with its git metadata broken, an unconfirmed agent still cannot edit the main work tree ledgers', () => {
-  const p = project('feat/7-x')
-  const child = agent(p)
-  lockTests(p, 7)
-  fs.rmSync(path.join(child, '.git'))
-  fs.writeFileSync(path.join(child, '.git'), 'garbage\n')
-  for (const file of ['ledger.json', 'delegates.json']) {
-    const out = hook.handle(pre(child, { file_path: path.join(folder(p.main, 7), file) }, { session: 'S' }))
-    assert.equal(decision(out), 'deny', file)
-    assert.match(reason(out), /no confirmed delegation/, file)
-  }
-})
-
-test('R32: other Windows spellings of a ledger or delegation record are the same file to the guard', { skip: process.platform !== 'win32' }, () => {
-  const p = project('feat/7-x')
-  const child = agent(p)
-  lockTests(p, 7)
-  for (const name of ['ledger.json::$DATA', 'delegates.json::$DATA', 'ledger.json.', 'delegates.json ']) {
-    const out = hook.handle(pre(child, { file_path: path.join(folder(p.main, 7), name) }, { session: 'S' }))
-    assert.equal(decision(out), 'deny', name)
-  }
-})
-
 test('R33: a worktree delegation takes a label nothing runs or records yet, so the record binds only with its ledger write', () => {
   const p = project('main')
   const own = plain(p, 'feat/7-x')
@@ -626,132 +480,6 @@ test('R33: a worktree delegation takes a label nothing runs or records yet, so t
   assert.equal(read(p.main, 7, 'delegates.json'), null)
   assert.equal(run(e, own, ['running', '7', 'add', 't2', '--worktree']).code, 0)
   assert.match(run(e, own, ['running', '7', 'add', 't2', '--worktree']).out, /already/)
-})
-
-// Third narrow round on 50dd8b1: a spelling match cannot cover every Windows name of a file (folder trailing dots,
-// 8.3 short names), so an unconfirmed task worktree's edit tools write nothing outside the worktree at all.
-test('R34: an unconfirmed task worktree edits nothing outside itself, however the path is spelled', () => {
-  const p = project('feat/7-x')
-  const child = agent(p)
-  lockTests(p, 7)
-  const outside = [path.join(p.base, 'elsewhere.txt'), path.join(p.main, '.work.', 'devflow', 'i7', 'ledger.json'),
-    path.join(p.main, '.work', 'devflow.', 'i7', 'ledger.json'), path.join(p.main, '.work', 'devflow', 'i7.', 'delegates.json')]
-  for (const file of outside) {
-    const out = hook.handle(pre(child, { file_path: file }, { session: 'S' }))
-    assert.equal(decision(out), 'deny', file)
-    assert.match(reason(out), /no confirmed delegation/, file)
-  }
-  // Inside it, code stays open; only the locked tests and profile are closed.
-  assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, 'src', 'a.js') }, { session: 'S' }))), 'allow')
-})
-
-// Fourth narrow round on 3a58c19 (Codex cross-host, Claude security).
-test('R35: names that only start with two dots are inside the worktree', () => {
-  const p = project('main')
-  const child = agent(p)
-  for (const name of ['..env', path.join('..config', 'a.js')]) {
-    assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, name) }, { session: 'S' }))), 'allow', name)
-  }
-})
-
-test('R36: a git proof that points into the worktree itself proves nothing, so a forged store binds no agent', () => {
-  const p = project('feat/7-x')
-  const child = agent(p)
-  lockTests(p, 7)
-  // The forgery an agent could write with edit tools alone: a fake common dir inside its own worktree vouching for it.
-  const own = path.join(child, 'fake', '.git', 'worktrees', 'x')
-  fs.mkdirSync(own, { recursive: true })
-  fs.writeFileSync(path.join(own, 'gitdir'), path.join(child, '.git') + '\n')
-  fs.writeFileSync(path.join(own, 'commondir'), '../..\n')
-  fs.writeFileSync(path.join(own, 'HEAD'), 'ref: refs/heads/worktree-agent-a1\n')
-  fs.rmSync(path.join(child, '.git'))
-  fs.writeFileSync(path.join(child, '.git'), 'gitdir: fake/.git/worktrees/x\n')
-  delegate(path.join(child, 'fake'), 7, 'S')
-  const out = editTest(child, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
-})
-
-test('R37: a root spelled with the Windows long-path prefix still holds its own files', { skip: process.platform !== 'win32' }, () => {
-  const p = project('main')
-  const child = agent(p)
-  const long = '\\\\?\\' + child
-  assert.equal(decision(hook.handle(pre(long, { file_path: path.join(long, 'src', 'a.js') }, { session: 'S' }))), 'allow')
-})
-
-// Fifth narrow round on 6170c35 (Codex cross-host, Claude security).
-test('R38: a forged in-worktree store spelled with the long-path prefix is no proof either', { skip: process.platform !== 'win32' }, () => {
-  const p = project('feat/7-x')
-  const child = agent(p)
-  lockTests(p, 7)
-  const own = path.join(child, 'fake', '.git', 'worktrees', 'x')
-  fs.mkdirSync(own, { recursive: true })
-  fs.writeFileSync(path.join(own, 'gitdir'), path.join(child, '.git') + '\n')
-  fs.writeFileSync(path.join(own, 'commondir'), '../..\n')
-  fs.writeFileSync(path.join(own, 'HEAD'), 'ref: refs/heads/worktree-agent-a1\n')
-  fs.rmSync(path.join(child, '.git'))
-  fs.writeFileSync(path.join(child, '.git'), `gitdir: \\\\?\\${own}\n`)
-  delegate(path.join(child, 'fake'), 7, 'S')
-  const out = editTest(child, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
-})
-
-test('R39: a relative edit from a long-path cwd stays inside the worktree', { skip: process.platform !== 'win32' }, () => {
-  const p = project('main')
-  const child = agent(p)
-  const long = '\\\\?\\' + child
-  assert.equal(decision(hook.handle(pre(long, { file_path: 'src/a.js' }, { session: 'S' }))), 'allow')
-})
-
-test('R40: names that start with two dots keep their test locks', () => {
-  const p = project('main')
-  const child = agent(p)
-  fs.writeFileSync(path.join(child, '.devflow.json'), JSON.stringify({ tests: ['..env', '..config/**'] }))
-  for (const name of ['..env', path.join('..config', 'a.js')]) {
-    assert.equal(decision(hook.handle(pre(child, { file_path: path.join(child, name) }, { session: 'S' }))), 'deny', name)
-  }
-})
-
-// Sixth narrow round on a0a994b: binding is structural. Only a worktree that sits exactly at
-// <main work tree>/.claude/worktrees/agent-* (where Claude Code puts it, 2.1.310) can be bound to that main work tree's
-// Issue, so no spelling of a forged store and no worktree elsewhere can claim one.
-test('R41: a long-path root with a plainly spelled forged store inside it binds nothing', { skip: process.platform !== 'win32' }, () => {
-  const p = project('feat/7-x')
-  const child = agent(p)
-  lockTests(p, 7)
-  const own = path.join(child, 'fake', '.git', 'worktrees', 'x')
-  fs.mkdirSync(own, { recursive: true })
-  fs.writeFileSync(path.join(own, 'gitdir'), path.join('\\\\?\\' + child, '.git') + '\n')
-  fs.writeFileSync(path.join(own, 'commondir'), '../..\n')
-  fs.writeFileSync(path.join(own, 'HEAD'), 'ref: refs/heads/worktree-agent-a1\n')
-  fs.rmSync(path.join(child, '.git'))
-  fs.writeFileSync(path.join(child, '.git'), `gitdir: ${own}\n`)
-  delegate(path.join(child, 'fake'), 7, 'S')
-  const long = '\\\\?\\' + child
-  const out = hook.handle(pre(long, { file_path: path.join(long, 'tests', 'a.test.js') }, { session: 'S' }))
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
-})
-
-test('R42: a real repository whose name looks like a short name still binds its agent worktrees', () => {
-  const p = project('feat/7-x', 'repo~1')
-  const child = agent(p)
-  lockTests(p, 7)
-  delegate(p.main, 7, 'S')
-  const out = editTest(child, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /tests\/a\.test\.js is a test file, locked/)
-})
-
-test('R43: an agent branch outside the isolation folder is never bound, even with a record', () => {
-  const p = project('feat/7-x')
-  ledger(p.main, 7, { stage: 'build' })
-  delegate(p.main, 7, 'S')
-  const moved = worktree(p, path.join(p.base, 'moved'), 'worktree-agent-a3')
-  const out = editTest(moved, { session: 'S' })
-  assert.equal(decision(out), 'deny')
-  assert.match(reason(out), /no confirmed delegation/)
 })
 
 // #73 G2: an independent create judges every Issue folder entry by the name listed and follows none. An entry it cannot
@@ -1184,10 +912,6 @@ for (const n of ['9007199254740993', '9007199254740992', '9'.repeat(200)]) {
     delegate(p.main, n, 'S', 'other')
     const before = snapshot(p.main, n)
     assert.equal(state.repoContext(env('main', 'S'), child).bind, 'unconfirmed')
-    const out = editTest(child, { session: 'S' })
-    assert.equal(decision(out), 'deny')
-    assert.match(reason(out), /no confirmed delegation/)
-    assert.doesNotMatch(reason(out), new RegExp(n))
     assert.deepEqual(snapshot(p.main, n), before)
   })
 
@@ -1230,7 +954,6 @@ test('number identity: safe maximum and missing delegation files keep normal bin
   const e = env('feat/9007199254740991-x', 'S')
   assert.equal(run(e, own, ['running', '9007199254740991', 'add', 'max', '--worktree']).code, 0)
   assert.equal(state.repoContext(env('main', 'S'), child).issue, Number.MAX_SAFE_INTEGER)
-  assert.equal(decision(editTest(child, { session: 'S' })), 'allow')
   delegate(p.main, '9007199254740993', 'S', 'other')
   assert.equal(run(e, own, ['running', '9007199254740991', 'add', 'ordinary']).code, 0)
   assert.equal(run(e, own, ['running', '9007199254740991', 'done', 'max']).code, 0)

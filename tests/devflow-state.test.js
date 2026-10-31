@@ -1670,7 +1670,7 @@ test('remark widens no branch-Issue write and takes exactly one number (#77)', (
   assert.equal(state.main(['remark'], () => 'x', e, '.').code, 2)
   assert.equal(state.main(['remark', '7', '8'], () => 'x', e, '.').code, 2)
   assert.equal(state.main(['remark', 'x7'], () => 'x', e, '.').code, 2)
-  assert.ok(state.WRITE_OPS.has('remark'), 'the hook names remark among the devflow-state writes')
+  assert.ok(state.WRITE_OPS.has('remark'), 'remark remains a devflow-state write')
 })
 
 // #73 N2: the resume card keeps its meaning and its budget on every path (plan A1-A13).

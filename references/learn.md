@@ -8,4 +8,4 @@ lesson sits in one place and nothing it replaces is left behind.
 - When the place is a file an agent loads (AGENTS.md, a skill, an agent definition), call `writing-for-agents`; AGENTS.md has a one-page budget, so a new line usually displaces an old one.
 - A lesson about one machine stays in private notes; one about the owner's habits across projects is proposed for the
   user's global instructions, not written there.
-- Keep the story behind a lesson in the Issue checkpoint and git. Update [current decisions](../docs/design/current-decisions.md) only when the lasting choice or its reason changes.
+- Keep the story behind a lesson in the Issue checkpoint and git. Update the project's `docs/design/current-decisions.md` only when the lasting choice or its reason changes.

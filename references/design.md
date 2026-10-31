@@ -5,7 +5,7 @@ bounded path, in a design note on the architectural one.
 
 - Compare at least two approaches by what each changes, what it risks and what it costs; say why the others lose.
 - Mark the places a wrong assumption would hurt most, so plan can put proof there first.
-- A change to a lasting rule goes into `docs/specs/` (the spec owns it); update the current choice and reason in [current decisions](../docs/design/current-decisions.md). Keep the change history in the Issue checkpoint and git.
+- A change to a lasting rule goes into `docs/specs/` (the spec owns it); update the current choice and reason in the project's `docs/design/current-decisions.md`. Keep the change history in the Issue checkpoint and git.
 - On the architectural path, review the design before plan with the design perspective from
   [perspectives](perspectives.md): Claude uses `reviewer`; in Codex the main session performs it
   ([roles](../docs/specs/orchestration.md#모델과-effort)).

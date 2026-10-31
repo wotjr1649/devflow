@@ -21,9 +21,10 @@ passing, and the ledger holds the last commit and the next task.
   in the commit or the checkpoint: review reads test changes for this
   ([ADR-0031](../docs/design/decisions/ADR-0031-guidance-over-enforcement.md)).
 - Run the checks that execute the change and the behaviour it affects - the project's tests for the paths touched and
-  their callers. Widen to the full `verify` when nothing justifies a narrower set (shared code, configuration, test
-  tooling). The full `verify` follows the integration profile ([.devflow.json](../docs/specs/repository.md#devflowjson)):
-  under `pr-ci`, CI's success on the same revision is its evidence; otherwise run it before the work leaves build.
+  their callers. When nothing justifies a narrower set (shared code, configuration, test tooling), run the full
+  `verify` locally now. The integration gate's full `verify` follows the integration profile
+  ([.devflow.json](../docs/specs/repository.md#devflowjson)): under `pr-ci`, ship takes CI's success on the pushed
+  revision as its evidence; otherwise run it before the work leaves build.
   Syntax checks and checks that never started are not verification; name any check that could not run and why.
 - A missing dependency the project already declares is installed with the project's package manager and lockfile.
 

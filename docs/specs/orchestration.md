@@ -30,7 +30,7 @@ architectural 경로의 계획은 대화를 보지 못한 엔지니어가 계획
 - 새 동작의 테스트는 수정 전에, 또는 수정을 되돌린 상태에서 실패하는 것을 한 번 확인한다. 테스트를 먼저 쓸지 나중에
   쓸지는 프로젝트 규칙을 따른다. 어느 쪽이든 실패를 확인하지 않은 테스트는 그 수정을 증명하지 못한다.
 - 버그 수정은 재현 테스트를 먼저 만들어 실패를 확인한 뒤 코드를 고친다. 이때 그 테스트는 고치지 않는다. 시험 잠금은 없고 리뷰가
-  시험 변경을 본다([ADR-0031](../design/decisions/ADR-0031-guidance-over-enforcement.md)).
+  시험 변경을 본다([선택의 이유](../design/current-decisions.md#지침과-보호)).
 
 ## 실행 모드
 
@@ -44,7 +44,7 @@ architectural 경로의 계획은 대화를 보지 못한 엔지니어가 계획
 | **M2** | 독립적으로 테스트할 수 있는 작업이 3개 이상이거나, 읽을 양이 메인 컨텍스트의 절반을 넘을 것으로 보이거나, 자율 장시간 실행 | 구현 서브에이전트가 한 번에 하나씩 | 작업별 리뷰, 최종 리뷰 |
 | **M3** (Claude 전용) | 파일이 겹치지 않고 인터페이스가 계획에 고정되어 있다 | worktree별 구현 에이전트, 동시에 2~3개까지 | 작업별 리뷰, 최종 리뷰 |
 
-Workflow는 실행 모드가 아니다. 사용자가 devflow 밖에서 직접 실행한다([ADR-0017](../design/decisions/ADR-0017-drop-m4-defer-route.md)).
+Workflow는 실행 모드가 아니다. 사용자가 devflow 밖에서 직접 실행한다([재검토 조건](../design/current-decisions.md#실행과-위임)).
 
 대화형 M2에서도 한 문장으로 설명되는 한두 줄 편집은 위임하지 않고 메인이 하고 장부에 적는다. 위임 한 번(지시서, 새
 컨텍스트, 보고)이 편집보다 비싸기 때문이다(#25). 작업별 리뷰는 build의 기계적 변경 규칙을 따른다. 무인 실행은 작업마다
@@ -53,7 +53,7 @@ Workflow는 실행 모드가 아니다. 사용자가 devflow 밖에서 직접 �
 M3에서는 Claude의 Agent 호출마다 `isolation: "worktree"`를 주어 구현 에이전트를 띄운다. 에이전트 정의에 넣으면 M2 위임까지
 worktree로 바뀌므로 정의에는 넣지 않는다. 메인이 결과를 하나씩 머지하고, 머지할 때마다 머지한 결과가 영향을 주는 검사를 돌린다. 범위를 좁힐 근거가 없으면
 그 자리에서 전체 `verify`를 로컬로 돌린다(절차는 build reference). 통합 관문의 전체 `verify` 근거는 통합 방식을
-따른다([repository](repository.md#devflowjson)). 첫 실사용은 #28이다([ADR-0015](../design/decisions/ADR-0015-paper-features.md)).
+따른다([repository](repository.md#devflowjson)).
 
 ### M0의 적용과 마무리
 
@@ -135,8 +135,8 @@ Glob에 없더라도 경로를 직접 읽고, 필수 누락은 검토 한계로 
   고치면 과잉 설계가 된다.
 - M2와 M3에서는 작업마다 범위가 좁은 리뷰를 추가한다.
 - 시험 변경은 리뷰가 따로 본다. 요구가 바뀌었거나 기대값이 틀린 경우가 아닌데 시험을 약하게 고쳐 통과시켰으면 결함이다
-  ([ADR-0031](../design/decisions/ADR-0031-guidance-over-enforcement.md)).
-- 리뷰 지적 수정(#50, [ADR-0030](../design/decisions/ADR-0030-enforce-at-impact-boundaries.md)): 동작이나 권한을 바꾼
+  ([선택의 이유](../design/current-decisions.md#지침과-보호)).
+- 리뷰 지적 수정: 동작이나 권한을 바꾼
   수정(코드·설정·시험, 지침의 흐름·권한·공개 범위·신뢰 경계·관문)만 새 컨텍스트의 실행 검증이 닿는 기준을 확인하고 좁혀
   다시 리뷰한다. 문구·형식 수정은 메인이 CI로 확인한다. 같은 지점의 지적이 되풀이되면 덧대지 말고 설계를 다시 본다.
 - 신뢰 경계를 옮기는 설계는 경로와 상관없이 계획 전에 설계 관점 리뷰어에게 깨 보라고 맡긴다. 공개 글을 지키는 필터를
@@ -170,7 +170,7 @@ Claude Code에서 서브에이전트의 effort는 에이전트 정의에서만 �
 
 에이전트 정의는 도구로 나눈 3개다. 읽기와 명령 실행만 하는 `explorer`(`medium`), 읽기만 하는 `reviewer`(`high`), 파일을
 고치는 `implementer`(`medium`). 역할의 차이(탐색, 요약, 원인 분석, 검증, 설계, 보안 같은 관점)는 지시서가 정하고, 승격은
-호출할 때 `model`로 한다([ADR-0031](../design/decisions/ADR-0031-guidance-over-enforcement.md)). 정의에 `omitClaudeMd`를 두지
+호출할 때 `model`로 한다([선택의 이유](../design/current-decisions.md#실행과-위임)). 정의에 `omitClaudeMd`를 두지
 않는다. 프로젝트 지침과 경계를 그대로 받아야 하기 때문이다.
 
 Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔다. Sonnet은 높은 effort에서 스스로 리뷰
@@ -191,9 +191,9 @@ Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔�
 | 한 파일 안의 기계적 변경이고 신뢰 경계를 건드리지 않음 | diff | 작업별 리뷰를 생략. 최종 리뷰가 확인한다 |
 
 이 표와 승격 밖의 route(다른 역할의 effort 정의, 훅 강제, 선언형 route)는 보류다. 다시 볼 조건은
-[ADR-0017](../design/decisions/ADR-0017-drop-m4-defer-route.md)에 있다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선한다. 다만 호스트의 현재 도구 지침이 지정 권한을
-제한할 수 있으므로 그 지침을 먼저 따른다. 표의 값이 실제로 적용되는지는 실행 기록으로 확인하고, 확인하지 못하면
-미확인으로 남긴다([ADR-0017](../design/decisions/ADR-0017-drop-m4-defer-route.md)).
+[route와 Workflow의 재검토](../design/current-decisions.md#실행과-위임)를 따른다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선한다.
+다만 호스트의 현재 도구 지침이 지정 권한을 제한할 수 있으므로 그 지침을 먼저 따른다. 표의 값이 실제로 적용되는지는
+실행 기록으로 확인하고, 확인하지 못하면 미확인으로 남긴다.
 Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이전트의 `sandbox_mode`는 부모 sandbox를 좁히지 못한다
 ([host-facts](../research/host-facts.md#codex)).
 

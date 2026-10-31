@@ -29,7 +29,7 @@ Issue를 읽고 쓰는 방법, Issue 본문과 체크포인트의 형식, 재개
   적용하고, 게시 전 대상을 조회해 없는 번호·PR 번호는 거부하며, 출력에 저장소·번호·상태·제목(쓰기 권한자가 아니면
   숨김)·URL을 낸다. 닫힌 Issue에도 달고 다시 열지 않는다. 무인 여부는 호출자 작업 Issue의 장부로만 판단해 autonomous면 거부하고 사용자에게 보여 줄 내용을 장부 notes에 남기도록 안내한다. 대상 Issue의 장부·세션 기록은 읽거나
   만들지 않는다. detached HEAD(rebase 중인 Issue 브랜치일 수 있다), task worktree(위임은 Issue에 쓰지 않는다), 옮기지 않은 옛 worktree 장부는 거부한다. 대상이 다른 저장소로 옮겨진 Issue면 거부한다. 작업 Issue가 없는 main은 대화형으로 간주하며, 이는 무인 실행을 증명하지 못하는 한계다. 응답 유실은 댓글처럼 다시 읽어 확인한다. 다른 저장소, 상태·본문·
-  체크·종료와 체크포인트의 브랜치 Issue 제한은 바뀌지 않는다. 지원 대상은 게시 권한이 아니다. 이유: [ADR-0025](../design/decisions/ADR-0025-remark.md).
+  체크·종료와 체크포인트의 브랜치 Issue 제한은 바뀌지 않는다. 지원 대상은 게시 권한이 아니다. 이유: [권한과 경계](../design/current-decisions.md#권한과-경계).
 - 새 Issue: `create`는 번호 없는 착수라 브랜치 Issue 제한의 예외이고, 작업 Issue 장부가 autonomous면 거부하고 내용을 장부 notes에 남기도록 안내한다.
   detached HEAD와 M3 작업 worktree에서는 거부하고, linked worktree의 무인 판정은 [task worktree](ledger.md#task-worktree)를 따른다.
 - 관계: `sub-issue add <부모번호> <자식번호>`는 현재 GitHub origin의 같은 저장소에서 한 관계를 추가한다. Issue 브랜치가
@@ -43,20 +43,12 @@ Issue를 읽고 쓰는 방법, Issue 본문과 체크포인트의 형식, 재개
   `sub-issue list <부모번호>`는 번호 목록만 조회하며 페이지당 100개·10페이지까지 검사한다. 저장소 불일치·중복 번호·부분 응답·
   cursor 무진전·한도 초과는 실패이며 불완전한 목록을 성공으로 출력하지 않는다. 목록과 완료는 조회 시점의 관찰이다.
   API 근거: [GraphQL Issue](https://docs.github.com/en/graphql/reference/issues#issue),
-  [REST sub-issues](https://docs.github.com/en/rest/issues/sub-issues). 결정은 [ADR-0022](../design/decisions/ADR-0022-sub-issue-writes.md).
+  [REST sub-issues](https://docs.github.com/en/rest/issues/sub-issues). 선택의 이유는 [권한과 경계](../design/current-decisions.md#권한과-경계)에 있다.
 - 무인 구간(장부의 `mode`가 `autonomous`일 때, [자율 실행](ledger.md#자율-실행))에서는 모든 Issue 쓰기를 거부한다.
   거부 메시지는 사용자에게 보여 줄 내용을 장부 notes에 남기도록 안내한다. 대기열이나 자동 게시 기능은 없다.
   다음 대화형 턴에 사용자가 내용을 확인한 뒤 필요한 명령으로 게시한다. CLI 밖의 직접 게시를 훅으로 막지는 않는다.
 - 보안 취약점은 결함이든 고치는 작업이든 공개 Issue 대신 GitHub 비공개 보안 권고로 추적한다.
-- `gh` 인증은 소유자가 정한다. 에이전트가 일하는 저장소들만 고른 fine-grained 토큰을 권한다. 권한은 Contents·Issues·Pull
-  requests 쓰기와 Metadata·Actions·Commit statuses 읽기이고, 관리·워크플로 권한은 넣지 않는다. 범위가 `repo`나
-  `public_repo`인 OAuth·classic 토큰이면 재개 카드가 경고한다. 넓은 토큰을 계속 쓸지는 소유자가 정한다. 경고는 Issue 브랜치에서
-  조회가 성공한 카드에만 나오고, gh가 그 호출에 쓴 토큰만 본다. 오래된 GitHub 자격 증명(git 자격 증명 관리자의 항목 등)은 지우기를 권한다.
-- 저장소 안에서 셸과 `devflow-state`를 나누는 자격 증명 경계는 OS 격리 없이는 없다. 같은 OS 사용자의 프로세스는 keyring과
-  git 자격 증명 도우미로 토큰을 꺼낼 수 있고, `devflow-state`도 에이전트 셸의 하위 프로세스다. 그래서 직접 실행한 쓰기는 그
-  사용자가 읽을 수 있는 모든 GitHub 자격 증명이 닿는 곳까지 닿는다. 고른 저장소 안에서는 push, force-push, 브랜치 삭제까지다.
-  소유자는 기본 브랜치의 force-push와 삭제를 막는 ruleset을 둘 수 있다. 경계가 필요하면 OS 격리를 쓴다. 그 경로와 전제는
-  [ADR-0014](../design/decisions/ADR-0014-gh-token-scope.md)에 있고, 전제를 갖추기 전에는 경계라고 부르지 않는다.
+- `gh` 인증, 자격 증명 경계와 OS 격리의 전제는 [credentials](credentials.md)가 정한다.
 
 ## Issue 템플릿
 
@@ -123,7 +115,7 @@ Tool: node "<plugin root>/bin/devflow-state"
 
 ### 예산과 의미 보존
 
-카드 전체는 `estTokens` 1,000 미만이며, 어느 경로든 실제로 조립한 출력으로 판정한다(#73, [ADR-0026](../design/decisions/ADR-0026-resume-card-budget.md)).
+카드 전체는 `estTokens` 1,000 미만이며, 어느 경로든 실제로 조립한 출력으로 판정한다([선택의 이유](../design/current-decisions.md#상태와-재개)).
 연결·작성자·공개 필터·Issue 번호 판단은 온전한 원문으로 하고, 줄이는 것은 표시뿐이다. 카드는 Issue·장부·세션 파일을 바꾸지 않는다.
 
 - 표시값은 타입을 확인한 뒤 보인다. repo·branch는 100자, 제목은 120자까지 보이고, 넘는 값은 `…` 미리보기다.

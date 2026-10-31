@@ -53,7 +53,7 @@ Imported 2026-10-01. The deployed bytes are hashed as read; the committed bytes 
   owner's own skills are licensed by the owner here, so their changes are recorded in the row above instead.
 - MIT files keep their copyright and permission notice; the full upstream license text goes to
   `LICENSES/<upstream>-MIT.txt`.
-- Copy only the parts listed under "Take" below; anything else needs a decision record first.
+- Copy only the parts listed under "Take" below; for anything else, record the choice and reason in [current decisions](docs/design/current-decisions.md) first, with the change history in the Issue and git.
 
 ## Candidates
 

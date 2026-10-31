@@ -8,7 +8,7 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 
 - `devflow` 스킬이 재개 카드(Issue 현재 상태, 작업 장부, `.devflow.json`)로 지금 단계와 작업 번호를 판단한다.
 - 카드가 있어도 새 작업 요청은 `development-start`가 받고 [경로](#경로별-단계)를 가른다. spike나 문제와 수용 기준이
-  확인되지 않은 일은 discover로 보낸다([ADR-0018](../design/decisions/ADR-0018-new-work-goes-to-development-start.md)).
+  확인되지 않은 일은 discover로 보낸다([선택의 이유](../design/current-decisions.md#진입점과-단계)).
 - 담당 스킬이 있는 단계는 그 스킬을 이름으로 부르고, 없는 단계는 라우터의 단계 reference를 읽는다.
 - review·ship은 `pr-review-workflow`를 진입점으로 유지한다. devflow 전용 순서는 공통
   [review](../../skills/pr-review-workflow/references/review.md)와 [ship](../../references/ship.md)이 소유한다.
@@ -60,7 +60,7 @@ Issue의 confirmed intent·큰 단계와 체크포인트의 검증 기록, 장�
 |---|---|---|---|---|---|
 | 1 | discover 구상 | 무엇을 왜 만들지: 문제, 사용자, 성공 기준, 제외 범위. 관측·주장·추정·미확인을 나누고, 무엇을 만들지 열려 있으면 컨셉과 최소 범위를 비교 | intent 초안, 또는 조사 결과·보류/중단 이유와 재개 조건 | 사용자가 intent를 확인하면 start. 문제와 관측 가능한 수용 기준을 이미 담은 구현 요청은 그 자체가 확인된 intent라 재인터뷰 없이 start. spike는 버릴 시험과 보고로 끝남. Issue가 생기기 전의 조사·초안만·보류·중단은 결과를 보고하고 끝나며 Issue·브랜치·장부·제품 변경을 만들지 않음 | 라우터 reference, grilling |
 | 2 | start 착수 | Issue 등록과 대조, 수용 기준 확정, 작업 브랜치, 기준선 검사 | Issue 본문, 브랜치 | Issue 연결 확인, 기준선 통과 | development-start |
-| 3 | design 설계 | 요구사항과 설계 정리, 대안 비교, 우려 지점 표시, 계약이 바뀌면 spec과 결정 기록 | 설계 노트 또는 `docs/specs/`, 결정 기록 | 사용자만 정할 결정이 해결됨 | 라우터 reference, reviewer(설계 관점), grilling |
+| 3 | design 설계 | 요구사항과 설계 정리, 대안 비교, 우려 지점 표시. 계약 변경은 spec에, 현재 선택과 이유는 [현재 설계 결정](../design/current-decisions.md)에 반영 | 설계 노트 또는 `docs/specs/`와 현재 설계 결정 | 사용자만 정할 결정이 해결됨 | 라우터 reference, reviewer(설계 관점), grilling |
 | 4 | plan 계획 | 작업별 파일, 순서, interfaces, 증명, 위험. [계획 품질](orchestration.md#계획) 점검, 전제(의존성, 도구, 권한, 검사 명령) 확인, 실행 모드 선택 | 비공개 계획, 공개 요약과 go 또는 no-go 체크포인트 | go | 라우터 reference. 계획이 신뢰 경계(인증·권한·비밀·훅·외부 입력 처리)를 바꾸거나 작업이 5개 이상이면 reviewer(설계 관점)가 한 번 검토 |
 | 5 | build 구현 | 모드별 실행, 실패 테스트 확인, 작업 단위 커밋 | 커밋 | 계획의 작업이 끝남 | 라우터 reference, 구현 에이전트 |
 | 6 | verify 검증 | 수용 기준을 실제로 실행해 확인, [실행 모드](orchestration.md#실행-모드)에 따른 동작 확인 | 검증 증거 | 기준마다 실행 증거가 있음 | 라우터 reference, 모드에 따른 실행 검증(explorer) |
@@ -105,7 +105,7 @@ Codex의 메인이 맡는다.
 | 리뷰 발견 사항 | build → verify. 동작이나 권한을 바꾼 수정이면 범위를 좁힌 재리뷰, 문구·형식 수정이면 CI([재검증](orchestration.md#리뷰)) | 아니요 |
 | 통합 중 CI 실패 | 조기 종료한 Issue를 다시 열고 상태를 build로 되돌림 | 아니요 |
 | 계획이 틀림(파일, 순서, interface), 설계는 유효 | plan, 비공개 계획을 그 자리에서 고침 | 아니요 |
-| 설계 가정이 깨짐(새 제약, 접근 방식 불가) | design → plan, 오래 남을 결정은 결정 기록 | 사용자만 정할 결정이면 예 |
+| 설계 가정이 깨짐(새 제약, 접근 방식 불가) | design → plan, 오래 유지할 선택은 [현재 설계 결정](../design/current-decisions.md)을 갱신 | 사용자만 정할 결정이면 예 |
 | 요구사항이나 수용 기준이 바뀜(원래 기준과 결과는 체크포인트에) | discover 또는 start, 사용자가 확인한 intent를 `devflow-state intent`로 교체 | 예 |
 | 범위 밖의 새 문제 | 재현된 결함과 사용자가 미루기로 정한 것은 바로 후속 Issue로, 그 밖은 장부에 남겨 ship 때 한 번에 제안 | 제안하는 것만 예 |
 | ship에서 push가 거부됨 | Issue 브랜치에서 Issue를 다시 열고 상태를 되돌림. 검사 실패면 build, 그 밖은 ship | 아니요 |
@@ -130,7 +130,7 @@ learn은 교훈이 있을 때만 돈다. 교훈은 성격에 따라 둔다.
 | 저장소 전체, 두 번 반복, 테스트로 확인할 수 없음 | AGENTS.md Gotchas. 예산을 넘으면 덜 쓰이는 항목을 문서로 옮긴다 |
 | 여러 저장소에 공통인 절차 | devflow 스킬. 스킬 목록을 바꾸면 [eval](#eval)을 선택해 돌릴 수 있다 |
 | 개인 선호, 모든 저장소 공통 규칙 | 사용자 전역 지침. devflow는 제안만 한다 |
-| 경위와 결정 이력 | Issue 체크포인트, 결정 기록, 커밋 메시지 |
+| 경위와 결정 이력 | Issue 체크포인트와 git |
 | 그 컴퓨터에만 해당하는 환경 | 비공개 handoff나 호스트의 개인 메모리. 공용 지침에는 넣지 않는다 |
 
 AGENTS.md를 고칠 때는 이제 기계로 막히는 Gotcha를 함께 지운다(안전 하한선 제외). 기억 도구와의 관계는

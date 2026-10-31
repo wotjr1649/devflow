@@ -82,7 +82,7 @@ CI 근거·리뷰 revision·통합 방식의 연결을 바꿔야 할 때 검토�
 멈추면 사람이 게이트 밖에서도 기다리게 되고, 파일·Issue·도구 출력이 권한을 만들면 주입 경로가 된다.
 제품의 지원 범위와 사용자 권한을 분리하고, 의견·체크포인트·관계 추가는 상태 오염을 막도록 구분한다.
 linked worktree라는 사실만으로 다른 Issue의 상태나 쓰기를 물려주지 않는다.
-무인 구간에는 외부에 공유되는 효과를 미루고, `devflow-state`는 Issue 쓰기를 거부한다. 이는 CLI 경로의 동작이며
+무인 구간에는 Issue 게시·push·통합을 미루고([자율 실행](../specs/ledger.md#자율-실행)), `devflow-state`는 Issue 쓰기를 거부한다. 이는 CLI 경로의 동작이며
 직접 게시를 막는 경계가 아니다.
 대상·필터는 [issues](../specs/issues.md#issue-입출력), 인증과 OS 격리 전제는 [credentials](../specs/credentials.md), 무인 실행·worktree·위임 종료와 부분 효과 확인은
 [ledger](../specs/ledger.md), 막힘 처리는 [lifecycle](../specs/lifecycle.md#되돌아가기)이 소유한다. 같은 OS 사용자의 셸과 자식 CLI 사이에는 자격 증명 경계가 없으며,

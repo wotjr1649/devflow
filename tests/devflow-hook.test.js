@@ -324,8 +324,10 @@ test('PR #105 review forms: option values, curl case and --next, GraphQL comment
     `curl --json '{"body":"x"}' ${endpoint} --next -X GET https://example.com`,
     "gh api graphql -f query='mutation { addComment # note\n(input:{}) { clientMutationId } }'",
     `curl --json '{"body":"x"}' ${endpoint} --next -X GET https://api.github.com/graphql`,
+    `curl --json '{"body":"see https://api.github.com/graphql"}' ${endpoint}`,
+    "gh api graphql -f query='mutation { addStar(input:{clientMutationId:\"x#y\"}) { clientMutationId } addComment # n\n(input:{}) { clientMutationId } }'",
   ]) assert.ok(check(c), c)
-  const comments = '# addComment\n'.repeat(20000)
+  const comments = '# mutation\n'.repeat(20000)
   const started = Date.now()
   assert.equal(check(`gh api graphql -f query='mutation { resolveReviewThread(input:{}) { clientMutationId } }\n${comments}'`), null)
   assert.ok(Date.now() - started < 2000, 'a long comment run stays fast')
@@ -337,6 +339,9 @@ test('PR #105 review forms: option values, curl case and --next, GraphQL comment
   const protect = ts => ts.find(t => t.path.endsWith('x.test.js'))?.path ?? null
   assert.equal(hook.issueWrite('bash s0.sh', { cwd: d, env: noAliases, protect }), 'command nested too deeply to check',
     'a lock holds past the depth limit')
+  assert.equal(hook.issueWrite("RUNNER=env; $RUNNER bash -c 'rm tests/x.test.js'", { cwd: d, env: noAliases }), null)
+  assert.ok(hook.issueWrite("RUNNER=env; $RUNNER bash -c 'rm tests/x.test.js'", { cwd: d, env: noAliases, protect }),
+    'a lock holds behind a dynamic runner')
 })
 
 test('unreadable and cyclic gh aliases pass', () => {

@@ -33,9 +33,9 @@ const CONTENT_WRITES = new Set(['set-content', 'sc', 'add-content', 'ac', 'out-f
 const GIT_WRITES = new Set(['rm', 'mv', 'checkout', 'restore', 'clean'])
 const SCRIPT_FLAG =/^(-[A-Za-z]*c[A-Za-z]*|-com\w*|-e|-ec|-en\w*|\/[ck])$/i
 const HTTP_GRAPHQL = /api\.github\.com\/graphql/i
-const ISSUE_MUTATION = /\bmutation\b[\s\S]*\b(createIssue|updateIssue|addComment|updateIssueComment)\s*(?:\(|\{)/
-// A GraphQL comment may sit between a field and its arguments; the raw text is tested too, for a # inside a string.
-const issueMutation = q => ISSUE_MUTATION.test(q) || ISSUE_MUTATION.test(q.replace(/#[^\n]*/g, ''))
+// A mutation naming an Issue text field anywhere: two linear tests, no GraphQL lexing. A name only in a comment or
+// string blocks too, which is the accepted conservative side.
+const issueMutation = q => /\bmutation\b/.test(q) && /\b(createIssue|updateIssue|addComment|updateIssueComment)\b/.test(q)
 const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
@@ -556,7 +556,8 @@ function checkCommand(cmd, ctx, depth) {
   }
   const lead = leadOf(words, names)
   if (lead < 0) return null
-  if (words[lead].dynamic) return null
+  // A dynamic runner passes, but while tests are locked the static shell it may start is still checked.
+  if (words[lead].dynamic && !ctx.protect) return null
   if (PRINTERS.has(names[lead])) return null
   if (/\.(sh|bash|ps1|cmd|bat)$/i.test(words[lead].text) || /^\.{0,2}[\\/]/.test(words[lead].text)) {
     // Every reading that names a script is checked: a file under one reading's name must not hide the other's.

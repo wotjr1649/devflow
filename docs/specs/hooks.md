@@ -61,8 +61,8 @@ PowerShell의 블록 주석(`<# … #>`)은 첫 `#>`에서 끝나며 중첩하�
 - `gh api`와 직접 HTTP의 REST Issue 경로 쓰기는 `title`·`body` 필드 또는 읽을 수 없는 입력 payload가 있을 때만
   차단한다. 정적 로컬 `--input` 파일은 기존 크기·시간·공유 경로 제한 안에서 읽어 판정한다. 상태·라벨·관계 변경은 통과한다.
   직접 HTTP는 curl·wget·HTTPie·PowerShell의 통상적인 본문 인자만 보며, stdin 본문과 그 밖의 옵션은 통과한다.
-- GraphQL은 읽을 수 있는 mutation이 `createIssue`, `updateIssue`, `addComment`, `updateIssueComment`를 부를 때만
-  차단한다. `addComment`는 대상이 Issue일 수 있기 때문이다. `updateIssue`는 상태 변경만 해도 이름으로 차단하는 보수적
+- GraphQL은 읽을 수 있는 mutation에 `createIssue`, `updateIssue`, `addComment`, `updateIssueComment`라는 이름이 있을 때만
+  차단한다. 어휘 분석은 하지 않으므로 주석이나 문자열 속 이름도 차단한다. `addComment`는 대상이 Issue일 수 있기 때문이다. `updateIssue`는 상태 변경만 해도 이름으로 차단하는 보수적
   예외이며, 상태 변경에는 `gh issue close|reopen`을 쓴다. 정적 로컬 `query=@file`과 `--input` payload도 같은 안전한 reader로
   읽는다. 리뷰 스레드 mutation과 읽을 수 없거나 실행 중 조립한 query는 통과한다.
 - GitHub MCP는 Issue 댓글 도구를 항상, 생성·수정 도구는 입력에 `title` 또는 `body` 필드가 있을 때만 차단한다.

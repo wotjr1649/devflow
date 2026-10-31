@@ -23,7 +23,7 @@ devflow가 프로젝트에 권장하는 구조, ignore·attributes 블록, AGENT
 
 ### Issue 폴더
 
-Issue 폴더(`.work/devflow/i<issue>/`: 장부, 세션 기록, 잠금)는 주 작업 트리에 둔다(#14). worktree를 지워도
+Issue 폴더(`.work/devflow/i<issue>/`: 장부, 세션 기록, 잠금)는 주 작업 트리에 둔다. worktree를 지워도
 남고, 어느 worktree의 세션이든 같은 장부와 잠금을 쓰게 하기 위해서다.
 
 - 주 작업 트리는 git 기록으로 정한다. 지금 작업 트리가 연결된 worktree이고, 그 gitdir이 저장소 `.git/worktrees/` 바로
@@ -139,13 +139,13 @@ Generated files and anything CI already enforces.
 - `verify`: 통합 관문인 한 줄 전체 검사 명령. `local-merge`에서는 ship과 pre-push가, `pr-ci`에서는 CI가,
   `push-on-request`에서는 ship이 로컬에서 돌린다.
 
-0.4.0에서 지운 키(`tests`, `highRisk`, `checks`, `private`, `allowLocalPaths`, `specs`, `decisions`, `agentsMd`,
+옛 프로필의 키(`tests`, `highRisk`, `checks`, `private`, `allowLocalPaths`, `specs`, `decisions`, `agentsMd`,
 `protected`)는 남아 있어도 오류 없이 무시한다. 시험 잠금은 없다. 시험 변경은 리뷰가 본다
 ([선택의 이유](../design/current-decisions.md#지침과-보호)). 훅의 입력 읽기·세션 해제 경로 판정과 한계는
 [hooks](hooks.md)를 따른다.
 
 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업 트리가 깨끗하고 push하는 커밋이 HEAD일 때만 `verify`를
-돌리고, 실패하면 push를 막는다. ref 삭제만 하는 push에는 검사할 커밋이 없으므로 돌리지 않는다(#53). 검사 자식에게는 Git이 넘긴 저장소 지정 환경을 제거해, 임시 저장소 검사가 실제 저장소를 바꾸지 않게 한다. 이 관문이 통합 때의 검사 기록을 대신한다. CI의 필수 여부는 프로젝트가 정한다. devflow 자체의 기준은 [통합과 CI](#통합과-ci)를 따른다. 훅을 켜는 `git config core.hooksPath .githooks`는
+돌리고, 실패하면 push를 막는다. ref 삭제만 하는 push에는 검사할 커밋이 없으므로 돌리지 않는다. 검사 자식에게는 Git이 넘긴 저장소 지정 환경을 제거해, 임시 저장소 검사가 실제 저장소를 바꾸지 않게 한다. 이 관문이 통합 때의 검사 기록을 대신한다. CI의 필수 여부는 프로젝트가 정한다. devflow 자체의 기준은 [통합과 CI](#통합과-ci)를 따른다. 훅을 켜는 `git config core.hooksPath .githooks`는
 클론마다 하고(호스트 설정이 아닌 저장소 설정이지만 훅을 켜는 일이라 소유자 지시로 한다), 훅이 꺼진 클론에서는 통합
 커밋에 검사 줄을 쓴다.
 
@@ -153,7 +153,7 @@ Generated files and anything CI already enforces.
 결과에서 프로젝트의 `verify` step이 성공해야 하며, 확인 방법은 pr-review-workflow의 integration을 따른다. 로컬에서는
 변경과 그 영향을 받는 동작을 실행하는 검사(건드린 경로와 그 호출자의 테스트)만 돌린다. 범위를 좁힐 근거가 없으면(공유
 코드·설정·테스트 도구 변경) 그 자리에서 전체 `verify`를 로컬로 돌린다. CI가 `verify`를 돌리지 않거나 그 결과를 확인할 수 없으면 로컬에서
-전체 `verify`를 돌리고, 필수 CI는 따로 기다린다. CI 성공은 수용 기준별 실행 증거와 독립 리뷰를 대신하지 않는다(#103).
+전체 `verify`를 돌리고, 필수 CI는 따로 기다린다. CI 성공은 수용 기준별 실행 증거와 독립 리뷰를 대신하지 않는다.
 
 ## 통합과 CI
 

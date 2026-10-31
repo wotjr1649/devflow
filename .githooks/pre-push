@@ -12,7 +12,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     exit 1
   fi
 done
-[ "$updates" = 1 ] || exit 0   # only deletions: no commit to check (Issue #53)
+[ "$updates" = 1 ] || exit 0   # only deletions: no commit to check
 if [ -n "$(git status --porcelain)" ]; then
   echo "pre-push: commit your local changes first; the gate checks the working tree" >&2
   exit 1

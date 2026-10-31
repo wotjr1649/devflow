@@ -10,8 +10,8 @@
   - 여러 워크플로를 가진 스킬은 루트를 라우터로 둔다.
   - 레시피식 지침은 새 모델을 묶는다.
   - AGENTS.md에는 상황별 포인터를 둔다.
-  - 안전한 작업은 명시적으로 허가하고, 강한 경계 문구를 재조정한다. 이전 모델을 막으려던 경계는 새 모델을 필요 이상
-    멈추게 할 수 있어, 지침을 읽을 모델을 바꿀 때 다시 본다(#79, documents 2번).
+  - 안전한 작업은 명시적으로 허가하고 강한 경계 문구를 재조정한다. 이전 모델을 막으려던 경계는 새 모델을 필요 이상
+    멈추게 할 수 있어 지침을 읽을 모델을 바꿀 때 [경계 문구](../specs/documents.md#에이전트가-읽는-글)를 다시 본다.
   - 완료 조건을 먼저 정의한다.
 - [Prompting Claude Opus 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
   - 기본 effort는 `medium`이고, 효과를 측정한 뒤에만 높인다. `medium`이 코딩에서 Opus 5의 `high`와 같거나 낫다.
@@ -50,18 +50,18 @@
 ## 호스트 문서
 
 - Claude Code
-  - [Skills](https://code.claude.com/docs/en/skills): frontmatter, 호출 제어, 목록 예산, compact 뒤 다시 붙는 범위, eval, 매번 지켜야 할 규칙은 훅으로 옮기라는 문제 해결 안내(#79).
+  - [Skills](https://code.claude.com/docs/en/skills): frontmatter, 호출 제어, 목록 예산, compact 뒤 다시 붙는 범위, eval.
+    반복 규칙을 훅으로 옮기라는 외부 안내와 devflow의 [현재 선택](../design/current-decisions.md#지침과-보호)은 구분한다.
   - [Plugin reference](https://code.claude.com/docs/en/plugins-reference),
     [Plugin components](https://code.claude.com/docs/en/plugins/components),
     [Plugin loading](https://code.claude.com/docs/en/plugins/loading): 이름 공간, 에이전트 frontmatter 제한,
     제자리 로드, 범위.
   - [Plugin evals](https://code.claude.com/docs/en/plugin-evals): 플러그인 있을 때와 없을 때의 비교,
     `tool_used: Skill` 판정.
-  - [Worktrees](https://code.claude.com/docs/en/worktrees): 서브에이전트 worktree 격리의 기준 브랜치와 정리(M3, #28).
+  - [Worktrees](https://code.claude.com/docs/en/worktrees): 서브에이전트 worktree 격리의 기준 브랜치와 정리(M3).
   - [Subagents](https://code.claude.com/docs/en/sub-agents): 메인과 서브에이전트의 선택 기준,
     재개와 `SendMessage`, 도구 필터.
-  - [Hooks](https://code.claude.com/docs/en/hooks): exit 2와 거부만 막고 다른 오류와 시간 초과는 통과, Stop의 block,
-    SessionStart 10,000자 상한, Windows 셸 선택.
+  - [Hooks](https://code.claude.com/docs/en/hooks): Stop의 block, SessionStart 10,000자 상한, Windows 셸 선택.
   - [Workflows](https://code.claude.com/docs/en/workflows),
     [Agent teams](https://code.claude.com/docs/en/agent-teams),
     [Best practices](https://code.claude.com/docs/en/best-practices).
@@ -73,11 +73,10 @@
 - Codex
   - [Skills](https://learn.chatgpt.com/docs/build-skills): 위치, 묵시적 호출, `agents/openai.yaml`, 목록 예산.
   - [Plugins](https://learn.chatgpt.com/docs/plugins),
-    [Hooks](https://learn.chatgpt.com/docs/hooks) (옛 주소에서 옮겨 감): 플러그인 훅, 도구 매칭, SessionStart 매처,
-    Stop 입출력, 경로 변수.
+    [Hooks](https://learn.chatgpt.com/docs/hooks): 플러그인 훅, SessionStart 매처, Stop 입출력, 경로 변수.
   - [Build plugins](https://developers.openai.com/plugins/build/plugins): 로컬 소스 마켓플레이스 형식, 설치 캐시 위치.
-  - [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) (옛 주소에서 옮겨 감): 내장·커스텀
-    에이전트, 띄울 때 지정한 모델과 effort가 기본값보다 우선.
+  - [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents): 내장·커스텀 에이전트,
+    띄울 때 지정한 모델과 effort의 우선순위.
   - [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md): 탐색 순서, 크기 한도.
   - [Multi-agent (Responses API)](https://developers.openai.com/api/docs/guides/responses-multi-agent):
     spawn·message·follow-up·wait 기본 기능.
@@ -119,9 +118,9 @@
   (2026-10-13): 같은 서비스를 10회씩 만들었다. 강한 모델은 하네스가 있든 없든 10/10이었고, 하네스를 쓰면 토큰이 약 10배,
   시간이 약 3배 들었다. 약한 모델은 3/10에서 10/10으로 올랐다. 과제 하나의 결과다.
 - 공개 워크플로 도구 7개(addyosmani/agent-skills, toss/apps-in-toss-harness, anthropics/claude-plugins-official,
-  cursor/plugins, mattpocock/skills, github/spec-kit, obra/superpowers): 훅으로 막는 것은 사용자가 정한 도구 패턴,
-  반복 종료, 캐시 대체 정도다. TDD, 리뷰, 범위 같은 판단은 지침으로 둔다. 행동 eval은 선택 실행이고, 측정 점수를 병합이나
-  출시 조건으로 두는 도구는 없었다.
+  cursor/plugins, mattpocock/skills, github/spec-kit, obra/superpowers)의 2026-10-31 조사에서는 TDD·리뷰·범위 같은 판단을
+  지침으로 두고 행동 eval을 선택 실행하는 구성이 관찰됐다. 이 조사 범위에서는 측정 점수를 병합·출시 조건으로 둔 도구를 찾지 못했다.
+  이 관찰은 해당 조사 시점과 도구 범위에 한정하며 전체 생태계나 이후 버전의 동작을 보장하지 않는다.
 
 ## 보안
 

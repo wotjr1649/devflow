@@ -167,15 +167,16 @@ Get-Content -LiteralPath '<읽을 파일의 절대 경로>' -Raw -Encoding utf8 
 
 ### 파일과 로딩 출처
 
-주 작업 트리에서 Codex 설치 결과의 캐시 경로를 대조한다.
+주 작업 트리에서 Codex 설치 결과의 캐시 경로를 대조한다. 매니페스트의 `version`과, 바꾼 파일의 object id가
+시험 커밋과 같아야 한다.
 
 ```powershell
-node bin/devflow-install-check --ref $devflowRef '<installedPath>'
+git rev-parse "$($devflowRef):hooks/devflow-hook.js"
+git hash-object '<installedPath>/hooks/devflow-hook.js'
 ```
 
-`different 0, missing 0`이고 `same`이 시험 커밋의 추적 파일 수와 같아야 한다. 이 검사는 추가 파일을
-찾지 않으므로 캐시에 비공개 파일이나 예상 밖 파일이 없는지도 확인한다. worktree의 `.git` 연결 파일은
-추적 파일이 아니지만 로컬 폴더 복사에 포함될 수 있다.
+캐시에 비공개 파일이나 예상 밖 파일이 없는지도 확인한다. worktree의 `.git` 연결 파일은 추적 파일이 아니지만
+로컬 폴더 복사에 포함될 수 있다.
 
 Claude의 로딩 상태는 위 Claude 실행 블록의 프로필 설정·복원 범위를 사용하고, `claude` 실행 줄을 다음으로
 바꿔 확인한다. 블록 밖에서 이 명령만 실행하면 실사용 프로필의 설정도 조회할 수 있다.
@@ -191,7 +192,7 @@ claude --plugin-dir "$devflowSource" plugin list
 
 | 변경 | 필요한 확인 |
 |---|---|
-| 문서·설명 | doctor, 링크·명령·형식과 사실 확인 |
+| 문서·설명 | 링크·명령·형식과 사실 확인 |
 | 스크립트·판단 로직 | 관련 테스트, 설치 캐시의 실제 훅 명령에 합성 입력을 준 검사 |
 | 스킬·훅 연결·세션 처리 | 위 검사와 새 호스트 세션에서 실제 로딩·카드·계속 횟수·세션 해제 확인 |
 | 설치·배포 경로 | 설치 파일 대조와 해당 경로의 설치·업데이트 시험 |
@@ -203,7 +204,6 @@ claude --plugin-dir "$devflowSource" plugin list
 최종 저장소 검사는 개발 작업 브랜치에서 실행한다.
 
 ```powershell
-node bin/devflow-doctor
 node --test --test-timeout=120000 tests/*.test.js
 ```
 

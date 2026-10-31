@@ -1,32 +1,5 @@
 {
   "integration": "pr-ci",
   "branch": "{type}/{issue}-{slug}",
-  "private": [
-    "docs/prompts/",
-    "docs/plans/",
-    "artifacts/",
-    ".work/",
-    "_ref/"
-  ],
-  "allowLocalPaths": [
-    "tests/fixtures/codex-eval/*.jsonl",
-    "evals/behavior/*/prompt.md"
-  ],
-  "tests": [
-    "tests/**"
-  ],
-  "highRisk": [
-    "bin/**",
-    "hooks/**",
-    ".githooks/**"
-  ],
-  "checks": {
-    "**/*.md": "node bin/devflow-doctor",
-    "bin/**": "node --test --test-timeout=120000 tests/*.test.js",
-    "tests/**": "node --test --test-timeout=120000 tests/*.test.js",
-    "hooks/**": "node --test --test-timeout=120000 tests/*.test.js",
-    "agents/**": "node --test --test-timeout=120000 tests/*.test.js",
-    ".githooks/**": "node bin/devflow-doctor && node --test --test-timeout=120000 tests/*.test.js"
-  },
   "verify": "node --test --test-timeout=120000 tests/*.test.js"
 }

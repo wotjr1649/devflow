@@ -39,8 +39,8 @@ architectural 경로의 계획은 대화를 보지 못한 엔지니어가 계획
 
 | 모드 | 언제 | 누가 쓰나 | 서브에이전트 |
 |---|---|---|---|
-| **M0** | 한 문장으로 설명 가능하고 `highRisk`가 아니며 아래 의미 기준을 만족한다 | 메인 | 없음. verify는 메인의 검사, review는 메인의 diff 재검토로 대신한다 |
-| **M1** (기본) | 그 밖의 일반 작업 | 메인 | 탐색, 테스트·로그 요약, 원인 분석, verifier, 최종 리뷰 (보고 역할; 도구 제한은 아래 정의 참조) |
+| **M0** | 한 문장으로 설명 가능하고 신뢰 경계(인증·권한·비밀·훅·외부 입력 처리)를 건드리지 않으며 아래 의미 기준을 만족한다 | 메인 | 없음. verify는 메인의 검사, review는 메인의 diff 재검토로 대신한다 |
+| **M1** (기본) | 그 밖의 일반 작업 | 메인 | 탐색, 테스트·로그 요약, 원인 분석, 실행 검증, 최종 리뷰 (보고 역할; 도구 제한은 아래 정의 참조) |
 | **M2** | 독립적으로 테스트할 수 있는 작업이 3개 이상이거나, 읽을 양이 메인 컨텍스트의 절반을 넘을 것으로 보이거나, 자율 장시간 실행 | 구현 서브에이전트가 한 번에 하나씩 | 작업별 리뷰, 최종 리뷰 |
 | **M3** (Claude 전용) | 파일이 겹치지 않고 인터페이스가 계획에 고정되어 있다 | worktree별 구현 에이전트, 동시에 2~3개까지 | 작업별 리뷰, 최종 리뷰 |
 
@@ -120,7 +120,7 @@ Glob에 없더라도 경로를 직접 읽고, 필수 누락은 검토 한계로 
 
 ## 수정 루프
 
-1. 검사나 CI 실패의 원인이 분명하지 않으면 diagnostician이 먼저 원인과 증거를 보고한다. diagnostician은 파일을
+1. 검사나 CI 실패의 원인이 분명하지 않으면 explorer가 원인 분석 관점으로 먼저 원인과 증거를 보고한다. 이때 파일은
    고치지 않는다. 분석과 수정을 나눠 증상만 덮는 수정을 줄이기 위해서다.
 2. 같은 작업에서 구현 에이전트가 최대 2회 고친다. 횟수는 장부에 센다.
 3. 그래도 실패하면 [승격](#승격)을 한 칸 올려 한 번 시도한다.
@@ -133,9 +133,11 @@ Glob에 없더라도 경로를 직접 읽고, 필수 누락은 검토 한계로 
 - 정확성과 요구사항에 영향을 주는 결함만 보고하게 한다. 리뷰어는 찾으라고 하면 무언가를 찾는다. 모든 지적을
   고치면 과잉 설계가 된다.
 - M2와 M3에서는 작업마다 범위가 좁은 리뷰를 추가한다.
+- 시험 변경은 리뷰가 따로 본다. 요구가 바뀌었거나 기대값이 틀린 경우가 아닌데 시험을 약하게 고쳐 통과시켰으면 결함이다
+  ([ADR-0031](../design/decisions/ADR-0031-guidance-over-enforcement.md)).
 - 리뷰 지적 수정(#50, [ADR-0030](../design/decisions/ADR-0030-enforce-at-impact-boundaries.md)): 동작이나 권한을 바꾼
-  수정(코드·설정·시험, 지침의 흐름·권한·공개 범위·신뢰 경계·관문)만 새 verifier가 닿는 기준을 확인하고 좁혀 다시
-  리뷰한다. 문구·형식 수정은 메인이 doctor와 CI로 확인한다. 같은 지점의 지적이 되풀이되면 덧대지 말고 설계를 다시 본다.
+  수정(코드·설정·시험, 지침의 흐름·권한·공개 범위·신뢰 경계·관문)만 새 컨텍스트의 실행 검증이 닿는 기준을 확인하고 좁혀
+  다시 리뷰한다. 문구·형식 수정은 메인이 CI로 확인한다. 같은 지점의 지적이 되풀이되면 덧대지 말고 설계를 다시 본다.
 - 신뢰 경계를 옮기는 설계는 경로와 상관없이 계획 전에 설계 관점 리뷰어에게 깨 보라고 맡긴다. 공개 글을 지키는 필터를
   느슨하게 하는 일, 저장소 파일·git 메타데이터·도구 출력으로 경로나 권한이나 쓰기 대상을 정하는 일이 그렇다. 리뷰어가
   주장한 우회는 논증으로 받아들이거나 버리지 않고, 실제 렌더러나 명령으로 확인한다. 이런 우회는 규칙을 읽어서는 잘
@@ -154,20 +156,20 @@ Claude Code에서 서브에이전트의 effort는 에이전트 정의에서만 �
 
 | 역할 | Claude 기본 | Claude 승격 | Codex |
 |---|---|---|---|
-| 탐색 | `explorer` Sonnet 5.5 `low` | — | gpt-6-luna `high` (부족하면 `xhigh`) |
-| 테스트·로그 요약 | `explorer` + 요약 관점 → Sonnet 5.5 `low` | 원인 분석은 diagnostician이 맡는다 | gpt-6-luna `high` (부족하면 `xhigh`) |
-| 실패 원인 분석 | `diagnostician` Sonnet 5.5 `high` | `model: opus` → Opus 5.5 `high` | gpt-6.1-sol `high`, worker에 보고만 하도록 지시 |
-| 기계적 구현 | `implementer` Sonnet 5.5 `medium` | `implementer-deep` + `model: sonnet` → Sonnet 5.5 `high` | gpt-6.1-sol `high` |
-| 판단이 필요한 구현 | `implementer` + `model: opus` → Opus 5.5 `medium` | `implementer-deep` → Opus 5.5 `high` | gpt-6.1-sol `high` |
+| 탐색 | `explorer` Sonnet 5.5 `medium` | — | gpt-6-luna `high` (부족하면 `xhigh`) |
+| 테스트·로그 요약 | `explorer` + 요약 관점 → Sonnet 5.5 `medium` | — | gpt-6-luna `high` (부족하면 `xhigh`) |
+| 실패 원인 분석 | `explorer` + 원인 분석 관점 → Sonnet 5.5 `medium` | `model: opus` → Opus 5.5 `medium` | gpt-6.1-sol `high`, worker에 보고만 하도록 지시 |
+| 기계적 구현 | `implementer` Sonnet 5.5 `medium` | `model: opus` → Opus 5.5 `medium` | gpt-6.1-sol `high` |
+| 판단이 필요한 구현 | `implementer` + `model: opus` → Opus 5.5 `medium` | — | gpt-6.1-sol `high` |
 | 설계 대안, 계획 검증 | `reviewer` + 설계 관점 → Opus 5.5 `high` | — | 메인이 수행 |
-| 실행 검증 | `verifier` Sonnet 5.5 `medium` | — | worker에 보고만 하도록 지시 |
+| 실행 검증 | `explorer` + 검증 관점 → Sonnet 5.5 `medium` | — | worker에 보고만 하도록 지시 |
 | 작업별 리뷰 | `reviewer` + `model: sonnet` → Sonnet 5.5 `high` | — | gpt-6.1-sol `high` |
 | 최종 리뷰 | `reviewer` Opus 5.5 `high` | — | gpt-6.1-sol `high` |
 | 보안·고위험 리뷰 | `reviewer` + 보안 관점 → Opus 5.5 `high` | — | gpt-6.1-sol `high` |
 
-에이전트 정의는 도구와 effort로 나눈 6개다. 읽기와 명령 실행만 하는 `explorer`(`low`), `verifier`(`medium`),
-`diagnostician`(`high`), 읽기만 하는 `reviewer`(`high`), 파일을 고치는 `implementer`(`medium`)와
-`implementer-deep`(`high`). 역할의 차이(요약, 설계, 보안 같은 관점)는 지시서가 정한다. 정의에 `omitClaudeMd`를 두지
+에이전트 정의는 도구로 나눈 3개다. 읽기와 명령 실행만 하는 `explorer`(`medium`), 읽기만 하는 `reviewer`(`high`), 파일을
+고치는 `implementer`(`medium`). 역할의 차이(탐색, 요약, 원인 분석, 검증, 설계, 보안 같은 관점)는 지시서가 정하고, 승격은
+호출할 때 `model`로 한다([ADR-0031](../design/decisions/ADR-0031-guidance-over-enforcement.md)). 정의에 `omitClaudeMd`를 두지
 않는다. 프로젝트 지침과 경계를 그대로 받아야 하기 때문이다.
 
 Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔다. Sonnet은 높은 effort에서 스스로 리뷰
@@ -181,11 +183,11 @@ Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔�
 | 조건 | 판정 | 결과 |
 |---|---|---|
 | 같은 작업에서 2회 고쳐도 실패 | 횟수 | 승격 열로 한 칸 ([수정 루프](#수정-루프)) |
-| 검사·CI 실패의 원인이 분명하지 않음 | 메인 | diagnostician. 원인을 찾지 못하면 `model: opus`로 한 번 더 |
+| 검사·CI 실패의 원인이 분명하지 않음 | 메인 | explorer의 원인 분석. 원인을 찾지 못하면 `model: opus`로 한 번 더 |
 | 작업이 여러 모듈의 interface에 걸치거나, 구현 중 판단(여러 파일의 일관성, 알고리즘 선택)이 필요함 | 계획 | 판단이 필요한 구현으로 분류. 설계 판단은 위임 전에 메인이 정한다 |
 | 지시서가 모호함 | 구현 에이전트 | 승격하지 않고 `NEEDS_DECISION`으로 종료 |
-| `.devflow.json`의 `highRisk` 경로를 바꿈 | 경로 | 보안 관점 리뷰를 따로 한 번 |
-| 한 파일 안의 기계적 변경이고 `highRisk` 경로가 아님 | diff | 작업별 리뷰를 생략. 최종 리뷰가 확인한다 |
+| 신뢰 경계(인증·권한·비밀·훅·외부 입력 처리)를 바꿈 | diff | 보안 관점 리뷰를 따로 한 번 |
+| 한 파일 안의 기계적 변경이고 신뢰 경계를 건드리지 않음 | diff | 작업별 리뷰를 생략. 최종 리뷰가 확인한다 |
 
 이 표와 승격 밖의 route(다른 역할의 effort 정의, 훅 강제, 선언형 route)는 보류다. 다시 볼 조건은
 [ADR-0017](../design/decisions/ADR-0017-drop-m4-defer-route.md)에 있다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선한다. 다만 호스트의 현재 도구 지침이 지정 권한을

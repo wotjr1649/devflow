@@ -26,8 +26,7 @@ Write the Issue at stage boundaries, decisions and blockers: the state block (15
 [keys](../../docs/specs/ledger.md#작업-장부-키); keep them current, change `running` only with
 `running <issue> add|done <label>`, and add notes only with `note`.
 
-Read [sessions](../../references/sessions.md) to count a user correction or a wrongly blocked action when it happens,
-for progress/returns, and before handing off or `/clear`, switching unattended mode, intent updates or closed-branch
+Read [sessions](../../references/sessions.md) for progress/returns, and before handing off or `/clear`, switching unattended mode, intent updates or closed-branch
 writes. Use five milestones with separate status; keep routing stages and
 recover truncated state from owners.
 
@@ -40,10 +39,8 @@ State block's "단계" is stage; in build/verify the ledger's task locates the l
 Call the owner skill by name to enter its stage: start - `development-start`; review and ship - `pr-review-workflow`,
 which selects [review](../pr-review-workflow/references/review.md) or [ship](../../references/ship.md); cleanup - `workspace-cleanup`. Other stages read their reference on entry:
 [discover](../../references/discover.md), [design](../../references/design.md), [plan](../../references/plan.md),
-[ready](../../references/ready.md), [build](../../references/build.md), [verify](../../references/verify.md),
-[learn](../../references/learn.md); briefs take summary, design or security views from
-[perspectives](../../references/perspectives.md); [standards](../../references/standards.md) applies the devflow
-standard.
+[build](../../references/build.md), [verify](../../references/verify.md), [learn](../../references/learn.md); briefs
+take summary, diagnosis, verification, design or security views from [perspectives](../../references/perspectives.md).
 
 ## Moving
 

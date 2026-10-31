@@ -10,11 +10,8 @@ const READ = ['Read', 'Grep', 'Glob']
 const RUN = [...READ, 'Bash', 'PowerShell']
 const EDIT = [...READ, 'Edit', 'Write', 'Bash', 'PowerShell']
 const expected = {
-  explorer: { model: 'sonnet', effort: 'low', tools: RUN },
+  explorer: { model: 'sonnet', effort: 'medium', tools: RUN },
   implementer: { model: 'sonnet', effort: 'medium', tools: EDIT, disallowedTools: ['Agent'], maxTurns: true },
-  'implementer-deep': { model: 'opus', effort: 'high', tools: EDIT, disallowedTools: ['Agent'], maxTurns: true },
-  verifier: { model: 'sonnet', effort: 'medium', tools: RUN },
-  diagnostician: { model: 'sonnet', effort: 'high', tools: RUN },
   reviewer: { model: 'opus', effort: 'high', tools: READ },
 }
 

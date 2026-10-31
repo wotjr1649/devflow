@@ -96,7 +96,7 @@
   `prompt_snapshot` 항목의 `tools`가 실제로 받은 도구 목록이고, `instructions` 항목이 로드된 지침 파일 목록이다.
   플러그인 에이전트의 `tools`에 그 세션에 없는 도구(꺼진 `PowerShell`)를 적으면 오류 없이 빠진다.
 
-**세션 기록** (2026-10-02, v2.1.286, 측정 계약은 [metrics](../specs/metrics.md))
+**세션 기록** (2026-10-02, v2.1.286, 측정 계약은 0.4.0에서 지운 `docs/specs/metrics.md`)
 - 위치는 `~/.claude/projects/<세션을 시작한 경로의 영숫자 밖 문자를 -로>/<세션>.jsonl`이다. 세션 안에서 worktree로 들어가도
   같은 파일에 남는다. 레코드마다 `cwd`와 `gitBranch`가 있다. `gitBranch`는 세션의 작업 트리 브랜치를 따르고 셸의 `cwd`는
   따르지 않았다.
@@ -288,7 +288,7 @@
 - 실행 기록: `~/.codex/sessions/`의 rollout에서 `session_meta.source.subagent.thread_spawn`이 부모 스레드, 깊이,
   `agent_role`을 담는다. 모델과 effort는 턴마다 `turn_context.model`과 `turn_context.effort`에 있다.
 
-**세션 기록** (2026-10-02, 측정 계약은 [metrics](../specs/metrics.md))
+**세션 기록** (2026-10-02, 측정 계약은 0.4.0에서 지운 `docs/specs/metrics.md`)
 - rollout은 시작일 폴더(`sessions/YYYY/MM/DD/`)와 `archived_sessions/`에 있다. 브랜치는 `session_meta.git`(시작 값)에만 있고
   서브에이전트 rollout에는 없다. `cwd`는 `session_meta`와 `turn_context`에 있다.
 - 0.159는 응답마다 `token_usage_record`(`response_id`, `usage`, `thread_token_usage`)를 남기고, `usage`가

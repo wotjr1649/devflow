@@ -12,8 +12,7 @@
   `%AppData%\GitHub CLI`다([gh environment](https://cli.github.com/manual/gh_help_environment)).
 - keyring은 `GH_CONFIG_DIR`마다 나뉘지 않는다([cli/cli#14370](https://github.com/cli/cli/issues/14370)). 그래서
   config 폴더를 나눠도 같은 OS 사용자의 프로세스는 같은 토큰을 꺼낼 수 있다.
-- `gh auth setup-git`을 한 기기에서는 git이 github.com에 `gh auth git-credential`로 인증해 push도 gh 토큰을 쓴다. 이
-  기기에는 그와 별도로 Windows 자격 증명 관리자에 GCM의 `git:https://github.com` 항목도 있었다.
+- `gh auth setup-git`을 한 기기에서는 git이 github.com에 `gh auth git-credential`로 인증해 push도 gh 토큰을 쓴다.
 - `gh api --include`는 상태 줄, 헤더, 빈 줄을 CRLF로 나눈다. OAuth·classic 토큰이면 GraphQL 응답에도
   `X-Oauth-Scopes`(범위 목록)와 `X-Oauth-Client-Id`가 있다.
 
@@ -59,14 +58,14 @@
   `provided additionalContext (<n> chars)`가 남아서, 모델 호출 없이 SessionStart 훅을 확인할 수 있다.
 - 관찰(2026-10-01, 사용자 범위 설치본): SessionStart 훅의 맥락은 세션 기록에 `hook_additional_context` 첨부로 들어가고
   화면에는 나오지 않는다. 확인은 세션 기록에서 한다.
-- 플러그인 루트의 `bin/`은 Bash 도구의 PATH에 들어간다. `workflows/`의 스크립트는 `/<plugin>:<meta.name>`으로 실행된다.
+- 플러그인 루트의 `bin/`은 Bash 도구의 PATH에 들어간다.
 - 경로 변수: `${CLAUDE_PLUGIN_ROOT}`(설치본 위치, 버전마다 바뀜), `${CLAUDE_PLUGIN_DATA}`(업데이트를 넘어 유지).
 - 플러그인 루트의 `CLAUDE.md`는 로드되지 않는다. 검증은 `claude plugin validate <dir>`로 한다.
 - `claude --plugin-dir . plugin list --json`은 모델을 부르지 않고 `devflow@inline`(범위 `session`)으로 로드를 보여 준다(2026-10-01).
 
 **훅 실행 환경(관찰)**
-- macOS GitHub 실행기의 Node 22에서 훅이 `fs.readFileSync(0)`으로 210KB 입력을 읽다가 80회 중 3회 끝나지 않았다(기계 정지 없음,
-  #37). 같은 빠른 경로의 큰 파이프 입력 결함이 Node에 보고되어 있다([nodejs/node#66341](https://github.com/nodejs/node/issues/66341)).
+- macOS GitHub 실행기의 Node 22에서 훅이 `fs.readFileSync(0)`으로 210KB 입력을 읽다가 80회 중 3회 끝나지 않았다(기계 정지 없음).
+  같은 빠른 경로의 큰 파이프 입력 결함이 Node에 보고되어 있다([nodejs/node#66341](https://github.com/nodejs/node/issues/66341)).
   훅은 스트림으로 읽는다.
 
 **플러그인 에이전트**
@@ -76,9 +75,9 @@
 - worktree 격리는 Agent 호출마다 `isolation: "worktree"`로도 준다. 격리 worktree는 `.claude/worktrees/` 아래 새 브랜치로,
   기본은 원격 기본 브랜치에서 갈라지고(`worktree.baseRef: "head"` 설정이면 지금 HEAD), 바뀐 것이 없으면 지워지고 바뀐 것이
   있으면 남는다([Subagents](https://code.claude.com/docs/en/sub-agents), [Worktrees](https://code.claude.com/docs/en/worktrees)).
-  이 저장소에서 서브에이전트 worktree를 만든 뒤 공용 `core.hooksPath`가 `.githooks`에서 메인 체크아웃의 절대 경로로
-  바뀌어 있었다(#28, 2026-10-03 관찰, 문서에는 없음). 격리 서브에이전트가 도는 동안에는 부모 세션과 다른 서브에이전트의
-  기록 `gitBranch`가 주 작업 트리의 실제 브랜치가 아니라 그 서브에이전트 worktree의 브랜치였다(#29, 같은 날 관찰).
+  관찰(2026-10-03): 서브에이전트 worktree 생성 뒤 공용 `core.hooksPath`가 `.githooks`에서 메인 체크아웃의 절대 경로로 바뀌어 있었다.
+  격리 서브에이전트가 도는 동안에는 부모 세션과 다른 서브에이전트의 기록 `gitBranch`가 주 작업 트리의 실제 브랜치가 아니라
+  그 서브에이전트 worktree의 브랜치였다. 기록의 브랜치만으로 작업을 귀속하지 않는다. 둘 다 문서로 보장된 동작은 아니다.
 - `agents/review/x.md`처럼 하위 폴더에 두면 이름이 `<plugin>:review:x`가 된다.
 - 호출의 `subagent_type`과 실행 기록의 `agentType`도 `devflow:implementer`처럼 플러그인 이름이 붙는다. 에이전트 종류로
   거르는 다른 플러그인의 훅(예: ponytail의 `PONYTAIL_SUBAGENT_MATCHER`)도 이 이름을 본다(2026-10-01).
@@ -95,16 +94,6 @@
   `effort`·`perTurnEffort`가 있고, 옆의 `.meta.json`에 `agentType`, 요청한 `model`, `spawnDepth`가 있다(2026-10-01).
   `prompt_snapshot` 항목의 `tools`가 실제로 받은 도구 목록이고, `instructions` 항목이 로드된 지침 파일 목록이다.
   플러그인 에이전트의 `tools`에 그 세션에 없는 도구(꺼진 `PowerShell`)를 적으면 오류 없이 빠진다.
-
-**세션 기록** (2026-10-02, v2.1.286, 측정 계약은 0.4.0에서 지운 `docs/specs/metrics.md`)
-- 위치는 `~/.claude/projects/<세션을 시작한 경로의 영숫자 밖 문자를 -로>/<세션>.jsonl`이다. 세션 안에서 worktree로 들어가도
-  같은 파일에 남는다. 레코드마다 `cwd`와 `gitBranch`가 있다. `gitBranch`는 세션의 작업 트리 브랜치를 따르고 셸의 `cwd`는
-  따르지 않았다.
-- assistant 응답은 스트리밍 조각마다 같은 `message.id`로 여러 줄 남고, 줄마다 `usage`가 같다. `input_tokens`는 캐시분을
-  빼고, 추론 토큰은 `usage.output_tokens_details.thinking_tokens`에 있다. 사용자가 중단한 자리에는 model이 `<synthetic>`인
-  메시지가 남는다.
-- 메인 턴은 `system/turn_duration`(`durationMs`)으로 남는다. `cost-state`(모델별 누적)는 종료한 세션에만 있고, 기록에
-  응답으로 없는 호출(자리 비움 요약, 제목 생성 등)을 포함한다.
 
 **compact**
 - 다시 주입되는 것: 프로젝트 루트 CLAUDE.md, 자동 메모리, plan mode의 계획
@@ -134,16 +123,14 @@
   잠그지 못해 실행마다 경고가 나온다. `out/`과 `config/` 밖은 평가 대상이 쓴 것일 수 있으므로 그 안에서 git 같은 명령을
   돌리지 않고, `out/`을 읽은 뒤 폴더를 지운다(2.1.289, 2026-10-05).
 
-**Workflows**
-- 중간에 사용자 입력을 받지 않는다. 동시 에이전트는 기본 16개까지다.
-
 **훅**
+
 - PreToolUse 명령이 exit code 2로 끝나면 동작이 막히고 stderr가 Claude에게 전달된다. 다른 non-zero exit와 시간
-  초과(기본 600초)는 막지 않고 그대로 진행한다.
+  초과(기본 600초)는 막지 않고 그대로 진행한다. devflow는 이 이벤트를 등록하지 않는다.
 - 맥락을 넣을 때는 `hookSpecificOutput.additionalContext`를 쓴다. SessionStart의 값은 문자열마다 10,000자까지이고,
   넘으면 파일로 저장된 뒤 경로와 앞 2,000자만 들어간다.
-- Stop과 SubagentStop은 decision `block`과 reason(또는 exit 2)으로 종료를 막는다. 입력의 `stop_hook_active`로 반복을
-  막는다. `decision`과 `reason`은 `hookSpecificOutput` 안이 아니라 최상위에 둔다. 입력에는 `stop_reason`과
+- Stop은 decision `block`과 reason(또는 exit 2)으로 종료를 막는다. 입력의 `stop_hook_active`로 반복을 막는다.
+  `decision`과 `reason`은 `hookSpecificOutput` 안이 아니라 최상위에 둔다. 입력에는 `stop_reason`과
   `last_assistant_message`도 있고, 마지막 응답은 늦을 수 있는 트랜스크립트 대신 이 값으로 읽는다.
 - Windows에서 command 훅은 Git Bash가 있으면 Bash, 없으면 PowerShell로 돈다. `shell` 필드로 고를 수 있고, 두
   플랫폼에서 같이 쓰는 훅은 `args`를 쓰는 exec form을 권한다.
@@ -153,9 +140,7 @@
 - 세션 id(2026-10-03 실측): Bash의 `CLAUDE_CODE_SESSION_ID`는 그 세션 기록 파일 이름(= 훅의 `session_id`)과 같다. 문서에 없는
   변수다. 서브에이전트의 셸도 부모와 같은 값을 갖는다(문서: 서브에이전트는 부모 session_id로 돌고 훅 입력에 `agent_id`가
   붙는다). Bash와 훅에는 `CLAUDE_CODE_CHILD_SESSION=1`이 붙는다.
-- PreToolUse가 보는 셸 도구는 `Bash`와 `PowerShell`(설정으로 켜는 Windows 도구, 입력은 같은 `tool_input.command`)이다.
-  MCP 도구는 `mcp__<server>__<tool>`, 플러그인 MCP는 `mcp__plugin_<plugin>_<server>__<tool>`, claude.ai 커넥터는
-  `mcp__claude_ai_<server>__<tool>`이다. matcher에 문자·숫자·`_`·`-`·공백·`,`·`|` 밖의 글자가 있으면 고정되지 않은 JS 정규식이다.
+
 - 권한 문서는 Bash 규칙이 명령 텍스트를 맞출 뿐 프로그램 둘레의 보안 경계가 아니라고 한다(`bash -c`, 절대 경로는 지나감).
   OS sandbox는 macOS, Linux, WSL2만 지원하고 네이티브 Windows는 지원하지 않는다.
 - Windows에서는 기본으로 Bash·PowerShell·훅 하위 프로세스 환경에서 `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
@@ -177,7 +162,7 @@
 **AGENTS.md**
 - 전역(`~/.codex/AGENTS.override.md`가 있으면 그것, 없으면 `AGENTS.md`)을 먼저 읽는다.
 - 그다음 프로젝트 루트부터 작업 폴더까지 폴더마다 하나씩 이어 붙인다.
-- 합계 크기는 `project_doc_max_bytes`로 제한된다. 기본은 32KiB이고, 소유자는 64KiB로 설정해 두었다.
+- 합계 크기는 `project_doc_max_bytes`로 제한된다. 기본은 32KiB다.
 
 **스킬**
 - 위치: 작업 폴더부터 저장소 루트까지의 `.agents/skills`, `$HOME/.agents/skills`, `/etc/codex/skills`, 내장 스킬.
@@ -192,26 +177,24 @@
 **확인 도구와 셸**
 - `codex debug prompt-input`은 모델을 부르지 않고 모델이 받을 입력을 JSON으로 보여 준다. 스킬 목록과 지침 로드를 이것으로 확인한다.
 - `codex debug models`는 모델별 effort를 보여 준다. `gpt-6-luna`는 `low`~`max`(`xhigh` 포함)이고 기본은 `medium`이다(2026-10-01).
-- Windows에서 환경 맥락의 셸은 `powershell`로 표시되고, 명령은 PowerShell 7(`pwsh.exe -Command`)로 실행된다. 이 기기의
-  기준 셸은 PowerShell 7.6.6이다(2026-10-01).
-- 기본 sandbox(`workspace-write`)는 명령의 네트워크를 막아 `gh`를 부르는 `devflow-state`가 실패한다. 소유자 설정은
-  `danger-full-access`라 해당하지 않는다(2026-10-01).
+- 관찰(2026-10-01, codex-cli 0.159.3, PowerShell 7.6.6): Windows 환경 맥락의 셸은 `powershell`로 표시됐고
+  명령은 PowerShell 7(`pwsh.exe -Command`)로 실행됐다. 이 관찰을 다른 버전·실행 경로의 자식 셸 보장으로 확대하지 않는다.
+- 관찰(2026-10-01, codex-cli 0.159.3): 기본 sandbox(`workspace-write`)의 명령 네트워크 제한으로
+  `gh`를 부르는 `devflow-state`가 실패했다.
 - 신뢰하지 않은 폴더에서 `codex exec`를 돌리면 전역 `config.toml`에 그 폴더의 `trust_level = "trusted"` 항목이 생길 수
   있다(2026-10-01). 0.160.0 원본은 신뢰가 미정이고 실행이 작업 폴더에 쓸 수 있을 때만 기록한다
   ([thread_processor.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/app-server/src/request_processors/thread_processor.rs)).
-  `--sandbox read-only` 실행은 기록하지 않는다(#39에서 실행 전후 config.toml 해시로 확인). 작업 폴더 경로는 환경 맥락의
-  `<cwd>`로 모델에게 그대로 보인다(#39, `debug prompt-input`).
+  `--sandbox read-only` 실행은 기록하지 않는다(0.160.0, 실행 전후 config.toml 해시로 확인). 작업 폴더 경로는
+  환경 맥락의 `<cwd>`로 모델에게 그대로 보인다(0.160.0, `debug prompt-input`).
 - Git Bash에서 `codex exec`는 stdin이 열려 있으면 시작하지 않고 기다릴 수 있다. `< /dev/null`로 닫는다.
-- 이 기기의 pwsh 7은 외부 명령의 출력을 변수나 파이프로 받을 때 콘솔 인코딩(`ks_c_5601-1987`)으로 읽어 UTF-8 한글이
-  깨진다. 직접 출력은 그대로다. 받아야 하면 먼저 `[Console]::OutputEncoding = [Text.UTF8Encoding]::new()`를 둔다(2026-10-01).
-- Codex 0.162.1 일반 TUI의 `Get-Content` 읽기에서도 원본은 정상인 한글 링크 앵커가 출력에서 손상됐다.
-  관측 출력은 원문을 CP949로 인코딩한 뒤 UTF-8로 디코딩한 결과와 일치했다. 이 기록은 손상 형태를 확인한 것이며,
-  실제 자식 셸 버전과 인코딩을 선택한 프로세스는 포착하지 못했다. 명시적 PowerShell 7.6.6의
-  `Get-Content -Raw -Encoding utf8 | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii` 로컬 대조에서는
-  ASCII 출력의 JSON 디코딩 결과가 원문과 일치했다. 이어서 일반 TUI의 `exec_command`에 같은 `pwsh.exe`와
-  `login=false`를 명시한 진단에서 자식 셸 major 7과 원문 전체 일치를 확인했다. 별도 M0 리뷰의 필수11개 파일도
-  같은 전달 방식으로 원문과 일치했다. 이 환경 교정을 스킬 자체의 효율 개선으로 계산하지 않는다
-  (2026-10-14, #68; [시험 절차](../local-development.md#windows-셸과-읽기-출력)).
+- 관찰(2026-10-01, codex-cli 0.159.3, PowerShell 7.6.6): 외부 명령의 출력을 변수나 파이프로 받을 때
+  콘솔 인코딩(`ks_c_5601-1987`)으로 읽어 UTF-8 한글이 깨졌고 직접 출력은 그대로였다. 받아야 하면 먼저
+  `[Console]::OutputEncoding = [Text.UTF8Encoding]::new()`를 둔다. 이 관찰을 모든 PowerShell 환경의 특성으로 일반화하지 않는다.
+- 관찰(2026-10-14, Codex 0.162.1 일반 TUI): `Get-Content`의 한글 링크 앵커 출력이 손상됐으며,
+  원문을 CP949로 인코딩한 뒤 UTF-8로 디코딩한 결과와 일치했다. 실제 자식 셸 버전과 인코딩을 선택한 프로세스는 포착하지 못했다.
+  명시적 PowerShell 7.6.6에서 비ASCII를 이스케이프한 JSON 문자열을 대조한 결과는 원문과 일치했다. 일반 TUI에서도
+  같은 `pwsh.exe`와 `login=false`를 명시한 진단에서 자식 셸 major 7과 원문 전체 일치를 확인했다.
+  절차는 [Windows 셸과 읽기 출력](../local-development.md#windows-셸과-읽기-출력)을 따른다. 환경 교정과 스킬 효율 개선을 구분한다.
 
 **플러그인**
 - `.codex-plugin/plugin.json`에 `skills`, `hooks`, `interface`를 둔다.
@@ -223,50 +206,48 @@
 - 작업 폴더의 마켓플레이스는 자동으로 잡히지 않는다. `codex plugin marketplace list`에 나오려면
   `codex plugin marketplace add <root>`로 등록해야 한다(2026-10-01).
 - 플러그인에 넣을 수 있는 것은 스킬, MCP 서버, 브라우저 확장, 훅이다. 문서에 에이전트 항목은 없다.
-- CLI에서는 `/plugins`로 설치하고, 새 세션을 시작해야 반영된다. 셸에서는 `codex plugin add <plugin>@<marketplace>`로도
-  설치된다(0.159.3). 이미 설치된 플러그인도 `codex plugin add devflow@devflow < /dev/null`로 다시 설치하면 캐시가 배포
-  worktree와 같아진다(2026-10-03, 0.160.0, 다섯 번). worktree를 마켓플레이스로 등록하면 캐시의 `.git`은 그 worktree의 gitdir을 가리키는 파일이다.
+- CLI에서는 `/plugins`로 설치하고 새 세션을 시작해야 반영된다. 셸에서는 `codex plugin add <plugin>@<marketplace>`로도
+  설치된다(0.159.3). 관찰(2026-10-03, 0.160.0, 다섯 번): 같은 플러그인을 다시 설치하면 캐시가 배포 worktree와 같아졌다.
+  worktree를 마켓플레이스로 등록하면 캐시의 `.git`은 그 worktree의 gitdir을 가리키는 파일이다.
+  현재 개발용 설치 명령은 [로컬 개발본 실행과 시험](../local-development.md#codex-설치와-실행)을 따른다.
 - 훅 신뢰는 `config.toml`의 `[hooks.state."<plugin>@<marketplace>:<훅 파일>:<이벤트>:<i>:<j>"]`에 `trusted_hash`로
   남는다. 관찰(2026-10-01): `hooks.json` 항목은 그대로 두고 훅이 실행하는 스크립트만 바꿔 다시 설치하자, 다시 묻지
   않고 새 스크립트가 실행됐다. 신뢰는 명령 줄에 묶이고 그 명령이 부르는 파일 내용에는 묶이지 않는다.
 - 관찰(2026-10-01, 설치본): 신뢰한 SessionStart 훅의 `additionalContext`는 세션 기록에 `developer` 메시지로 들어가고
-  화면에는 나오지 않는다. 훅이 받는 `CLAUDE_PLUGIN_ROOT`는 원본이 아니라 캐시 복사본이다. PreToolUse 차단은 셸
-  명령에서 동작했다. `--dangerously-bypass-hook-trust`는 그 실행에서만 신뢰 없이 훅을 돌린다.
+  화면에는 나오지 않는다. 훅이 받는 `CLAUDE_PLUGIN_ROOT`는 원본이 아니라 캐시 복사본이다.
+  `--dangerously-bypass-hook-trust`는 그 실행에서만 신뢰 없이 훅을 돌린다.
 
 **훅**
-- 이벤트: SessionStart, SessionEnd, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit,
-  SubagentStart, SubagentStop, Stop, Interrupt
+- 이 문서에서 다루는 훅은 SessionStart·Stop·SessionEnd다. 제품의 등록 이벤트와 범위는
+  [공통 hook 계약](../specs/hooks.md#등록-이벤트)이 정한다.
 - SessionEnd(2026-10-04, [hooks](https://learn.chatgpt.com/docs/hooks), 0.160.0 원본
   [session_end.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/events/session_end.rs)): 입력의
-  `session_id`는 thread id이고 `reason`은 언제나 `other`다. 기본 1초, 최대 3초이며 `async`여도 동기로 돈다. 서브에이전트에서는
-  돌지 않고 막을 수 없다. 세션 런타임을 닫을 때(`shutdown_session_runtime`)만 돈다. 관찰(2026-10-04, 0.160.0, `codex exec`,
-  훅 신뢰 뒤): `devflow-state`로 Issue에 쓴 thread가 실행이 끝나자 `sessions.json`에서 빠졌다. 관찰(2026-10-05, 0.160.0,
-  사용자 TUI, #47): 연결 worktree에서 기록한 뒤 `/clear`를 실행해도 이전 thread의 항목은 즉시 사라지지 않았고 다른 세션도
-  보존됐다. 원본의 `app/event_dispatch.rs` → `app/session_lifecycle.rs` →
+  `session_id`는 thread id이고 `reason`은 언제나 `other`다. 기본 1초, 최대 3초이며 `async`여도 동기로 돈다.
+  서브에이전트에서는 돌지 않고 막을 수 없다. 세션 런타임을 닫을 때(`shutdown_session_runtime`)만 돈다.
+  관찰(2026-10-04, 0.160.0, `codex exec`, 훅 신뢰 뒤): `devflow-state`로 Issue에 쓴 thread가 실행 종료 뒤 `sessions.json`에서 빠졌다.
+  관찰(2026-10-05, 0.160.0, 사용자 TUI): 연결 worktree에서 기록한 뒤 직접 `/clear`하면 이전 thread의 항목은 즉시 사라지지 않았고
+  다른 세션도 보존됐다. 원본의 `app/event_dispatch.rs` → `app/session_lifecycle.rs` →
   [app/voice_owner.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/tui/src/app/voice_owner.rs)는 새 thread를
   시작하고 이전 thread에 `thread_unsubscribe`를 보낸다. 구독 해제는 즉시 SessionEnd를 실행하는 종료가 아니다
-  ([현재 훅 문서](https://learn.chatgpt.com/docs/hooks#sessionend)). 새 SessionStart 입력에는 이전 thread id가 없다.
-  같은 날 명시 인계 시험에서는 새 TUI thread가 `note` 후 `release`를 성공시킨 뒤 `/clear`했고,
-  그 thread의 항목이 없어졌으며 별도로 작업 중인 세션의 항목은 남았다. 직접 `/clear` 시험과 구분한다.
-  0.144 이하에는 이 이벤트가 없고, 훅 파일의 모르는
-  이벤트 키는 무시된다(`HookEventsToml`에 `deny_unknown_fields`가 없다).
+  ([훅 문서](https://learn.chatgpt.com/docs/hooks#sessionend)). 새 SessionStart 입력에는 이전 thread id가 없다.
+  관찰(2026-10-05, 0.160.0, 사용자 TUI): 자기 thread가 `note`와 `release`를 마친 뒤 `/clear`한 시험에서는
+  그 thread의 항목이 없어지고 별도로 작업 중인 세션은 남았다. 직접 `/clear` 시험과 구분한다.
+  0.144 이하에는 이 이벤트가 없고, 훅 파일의 모르는 이벤트 키는 무시된다(`HookEventsToml`에 `deny_unknown_fields`가 없다).
 - SessionStart 매처는 `startup|resume|clear|compact`다. 출력 맥락의 양은 `additionalContextLimit`로 제한한다.
-- 도구 매칭: 셸(`exec_command` 포함)은 `Bash`, `apply_patch`는 `apply_patch`·`Edit`·`Write`, `spawn_agent`는 `Agent`로
-  매칭된다. MCP 도구는 Claude와 같은 `mcp__<server>__<tool>`이고 PreToolUse로 막을 수 있다.
-- 차단은 `hookSpecificOutput.permissionDecision: "deny"`로 한다.
+
 - Stop 출력은 Claude와 같이 최상위 `decision: "block"`과 `reason`(또는 exit 2와 stderr)이다. 다만 턴을 거부하는 것이
   아니라 reason으로 새 이어가기 프롬프트를 만든다. 입력은 `turn_id`, `stop_hook_active`, `last_assistant_message`다.
 - 플러그인 훅의 경로 변수는 `PLUGIN_ROOT`, `PLUGIN_DATA`이고, 호환용으로 `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`도 준다.
 - 세션 id(2026-10-03 실측, `codex exec`): 셸에 `CODEX_THREAD_ID`와 `CODEX_SESSION_ID`가 같은 값으로 있다. Claude 안에서
   띄우면 Claude의 변수도 물려받는다.
-- `apply_patch`의 PreToolUse 입력은 셸과 같은 `tool_input.command`에 패치 문자열이 든다.
+
 - 명령은 문자열만 받는다(Claude의 `args` exec form이 없다). `PLUGIN_ROOT`는 문자열 치환 없이 환경 변수로만 넘어온다.
 - Windows에서 훅 명령을 어떤 셸이 실행하는지는 문서에 없다. Windows 전용 명령은 `commandWindows`로 따로 줄 수 있다.
   0.160.0 원본의 [build_hooks_config](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core/src/session/mod.rs)는
   thread의 셸에서 훅 실행 인자를 얻는다. 그래서 devflow는 셸이 해석할 문법이 없는
   `node -e "require(process.env.CLAUDE_PLUGIN_ROOT+'/...').main()"`을 두 호스트에 같이 쓴다. 이 명령은 cmd, pwsh 7,
-  Git Bash에서 같은 결과를 낸다(2026-10-01). 따옴표로 감싼 절대 실행 경로를 PowerShell에서 호출할 때 `&`가 없으면
-  ParserError로 실패했고, `&`를 넣으면 평가 guard의 허용·차단 및 감사 기록이 동작했다(#38, 2026-10-04 로컬 관찰).
+  Git Bash에서 같은 결과를 냈다(2026-10-01 관찰). 이 관찰이 각 셸의 현재 지원 범위 전체를 검증하지는 않는다.
+  PowerShell에서 따옴표로 감싼 절대 실행 경로를 호출할 때 `&`가 없으면 ParserError로 실패했다(2026-10-04 로컬 관찰).
 - `codex debug prompt-input`에는 SessionStart 훅의 출력이 나오지 않는다(신뢰하지 않은 플러그인 훅, 2026-10-01).
 - 플러그인 훅은 사용자가 검토하고 신뢰해야 실행된다. 문서는 도구 훅을 "완전한 경계가 아닌 가드레일"로 설명한다.
 
@@ -285,36 +266,14 @@
 - 관찰(2026-10-01, 프로젝트 `.codex/agents/*.toml`): 커스텀 에이전트를 이름으로 고를 수 있고, 정의의 `model`과
   `model_reasoning_effort`가 적용된다. `sandbox_mode = "read-only"`는 적용되지 않았다. 부모의 `workspace-write`를 그대로
   물려받아 파일 쓰기가 성공했다. 끝난 에이전트에 후속 작업을 보내면 같은 에이전트가 이어서 받는다.
-- 실행 기록: `~/.codex/sessions/`의 rollout에서 `session_meta.source.subagent.thread_spawn`이 부모 스레드, 깊이,
-  `agent_role`을 담는다. 모델과 effort는 턴마다 `turn_context.model`과 `turn_context.effort`에 있다.
-
-**세션 기록** (2026-10-02, 측정 계약은 0.4.0에서 지운 `docs/specs/metrics.md`)
-- rollout은 시작일 폴더(`sessions/YYYY/MM/DD/`)와 `archived_sessions/`에 있다. 브랜치는 `session_meta.git`(시작 값)에만 있고
-  서브에이전트 rollout에는 없다. `cwd`는 `session_meta`와 `turn_context`에 있다.
-- 0.159는 응답마다 `token_usage_record`(`response_id`, `usage`, `thread_token_usage`)를 남기고, `usage`가
-  `thread_token_usage` 증가분과 같다. 0.146에는 이 레코드가 없고 `token_count`만 있다. `input_tokens`는 캐시분을 포함한다.
-  부모의 누적값에는 서브에이전트 사용량이 들어가지 않았다.
-- 쓰기 시점(원본 `rust-v0.160.0`의 `codex-rs/rollout/src/recorder.rs`, 2026-10-03): 레코드를 추가할 때마다 한 줄씩 쓰고
-  flush한다(BufWriter와 fsync는 없다). 레코드의 `timestamp`는 쓰는 순간의 시각이다. 그래서 측정 시각 이전 레코드는 이미
-  파일에 있다. 새 세션만 첫 persist 전까지 파일을 만들지 않고 레코드를 메모리에 둔다. 실제 세션(0.159.3, #5)에서도 턴
-  안에서 돈 측정 명령이 자기 응답의 `token_usage_record`까지 읽었다.
+- 실행 기록: rollout은 `~/.codex/sessions/YYYY/MM/DD/`와 `archived_sessions/`에 있다(2026-10-02 관찰).
+  `session_meta.source.subagent.thread_spawn`이 부모 스레드·깊이·`agent_role`을 담는다.
+  모델과 effort는 턴마다 `turn_context.model`과 `turn_context.effort`에 있다.
 - Windows에서 rollout 파일의 수정 시각은 생성 시각에 머문다(2026-10-03, 파일 5개, 마지막 레코드는 최대 1시간 40분 뒤).
   원본은 새 파일을 열 때 수정 시각을 직접 설정한다. 수정 시각으로 기록이 새로 쓰였는지 판단할 수 없다.
-- 도구 호출은 `response_item`의 `custom_tool_call`(`exec`)로 남는다. `exec` 한 번이 여러 명령을 묶을 수 있다.
-- Windows에서 `codex exec -s read-only` 안의 git 명령은 저장소 소유자 검사(`safe.directory`)로 실패했다.
 
 **셸 환경과 sandbox** (2026-10-02, [config reference](https://learn.chatgpt.com/docs/config-file/config-reference))
 - `shell_environment_policy`: `inherit`(all, core, none), `set`, 필터. 기본적으로 이름에 KEY, SECRET, TOKEN이 든
   변수를 뺀다.
 - `sandbox_mode`(read-only, workspace-write, danger-full-access), `sandbox_workspace_write.network_access`,
   `windows.sandbox`(unelevated, elevated, mxc). 훅이 sandbox 안에서 도는지는 문서에 없다.
-- 이 기기의 Codex는 `danger-full-access`와 `approval_policy = "never"`로 돈다.
-
-## 참고 구현
-
-ponytail 4.9.0이 두 호스트 패키징을 실제로 돌리고 있다.
-
-- `.claude-plugin/plugin.json`(`hooks` 경로 지정)
-- `.codex-plugin/plugin.json`(`skills: "./skills/"`, `hooks`, `interface`)
-- `.agents/plugins/marketplace.json`(`source{source:"url", url, ref}`, `policy`, `category`)
-- `hooks/claude-codex-hooks.json`과 Node 런타임: 출력은 `hookSpecificOutput{hookEventName, additionalContext}`

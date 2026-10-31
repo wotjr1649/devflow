@@ -4,21 +4,17 @@ Every file in this repository that is derived from another project has a row her
 
 | devflow path | Upstream | Commit | Upstream path | License | Changes |
 |---|---|---|---|---|---|
-| `skills/` (six skills, 14 files) | owner's deployed skill set (`~/.claude/skills` and `~/.agents/skills`, identical) | no VCS; per-file SHA-256 under [Imported owner skills](#imported-owner-skills) | `<skill>/…` | Apache-2.0 (owner); the parts of `grilling` and `writing-for-agents` that come from mattpocock/skills stay MIT (next row) | 2026-10-01 import `1d1b75d`: line endings only (the copies were already LF, so no bytes changed). Then devflow adaptations: `development-start` (`SKILL.md`, `references/tracking.md`: description, no resume, Issue writes through `devflow-state`, intent replaced through `devflow-state intent`, new work under a resume card and its path classification; `3744f51`, `7a5c12d`, `0b38e16`, `28237f5`, #45); `pr-review-workflow` (`SKILL.md`, `references/cleanup.md`, `completion.md`, `integration.md`: description without standalone review, cleanup skill called by name, local gate, criteria checked before closing, a PR on which no check ran is NOT_VERIFIED, a devflow Issue closed on its branch before integrating; `3744f51`, `add5aef`, `7a5c12d`, `0b38e16`, `3a9bb6f`, #44); `grilling` and `prompt-generator` (`SKILL.md`: description, a devflow section in prompt-generator; `3744f51`). `writing-for-agents` (`SKILL.md`: links the documents spec instead of restating its rules - the "What a note carries" section dropped, the Pruning and Prohibition paragraphs cut to their reasons - and drops the external skill pointer; #44). `workspace-cleanup` is unchanged here. |
-| `skills/writing-for-agents/SKILL.md`, `skills/grilling/SKILL.md`, `skills/grilling/agents/openai.yaml` | [mattpocock/skills](https://github.com/mattpocock/skills) | `0ab1b63` - the revision copied: the owner's clone was made at this commit on 2026-08-20 and never fetched, and the owner's repository added the copies on 2026-08-21 (pinned afterwards, from the clone's reflog and those dates) | `skills/productivity/writing-for-agents/SKILL.md` (and the Invocation section of `SKILL-MECHANICS.md`), `skills/productivity/grilling/SKILL.md`, `skills/productivity/grilling/agents/openai.yaml` | MIT, Copyright (c) 2026 Matt Pocock: [LICENSES/mattpocock-skills-MIT.txt](LICENSES/mattpocock-skills-MIT.txt); the owner's changes Apache-2.0 | Adapted privately by the owner, then imported with the owner's skills on 2026-10-01. `writing-for-agents`: condensed and rewritten, several sentences kept nearly as written, a safety-floor exception added, the hierarchy and splitting sections dropped. `grilling/SKILL.md`: rewritten from the design-tree and frontier concepts, one question per round by default. `openai.yaml`: copied as is; in devflow its short description now matches one question at a time (#26). |
+| `skills/` (six skills, 14 files) | owner's deployed skill set (`~/.claude/skills` and `~/.agents/skills`, identical) | no VCS; per-file SHA-256 under [Imported owner skills](#imported-owner-skills) | `<skill>/…` | Apache-2.0 (owner); the parts of `grilling` and `writing-for-agents` that come from mattpocock/skills stay MIT (next row) | 2026-10-01 import `1d1b75d`: LF line endings; imported snapshots and per-file hashes are recorded below. Changes in devflow: `development-start` — descriptions, entry routing, filtered Issue writes and intent updates (`3744f51`, `7a5c12d`, `0b38e16`, `28237f5`); `pr-review-workflow` — descriptions, cleanup routing, verification and Issue completion (`3744f51`, `add5aef`, `7a5c12d`, `0b38e16`, `3a9bb6f`); `grilling` and `prompt-generator` — descriptions and devflow integration (`3744f51`); `writing-for-agents` — documents-spec pointers and condensed prose. Current behavior is defined by the skills and specs. |
+| `skills/writing-for-agents/SKILL.md`, `skills/grilling/SKILL.md`, `skills/grilling/agents/openai.yaml` | [mattpocock/skills](https://github.com/mattpocock/skills) | `0ab1b63` - the revision copied: the owner's clone was made at this commit on 2026-08-20 and never fetched, and the owner's repository added the copies on 2026-08-21 (pinned afterwards, from the clone's reflog and those dates) | `skills/productivity/writing-for-agents/SKILL.md` (and the Invocation section of `SKILL-MECHANICS.md`), `skills/productivity/grilling/SKILL.md`, `skills/productivity/grilling/agents/openai.yaml` | MIT, Copyright (c) 2026 Matt Pocock: [LICENSES/mattpocock-skills-MIT.txt](LICENSES/mattpocock-skills-MIT.txt); the owner's changes Apache-2.0 | Adapted privately by the owner, then imported with the owner's skills on 2026-10-01. `writing-for-agents`: condensed and rewritten, several sentences kept nearly as written, a safety-floor exception added, the hierarchy and splitting sections dropped. `grilling/SKILL.md`: rewritten from the design-tree and frontier concepts, one question per round by default. `openai.yaml`: copied as is; in devflow its short description now matches one question at a time. |
 
 ## Patterns without copied text
-
-Issue #64 moves devflow's ship sequence from `skills/devflow/references/review.md` to `ship.md` and updates the
-router and PR workflow pointers. The seven skill entrypoints and their descriptions remain; the existing source
-attributions and licenses below still apply. Required ignored review inputs now explicitly include local plans and work specs.
 
 These parts are devflow's own text. They take ideas from the projects below and copy no passage, so they have no row
 above; they are listed so the ideas can be traced.
 
 | devflow path | Ideas from |
 |---|---|
-| `skills/devflow/` | [obra/superpowers](https://github.com/obra/superpowers) `5bf4e78`: the spike/bounded/architectural paths, the plan task structure, BASE recorded before delegation, per-task review, failing test first; [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) `feature-dev`: comparing two or three approaches |
+| `skills/devflow/`, `references/` | [obra/superpowers](https://github.com/obra/superpowers) `5bf4e78`: the spike/bounded/architectural paths, the plan task structure, BASE recorded before delegation, per-task review, failing test first; [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) `feature-dev`: comparing two or three approaches |
 | `references/discover.md`, `docs/specs/lifecycle.md` (discover row) | [obra/superpowers](https://github.com/obra/superpowers/blob/2ce8aa15d05bd57213e6f746f953aafb7ded7a8b/skills/brainstorming/SKILL.md) `2ce8aa15`, `skills/brainstorming/SKILL.md`: a request that already says what it wants goes ahead without questions, look before asking, lay out approaches before building; adapted to discover's dispositions and devflow's existing start and decision owners |
 | `agents/explorer.md` | `feature-dev` `code-explorer`: return the key files and let the main session read them |
 | `agents/reviewer.md` | `pr-review-toolkit` and superpowers' task reviewer: an explicit BASE..HEAD diff, no verdict handed over |
@@ -53,9 +49,9 @@ Imported 2026-10-01. The deployed bytes are hashed as read; the committed bytes 
   owner's own skills are licensed by the owner here, so their changes are recorded in the row above instead.
 - MIT files keep their copyright and permission notice; the full upstream license text goes to
   `LICENSES/<upstream>-MIT.txt`.
-- Copy only the parts listed under "Take" below; for anything else, record the choice and reason in [current decisions](docs/design/current-decisions.md) first, with the change history in the Issue and git.
+- Copy only the parts listed under "Take" in the Integration scope table below; for anything else, record the choice and reason in [current decisions](docs/design/current-decisions.md) first, with the change history in the Issue and git.
 
-## Candidates
+## Integration scope
 
 | Upstream | License | Take | Leave |
 |---|---|---|---|
@@ -64,18 +60,4 @@ Imported 2026-10-01. The deployed bytes are hashed as read; the committed bytes 
 | same, `claude-md-management`, `claude-code-setup`, `hookify`, `plugin-dev` | Apache-2.0 | instruction-file quality criteria; automation patterns; hook rule examples; plugin and skill validators | Claude-only wording |
 | [obra/superpowers](https://github.com/obra/superpowers) `5bf4e78` | MIT | spike/bounded/architectural paths; plan task structure (files, interfaces, global constraints, review focus); BASE recorded before delegation; per-task review; worktree detection; failing-test-first check | the session bootstrap that forces skill use; automatic `.gitignore` commits; verification skill that duplicates the global contract |
 | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT | dual-host packaging (`.claude-plugin`, `.codex-plugin`, `.agents/plugins`); Node hook runtime | — |
-| owner's deployed skill set: development-start, pr-review-workflow, workspace-cleanup, grilling, writing-for-agents, prompt-generator | owner; published under Apache-2.0 once moved here, except parts that come from another project (mattpocock/skills, row above), which keep their license | all six from the deployed copies as they are at import time: an import commit that only normalizes line endings to LF, recording per file the SHA-256 of the deployed bytes and of the committed bytes, then adaptations in later commits | the copies in the owner's private seed repository (retired or pointed here after the import, on instruction) and older copies in project working folders |
-
-## Known pitfalls in the candidates
-
-- `feature-dev` agents list tool names the current hosts no longer have (`LS`, `NotebookRead`, `KillShell`,
-  `BashOutput`) and have no `Bash`, so they cannot run `git diff` themselves. Rewrite the `tools` line.
-- `pr-review-toolkit` agents have no `tools` limit, so they can edit files, and they default to reviewing the
-  unstaged `git diff`. Restrict tools and pass the BASE..HEAD diff explicitly.
-- `pr-review-workflow` links to `../workspace-cleanup/SKILL.md`; move the two skills together and update the path.
-- superpowers `subagent-driven-development/SKILL.md` is about 32 KB, far over the skill budget; take the pattern,
-  not the file.
-- `feature-dev`'s command stops for approval five times; devflow's gates come from the global instructions instead.
-
-Installed rather than copied: `skill-creator` (evals, trigger tuning), `session-report` (token and
-cache reports), `security-guidance` (optional security layer).
+| owner's deployed skill set: development-start, pr-review-workflow, workspace-cleanup, grilling, writing-for-agents, prompt-generator | owner; Apache-2.0 for the owner's contributions, while third-party portions (mattpocock/skills, row above) keep their licenses | all six imported deployed snapshots, normalized to LF; per-file deployed and committed SHA-256 values are recorded under Imported owner skills; adaptations are recorded in the attribution table | obsolete copies outside this repository; remove or redirect them only on owner instruction |

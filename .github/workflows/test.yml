@@ -1,6 +1,6 @@
 # Runs tests on Linux, macOS and Windows; required paths and integration gates: docs/specs/repository.md.
 name: test
-# Any push runs on its own commit; a pull request into main also runs on the merge result GitHub would make (#73).
+# Any push runs on its own commit; a pull request into main also runs on the merge result GitHub would make.
 on:
   push:
   pull_request:
@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows is outside the ruleset's required checks; the integration rule still needs it to pass (#103).
+        # Windows is outside the ruleset's required checks; the integration rule still needs it to pass.
         os: [ubuntu-latest, macos-latest, windows-latest]
         node: [22, 24]
     runs-on: ${{ matrix.os }}

@@ -240,7 +240,6 @@ test('Issue text flags block while state and metadata operations pass', () => {
     'curl -X PATCH https://api.github.com/repos/o/r/issues/1 -d state=closed',
     'curl -X POST https://api.github.com/repos/o/r/issues/1/comments -d "{}"',
     'curl -X PATCH https://api.github.com/repos/o/r/issues/1 --json \'{"labels":["body=x"]}\'',
-    'curl -X GET https://api.github.com/repos/o/r/issues/1 -d body=x',
     'echo \'curl -X POST https://api.github.com/repos/o/r/issues/1 -d body=x\'',
     'gh issue comment 1 --help', 'gh issue create -h', 'gh issue edit 1 --body=x --help',
     'gh api repos/o/r/issues/1 -f body=x --help',
@@ -326,6 +325,9 @@ test('PR #105 review forms: option values, curl case and --next, GraphQL comment
     `curl --json '{"body":"x"}' ${endpoint} --next -X GET https://api.github.com/graphql`,
     `curl --json '{"body":"see https://api.github.com/graphql"}' ${endpoint}`,
     `curl --json '{"body"' --json ':"x"}' ${endpoint}`,
+    // The method is not read: another option's value can look like one.
+    `curl --referer -XGET --json '{"body":"x"}' ${endpoint}`,
+    `curl -X GET ${endpoint} -d body=x`,
     "gh api graphql -f query='mutation { addStar(input:{clientMutationId:\"x#y\"}) { clientMutationId } addComment # n\n(input:{}) { clientMutationId } }'",
   ]) assert.ok(check(c), c)
   const comments = '# mutation\n'.repeat(20000)

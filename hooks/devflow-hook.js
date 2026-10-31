@@ -413,16 +413,9 @@ function httpWrite(args, ctx, client) {
   if (!HTTP_ISSUES.test(src) && !HTTP_GRAPHQL.test(src)) return null
   const payloads = []
   const httpie = client === 'http' || client === 'https'
-  let method = null
   for (let i = 0; i < args.length; i++) {
     // shortcut: ordinary flags and items only (not stdin bodies or every client option); the hook is a guardrail, not isolation.
-    // HTTPie's positional method is not read (an option's value can look like one), so a text item blocks even on GET.
-    // curl's -x is --proxy, so -X keeps its case.
-    const verb = /^(?:--request|--method|-Method)(?:=([\s\S]*))?$/i.exec(args[i].text) || /^-X()([\s\S]*)$/.exec(args[i].text)
-    if (verb) {
-      method = verb[1] || verb[2] || args[++i]?.text || ''
-      continue
-    }
+    // The method is not read (another option's value can look like one), so a text body blocks even on GET.
     const item = httpie && /^(title|body|query)(:=|=)([\s\S]*)$/.exec(args[i].text)
     const m = /^(--data[\w-]*|--(?:post|body)-(?:data|file)|--json|--raw|-Body|--input|-InFile)(?:=([\s\S]*))?$|^(-d)([\s\S]*)$/i.exec(args[i].text)
     // HTTPie's --json is a switch and only HTTPie's --raw takes a body; curl's --raw is a switch.
@@ -444,8 +437,6 @@ function httpWrite(args, ctx, client) {
   })) return 'direct GitHub GraphQL Issue text mutation'
   // One command may also reach a REST Issue path (curl --next), so that is checked as well.
   if (!HTTP_ISSUES.test(src)) return null
-  // curl --next starts another request with its own method, so a later GET cannot clear an earlier post.
-  if (method !== null && !/^(POST|PATCH|PUT|DELETE)$/i.test(method) && !args.some(a => /^(--next|-:)$/.test(a.text))) return null
   // curl joins repeated --json and --data values into one body.
   return [...payloads, ...(payloads.length > 1 ? [payloads.join('')] : [])].some(p => {
     if (!p) return true

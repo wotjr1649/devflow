@@ -3,7 +3,7 @@
 사이클(Issue) 하나의 비용과 사람 개입을 잰다. 재는 것은 선택이다: 사용자가 요청했거나 전후 비교의 표본으로 정한
 사이클만 잰다. 재는 사이클은 매번 같은 방법으로 재고 정해진 곳에 남겨 다른 사이클과 비교한다([overview](../design/overview.md)
 원칙 4). 이유와 대안: [ADR-0013](../design/decisions/ADR-0013-local-session-metrics.md),
-[ADR-0029](../design/decisions/ADR-0029-enforce-at-impact-boundaries.md)
+[ADR-0030](../design/decisions/ADR-0030-enforce-at-impact-boundaries.md)
 
 ## 범위
 

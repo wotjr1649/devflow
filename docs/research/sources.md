@@ -105,7 +105,7 @@
 
 ## 강제와 측정의 범위
 
-[ADR-0029](../design/decisions/ADR-0029-enforce-at-impact-boundaries.md)의 근거다. 2026-10-31에 원문을 확인했다.
+[ADR-0030](../design/decisions/ADR-0030-enforce-at-impact-boundaries.md)의 근거다. 2026-10-31에 원문을 확인했다.
 
 - [Anthropic: Demystifying evals for AI agents](https://www.anthropic.com/research/demystifying-evals-for-ai-agents)
   (2026-01-09): 실제 실패에서 뽑은 20~50개 과제로 시작한다. 에이전트 제품을 만드는 팀을 위한 글이다. 채점은 가능하면

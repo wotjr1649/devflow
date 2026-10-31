@@ -14,7 +14,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
    위임은 증거가 있을 때만 넓힌다. 근거: [ADR-0005](decisions/ADR-0005-main-first-execution.md)
 3. **규칙은 계층으로, 강제는 영향 경계에만.** 스킬은 안내하고, 스크립트는 분석하고, 훅은 공개 Issue 텍스트 게시만 그 순간
    막고, CI는 마지막에 막고, eval은 스킬 호출의 회귀를 잡는다. 근거: [ADR-0004](decisions/ADR-0004-enforcement-layers.md),
-   [ADR-0029](decisions/ADR-0029-enforce-at-impact-boundaries.md)
+   [ADR-0030](decisions/ADR-0030-enforce-at-impact-boundaries.md)
 4. **짧은 지침, 필요할 때 재는 설정.** 라우터 스킬과 references, 크기 예산. 트리거율은 호출 필드가 바뀔 때, 사이클 비용은
    요청하거나 비교할 때 잰다. 측정: [metrics](../specs/metrics.md)
 5. **사람은 게이트에만.** 범위가 정해지면 끝까지 진행하고, 원격 쓰기와 사용자만 정할 수 있는 결정만 묻는다.

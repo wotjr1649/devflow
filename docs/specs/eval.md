@@ -10,7 +10,7 @@
 - 돌리지 않는다: 스킬 본문, references, 훅, 에이전트, AGENTS.md만 바뀌었을 때. eval 실행은 격리되어 대상 플러그인만
   로드되고, 호스트는 스킬 목록만 보고 자동 호출을 정하므로 이 변경은 결과를 바꾸지 않는다([host-facts](../research/host-facts.md)).
 - 스킬 본문의 변경은 리뷰와 실제 사용에서 드러난 결함으로 본다. 아래 "결과 eval"은 요청할 때만 쓰는 도구이고, 그 결과는
-  수용 기준이나 출시 조건이 되지 않는다([ADR-0029](../design/decisions/ADR-0029-enforce-at-impact-boundaries.md)).
+  수용 기준이나 출시 조건이 되지 않는다([ADR-0030](../design/decisions/ADR-0030-enforce-at-impact-boundaries.md)).
 - Claude eval은 사용자 터미널에서 돌린다. 세션 안에서 띄우면 인증이 없어 멈춘다. 리포트는 `--no-publish`로 게시하지 않고
   결과는 체크포인트와 장부에 남긴다(#45). 판정은 오류 난 실행을 빼고 트리거 80% 이상,
   오탐 10% 이하다. ship 체크포인트에 돌렸는지와 판별 근거를 남긴다.

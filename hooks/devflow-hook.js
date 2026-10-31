@@ -401,7 +401,8 @@ function ghWrite(args, ctx, depth) {
   if (aliases === null) return null
   const expansion = aliases[s]
   if (expansion === undefined) return null // an extension
-  if (expansion === null || depth >= MAX_DEPTH) return null
+  if (expansion === null) return null
+  if (depth >= MAX_DEPTH) return ctx.protect ? TOO_DEEP : null
   const rest = args.slice(i + 1)
   if (expansion.startsWith('!')) return analyze(`${expansion.slice(1)} ${rest.map(a => a.raw).join(' ')}`, ctx, depth + 1)
   return ghWrite([...flatten([word(expansion)]), ...rest], ctx, depth + 1)
@@ -445,7 +446,8 @@ function httpWrite(args, ctx, client) {
   if (!HTTP_ISSUES.test(src)) return null
   // curl --next starts another request with its own method, so a later GET cannot clear an earlier post.
   if (method !== null && !/^(POST|PATCH|PUT|DELETE)$/i.test(method) && !args.some(a => /^(--next|-:)$/.test(a.text))) return null
-  return payloads.some(p => {
+  // curl joins repeated --json and --data values into one body.
+  return [...payloads, ...(payloads.length > 1 ? [payloads.join('')] : [])].some(p => {
     if (!p) return true
     try {
       const body = JSON.parse(p)

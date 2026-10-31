@@ -325,6 +325,7 @@ test('PR #105 review forms: option values, curl case and --next, GraphQL comment
     "gh api graphql -f query='mutation { addComment # note\n(input:{}) { clientMutationId } }'",
     `curl --json '{"body":"x"}' ${endpoint} --next -X GET https://api.github.com/graphql`,
     `curl --json '{"body":"see https://api.github.com/graphql"}' ${endpoint}`,
+    `curl --json '{"body"' --json ':"x"}' ${endpoint}`,
     "gh api graphql -f query='mutation { addStar(input:{clientMutationId:\"x#y\"}) { clientMutationId } addComment # n\n(input:{}) { clientMutationId } }'",
   ]) assert.ok(check(c), c)
   const comments = '# mutation\n'.repeat(20000)
@@ -342,6 +343,9 @@ test('PR #105 review forms: option values, curl case and --next, GraphQL comment
   assert.equal(hook.issueWrite("RUNNER=env; $RUNNER bash -c 'rm tests/x.test.js'", { cwd: d, env: noAliases }), null)
   assert.ok(hook.issueWrite("RUNNER=env; $RUNNER bash -c 'rm tests/x.test.js'", { cwd: d, env: noAliases, protect }),
     'a lock holds behind a dynamic runner')
+  const chain = { run: () => ({ code: 0, stdout: [...Array(7)].map((_, k) => k < 6 ? `a${k}: '!gh a${k + 1}'` : `a6: '!rm tests/x.test.js'`).join('\n') }) }
+  assert.equal(hook.issueWrite('gh a0', { cwd: d, env: chain }), null, 'no lock: a deep alias chain passes')
+  assert.ok(hook.issueWrite('gh a0', { cwd: d, env: chain, protect }), 'a lock holds past the alias depth limit')
 })
 
 test('unreadable and cyclic gh aliases pass', () => {

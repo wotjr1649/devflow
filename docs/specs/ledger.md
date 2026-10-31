@@ -75,8 +75,8 @@ worktree의 Issue는 그 worktree 브랜치의 Issue뿐이다. Issue 브랜치�
   복구를 안내하고(시험 목록이 없어도 프로필은 잠긴다), 편집 도구로 자기 worktree 밖의 파일(주 작업 트리의 Issue 장부와 위임 기록 포함)을 쓰지 못하게 하며(경로 글자로 판단하고
   링크는 따라가지 않는다. 셸 쓰기와 셸로 만든 링크는 이 보호 밖이다), git
   메타데이터를 읽지 못해도 경로 표지로 판정한다. doctor는 잠금 여부를 알 수 없어 실패한다.
-- 표지가 있는 worktree는 Issue 브랜치로 바꿔도 자기 Issue로 보지 않고, 연결 여부와 관계없이 장부·Issue 쓰기·create·
-  remark·flush·release를 거부한다. 각 쓰기 입구가 판정을 직접 검사한다.
+- 표지가 있는 worktree의 `devflow-state` 장부·Issue 쓰기·create·remark·flush·release는 Issue 브랜치에서도 거부한다.
+  훅은 Issue 텍스트 게시만 막으며 무인·위임의 직접 상태·관계 쓰기는 통과한다.
 - 판정은 `devflow-state`의 한 함수로 CLI·훅·doctor가 같이 한다. 훅은 입력의 `session_id`를 쓰고 자기 환경 변수는 읽지
   않는다. 이름 표지는 연결의 필요조건이지 증거가 아니다. host가 격리 worktree의 폴더와 브랜치 이름을 둘 다 바꾸면 위임이
   독립으로 보인다(Claude Code 2.1.310에서 확인한 규칙).

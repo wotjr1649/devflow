@@ -66,7 +66,7 @@ $devflowRef = '<검증할 전체 커밋 SHA>'
 
 새 환경에는 `git worktree add --detach "$devflowSource" $devflowRef`로 소스를 준비하고, 소스 밖에
 `codex-home`, `claude-home`, `smoke` 폴더를 만든다. `smoke`에는 별도 Git 저장소와 `.devflow.json`을 준비한다.
-보호 경로 시험의 최소 프로필 예시는 `{"protected":["_ref/**"]}`다. 원격 origin이 없는 최소 시험 프로젝트는
+Issue 텍스트 쓰기 가드 시험의 최소 프로필 예시는 `{}`다. 원격 origin이 없는 최소 시험 프로젝트는
 세션 시작과 가드를 시험할 수 있지만 GitHub Issue를 사용하는 개발 사이클 전체를 검증하지는 않는다.
 
 `source`에 `.work`, 비공개 계획, 인증 파일 같은 추가 파일을 넣지 않는다. Codex의 로컬 설치는 ignore된
@@ -213,7 +213,8 @@ node --test --test-timeout=120000 tests/*.test.js
 
 sub-issue 기능을 시험할 때는 승인된 시험 저장소의 부모·자식 번호로 개발본 `bin/devflow-state`의
 `sub-issue add <부모번호> <자식번호>`와 `sub-issue list <부모번호>`를 실행한다. 같은 연결의 재실행과 다른 부모의
-거부를 확인하고 부모·자식 본문·상태도 전후 대조한다. 직접 API 쓰기는 합성 훅 입력으로 계속 차단되는지 검사한다.
+거부를 확인하고 부모·자식 본문·상태도 전후 대조한다. 합성 훅 입력에서 직접 관계 쓰기는 통과하고 Issue 텍스트 쓰기는
+차단되는지 검사한다. 관계 쓰기의 `devflow-state` 경유는 지침이며, 무인·위임 세션의 직접 호출을 훅이 막지는 않는다.
 Claude Code와 Codex 각각 새 시험 세션에서 호출된 스크립트의 출처를 확인한다. CLI 자동 시험, 실제 API 쓰기,
 호스트 실행 경로는 각각 기록하며 하나로 다른 검증을 대신하지 않는다. 정책과 미확인 결과 처리의 기준은
 [Issue 입출력](specs/issues.md#issue-입출력)이다. 실제 시험 대상 생성·연결·정리는 승인된 범위에서만 수행한다.

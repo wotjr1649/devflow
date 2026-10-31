@@ -103,6 +103,26 @@
 - [METR](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/): 체감 생산성과 측정 생산성이
   다르다. 효과는 측정으로 판단한다.
 
+## 강제와 측정의 범위
+
+[ADR-0029](../design/decisions/ADR-0029-enforce-at-impact-boundaries.md)의 근거다. 2026-10-31에 원문을 확인했다.
+
+- [Anthropic: Demystifying evals for AI agents](https://www.anthropic.com/research/demystifying-evals-for-ai-agents)
+  (2026-01-09): 실제 실패에서 뽑은 20~50개 과제로 시작한다. 에이전트 제품을 만드는 팀을 위한 글이다. 채점은 가능하면
+  결정적으로 하고, 경로가 아니라 결과를 본다.
+- [OpenAI: Testing Agent Skills Systematically with Evals](https://developers.openai.com/blog/eval-skills): 스킬의 이름,
+  설명, 지침이 바뀔 때 10~20개 프롬프트와 소수의 필수 검사로 비교한다. CI 편입은 선택이다.
+- [Anthropic: Claude Code auto mode](https://www.anthropic.com/engineering/claude-code-auto-mode) (2026-03-25): 사용자는
+  수동 승인 요청의 93%를 수락한다. 승인 피로 때문에 막는 요청의 보호 효과가 작다. 오탐 차단은 사유와 함께 돌려줘 재시도
+  한 번으로 끝나게 한다.
+- [Naresh Jain: Are Harnesses Worth the Cost?](https://martinfowler.com/articles/are-harnesses-worth-the-cost.html)
+  (2026-10-13): 같은 서비스를 10회씩 만들었다. 강한 모델은 하네스가 있든 없든 10/10이었고, 하네스를 쓰면 토큰이 약 10배,
+  시간이 약 3배 들었다. 약한 모델은 3/10에서 10/10으로 올랐다. 과제 하나의 결과다.
+- 공개 워크플로 도구 7개(addyosmani/agent-skills, toss/apps-in-toss-harness, anthropics/claude-plugins-official,
+  cursor/plugins, mattpocock/skills, github/spec-kit, obra/superpowers): 훅으로 막는 것은 사용자가 정한 도구 패턴,
+  반복 종료, 캐시 대체 정도다. TDD, 리뷰, 범위 같은 판단은 지침으로 둔다. 행동 eval은 선택 실행이고, 측정 점수를 병합이나
+  출시 조건으로 두는 도구는 없었다.
+
 ## 보안
 
 - [Comment and Control](https://github.com/vectara/awesome-agent-failures/blob/main/docs/case-studies/comment-and-control-prompt-injection.md):

@@ -25,37 +25,32 @@ const ghPath = () => ['C:', 'Program Files', 'GitHub CLI', 'gh.exe'].join(String
 test('follows what the command runs to the Issue write', () => {
   const writes = [
     'bash -c "gh issue comment 1 --body x"',
-    "sh -lc 'gh issue close 1'",
-    'eval "gh issue close 1"',
-    'timeout 30 gh issue close 1',
-    'env GH_DEBUG=1 gh issue close 1',
-    'echo 1 | xargs -n1 gh issue close',
-    'x=issue; gh $x comment 1 --body y',
-    'gh $(echo issue) comment 1',
-    '$GH issue close 1',
-    'echo "gh issue close 1" | bash',
-    'bash <<EOF\ngh issue close 1\nEOF',
-    'cat <<\'EOF\' | sh\ngh issue close 1\nEOF',
-    'bash <<< "gh issue close 1"',
+    "sh -lc 'gh issue comment 1'",
+    'eval "gh issue comment 1"',
+    'timeout 30 gh issue comment 1',
+    'env GH_DEBUG=1 gh issue comment 1',
+    'echo 1 | xargs -n1 gh issue comment',
+    'echo "gh issue comment 1" | bash',
+    'bash <<EOF\ngh issue comment 1\nEOF',
+    'cat <<\'EOF\' | sh\ngh issue comment 1\nEOF',
+    'bash <<< "gh issue comment 1"',
     'for i in 1; do gh issue comment $i --body x; done',
-    'if true; then gh issue close 1; fi',
-    '(gh issue close 1)',
-    'echo $(gh issue close 1)',
-    'find . -name x -exec gh issue close 1 \\;',
-    'pwsh -NoProfile -Command "gh issue close 1"',
-    `pwsh -EncodedCommand ${encoded('gh issue close 1')}`,
-    'cmd /c gh issue close 1',
-    'Start-Process gh -ArgumentList "issue close 1"',
-    `& "${ghPath()}" issue close 1`,
-    'sudo -u me sh -c "gh issue close 1"',
-    'node -e "fetch(\'https://api.github.com/repos/o/r/issues/1/comments\', { method: \'POST\' })"',
+    'if true; then gh issue comment 1; fi',
+    '(gh issue comment 1)',
+    'echo $(gh issue comment 1)',
+    'find . -name x -exec gh issue comment 1 \\;',
+    'pwsh -NoProfile -Command "gh issue comment 1"',
+    `pwsh -EncodedCommand ${encoded('gh issue comment 1')}`,
+    'cmd /c gh issue comment 1',
+    'Start-Process gh -ArgumentList "issue comment 1"',
+    `& "${ghPath()}" issue comment 1`,
+    'sudo -u me sh -c "gh issue comment 1"',
   ]
   for (const c of writes) assert.ok(check(c), c)
 })
 
 test('shell-specific quotes and block comments keep following writes visible (#53 follow-up)', () => {
-  const root = dir(true)
-  fs.writeFileSync(path.join(root, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const root = lockedRepo(['_ref/**'])
   for (const src of [
     'echo x <# comment #> > _ref/x',
     String.raw`printf %s $'it\'s' > _ref/x`,
@@ -63,7 +58,7 @@ test('shell-specific quotes and block comments keep following writes visible (#5
     String.raw`echo x > $'\137ref/x'`,
   ]) assert.equal(decision(hook.handle(pre(root, src))), 'deny', src)
   assert.equal(hook.handle(pre(root, `echo '<# not a comment #>' > safe.txt`)), '')
-  assert.ok(check('echo x <#\ngh issue close 1\n#>', root), 'the Bash reading must also be checked')
+  assert.ok(check('echo x <#\ngh issue comment 1\n#>', root), 'the Bash reading must also be checked')
 })
 
 test('PowerShell comment and quote readings do not hide trailing redirects (#53 review)', () => {
@@ -105,24 +100,24 @@ test('a pipeline cd contributes a possible working directory without discarding 
 test('does not read quoted text and data as commands', () => {
   const allowed = [
     'git commit -m "gh issue comment docs"',
-    "git commit -m 'gh issue close 1'",
-    'git commit -F - <<EOF\ngh issue close 1\nEOF',
-    'echo "gh issue close 1"',
+    "git commit -m 'gh issue comment 1'",
+    'git commit -F - <<EOF\ngh issue comment 1\nEOF',
+    'echo "gh issue comment 1"',
     'grep -rn "gh issue comment" docs',
-    'printf "%s\\n" "gh issue close 1" > notes.txt',
-    'echo "gh issue close 1" | grep bash',
-    'gh pr comment 3 --body "gh issue close 1"',
+    'printf "%s\\n" "gh issue comment 1" > notes.txt',
+    'echo "gh issue comment 1" | grep bash',
+    'gh pr comment 3 --body "gh issue comment 1"',
   ]
   for (const c of allowed) assert.equal(check(c), null, c)
 })
 
 test('resolves gh aliases', () => {
-  const env = { run: () => ({ code: 0, stdout: 'ic: issue comment\nbye: !gh issue close "$1"\nco: pr checkout\n', stderr: '' }) }
+  const env = { run: () => ({ code: 0, stdout: 'ic: issue comment\nbye: !gh issue comment "$1"\nco: pr checkout\n', stderr: '' }) }
   assert.ok(hook.issueWrite('gh ic 1 --body x', { env }))
   assert.ok(hook.issueWrite('gh bye 1', { env }))
   assert.equal(hook.issueWrite('gh co 3', { env }), null)
   const failing = { run: () => ({ code: 1, stdout: '', stderr: '' }) }
-  assert.match(hook.issueWrite('gh mystery 1', { env: failing }), /alias lookup failed/)
+  assert.equal(hook.issueWrite('gh mystery 1', { env: failing }), null)
 })
 
 test('reads script files that a command runs', () => {
@@ -134,44 +129,44 @@ test('reads script files that a command runs', () => {
 })
 
 test('blocks GitHub MCP Issue writes only', () => {
-  for (const t of ['mcp__github__issue_write', 'mcp__github__add_issue_comment', 'mcp__plugin_x_github__sub_issue_write', 'mcp__claude_ai_GitHub__issue_write']) {
-    assert.ok(hook.mcpIssueWrite(t), t)
+  for (const t of ['mcp__github__issue_write', 'mcp__github__add_issue_comment', 'mcp__claude_ai_GitHub__issue_write']) {
+    assert.ok(hook.mcpIssueWrite(t, { body: 'x' }), t)
   }
-  for (const t of ['mcp__github__issue_read', 'mcp__github__list_issues', 'mcp__github__search_issues', 'mcp__github__get_issue_comments', 'mcp__linear__create_issue']) {
+  for (const t of ['mcp__github__issue_read', 'mcp__github__list_issues', 'mcp__github__search_issues', 'mcp__github__get_issue_comments', 'mcp__linear__create_issue', 'mcp__github__sub_issue_write', 'mcp__github__assign_copilot_to_issue']) {
     assert.equal(hook.mcpIssueWrite(t), null, t)
   }
-  assert.equal(decision(hook.handle(pre(dir(true), undefined, 'mcp__github__issue_write'))), 'deny')
+  assert.equal(decision(hook.handle(event('PreToolUse', dir(true), {
+    tool_name: 'mcp__github__issue_write', tool_input: { body: 'x' },
+  }))), 'deny')
 })
 
 test('catches the forms the 2026-10-01 review found', () => {
   const d = dir(true)
-  fs.writeFileSync(path.join(d, 'post.sh'), 'gh issue close 1\n')
+  fs.writeFileSync(path.join(d, 'post.sh'), 'gh issue comment 1\n')
   fs.writeFileSync(path.join(d, 'safe.sh'), 'echo ok\n')
   const writes = [
-    'cat <<EOF\n$(gh issue close 1)\nEOF',
-    'cat <<EOF\n`gh issue close 1`\nEOF',
+    'cat <<EOF\n$(gh issue comment 1)\nEOF',
+    'cat <<EOF\n`gh issue comment 1`\nEOF',
     'gh api repos/o/r/issues/1/comments -fbody=x',
-    'gh api graphql -Fquery=@q.graphql',
-    'gh api graphql --raw-field=query="$Q"',
     "gh api /graphql -f query='mutation { addComment(input: {}) { clientMutationId } }'",
-    'curl -X POST https://api.github.com/graphql -d \'{"query":"mutation { addComment }"}\'',
-    'powershell "gh issue close 1"',
-    'echo "gh issue close 1" | pwsh -Command -',
+    'curl -X POST https://api.github.com/graphql -d \'{"query":"mutation { addComment(input:{}) { clientMutationId } }"}\'',
+    'powershell "gh issue comment 1"',
+    'echo "gh issue comment 1" | pwsh -Command -',
     'cat post.sh | bash',
-    'env -S "gh issue close 1"',
+    'env -S "gh issue comment 1"',
     'bash -o pipefail post.sh',
   ]
   for (const c of writes) assert.ok(check(c, d), c)
-  assert.equal(check("cat <<'EOF'\n$(gh issue close 1)\nEOF", d), null, 'a quoted heredoc is data')
+  assert.equal(check("cat <<'EOF'\n$(gh issue comment 1)\nEOF", d), null, 'a quoted heredoc is data')
   assert.equal(check('bash -o pipefail safe.sh', d), null)
 })
 
-test('reads YAML-quoted gh aliases and refuses unreadable ones', () => {
+test('reads YAML-quoted gh aliases and allows unreadable ones', () => {
   const calls = []
   const env = stdout => ({ run: (cmd, args, opts) => (calls.push(opts), { code: 0, stdout, stderr: '' }) })
-  assert.ok(hook.issueWrite('gh bye 1', { env: env('bye: \'!gh issue close "$1"\'\n') }))
+  assert.ok(hook.issueWrite('gh bye 1', { env: env('bye: \'!gh issue comment "$1"\'\n') }))
   assert.ok(hook.issueWrite('gh ic 1', { env: env('ic: "issue comment"\n') }))
-  assert.match(hook.issueWrite('gh multi 1', { env: env('multi: |-\n  issue close\n') }), /could not be read/)
+  assert.equal(hook.issueWrite('gh multi 1', { env: env('multi: |-\n  issue comment\n') }), null)
   assert.ok(calls.every(o => o.timeout <= 3000), 'alias lookup ends before the hook timeout')
 })
 
@@ -185,23 +180,22 @@ test('the PreToolUse matcher covers shells and GitHub MCP tools only', () => {
 })
 
 test('checks PowerShell tool commands and array commands', () => {
-  assert.equal(decision(hook.handle(pre(dir(true), 'gh issue close 1', 'PowerShell'))), 'deny')
-  assert.ok(check(['bash', '-lc', 'gh issue close 1']))
-  assert.equal(check(['git', 'commit', '-m', 'gh issue close 1']), null)
+  assert.equal(decision(hook.handle(pre(dir(true), 'gh issue comment 1', 'PowerShell'))), 'deny')
+  assert.ok(check(['bash', '-lc', 'gh issue comment 1']))
+  assert.equal(check(['git', 'commit', '-m', 'gh issue comment 1']), null)
 })
 
 test('blocks direct Issue writes', () => {
   const writes = [
     'gh issue comment 1 -R o/r --body "x"',
     'gh issue edit 1 --body-file b.md',
-    'cd x && gh.exe issue close 3',
+    'cd x && gh.exe issue comment 3',
     'gh issue create --title t --body b',
     'gh api repos/o/r/issues/1/comments -f body=x',
-    'gh api -X PATCH repos/o/r/issues/1 -f state=closed',
-    'gh api --method=POST repos/o/r/issues',
+    'gh api -X PATCH repos/o/r/issues/1 -f body=x',
+    'gh api --method=POST repos/o/r/issues --input payload.json',
     'gh api graphql -f query=\'mutation { addComment(input:{}) { clientMutationId } }\'',
-    'gh api graphql -F query=@q.graphql',
-    'curl -X POST https://api.github.com/repos/o/r/issues/1/comments -d "{}"',
+    'curl -X POST https://api.github.com/repos/o/r/issues/1/comments -d \'{"body":"x"}\'',
     'Invoke-RestMethod -Method Post -Uri https://api.github.com/repos/o/r/issues -Body $b',
   ]
   for (const c of writes) assert.ok(hook.issueWrite(c), c)
@@ -226,6 +220,103 @@ test('PreToolUse denies a raw Issue write inside a devflow repository', () => {
   const out = hook.handle(pre(path.join(d, 'sub'), 'gh issue comment 1 --body x'))
   assert.equal(decision(out), 'deny')
   assert.match(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /devflow-state/)
+})
+
+test('Issue text flags block while state and metadata operations pass', () => {
+  for (const c of [
+    'gh issue close 1', 'gh issue reopen 1', 'gh issue delete 1 --yes',
+    'gh issue develop 1', 'gh issue lock 1', 'gh issue unlock 1', 'gh issue pin 1',
+    'gh issue unpin 1', 'gh issue transfer 1 o/r',
+    'gh issue edit 1 --add-label bug --add-assignee me --milestone v1 --add-project board',
+    'gh api -X PATCH repos/o/r/issues/1 -f state=closed',
+    'gh api -X POST repos/o/r/issues/1/labels -f labels[]=bug',
+    'gh api -X DELETE repos/o/r/issues/comments/1',
+    'gh api -X POST "$ENDPOINT" -f body=x',
+    'gh api graphql --input query.json', 'gh api graphql -F query=@query.graphql',
+    'gh api graphql -f query="$QUERY"',
+    "gh api graphql -f query='mutation { resolveReviewThread(input:{}) { clientMutationId } }'",
+    "gh api graphql -f query='mutation { unresolveReviewThread(input:{}) { clientMutationId } }'",
+    "gh api graphql -f query='mutation { addPullRequestReviewThreadReply(input:{}) { clientMutationId } }'",
+    'curl -X PATCH https://api.github.com/repos/o/r/issues/1 -d state=closed',
+    'curl -X POST https://api.github.com/repos/o/r/issues/1/comments -d "{}"',
+    'curl -X PATCH https://api.github.com/repos/o/r/issues/1 --json \'{"labels":["body=x"]}\'',
+    'curl -X GET https://api.github.com/repos/o/r/issues/1 -d body=x',
+    'echo \'curl -X POST https://api.github.com/repos/o/r/issues/1 -d body=x\'',
+    'gh issue comment 1 --help', 'gh issue create -h', 'gh issue edit 1 --body=x --help',
+    'gh api repos/o/r/issues/1 -f body=x --help',
+    'gh api graphql -f query="mutation { addComment(input:{}) { clientMutationId } }" -h',
+    'Invoke-RestMethod -Method Patch -Uri https://api.github.com/repos/o/r/issues/1 -Body @{state="closed"}',
+    'curl https://api.github.com/graphql --json \'{"query":"mutation { resolveReviewThread(input:{}) { clientMutationId } }"}\'',
+    'curl https://api.github.com/graphql --data @query.json',
+    'curl https://api.github.com/graphql --json \'{"query":"query { viewer { login } }","variables":{"text":"mutation { addComment(input:{}) { clientMutationId } }"}}\'',
+  ]) assert.equal(check(c), null, c)
+  for (const c of [
+    'gh issue close 1 -c x', 'gh issue reopen 1 --comment=x',
+    'gh issue edit 1 --body x', 'gh issue edit 1 --title=x',
+    'gh issue edit 1 -tx', 'gh issue edit 1 -bx', 'gh issue edit 1 -Fbody.md',
+    'gh api -X PATCH repos/o/r/issues/1 --raw-field=title=x',
+    'gh api -X POST repos/o/r/issues/1/comments --input payload.json',
+    'curl -X PATCH https://api.github.com/repos/o/r/issues/1 -d body=x',
+    'Invoke-RestMethod -Method Patch -Uri https://api.github.com/repos/o/r/issues/1 -Body @{body="x"}',
+    'curl https://api.github.com/graphql --json \'{"query":"mutation { addComment(input:{}) { clientMutationId } }"}\'',
+    ...['createIssue', 'updateIssue', 'addComment', 'updateIssueComment'].map(name =>
+      `gh api graphql -f query='mutation { ${name}(input:{}) { clientMutationId } }'`),
+  ]) assert.ok(check(c), c)
+})
+
+test('unreadable and cyclic gh aliases pass', () => {
+  const env = { run: () => ({ code: 0, stdout: 'a: b\nb: a\n' }) }
+  assert.equal(hook.issueWrite('gh a 1', { env }), null)
+})
+
+test('static local GraphQL and REST payload files use the safe reader', () => {
+  const d = dir(true)
+  const mutation = 'mutation { updateIssue(input:{state:CLOSED}) { clientMutationId } }'
+  fs.writeFileSync(path.join(d, 'mutation.graphql'), mutation)
+  fs.writeFileSync(path.join(d, 'sub', 'nested.graphql'), mutation)
+  fs.writeFileSync(path.join(d, 'review.graphql'), 'mutation { resolveReviewThread(input:{}) { clientMutationId } }')
+  fs.writeFileSync(path.join(d, 'query.json'), JSON.stringify({ query: mutation }))
+  fs.writeFileSync(path.join(d, 'text.json'), JSON.stringify({ body: 'x' }))
+  fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify({ state: 'closed' }))
+  fs.writeFileSync(path.join(d, 'large.json'), ' '.repeat(256 * 1024 + 1))
+  for (const command of [
+    'gh api graphql -F query=@mutation.graphql',
+    'gh api graphql --input query.json',
+    'cd sub && gh api graphql -F query=@nested.graphql',
+    'gh api repos/o/r/issues/1 -X PATCH --input text.json',
+    'gh api repos/o/r/issues/1 -X PATCH --input missing.json',
+    'gh api repos/o/r/issues/1 -X PATCH --input large.json',
+    'curl https://api.github.com/graphql --data @query.json',
+    'curl -X PATCH https://api.github.com/repos/o/r/issues/1 --json @text.json',
+    'curl -X PATCH https://api.github.com/repos/o/r/issues/1 --json @missing.json',
+  ]) assert.ok(check(command, d), command)
+  for (const command of [
+    'gh api graphql -F query=@review.graphql',
+    'gh api graphql -F query=@missing.graphql',
+    'gh api graphql -F query=@large.json',
+    'gh api graphql --input missing.json',
+    'gh api graphql --input large.json',
+    'gh api graphql --input "$FILE"',
+    'gh api repos/o/r/issues/1 -X PATCH --input state.json',
+    'curl -X PATCH https://api.github.com/repos/o/r/issues/1 --json @state.json',
+  ]) assert.equal(check(command, d), null, command)
+})
+
+test('MCP Issue updates block text fields and allow metadata-only updates', () => {
+  const tool = 'mcp__github__issue_write'
+  assert.equal(hook.mcpIssueWrite(tool, { method: 'update', state: 'closed', labels: ['bug'] }), null)
+  assert.ok(hook.mcpIssueWrite(tool, { method: 'update', body: '' }))
+  assert.ok(hook.mcpIssueWrite(tool, { method: 'update', title: 'x' }))
+  assert.ok(hook.mcpIssueWrite(tool, { method: 'create', title: 'x' }))
+  for (const name of ['issue_write', 'create_issue', 'update_issue']) {
+    assert.equal(hook.mcpIssueWrite(`mcp__github__${name}`, { state: 'closed' }), null)
+    assert.equal(hook.mcpIssueWrite(`mcp__github__${name}`), null)
+    assert.ok(hook.mcpIssueWrite(`mcp__github__${name}`, { title: null }))
+  }
+  assert.ok(hook.mcpIssueWrite('mcp__github__add_issue_comment'))
+  assert.equal(hook.handle(event('PreToolUse', dir(true), {
+    tool_name: tool, tool_input: { method: 'update', state: 'closed' },
+  })), '')
 })
 
 test('the deny reason names every devflow-state write, so a new one is not left out (Issue #8)', () => {
@@ -264,7 +355,7 @@ test('the hooks.json command runs the hook through a shell', () => {
   const d = dir(true)
   const win = process.platform === 'win32'
   const out = execFileSync(win ? 'cmd.exe' : 'sh', win ? ['/d', '/s', '/c', `"${command}"`] : ['-c', command], {
-    input: pre(d, 'gh issue close 1'),
+    input: pre(d, 'gh issue comment 1'),
     env: { ...process.env, CLAUDE_PLUGIN_ROOT: path.resolve(__dirname, '..') },
     encoding: 'utf8',
     windowsVerbatimArguments: win,
@@ -274,20 +365,17 @@ test('the hooks.json command runs the hook through a shell', () => {
 
 const event = (name, cwd, extra = {}) => JSON.stringify({ hook_event_name: name, cwd, ...extra })
 
-test('PreToolUse blocks edits to protected paths and nothing else', () => {
+test('protected is ignored by shell and edit tools', () => {
   const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
-  const edit = (tool, input, cwd = d) => hook.handle(event('PreToolUse', cwd, { tool_name: tool, tool_input: input }))
-  assert.equal(decision(edit('Edit', { file_path: path.join(d, '_ref', 'x.md') })), 'deny')
-  assert.equal(decision(edit('NotebookEdit', { notebook_path: path.join(d, '_ref', 'n.ipynb') })), 'deny')
-  const patch = '*** Begin Patch\n*** Update File: _ref/a.md\n@@\n-x\n+y\n*** End Patch\n'
-  assert.equal(decision(edit('apply_patch', { command: patch })), 'deny')
-  assert.equal(decision(edit('apply_patch', { command: patch }, path.join(d, 'sub'))), '', 'relative to the sub folder it is not _ref')
-  assert.equal(edit('Write', { file_path: path.join(d, 'src', 'x.md') }), '')
-  const outside = dir(false)
-  assert.equal(edit('Edit', { file_path: path.join(outside, '_ref', 'x.md') }, outside), '')
-  fs.writeFileSync(path.join(d, '.devflow.json'), '{ broken')
-  assert.equal(decision(edit('Edit', { file_path: path.join(d, 'a.md') })), 'deny', 'an unreadable profile fails closed')
+  for (const protectedValue of [['_ref/**'], 42, null, false]) {
+    fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: protectedValue }))
+    for (const command of ['rm -rf _ref', 'echo x > _ref/a.md']) assert.equal(hook.handle(pre(d, command)), '')
+    for (const [tool, input] of [
+      ['Edit', { file_path: path.join(d, '_ref/x.md') }],
+      ['NotebookEdit', { notebook_path: path.join(d, '_ref/n.ipynb') }],
+      ['apply_patch', { command: '*** Update File: _ref/a.md' }],
+    ]) assert.equal(hook.handle(event('PreToolUse', d, { tool_name: tool, tool_input: input })), '')
+  }
 })
 
 test('PostToolUse reports doctor findings for an edited instruction file', () => {
@@ -351,36 +439,16 @@ test('Stop continues open unattended work at most twice per task', () => {
 
 test('a script operand ends the shell options (2026-10-01 review)', () => {
   const d = dir(true)
-  fs.writeFileSync(path.join(d, 'evil.sh'), 'gh issue close 1\n')
+  fs.writeFileSync(path.join(d, 'evil.sh'), 'gh issue comment 1\n')
   assert.ok(check('bash evil.sh -c true', d))
-  assert.ok(check('pwsh -NoProfile -ExecutionPolicy Bypass -Command "gh issue close 1"', d))
-  fs.writeFileSync(path.join(d, 'evil.ps1'), 'gh issue close 1\n')
+  assert.ok(check('pwsh -NoProfile -ExecutionPolicy Bypass -Command "gh issue comment 1"', d))
+  fs.writeFileSync(path.join(d, 'evil.ps1'), 'gh issue comment 1\n')
   assert.ok(check('pwsh -File evil.ps1 -c true', d))
 })
 
-test('shell writes to protected paths are blocked, reads are not', () => {
-  const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
-  const run = (command, tool = 'Bash') => hook.handle(pre(d, command, tool))
-  for (const c of ['echo x > _ref/a.md', 'rm -rf _ref/x', 'sed -i s/a/b/ _ref/x.md', 'bash -c "rm _ref/x"', 'cp src.md _ref/x.md',
-    'git checkout -- _ref/x.md', 'timeout 5 tee _ref/log.txt']) {
-    const out = run(c)
-    assert.equal(decision(out), 'deny', c)
-    assert.match(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /protected path/, c)
-  }
-  assert.equal(decision(run('Remove-Item _ref/x.md', 'PowerShell')), 'deny')
-  for (const c of ['cp _ref/x.md notes/', 'cat _ref/x.md', 'grep -r foo _ref', 'echo hi > /dev/null', 'git checkout main']) {
-    assert.equal(run(c), '', c)
-  }
-  if (/^(win32|darwin)$/.test(process.platform)) {
-    assert.equal(decision(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, '_REF', 'x.md') } }))), 'deny')
-    assert.equal(decision(run('rm _Ref/x')), 'deny')
-  }
-})
 
-test('Git Bash drive paths reach the protected-path check on Windows', { skip: process.platform !== 'win32' }, () => {
-  const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+test('Git Bash drive paths reach the test-lock check on Windows', { skip: process.platform !== 'win32' }, () => {
+  const d = lockedRepo(['_ref/**'])
   const posix = '/' + d[0].toLowerCase() + d.slice(2).split(path.sep).join('/')
   assert.equal(decision(hook.handle(pre(d, `rm ${posix}/_ref/x`))), 'deny')
   assert.equal(decision(hook.handle(pre(d, `rm /cygdrive${posix}/_ref/x`))), 'deny')
@@ -388,29 +456,20 @@ test('Git Bash drive paths reach the protected-path check on Windows', { skip: p
   assert.equal(hook.handle(pre(d, `rm ${posix}/notes/x`)), '')
 })
 
-test('protected folders themselves, patterns and repository-wide writes (2026-10-01 re-review)', () => {
-  const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
-  const run = command => decision(hook.handle(pre(d, command))) || 'allow'
-  for (const c of ['rm -rf _ref', 'rm -rf _ref/', 'cp -r src _ref', 'rm -rf *', 'rm -rf .', 'git clean -fdx',
-    'git -C . checkout -- _ref/x', 'find _ref -delete']) assert.equal(run(c), 'deny', c)
-  for (const c of ['cat < _ref/x.md', 'while read l; do echo "$l"; done < _ref/list', 'cp notes.md .', 'mkdir build',
-    'git checkout main', 'find _ref -name "*.md"']) assert.equal(run(c), 'allow', c)
-})
 
-test('an unreadable profile still lets the session repair it', () => {
+test('an unreadable profile allows edits and still checks Issue text writes', () => {
   const d = dir(true)
   fs.writeFileSync(path.join(d, '.devflow.json'), '{ broken')
   const edit = file => decision(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, file) } }))) || 'allow'
   assert.equal(edit('.devflow.json'), 'allow')
-  assert.equal(edit('src.md'), 'deny')
+  assert.equal(edit('src.md'), 'allow')
   assert.equal(decision(hook.handle(pre(d, 'cat < _ref/x.md'))) || 'allow', 'allow')
-  assert.equal(decision(hook.handle(pre(d, 'gh issue close 1'))), 'deny', 'Issue writes are still checked')
+  assert.equal(decision(hook.handle(pre(d, 'gh issue comment 1'))), 'deny', 'Issue writes are still checked')
 })
 
 test('an option value before -c does not hide the script (2026-10-01 re-review regression)', () => {
-  for (const c of ['pwsh -ep Bypass -c "gh issue close 1"', 'pwsh -wd . -c "gh issue close 1"', 'bash -O extglob -c "gh issue close 1"',
-    'bash --rcfile x -c "gh issue close 1"', 'pwsh -ExecutionPolicy Bypass -File nope.ps1 -Command "gh issue close 1"']) {
+  for (const c of ['pwsh -ep Bypass -c "gh issue comment 1"', 'pwsh -wd . -c "gh issue comment 1"', 'bash -O extglob -c "gh issue comment 1"',
+    'bash --rcfile x -c "gh issue comment 1"', 'pwsh -ExecutionPolicy Bypass -File nope.ps1 -Command "gh issue comment 1"']) {
     assert.ok(check(c), c)
   }
 })
@@ -422,13 +481,20 @@ const git = (cwd, ...args) => {
     '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd, encoding: 'utf8', env: cleanEnv() })
   assert.equal(r.status, 0, r.stderr)
 }
-function gitRepo(branch, profile = { protected: ['_ref/**'] }) {
+function gitRepo(branch, profile = {}) {
   const d = fs.realpathSync.native(tmpdir('devflow-hookgit-'))
   fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify(profile))
   git(d, 'init', '-q')
   git(d, 'add', '.devflow.json')
   git(d, 'commit', '-q', '-m', 'a')
   if (branch !== 'main') git(d, 'switch', '-q', '-c', branch)
+  return d
+}
+function lockedRepo(tests) {
+  const d = gitRepo('fix/7-x', { tests })
+  const ledger = path.join(d, '.work/devflow/i7/ledger.json')
+  fs.mkdirSync(path.dirname(ledger), { recursive: true })
+  fs.writeFileSync(ledger, JSON.stringify({ stage: 'build', testsLocked: { at: 'abc1234' } }))
   return d
 }
 const guards = (root, n) => {
@@ -472,6 +538,8 @@ test('locked tests are protected on both hosts while the Issue ledger says so, a
   fs.writeFileSync(ledgerFile, '{ broken')
   assert.equal(decision(edit('Edit', { file_path: file })), 'deny')
   assert.deepEqual(guards(d, 7).slice(4), ['test-locked', 'test-locked', 'test-locked', 'test-locked'])
+  assert.equal(decision(hook.handle(pre(d, '$CMD issue view 1 > tests/a.test.js'))), 'deny',
+    'an unresolved command still has a resolved redirect target')
   // From a linked worktree the ledger lies in the main work tree, outside the root; edit tools still may not touch it.
   fs.writeFileSync(ledgerFile, JSON.stringify({ stage: 'build', testsLocked: { at: 'abc1234' } }))
   git(d, 'add', '.devflow.json')
@@ -570,31 +638,22 @@ test('a write after a cd that surely moved the shell is judged in that folder (#
   }
 })
 
-test('a block on an Issue branch is logged by a fixed id and the decision is unchanged', () => {
+test('a text-write block logs only its guard id; removed guards leave no records', () => {
   const d = gitRepo('feat/7-x')
-  const plain = dir(true)
-  fs.writeFileSync(path.join(plain, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
-  const runs = [
-    [cwd => hook.handle(pre(cwd, 'gh issue close 1')), 'issue-write'],
-    [cwd => hook.handle(pre(cwd, 'rm _ref/x')), 'protected-path'],
-    [cwd => hook.handle(event('PreToolUse', cwd, { tool_name: 'Edit', tool_input: { file_path: path.join(cwd, '_ref', 'x.md') } })), 'protected-path'],
-  ]
-  for (const [run, id] of runs) {
-    const out = run(d)
-    assert.equal(out, run(plain), 'same decision with and without a log')
-    assert.equal(decision(out), 'deny')
-    assert.equal(guards(d, 7).pop(), id)
-  }
-  assert.deepEqual(guards(d, 7), ['issue-write', 'protected-path', 'protected-path'])
-  assert.doesNotMatch(fs.readFileSync(path.join(d, '.work/devflow/i7/guard-events.jsonl'), 'utf8'), /gh issue|_ref/)
+  const out = hook.handle(pre(d, 'gh issue comment 1'))
+  assert.equal(out, hook.handle(pre(dir(true), 'gh issue comment 1')))
+  assert.equal(decision(out), 'deny')
+  assert.deepEqual(guards(d, 7), ['issue-write'])
+  assert.doesNotMatch(fs.readFileSync(path.join(d, '.work/devflow/i7/guard-events.jsonl'), 'utf8'), /gh issue/)
   fs.writeFileSync(path.join(d, '.devflow.json'), '{ broken')
-  assert.equal(decision(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, 'src.md') } }))), 'deny')
-  assert.equal(guards(d, 7).pop(), 'profile-unreadable')
+  assert.equal(hook.handle(pre(d, 'rm _ref/x')), '')
+  assert.equal(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: 'src.md' } })), '')
+  assert.deepEqual(guards(d, 7), ['issue-write'])
 })
 
 test('blocks off an Issue branch, allowed calls and unreadable input are not logged', () => {
   const d = gitRepo('main')
-  assert.equal(decision(hook.handle(pre(d, 'gh issue close 1'))), 'deny')
+  assert.equal(decision(hook.handle(pre(d, 'gh issue comment 1'))), 'deny')
   assert.equal(fs.existsSync(path.join(d, '.work')), false)
   const f = gitRepo('feat/7-x')
   assert.equal(hook.handle(pre(f, 'npm test')), '')
@@ -608,38 +667,37 @@ test('a block in an agent worktree is logged to its recorded parent Issue (M3), 
   const wt = path.join(d, '.claude', 'worktrees', 'agent-a1')
   git(d, 'worktree', 'add', '-q', '-b', 'worktree-agent-a1', wt)
   const sessionPre = cmd => JSON.stringify({ ...JSON.parse(pre(wt, cmd)), session_id: 'S' })
-  assert.equal(decision(hook.handle(sessionPre('gh issue close 1'))), 'deny')
+  assert.equal(decision(hook.handle(sessionPre('gh issue comment 1'))), 'deny')
   assert.deepEqual(guards(d, 7), [], 'no record: nothing is logged under the main tree Issue')
   const hash = require('crypto').createHash('sha256').update('S').digest('hex').slice(0, 12)
   fs.mkdirSync(path.join(d, '.work', 'devflow', 'i7'), { recursive: true })
   fs.writeFileSync(path.join(d, '.work', 'devflow', 'i7', 'delegates.json'), JSON.stringify({ t1: { session: hash, host: 'claude', at: '2026-10-24T00:00:00.000Z' } }))
   // A record counts while its label is in the ledger's running, as running <n> add <label> --worktree leaves both.
   fs.writeFileSync(path.join(d, '.work', 'devflow', 'i7', 'ledger.json'), JSON.stringify({ running: ['t1'] }))
-  assert.equal(decision(hook.handle(sessionPre('gh issue close 1'))), 'deny')
+  assert.equal(decision(hook.handle(sessionPre('gh issue comment 1'))), 'deny')
   assert.deepEqual(guards(d, 7), ['issue-write'])
   assert.equal(fs.existsSync(path.join(wt, '.work')), false)
 })
 
 test('a broken .git does not change the decision', () => {
   const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
-  const expected = hook.handle(pre(d, 'gh issue close 1'))
+  const expected = hook.handle(pre(d, 'gh issue comment 1'))
   for (const content of ['gitdir: ' + path.join(d, 'nowhere'), 'garbage', '']) {
     fs.writeFileSync(path.join(d, '.git'), content)
-    assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
+    assert.equal(hook.handle(pre(d, 'gh issue comment 1')), expected)
   }
   fs.rmSync(path.join(d, '.git'))
   fs.mkdirSync(path.join(d, '.git', 'HEAD'), { recursive: true })
-  assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
+  assert.equal(hook.handle(pre(d, 'gh issue comment 1')), expected)
 })
 
 test('git metadata that is large, linked, special or on a network path is not read, and the decision is unchanged (2026-10-02 security review)', t => {
   const plain = dir(true)
-  fs.writeFileSync(path.join(plain, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
-  const expected = hook.handle(pre(plain, 'gh issue close 1'))
+  fs.writeFileSync(path.join(plain, '.devflow.json'), '{}')
+  const expected = hook.handle(pre(plain, 'gh issue comment 1'))
   const make = gitdirValue => {
     const d = dir(true)
-    fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+    fs.writeFileSync(path.join(d, '.devflow.json'), '{}')
     fs.writeFileSync(path.join(d, '.git'), 'gitdir: ' + gitdirValue)
     return d
   }
@@ -647,14 +705,14 @@ test('git metadata that is large, linked, special or on a network path is not re
   const big = tmpdir('devflow-big-')
   fs.writeFileSync(path.join(big, 'HEAD'), 'ref: refs/heads/feat/7-x\n' + 'x'.repeat(64 * 1024))
   const d1 = make(big)
-  assert.equal(hook.handle(pre(d1, 'gh issue close 1')), expected)
+  assert.equal(hook.handle(pre(d1, 'gh issue comment 1')), expected)
   assert.equal(fs.existsSync(path.join(d1, '.work')), false)
   // Network paths are never opened: the call returns at once.
   const bs = String.fromCharCode(92)
   for (const unc of [bs + bs + 'devflow-no-such-host' + bs + 'share', '//devflow-no-such-host/share']) {
     const d = make(unc)
     const started = Date.now()
-    assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
+    assert.equal(hook.handle(pre(d, 'gh issue comment 1')), expected)
     assert.ok(Date.now() - started < 5000, unc)
   }
   // A HEAD that is a link is not followed.
@@ -662,7 +720,7 @@ test('git metadata that is large, linked, special or on a network path is not re
   fs.writeFileSync(path.join(big, 'small-head'), 'ref: refs/heads/feat/7-x\n')
   try { fs.symlinkSync(path.join(big, 'small-head'), path.join(linked, 'HEAD')) } catch { return t.skip('file symlinks need privileges here') }
   const d2 = make(linked)
-  assert.equal(hook.handle(pre(d2, 'gh issue close 1')), expected)
+  assert.equal(hook.handle(pre(d2, 'gh issue comment 1')), expected)
   assert.equal(fs.existsSync(path.join(d2, '.work')), false)
 })
 
@@ -673,17 +731,17 @@ test('a worktree outside the main work tree, proven by git, logs to the main one
   const d = gitRepo('feat/7-x')
   const task = sibling()
   git(d, 'worktree', 'add', '-q', '-b', 'task-2', task)
-  assert.equal(decision(hook.handle(pre(task, 'gh issue close 1'))), 'deny')
+  assert.equal(decision(hook.handle(pre(task, 'gh issue comment 1'))), 'deny')
   assert.deepEqual(guards(d, 7), [], 'a worktree off any Issue branch is independent (#73 G1): no main tree Issue log')
   const own = sibling()
   git(d, 'worktree', 'add', '-q', '-b', 'fix/7-wt', own)
-  hook.handle(pre(own, 'gh issue close 1'))
+  hook.handle(pre(own, 'gh issue comment 1'))
   assert.deepEqual(guards(d, 7), ['issue-write'], 'its own Issue branch logs in the main work tree')
   assert.equal(fs.existsSync(path.join(own, '.work')), false)
   assert.equal(fs.existsSync(path.join(task, '.work')), false)
   const rel = sibling()
   git(d, 'worktree', 'add', '-q', '--relative-paths', '-b', 'fix/7-rel', rel)
-  hook.handle(pre(rel, 'gh issue close 1'))
+  hook.handle(pre(rel, 'gh issue comment 1'))
   assert.deepEqual(guards(d, 7).length, 2, 'a worktree made with relative paths is proven too')
 })
 
@@ -691,29 +749,29 @@ test('a .git file that only claims a repository does not log into it (#14)', () 
   const victim = gitRepo('feat/7-x')
   // An extracted archive: its own gitdir, pointed at the victim's common dir, with a back link to itself.
   const x = fs.realpathSync.native(tmpdir('devflow-forged-'))
-  fs.writeFileSync(path.join(x, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  fs.writeFileSync(path.join(x, '.devflow.json'), '{}')
   fs.mkdirSync(path.join(x, 'wt'))
   fs.writeFileSync(path.join(x, '.git'), 'gitdir: wt\n')
   fs.writeFileSync(path.join(x, 'wt', 'commondir'), path.join(victim, '.git') + '\n')
   fs.writeFileSync(path.join(x, 'wt', 'gitdir'), '../.git\n')
   fs.writeFileSync(path.join(x, 'wt', 'HEAD'), 'ref: refs/heads/feat/99-y\n')
-  assert.equal(decision(hook.handle(pre(x, 'gh issue close 1'))), 'deny')
+  assert.equal(decision(hook.handle(pre(x, 'gh issue comment 1'))), 'deny')
   assert.deepEqual(guards(victim, 99), [])
   assert.deepEqual(guards(victim, 7), [])
   // Pointed at a real worktree's gitdir in the victim: the back link there names that worktree, not this folder.
   const real = sibling()
   git(victim, 'worktree', 'add', '-q', '-b', 'fix/7-real', real)
   const y = fs.realpathSync.native(tmpdir('devflow-forged-'))
-  fs.writeFileSync(path.join(y, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  fs.writeFileSync(path.join(y, '.devflow.json'), '{}')
   fs.writeFileSync(path.join(y, '.git'), `gitdir: ${path.join(victim, '.git', 'worktrees', path.basename(real))}\n`)
-  hook.handle(pre(y, 'gh issue close 1'))
+  hook.handle(pre(y, 'gh issue comment 1'))
   assert.deepEqual(guards(victim, 7), [], 'a gitdir whose back link names another worktree')
 })
 
 test('a crafted commondir on a network path is never opened (#14 security review)', () => {
   const x = fs.realpathSync.native(tmpdir('devflow-forged-'))
-  fs.writeFileSync(path.join(x, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
-  const expected = hook.handle(pre(x, 'gh issue close 1'))
+  fs.writeFileSync(path.join(x, '.devflow.json'), '{}')
+  const expected = hook.handle(pre(x, 'gh issue comment 1'))
   fs.mkdirSync(path.join(x, 'wt'))
   fs.writeFileSync(path.join(x, '.git'), 'gitdir: wt\n')
   const bs = String.fromCharCode(92)
@@ -725,7 +783,7 @@ test('a crafted commondir on a network path is never opened (#14 security review
   const spy = name => { const real = fs[name]; fs[name] = (p, ...a) => { if (/^(\\\\|\/\/)/.test(String(p))) seen.push(name); return real(p, ...a) }; return () => { fs[name] = real } }
   const undo = ['lstatSync', 'statSync', 'openSync', 'readFileSync', 'existsSync'].map(spy)
   try {
-    assert.equal(hook.handle(pre(x, 'gh issue close 1')), expected)
+    assert.equal(hook.handle(pre(x, 'gh issue comment 1')), expected)
   } finally {
     undo.forEach(u => u())
   }
@@ -737,36 +795,35 @@ test('a main work tree with a commit without .devflow.json checked out still tak
   const wt = sibling()
   git(d, 'worktree', 'add', '-q', '-b', 'fix/7-wt', wt)
   fs.rmSync(path.join(d, '.devflow.json'))
-  hook.handle(pre(wt, 'gh issue close 1'))
+  hook.handle(pre(wt, 'gh issue comment 1'))
   assert.deepEqual(guards(d, 7), ['issue-write'])
   assert.equal(fs.existsSync(path.join(wt, '.work')), false)
 })
 
 test('a separate git dir is no main work tree, even inside a devflow folder (#14)', () => {
   const base = fs.realpathSync.native(tmpdir('devflow-sep-'))
-  fs.writeFileSync(path.join(base, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  fs.writeFileSync(path.join(base, '.devflow.json'), '{}')
   git(base, 'init', '-q', '--separate-git-dir', path.join(base, 'gd'), 'main')
   const main = path.join(base, 'main')
-  fs.writeFileSync(path.join(main, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  fs.writeFileSync(path.join(main, '.devflow.json'), '{}')
   git(main, 'add', '.devflow.json')
   git(main, 'commit', '-q', '-m', 'a')
   const wt = sibling()
   git(main, 'worktree', 'add', '-q', '-b', 'fix/7-wt', wt)
-  hook.handle(pre(wt, 'gh issue close 1'))
+  hook.handle(pre(wt, 'gh issue comment 1'))
   assert.deepEqual(guards(base, 7), [], 'not the folder above the git dir')
   assert.deepEqual(guards(wt, 7), ['issue-write'], 'the worktree in hand, as before')
 })
 
 test('a folder link to a network path inside the gitdir is not followed (2026-10-02 re-review)', t => {
   const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
-  const expected = hook.handle(pre(d, 'gh issue close 1'))
+  const expected = hook.handle(pre(d, 'gh issue comment 1'))
   const bs = String.fromCharCode(92)
   const target = bs + bs + 'devflow-no-such-host' + bs + 'share'
   try { fs.symlinkSync(target, path.join(d, 'l'), 'dir') } catch { return t.skip('folder symlinks need privileges here') }
   // The real target must not be needed: lstat of the link itself is local, and its text names a network path.
   fs.writeFileSync(path.join(d, '.git'), 'gitdir: ' + path.join(d, 'l'))
-  assert.equal(hook.handle(pre(d, 'gh issue close 1')), expected)
+  assert.equal(hook.handle(pre(d, 'gh issue comment 1')), expected)
   assert.equal(hook.localPath(path.join(d, 'l', 'HEAD')), false)
   assert.equal(hook.localPath(path.join(d, '.devflow.json')), true)
 })
@@ -793,20 +850,15 @@ test('a chain of links is judged by every link in it, up to a limit (#53)', t =>
   assert.equal(hook.localPath(path.join(d, 'N1', 'N2', 'N3', 'N4', 'x')), true, 'four nested relative links')
 })
 
-test('an unreadable profile applies the same repair exception to shell and edit writes', () => {
+test('unreadable profiles allow shell and edit writes', () => {
   const d = dir(true)
-  const run = c => hook.handle(pre(d, c))
-  for (const profile of ['{ broken', '{"protected":42}', 'null']) {
+  for (const profile of ['{ broken', 'null', '[]', '"x"', '42', 'true']) {
     fs.writeFileSync(path.join(d, '.devflow.json'), profile)
-    for (const c of ['echo x > src.md', 'rm -rf .', 'cp src.md notes.md', 'bash -c "rm _ref/x"',
-      'Set-Content notes.md x', 'echo x > .devflow.json; echo x > src.md']) {
-      const out = run(c)
-      assert.equal(decision(out), 'deny', c)
-      assert.match(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /fix .devflow.json first/)
+    for (const command of ['echo x > src.md', 'rm -rf .', 'Set-Content .devflow.json "{}"']) {
+      assert.equal(hook.handle(pre(d, command)), '', profile)
     }
-    for (const c of ['cat < _ref/x', 'git status', 'echo "{}" > .devflow.json',
-      'Set-Content .devflow.json "{}"', 'cp fixed.json .devflow.json']) assert.equal(run(c), '', c)
-    assert.equal(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: path.join(d, '.devflow.json') } })), '')
+    assert.equal(hook.handle(event('PreToolUse', d, { tool_name: 'Edit', tool_input: { file_path: 'src.md' } })), '', profile)
+    assert.equal(decision(hook.handle(pre(d, 'gh issue comment 1 --body x'))), 'deny', profile)
   }
 })
 
@@ -814,9 +866,9 @@ test('large and non-regular profiles are unreadable without being opened', t => 
   const d = dir(true)
   const profile = path.join(d, '.devflow.json')
   const checkProfile = () => {
-    assert.equal(decision(hook.handle(pre(d, 'echo x > src.md'))), 'deny')
+    assert.equal(hook.handle(pre(d, 'echo x > src.md')), '')
     assert.equal(hook.handle(pre(d, 'echo "{}" > .devflow.json')), '')
-    assert.equal(decision(hook.handle(pre(d, 'gh issue close 1'))), 'deny')
+    assert.equal(decision(hook.handle(pre(d, 'gh issue comment 1'))), 'deny')
   }
   fs.writeFileSync(profile, '{}' + ' '.repeat(256 * 1024))
   checkProfile()
@@ -835,7 +887,7 @@ test('large and non-regular profiles are unreadable without being opened', t => 
 test('the actual PreToolUse entry point denies analysis that runs past five seconds', () => {
   const d = gitRepo('fix/7-deadline')
   fs.writeFileSync(path.join(d, 'heavy.sh'), 'echo ok\n'.repeat(8000))
-  const command = 'bash heavy.sh;'.repeat(15000) + 'gh issue close 1'
+  const command = 'bash heavy.sh;'.repeat(15000) + 'gh issue comment 1'
   const started = Date.now()
   const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
     cwd: d, input: pre(d, command), encoding: 'utf8', timeout: 13000,
@@ -865,14 +917,14 @@ function startHook(partial) {
 }
 
 test('hook input that never finishes arriving is denied for a tool call within the input limit (#37)', async () => {
-  const r = await startHook('{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"gh issue close 1"')
+  const r = await startHook('{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"gh issue comment 1"')
   assert.equal(r.killed, false, 'the hook ends on its own')
   assert.ok(r.ms < 6000, `took ${r.ms} ms`)
   assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, 'deny')
 })
 
 test('stalled input that has not yet named its event is denied, failing closed (#37 review)', async () => {
-  for (const partial of ['', '{"tool_name":"Bash","tool_input":{"command":"gh issue close 1"']) {
+  for (const partial of ['', '{"tool_name":"Bash","tool_input":{"command":"gh issue comment 1"']) {
     const r = await startHook(partial)
     assert.equal(r.killed, false, JSON.stringify(partial))
     assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, 'deny', JSON.stringify(partial))
@@ -894,7 +946,7 @@ test('a FIFO profile cannot hold the hook open', { skip: process.platform === 'w
     cwd: d, input: pre(d, 'echo x > src.md'), encoding: 'utf8', timeout: 8000,
   })
   assert.equal(r.status, 0)
-  assert.equal(decision(r.stdout), 'deny')
+  assert.equal(r.stdout.trim(), '')
 })
 
 test('a FIFO ledger cannot hold the test-lock guard open; it counts as locked (#46)', { skip: process.platform === 'win32' }, () => {
@@ -911,13 +963,12 @@ test('a FIFO ledger cannot hold the test-lock guard open; it counts as locked (#
 })
 
 test('PowerShell content parameters cannot hide the actual write path', () => {
-  const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const d = lockedRepo(['_ref/**'])
   const run = c => hook.handle(pre(d, c, 'PowerShell'))
   assert.equal(decision(run('Set-Content -Encoding utf8 _ref/x.md x')), 'deny')
   assert.equal(decision(run('Set-Content -Value x -Path _ref/x.md')), 'deny')
   fs.writeFileSync(path.join(d, '.devflow.json'), '{ broken')
-  assert.equal(decision(run('Set-Content -Value .devflow.json src.md')), 'deny')
+  assert.equal(run('Set-Content -Value .devflow.json src.md'), '')
   assert.equal(run('Set-Content -Encoding utf8 .devflow.json "{}"'), '')
   assert.equal(run('Set-Content -Value "{}" .devflow.json'), '')
   assert.equal(run('Set-Content -LiteralPath .devflow.json -Value "{}"'), '')
@@ -925,20 +976,19 @@ test('PowerShell content parameters cannot hide the actual write path', () => {
 
 // Issue #48: PowerShell and cmd separate paths with a backslash, which the Bash reading drops as an escape. Codex sends
 // pwsh commands as Bash, so a path word is checked in both readings.
-test('backslash paths count as paths: protected folders, locked tests and scripts (#48)', () => {
-  const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+test('backslash paths count as paths: locked tests and scripts (#48)', () => {
+  const d = lockedRepo(['_ref/**'])
   for (const tool of ['PowerShell', 'Bash']) {
     for (const c of ['Remove-Item -Recurse .\\_ref\\docs', 'Set-Content _ref\\a.md x', 'Remove-Item -Recurse "_ref\\docs"',
       'Set-Content -Path .\\_ref\\a.md -Value x', 'rm -rf _ref\\docs', 'echo x > _ref\\a.md', 'Copy-Item a.md _ref\\a.md']) {
       assert.equal(decision(hook.handle(pre(d, c, tool))), 'deny', `${tool}: ${c}`)
     }
   }
-  // The Bash reading still holds where no backslash path is protected.
+  // The Bash reading still holds where no backslash path is locked.
   assert.equal(hook.handle(pre(d, 'rm -rf build\\ dir')), '')
   assert.equal(hook.handle(pre(d, 'echo a\\ b > out.txt')), '')
   fs.mkdirSync(path.join(d, 'scripts'))
-  fs.writeFileSync(path.join(d, 'scripts', 'post.ps1'), 'gh issue close 1\n')
+  fs.writeFileSync(path.join(d, 'scripts', 'post.ps1'), 'gh issue comment 1\n')
   assert.ok(check('& .\\scripts\\post.ps1', d))
   assert.ok(check('.\\scripts\\post.ps1', d))
   assert.ok(check('pwsh -File scripts\\post.ps1', d))
@@ -951,8 +1001,7 @@ test('backslash paths count as paths: protected folders, locked tests and script
 })
 
 test('backslash paths inside a script handed to a shell, decoy scripts, and paths outside the root (#48 review)', () => {
-  const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**', '**/secret/**'] }))
+  const d = lockedRepo(['_ref/**', '**/secret/**'])
   for (const tool of ['PowerShell', 'Bash']) {
     for (const c of ['pwsh -Command "Remove-Item -Recurse .\\_ref\\docs"', 'cmd /c del _ref\\a.md',
       'powershell -c "Set-Content _ref\\a.md x"', 'Invoke-Expression "Remove-Item .\\_ref\\a.md"']) {
@@ -960,8 +1009,8 @@ test('backslash paths inside a script handed to a shell, decoy scripts, and path
     }
   }
   fs.mkdirSync(path.join(d, 'scripts'))
-  fs.writeFileSync(path.join(d, 'scripts', 'post.ps1'), 'gh issue close 1\n')
-  fs.writeFileSync(path.join(d, 'scripts', 'post.cmd'), 'gh issue close 1\n')
+  fs.writeFileSync(path.join(d, 'scripts', 'post.ps1'), 'gh issue comment 1\n')
+  fs.writeFileSync(path.join(d, 'scripts', 'post.cmd'), 'gh issue comment 1\n')
   assert.ok(check('pwsh -c "& .\\scripts\\post.ps1"', d))
   assert.ok(check('powershell .\\scripts\\post.ps1', d))
   assert.ok(check('cmd /c .\\scripts\\post.cmd', d))
@@ -970,7 +1019,7 @@ test('backslash paths inside a script handed to a shell, decoy scripts, and path
     fs.writeFileSync(path.join(d, '.scriptspost.ps1'), decoy)
     assert.ok(check('& .\\scripts\\post.ps1', d), JSON.stringify(decoy))
   }
-  // Another drive or a share is outside the repository, whatever the protected globs say. The drive is assembled so the
+  // Another drive or a share is outside the repository, whatever the test globs say. The drive is assembled so the
   // source holds no absolute path (doctor's local-path check).
   const drive = ['C', ':'].join('')
   // A drive letter with forward slashes names a drive only on Windows; elsewhere it is a relative path inside the
@@ -982,8 +1031,7 @@ test('backslash paths inside a script handed to a shell, decoy scripts, and path
 })
 
 test('Windows spellings of a path inside the repository stay inside it, and shares are not read (#48 security review)', { skip: process.platform !== 'win32' }, () => {
-  const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const d = lockedRepo(['_ref/**'])
   const inside = path.join(d, '_ref', 'a.md')
   for (const p of [`\\\\?\\${inside}`, `\\\\.\\${inside}`]) {
     assert.equal(decision(hook.handle(pre(d, `Remove-Item ${p}`, 'PowerShell'))), 'deny', p)
@@ -1032,8 +1080,7 @@ test('a profile link to a device is not opened', t => {
     cwd: d, input: pre(d, 'echo x > src.md'), encoding: 'utf8', timeout: 8000,
   })
   assert.equal(r.status, 0)
-  assert.equal(decision(r.stdout), 'deny')
-  assert.match(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason, /fix .devflow.json first/)
+  assert.equal(r.stdout.trim(), '')
 })
 
 test('profile replacement or growth at open cannot bypass the type and byte limits', async t => {
@@ -1061,20 +1108,12 @@ test('profile replacement or growth at open cannot bypass the type and byte limi
       return open(p, ...args)
     }
     try {
-      assert.equal(decision(hook.handle(pre(d, 'echo x > src.md'))), 'deny', attack)
+      assert.equal(hook.handle(pre(d, 'echo x > src.md')), '', attack)
       assert.equal(changed, true, 'the race boundary was exercised')
     } finally { fs.openSync = open }
   })
 })
 
-test('non-object profile roots do not silently disable protection', () => {
-  const d = dir(true)
-  for (const profile of ['[]', '"x"', '42', 'true', '{"protected":false}', '{"protected":null}']) {
-    fs.writeFileSync(path.join(d, '.devflow.json'), profile)
-    assert.equal(decision(hook.handle(pre(d, 'echo x > src.md'))), 'deny', profile)
-    assert.equal(hook.handle(pre(d, 'echo "{}" > .devflow.json')), '', profile)
-  }
-})
 
 test('alias lookup consumes the remaining hook budget including profile inspection', () => {
   const d = dir(true)
@@ -1238,7 +1277,7 @@ test('SessionEnd leaves a sessions file behind a linked Issue folder alone (2026
 test('outside a devflow repository PreToolUse starts no analyzer and allows (#52)', () => {
   const d = dir(false)
   const r = spawnSync(process.execPath, ['-e', 'require(process.argv[1]).main()', path.resolve(__dirname, '../hooks/devflow-hook.js')], {
-    cwd: d, input: pre(d, 'gh issue close 1'), encoding: 'utf8', timeout: 8000, env: { ...process.env, DEVFLOW_HOOK_TIMING: '1' },
+    cwd: d, input: pre(d, 'gh issue comment 1'), encoding: 'utf8', timeout: 8000, env: { ...process.env, DEVFLOW_HOOK_TIMING: '1' },
   })
   assert.equal(r.status, 0)
   assert.equal(r.stdout.trim(), '')
@@ -1246,7 +1285,7 @@ test('outside a devflow repository PreToolUse starts no analyzer and allows (#52
 })
 
 test('late input from a project without devflow ends with no output; from a devflow project it is still denied (#52)', async () => {
-  const head = (cwd, rest = '"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"gh issue close 1"') =>
+  const head = (cwd, rest = '"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"gh issue comment 1"') =>
     `{"session_id":"s","cwd":${JSON.stringify(cwd)},${rest}`
   const outside = await startHook(head(dir(false)))
   assert.equal(outside.killed, false)
@@ -1271,13 +1310,12 @@ test('while tests are locked the profile is locked too, so dropping its tests ke
 
 // Issue #50: the command a test lock runs is checked like any other command.
 test('the command after "devflow-state tests <n> lock --" is checked by the guard (#50)', () => {
-  const d = dir(true)
-  fs.writeFileSync(path.join(d, '.devflow.json'), JSON.stringify({ protected: ['_ref/**'] }))
+  const d = lockedRepo(['_ref/**'])
   for (const lead of ['node bin/devflow-state', 'node "/plugin/bin/devflow-state"']) {
     assert.equal(decision(hook.handle(pre(d, `${lead} tests 1 lock -- rm -rf _ref/docs`))), 'deny', lead)
     assert.equal(hook.handle(pre(d, `${lead} tests 1 lock -- node --test tests/a.test.js`)), '', lead)
   }
-  assert.ok(check('node bin/devflow-state tests 1 lock -- gh issue close 1', d))
+  assert.ok(check('node bin/devflow-state tests 1 lock -- gh issue comment 1', d))
   // Review: spellings the shell reads as the same words, and devflow-state named more than once.
   for (const cmd of [
     "node bin/devflow-state te''sts 1 lock -- rm -rf _ref/docs",

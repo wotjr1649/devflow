@@ -1459,12 +1459,13 @@ function remark(ctx, n, text) {
   return { code: 0, out: `${ctx.repo}#${n} (${String(got.issue.state || '').toLowerCase()}) ${title}: ${r.out}` }
 }
 
-// The lines a ship checkpoint carries (Issue #50): whether the trigger eval ran, the measurement, and any test unlock.
-// Any stage word starting with "ship" counts, so "ship(부분)" is no way around it.
+// The lines a ship checkpoint carries (Issue #50): whether the trigger eval ran, and any test unlock. The measurement
+// line is optional, since only a measured cycle has one (#104). Any stage word starting with "ship" counts, so
+// "ship(부분)" is no way around it.
 function shipMissing(text, ledger) {
   const ls = lines(text)
   if (!/^### Checkpoint ship/i.test(ls[0] || '')) return ''
-  const need = [['"- 트리거 eval:"', /^-\s*트리거 eval\s*:/], ['"- 측정(v<n>):"', /^-\s*측정\(v\d+\)\s*:/]]
+  const need = [['"- 트리거 eval:"', /^-\s*트리거 eval\s*:/]]
   if ((Array.isArray(ledger.notes) ? ledger.notes : []).some(s => typeof s === 'string' && s.startsWith('tests unlocked:'))) {
     need.push(['"- 시험 잠금 해제"', /^-\s*시험 잠금 해제/])
   }

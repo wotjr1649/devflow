@@ -102,6 +102,13 @@ test('a profile that is not an object, and private paths that are not a list of 
   assert.deepEqual(failures(repo({ ...GOOD, '.devflow.json': '{ "private": ["docs/prompts/", "_ref/"] }\n' })), [])
 })
 
+test('obsolete protected profile keys are ignored regardless of value', () => {
+  for (const protectedValue of [['_ref/**'], 42, false, null]) {
+    const profile = JSON.stringify({ integration: 'pr-ci', protected: protectedValue })
+    assert.deepEqual(failures(repo({ ...GOOD, '.devflow.json': profile + '\n' })), [])
+  }
+})
+
 test('a skill reference over 5000 tokens fails the budget (#27)', () => {
   assert.ok(has(repo({ ...GOOD, 'skills/x/references/big.md': '가'.repeat(5200) + '\n' }), /^FAIL docs: skills\/x\/references\/big\.md: ~\d+ tokens, budget 5000$/))
 })

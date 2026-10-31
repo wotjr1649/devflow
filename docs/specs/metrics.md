@@ -1,7 +1,9 @@
 # 측정 계약
 
-사이클(Issue) 하나의 비용과 사람 개입을 매번 같은 방법으로 재고, 정해진 곳에 남긴다. 다음 사이클과 비교하는 것이
-목적이다([overview](../design/overview.md) 원칙 4). 이유와 대안: [ADR-0013](../design/decisions/ADR-0013-local-session-metrics.md)
+사이클(Issue) 하나의 비용과 사람 개입을 잰다. 재는 것은 선택이다: 사용자가 요청했거나 전후 비교의 표본으로 정한
+사이클만 잰다. 재는 사이클은 매번 같은 방법으로 재고 정해진 곳에 남겨 다른 사이클과 비교한다([overview](../design/overview.md)
+원칙 4). 이유와 대안: [ADR-0013](../design/decisions/ADR-0013-local-session-metrics.md),
+[ADR-0029](../design/decisions/ADR-0029-enforce-at-impact-boundaries.md)
 
 ## 범위
 
@@ -30,7 +32,7 @@
   - 알려진 차이: 주 작업 트리 안 레코드에서 Claude는 `gitBranch`(세션이 시작했거나 EnterWorktree로 들어간 작업 트리의
     브랜치)를 따르고 Codex는 reflog를 따른다. 그래서 Issue worktree의 세션이 다른 브랜치의 주 작업 트리에서 명령을 돌린
     레코드는 Claude에서만 들어간다.
-- 측정은 ship에서 통합하기 전에 Issue 브랜치에서 한다. 정리에서 worktree를 지우면 그 reflog도 사라지고, 호스트는 오래된
+- 재는 사이클은 ship에서 통합하기 전에 Issue 브랜치에서 잰다. 정리에서 worktree를 지우면 그 reflog도 사라지고, 호스트는 오래된
   기록을 지우기 때문이다. 통합 뒤의 단계는 측정 밖이다. 다시 재면 Issue 브랜치였던 worktree를 지운 뒤에는 값이 줄고,
   지운 경로가 다시 생기면 그 레코드는 주 작업 트리로 판정된다.
 - 기록에 응답으로 남지 않는 호스트 내부 호출(세션 제목, compact 요약 등), 다른 기기의 기록, eval 실행은 들어가지 않는다.
@@ -63,7 +65,7 @@
 
 ## 수동 지표
 
-일어난 즉시 `devflow-state metric <issue> <지표> < 메모`로 더한다. 이 명령이 장부 `metrics`의 그 지표를 1 늘리고 `notes`에
+재는 사이클에서는 일어난 즉시 `devflow-state metric <issue> <지표> < 메모`로 더한다. 이 명령이 장부 `metrics`의 그 지표를 1 늘리고 `notes`에
 메모를 한 줄 덧붙인다. compact 뒤에 다시 세지 않아도 되게 하기 위해서다. 잘못 셌으면 `--undo`로 1을 빼고 이유를 같은
 방식으로 남긴다(0 밑으로는 빼지 않는다).
 
@@ -72,7 +74,7 @@
 | `interventions` | 사용자가 에이전트의 단계, 경로, 방법, 산출물을 바로잡은 메시지 하나. 한 메시지에 여러 곳을 고쳐도 1이다 | 에이전트가 물은 질문의 답(선택지 밖의 답 포함), 원격 쓰기 승인, "계속", 새 요청, 사용자 지시 사항의 실행 |
 | `filterFalsePositives` | devflow의 결정적 장치(`devflow-state` 공개 필터와 쓰기 거부, PreToolUse 훅, `devflow-doctor`, pre-push 관문)가 정당한 동작을 막아 문구나 방법을 바꾼 일 하나 | 실제 위반을 막은 경우, 호스트·전역 지침의 거부 |
 
-`guardBlocks`는 자동이다. devflow 훅의 차단(Issue 쓰기, 보호 경로, 읽을 수 없는 프로필, 검사 실패)과 `devflow-state`의
+`guardBlocks`는 자동이다. devflow 훅의 차단(Issue 텍스트 쓰기, 시험 잠금, 검사 실패)과 `devflow-state`의
 거부가 그 Issue의 `.work/devflow/i<issue>/guard-events.jsonl`에 시각과 고정 id로 한 줄씩 남는다. 명령, 경로, 입력은
 남기지 않는다. 훅의 기록 대상은 [task worktree](ledger.md#task-worktree) 귀속 판정을 따른다. 자기 Issue 브랜치 또는
 연결이 확인된 위임의 Issue에만 기록하며, Issue 없는 독립 worktree는 주 작업 트리의 Issue를 빌리지 않는다. 연결이

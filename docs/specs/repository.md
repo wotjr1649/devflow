@@ -123,22 +123,20 @@ Generated files and anything CI already enforces.
 
 ## .devflow.json
 
-doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다. 이 파일이 있는 저장소에서만 재개 카드와 Issue 훅이
-동작한다.
+doctor·훅의 기계용 값만 담고 권한은 담지 않는다. 이 파일이 있는 저장소에서만 재개 카드·Issue 훅이 동작한다.
 
 ```json
 {
   "integration": "pr-ci",
   "branch": "{type}/{issue}-{slug}",
   "private": ["docs/prompts/", "docs/plans/", "artifacts/", ".work/", "_ref/"],
-  "protected": ["_ref/**"],
   "highRisk": ["<인증·권한·암호·훅·의존성 경로>"],
   "checks": { "src/**": "<명령>", "**/*.md": "<명령>" },
   "verify": "<한 줄 전체 검사 명령>"
 }
 ```
 
-훅의 프로필 읽기, 분석 시간 제한, 셸 쓰기 대상 판정과 한계는 [hooks](hooks.md)가 정한다.
+프로필 읽기·분석 제한·경로 판정과 한계는 [hooks](hooks.md)를 따른다. `protected`는 값과 무관하게 무시한다.
 `checks`(build가 고르는 지도, 실행기 없음), `verify`(통합 관문), `tests`(재현 시험 잠금), `highRisk`(설계·보안
 리뷰)는 테스트 유지 기준이 아니다.
 
@@ -162,8 +160,8 @@ doctor와 훅이 읽는 기계용 값만 담는다. 권한은 담지 않는다. 
 `lock -- <시험 명령>`은 그 명령을 셸 없이 호출한 폴더에서(훅이 경로를 해석한 곳) 돌려 실패(0이 아닌 종료 코드)를 봐야만 잠그고, 통과하거나
 실행되지 않으면(Windows의 `.cmd` 실행기는 셸 없이 뜨지 않는다) 거부한다. 명령이 시험 파일을 바꿔도 거부한다. 로컬에서
 건너뛰는 시험은 시험 커밋을 먼저 push해 이 저장소의 CI 실행 URL을 stdin으로 준다. 이미 잠겨 있으면 아무것도 돌리지
-않는다. 증거는 `testsLocked.failing`에 남고, 훅은 `devflow-state` 뒤 첫 `--` 다음의 명령도 다른 명령처럼 검사한다. 잠기면 훅이 이 glob을 `protected`처럼 다뤄 편집 도구와 알아보는
-셸 쓰기와 장부 파일·`.devflow.json` 쓰기를 막고(차단 기록 `test-locked`), doctor는 Issue 브랜치에서 그 커밋 뒤로 바뀌거나 새로 생기거나
+않는다. 증거는 `testsLocked.failing`에 남고, 훅은 `devflow-state` 뒤 첫 `--` 다음의 명령도 다른 명령처럼 검사한다. 잠기면 훅이 이 glob 경로의 편집과 알아보는
+셸 쓰기, 장부 파일·`.devflow.json` 쓰기를 막고(차단 기록 `test-locked`), doctor는 Issue 브랜치에서 그 커밋 뒤로 바뀌거나 새로 생기거나
 이름이 바뀐 시험 파일과 `.devflow.json`을 실패로 낸다. 장부가 잠금을 말하면 프로필에서 `tests`를 지워도 이 검사는 남는다(#52). verify와 ship은 Issue 브랜치에서 doctor를 돌리므로 훅이 놓친 셸 편집이 거기서
 드러난다(main의 pre-push와 CI에는 장부가 없어 이 검사가 없다). 커밋하지 않은 시험이 있으면 잠그지 않는다. 시험 자체가
 틀렸거나, 리뷰 지적이나 다음 작업의 재현 시험을 더할 때는 `tests <n> unlock`에 이유를 주어 풀고, 시험을 커밋한 뒤 같은

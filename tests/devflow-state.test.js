@@ -1535,7 +1535,7 @@ test('a criteria heading hidden in a comment is skipped for check, carry and the
 })
 
 // Issue #50: a ship checkpoint carries the lines the ship steps require, or it is not posted.
-test('a ship checkpoint without the trigger eval, measurement or (after an unlock) unlock line is refused (#50)', () => {
+test('a ship checkpoint without the trigger eval or (after an unlock) unlock line is refused; measurement is optional (#50, #104)', () => {
   const root = repo({ ledger: { stage: 'ship', notes: [] } })
   const e = env(root)
   const post = text => state.main(['comment', '1'], () => text, e, '.')
@@ -1545,9 +1545,9 @@ test('a ship checkpoint without the trigger eval, measurement or (after an unloc
   let r = post(ship(measured))
   assert.equal(r.code, 1)
   assert.match(r.out, /ship checkpoint .*"- 트리거 eval:"/)
-  assert.match(post(ship(evalLine)).out, /"- 측정\(v<n>\):"/)
   assert.equal(post(ship(measured).replace('Checkpoint ship', 'Checkpoint ship(부분)')).code, 1, 'a variant of the stage word is still a ship')
   assert.equal(post(ship(evalLine, measured)).code, 0)
+  assert.equal(post(ship(evalLine)).code, 0, 'an unmeasured cycle needs no measurement line')
   assert.equal(post(checkpoint('ship 아님')).code, 0, 'other stages are not checked')
   fs.writeFileSync(path.join(root, '.work/devflow/i1/ledger.json'), JSON.stringify({ stage: 'ship', notes: ['tests unlocked: a review reproduction test'] }))
   r = post(ship(evalLine, measured))

@@ -403,26 +403,33 @@ function ghWrite(args, ctx, depth) {
   return ghWrite([...flatten([word(expansion)]), ...rest], ctx, depth + 1)
 }
 
-function httpWrite(args, ctx) {
+function httpWrite(args, ctx, client) {
   const src = args.map(a => a.text).join(' ')
   if (!HTTP_ISSUES.test(src) && !HTTP_GRAPHQL.test(src)) return null
   const payloads = []
+  const httpie = client === 'http' || client === 'https'
   let method = null
   for (let i = 0; i < args.length; i++) {
-    const verb = /^(?:--request|-Method)(?:=([\s\S]*))?$|^-X([\s\S]*)$/i.exec(args[i].text)
+    if (httpie && i === 0 && /^(GET|HEAD|OPTIONS|POST|PATCH|PUT|DELETE)$/i.test(args[i].text)) {
+      method = args[i].text
+      continue
+    }
+    const verb = /^(?:--request|--method|-Method)(?:=([\s\S]*))?$|^-X([\s\S]*)$/i.exec(args[i].text)
     if (verb) {
       method = verb[1] || verb[2] || args[++i]?.text || ''
       continue
     }
-    const m = /^(--data[\w-]*|--json|-Body|--input|-InFile)(?:=([\s\S]*))?$|^(-d)([\s\S]*)$/i.exec(args[i].text)
-    if (!m) continue
-    const value = m[2] || m[4]
-    const payload = value ? { ...args[i], text: value } : args[++i]
+    const item = httpie && /^(title|body|query)(:=|=)([\s\S]*)$/.exec(args[i].text)
+    const m = /^(--data[\w-]*|--(?:post|body)-(?:data|file)|--json|-Body|--input|-InFile)(?:=([\s\S]*))?$|^(-d)([\s\S]*)$/i.exec(args[i].text)
+    if (!item && !m && !(httpie && args[i].text.startsWith('@'))) continue
+    const value = item ? item[3] : m ? m[2] ?? (m[4] || undefined) : args[i].text
+    const payload = value === undefined ? args[++i] : { ...args[i], text: value }
     if (!payload) continue
-    const file = /^(--input|-InFile)$/i.test(m[1]) ? payload.text
+    const file = /^(--input|-InFile|--(?:post|body)-file)$/i.test(m?.[1]) ? payload.text
       : payload.text.startsWith('@') && !payload.text.startsWith('@{') ? payload.text.slice(1) : null
-    payloads.push(...(payload.dynamic ? [''] : file === null ? [payload.text]
-      : (ctx.cwds || [ctx.cwd]).map(cwd => readScript(cwd, file))))
+    const texts = payload.dynamic ? [''] : file === null ? [payload.text]
+      : (ctx.cwds || [ctx.cwd]).map(cwd => readScript(cwd, file))
+    payloads.push(...texts.map(text => item ? JSON.stringify({ [item[1]]: text }) : text))
   }
   if (HTTP_GRAPHQL.test(src)) {
     return payloads.some(p => {
@@ -558,7 +565,7 @@ function checkCommand(cmd, ctx, depth) {
     const n = names[k]
     let r = null
     if (n === 'gh') r = ghWrite(k === lead ? words.slice(k + 1) : flatten(words.slice(k + 1)), ctx, depth)
-    else if (/^(curl|wget|http|https|invoke-restmethod|invoke-webrequest|irm|iwr)$/.test(n)) r = httpWrite(words.slice(k + 1), ctx)
+    else if (/^(curl|wget|http|https|invoke-restmethod|invoke-webrequest|irm|iwr)$/.test(n)) r = httpWrite(words.slice(k + 1), ctx, n)
     else if (k === lead && (SH.has(n) || PWSH.has(n) || EVALS.has(n) || SOURCERS.has(n) || n === 'cmd')) r = shellWrite(cmd, k, ctx, depth)
     else if (k > lead && (SH.has(n) || PWSH.has(n) || n === 'cmd') && words.slice(k + 1).some(a => SCRIPT_FLAG.test(a.text))) {
       // A shell started by another command (xargs, sudo, Start-Process) counts when it is given a script.

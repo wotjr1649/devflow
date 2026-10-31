@@ -264,6 +264,52 @@ test('Issue text flags block while state and metadata operations pass', () => {
   ]) assert.ok(check(c), c)
 })
 
+test('wget payload flags block Issue text and allow state-only writes', () => {
+  const d = dir(true)
+  const endpoint = 'https://api.github.com/repos/o/r/issues/1/comments'
+  fs.writeFileSync(path.join(d, 'text.json'), JSON.stringify({ body: 'x' }))
+  fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify({ state: 'closed' }))
+  for (const flag of ['--post-data', '--body-data']) {
+    assert.ok(check(`wget --method=POST ${flag}='{"body":"x"}' ${endpoint}`, d), flag)
+    assert.equal(check(`wget --method PATCH ${flag}='{"state":"closed"}' ${endpoint}`, d), null, flag)
+    assert.ok(check(`wget --method POST ${flag} "$PAYLOAD" ${endpoint}`, d), flag)
+  }
+  for (const flag of ['--post-file', '--body-file']) {
+    assert.ok(check(`wget --method POST ${flag}=text.json ${endpoint}`, d), flag)
+    assert.equal(check(`wget --method=PATCH ${flag} state.json ${endpoint}`, d), null, flag)
+    assert.ok(check(`wget --method POST ${flag} missing.json ${endpoint}`, d), flag)
+  }
+})
+
+test('HTTPie items and static files enforce the REST and GraphQL text boundary', () => {
+  const d = dir(true)
+  const endpoint = 'https://api.github.com/repos/o/r/issues/1/comments'
+  const graphql = 'https://api.github.com/graphql'
+  const query = 'mutation { addComment(input:{}) { clientMutationId } }'
+  fs.writeFileSync(path.join(d, 'body.txt'), 'x')
+  fs.writeFileSync(path.join(d, 'text.json'), JSON.stringify({ body: 'x' }))
+  fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify({ state: 'closed' }))
+  fs.writeFileSync(path.join(d, 'query.txt'), query)
+  fs.writeFileSync(path.join(d, 'query.json'), JSON.stringify({ query }))
+  for (const client of ['http', 'https']) {
+    for (const item of ['body=x', 'title=x', 'body:="x"', 'body=@body.txt', 'body:=@body.txt',
+      '@text.json', '@missing.json', 'body="$BODY"', '@"$FILE"']) {
+      assert.ok(check(`${client} POST ${endpoint} ${item}`, d), item)
+    }
+    for (const item of ['state=closed', '@state.json']) {
+      assert.equal(check(`${client} PATCH ${endpoint} ${item}`, d), null, item)
+    }
+    assert.equal(check(`${client} GET ${endpoint} body=x`, d), null)
+    for (const item of [`query='${query}'`, 'query=@query.txt', 'query:=@query.txt', '@query.json']) {
+      assert.ok(check(`${client} POST ${graphql} ${item}`, d), item)
+    }
+    for (const item of ['query="$QUERY"', 'query=@missing.txt', '@missing.json', '@"$FILE"',
+      "query='mutation { resolveReviewThread(input:{}) { clientMutationId } }'"]) {
+      assert.equal(check(`${client} POST ${graphql} ${item}`, d), null, item)
+    }
+  }
+})
+
 test('unreadable and cyclic gh aliases pass', () => {
   const env = { run: () => ({ code: 0, stdout: 'a: b\nb: a\n' }) }
   assert.equal(hook.issueWrite('gh a 1', { env }), null)

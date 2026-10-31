@@ -1,7 +1,7 @@
 # 저장소 계약
 
-devflow가 프로젝트에 설치하고 `devflow-doctor`가 검사하는 구조, ignore·attributes 블록, AGENTS.md 형식,
-기계용 프로필을 정한다.
+devflow가 프로젝트에 권장하는 구조, ignore·attributes 블록, AGENTS.md 형식, 기계용 프로필을 정한다. 이를 검사하는
+실행기는 없다([ADR-0031](../design/decisions/ADR-0031-guidance-over-enforcement.md)).
 
 ## 폴더
 
@@ -23,23 +23,23 @@ devflow가 프로젝트에 설치하고 `devflow-doctor`가 검사하는 구조,
 
 ### Issue 폴더
 
-Issue 폴더(`.work/devflow/i<issue>/`: 장부, 차단 기록, 세션 기록, 잠금)는 주 작업 트리에 둔다(#14). worktree를 지워도
+Issue 폴더(`.work/devflow/i<issue>/`: 장부, 세션 기록, 잠금)는 주 작업 트리에 둔다(#14). worktree를 지워도
 남고, 어느 worktree의 세션이든 같은 장부와 잠금을 쓰게 하기 위해서다.
 
 - 주 작업 트리는 git 기록으로 정한다. 지금 작업 트리가 연결된 worktree이고, 그 gitdir이 저장소 `.git/worktrees/` 바로
   아래에 있으며, 거기의 되돌림 링크(`gitdir` 파일)가 이 worktree의 `.git`을 가리키면 그 `.git`의 부모가 주 작업 트리다.
   그 밖(주 작업 트리 자신, separate git dir나 bare 배치, 확인되지 않는 worktree)은 지금 작업 트리에 둔다.
-  `devflow-state`, 훅, `devflow-metrics`가 같은 판정을 쓴다. 압축 파일에 든 `.git` 파일은 남의 저장소 `worktrees` 폴더에
+  `devflow-state`와 훅이 같은 판정을 쓴다. 압축 파일에 든 `.git` 파일은 남의 저장소 `worktrees` 폴더에
   쓸 수 없으므로, 이 판정으로 남의 저장소를 가리킬 수 없다. 훅은 파일 시스템에 묻기 전에 경로 문자열부터 확인한다.
 - 훅은 git 메타데이터를 읽기 전에 로컬 경로인지 확인하고, 작은 일반 파일만 읽는다. 공유 경로·링크·위조된 되돌림 링크는
   주 작업 트리의 근거로 쓰지 않는다. SessionEnd는 git 프로세스 없이 이 판정으로 세션을 해제한다([ledger](ledger.md#동시-세션)).
-- Issue 브랜치가 아닌 linked worktree는 주 작업 트리 브랜치의 Issue를 빌리지 않는다. M3 연결은
-  [task worktree](ledger.md#task-worktree)를 따른다.
+- Issue 브랜치가 아닌 linked worktree는 주 작업 트리 브랜치의 Issue를 빌리지 않는다. M3의 task worktree는 장부와 Issue에
+  쓰지 않는다([ledger](ledger.md)).
 - worktree에만 옛 Issue 폴더가 있으면 재개 카드가 옮기라고 경고하고, 옮길 때까지 그 Issue의 장부와 Issue 쓰기를 거부한다.
 
 ## .gitignore 관리 블록
 
-`devflow-doctor`는 표시 사이의 내용만 비교하고 고치지 않는다. 블록 밖은 프로젝트 소유다.
+표시 사이가 devflow의 권장 내용이고, 블록 밖은 프로젝트 소유다.
 
 ```gitignore
 # >>> devflow (managed)
@@ -54,7 +54,7 @@ CLAUDE.local.md
 # <<< devflow
 ```
 
-블록은 이미 추적되는 비공개 경로를 막지 못한다(doctor가 `git ls-files`로 찾아 실패로 보고).
+블록은 이미 추적되는 비공개 경로를 막지 못한다. `git ls-files`로 확인한다.
 
 ## .gitattributes 기본값
 
@@ -80,7 +80,7 @@ CLAUDE.local.md
 | When you are… | Read |
 
 ## Commands
-- 빌드·테스트 명령과 정상 출력 예시. 경로별 검사는 .devflow.json의 checks
+- 빌드·테스트 명령과 정상 출력 예시
 - (선택) 검사 단계·확대 조건, 새 테스트를 남길 기준·위치, 영역별 검증 문서
 
 ## Boundaries
@@ -91,8 +91,8 @@ CLAUDE.local.md
 ## Gotchas
 ```
 
-- 에이전트가 읽는 글이라 영어로 쓴다([documents](documents.md#에이전트가-읽는-글)). doctor는 `## Commands`와
-  `## Boundaries`를 필수 절로 본다. `(선택)`은 필수 관문·실패 재현 시험을 대신하지 않는다.
+- 에이전트가 읽는 글이라 영어로 쓴다([documents](documents.md#에이전트가-읽는-글)). `## Commands`와 `## Boundaries`는
+  필수 절이다. `(선택)`은 필수 관문·실패 재현 시험을 대신하지 않는다.
 
 - 한 페이지를 넘기지 않는다. 사용자 전역 지침의 내용은 다시 적지 않는다.
 - **권한 문장은 AGENTS.md에 둔다.** 예: "이 저장소 Issue의 현재 상태 블록과 체크포인트는 묻지 않고 갱신한다."
@@ -123,71 +123,29 @@ Generated files and anything CI already enforces.
 
 ## .devflow.json
 
-doctor·훅의 기계용 값만 담고 권한은 담지 않는다. 이 파일이 있는 저장소에서만 재개 카드·자율 계속·세션 해제 훅이 동작한다.
+기계용 값만 담고 권한은 담지 않는다. 이 파일이 있는 저장소에서만 재개 카드·자율 계속·세션 해제 훅이 동작한다.
 
 ```json
 {
   "integration": "pr-ci",
   "branch": "{type}/{issue}-{slug}",
-  "private": ["docs/prompts/", "docs/plans/", "artifacts/", ".work/", "_ref/"],
-  "highRisk": ["<인증·권한·암호·훅·의존성 경로>"],
-  "checks": { "src/**": "<명령>", "**/*.md": "<명령>" },
   "verify": "<한 줄 전체 검사 명령>"
 }
 ```
 
-훅의 입력 읽기·세션 해제 경로 판정과 한계는 [hooks](hooks.md)를 따른다. `protected`는 값과 무관하게 무시한다.
-`checks`(build가 고르는 지도, 실행기 없음), `verify`(통합 관문), `tests`(재현 시험 잠금), `highRisk`(설계·보안
-리뷰)는 테스트 유지 기준이 아니다.
+- `integration`: `pr-ci`, `local-merge`, `push-on-request` 중 하나. 통합 방식을 정한다.
+- `branch`: Issue 브랜치 이름 형식. 장부와 재개 카드는 이름 속 Issue 번호로 브랜치의 Issue를 찾는다.
+- `verify`: 통합 관문인 한 줄 전체 검사 명령. ship, pre-push, CI가 돌린다.
+
+0.4.0에서 지운 키(`tests`, `highRisk`, `checks`, `private`, `allowLocalPaths`, `specs`, `decisions`, `agentsMd`,
+`protected`)는 남아 있어도 오류 없이 무시한다. 시험 잠금은 없다. 시험 변경은 리뷰가 본다
+([ADR-0031](../design/decisions/ADR-0031-guidance-over-enforcement.md)). 훅의 입력 읽기·세션 해제 경로 판정과 한계는
+[hooks](hooks.md)를 따른다.
 
 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업 트리가 깨끗하고 push하는 커밋이 HEAD일 때만 `verify`를
 돌리고, 실패하면 push를 막는다. ref 삭제만 하는 push에는 검사할 커밋이 없으므로 돌리지 않는다(#53). 검사 자식에게는 Git이 넘긴 저장소 지정 환경을 제거해, 임시 저장소 검사가 실제 저장소를 바꾸지 않게 한다. 이 관문이 통합 때의 검사 기록을 대신한다. CI의 필수 여부는 프로젝트가 정한다. devflow 자체의 기준은 [통합과 CI](#통합과-ci)를 따른다. 훅을 켜는 `git config core.hooksPath .githooks`는
 클론마다 하고(호스트 설정이 아닌 저장소 설정이지만 훅을 켜는 일이라 소유자 지시로 한다), 훅이 꺼진 클론에서는 통합
 커밋에 검사 줄을 쓴다.
-
-`integration` 값은 `pr-ci`, `local-merge`, `push-on-request` 중 하나다. AGENTS.md를 비공개로 운영하면 ignore에 추가하고
-`"agentsMd": "private"`을 적는다. 그러면 AGENTS.md는 필수 경로가 아니고, 추적되면 실패다. `private`는 기본 목록을 대신하는
-경로 접두어 목록(저장소 안, `/`로 구분)이고, 비우면 doctor가 경고한다. 다른 저장소에 맞추는 값(#23):
-
-- `specs`, `decisions`: 계약과 결정 기록 폴더. 기본은 `docs/specs`, `docs/design/decisions`이고, 다른 폴더(저장소 안,
-  `/`로 구분, `.`·`..` 없음)를 적거나 그런 폴더를 두지 않으면 `false`를 적는다. spec 크기 예산은 `specs` 폴더를 따르고 `false`면 적용하지 않는다.
-- `allowLocalPaths`: 로컬 절대 경로를 담아도 되는 파일의 glob 목록(제품이 정당하게 담은 시스템 경로). 이 파일에서도
-  사용자 홈 아래 경로는 실패이고(POSIX 홈은 웹 경로와 구별하려고 이름 뒤 `/`가 있을 때만), 지침 파일(AGENTS.md,
-  SKILL.md, `.claude/rules`, 에이전트 정의)에는 적용하지 않는다.
-
-`tests`는 시험 파일의 glob 목록이다(#20). 적은 프로젝트만 수정 작업 중 시험을 잠글 수 있다. 재현 시험을 쓰고 커밋한 뒤
-`devflow-state tests <n> lock`이 장부에 그 커밋을 남긴다. 잠금은 고치기 전에 시험이 실패했다는 증거를 요구한다(#50).
-`lock -- <시험 명령>`은 그 명령을 셸 없이 호출한 폴더에서 돌려 실패(0이 아닌 종료 코드)를 봐야만 잠그고, 통과하거나
-실행되지 않으면(Windows의 `.cmd` 실행기는 셸 없이 뜨지 않는다) 거부한다. 명령이 시험 파일을 바꿔도 거부한다. 로컬에서
-건너뛰는 시험은 시험 커밋을 먼저 push해 이 저장소의 CI 실행 URL을 stdin으로 준다. 이미 잠겨 있으면 아무것도 돌리지
-않는다. 증거는 `testsLocked.failing`에 남는다. 훅은 잠금 여부와 관계없이 시험·장부·`.devflow.json` 쓰기를 차단하지 않는다.
-doctor는 Issue 브랜치에서 그 커밋 뒤로 바뀌거나 새로 생기거나
-이름이 바뀐 시험 파일과 `.devflow.json`을 실패로 낸다. 장부가 잠금을 말하면 프로필에서 `tests`를 지워도 이 검사는 남는다(#52). verify와 ship은 Issue 브랜치에서 doctor를 돌리므로 시험 편집이 거기서
-드러난다(main의 pre-push와 CI에는 장부가 없어 이 검사가 없다). 커밋하지 않은 시험이 있으면 잠그지 않는다. 시험 자체가
-틀렸거나, 리뷰 지적이나 다음 작업의 재현 시험을 더할 때는 `tests <n> unlock`에 이유를 주어 풀고, 시험을 커밋한 뒤 같은
-방식으로 다시 잠근다. 이유는 장부 notes에 남아 ship 체크포인트로 간다. `ledger-update`는
-`testsLocked`를 바꾸지 못하고 `notes`는 덧붙이기만 하며, 읽을 수 없는 장부는 doctor가 실패로 낸다. 사람이 JSON을 바로잡는다. 장부는 추적되지 않는
-로컬 파일이라 지우면 doctor의 이 검사도 사라진다. 훅은 삭제도 차단하지 않는다. rebase하거나 main을 병합해 base를 갱신한 뒤에는 정확히 `rebase`를 이유로 풀고 stdin에 `rebase`를 주어 다시 잠근다. 그 해제만 실패 증거를 `testsFailing`에 남겨 재잠금이 이어받고, 다른 이유로 풀면 증거가 지워져 시험의 실패를 다시 보여야 한다.
-적지 않으면 잠금 명령은 거부되고 doctor는 잠금 검사를 하지 않는다.
-
-## doctor 검사 항목
-
-`bin/devflow-doctor [path]`가 읽기만 하고 검사한다. 실패(FAIL)가 있으면 exit 1이고, 경고(WARN)는 실패시키지 않는다.
-Issue 형식은 doctor가 검사하지 않고, `devflow-state`가 쓸 때 검사한다([ADR-0015](../design/decisions/ADR-0015-paper-features.md)).
-
-| 대상 | 검사 |
-|---|---|
-| 폴더 | 필수 경로(`specs`, `decisions`, `agentsMd`를 따름) |
-| .gitignore | 관리 블록 내용, 비공개 경로가 추적되는지 |
-| .gitattributes | 기본 줄, `git ls-files --eol` 위반, 바이너리 표시 |
-| AGENTS.md | 길이, 필수 절, 링크 실존, "편집할 때마다 읽어라" 같은 고정 읽기 목록, 강조어 남용, 날짜·진행 상태 |
-| git 훅 | `local-merge` 저장소에서 `core.hooksPath`가 `.githooks`를 가리키는지 |
-| 지침을 끄는 파일 | `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`가 저장소나 상위 폴더에 있는지. git이 무시하는 파일도 본다. 전역 `~/.claude/CLAUDE.md`는 제외한다 |
-| 문서 | 줄바꿈(git이 LF로 저장하고 작업 트리만 CRLF면 경고), BOM, 보이지 않는 문자, 로컬 절대 경로(`allowLocalPaths`), 크기 예산, 상대 링크와 앵커 |
-| 잠긴 시험 | `tests`를 잠근 Issue 브랜치에서, 잠근 커밋 뒤로 바뀌거나 새로 생긴 시험 파일 |
-| 로컬 문서 | 크기 예산, 이름 규칙 |
-
-doctor는 스킬(분석)·pre-push·CI(실패)가 쓴다. 편집 직후 훅 감사는 없다.
 
 ## 통합과 CI
 

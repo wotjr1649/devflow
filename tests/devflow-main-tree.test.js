@@ -1,10 +1,9 @@
 'use strict'
-// Issue #14: the Issue folder (ledger, guard log, sessions, lock) lives in the main work tree, whichever worktree a
+// Issue #14: the Issue folder (ledger, sessions, lock) lives in the main work tree, whichever worktree a
 // session works in. git runs for real here; gh answers from a stub, and nothing reaches GitHub.
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('fs')
-const os = require('os')
 const path = require('path')
 const tmpdir = require('./tmpdir')
 const { spawnSync } = require('child_process')
@@ -75,7 +74,7 @@ test('a worktree session writes the main tree ledger, and it outlives the worktr
   assert.deepEqual(readJson(ledgerIn(main, 14)).notes, ['from the worktree', 'from main'])
 })
 
-// #73 G1: a worktree is independent by default; only an explicit M3 delegation shares the parent Issue.
+// Linked worktrees use their own Issue branch; isolation worktrees leave writes to the main session.
 test('a worktree on a branch that is no Issue branch writes no Issue ledger, the main tree one included', () => {
   const { main, wt } = project('feat/14-x', 'task-1')
   const e = env('task-1')
@@ -95,7 +94,7 @@ test('a worktree with no Issue here or in the main tree writes no ledger', () =>
   const { main, wt } = project('main', 'task-1')
   fs.mkdirSync(path.dirname(ledgerIn(main, 7)), { recursive: true })
   fs.writeFileSync(ledgerIn(main, 7), '{}')
-  for (const argv of [['note', '7'], ['metric', '7', 'interventions'], ['ledger-update', '7']]) {
+  for (const argv of [['note', '7'], ['ledger-update', '7']]) {
     const r = run(env('task-1'), wt, argv, argv[0] === 'ledger-update' ? '{"x":1}' : 'x')
     assert.equal(r.code, 1, argv.join(' '))
   }
@@ -110,7 +109,7 @@ test('a ledger left in a worktree is warned about and blocks every write until i
   fs.writeFileSync(ledgerIn(wt, 14), JSON.stringify({ stage: 'build', mode: 'autonomous' }))
   const e = env('fix/14-wt')
   assert.match(state.card(e, wt), /Warning: Issue #14's ledger is in this worktree \(\.work\/devflow\/i14\); move it into the main work tree's \.work\/devflow\//)
-  for (const argv of [['note', '14'], ['metric', '14', 'interventions'], ['ledger-update', '14'], ['comment', '14'], ['release', '14']]) {
+  for (const argv of [['note', '14'], ['ledger-update', '14'], ['comment', '14'], ['release', '14']]) {
     const input = argv[0] === 'ledger-update' ? '{"x":1}' : argv[0] === 'comment' ? '### Checkpoint build — x\n- a' : 'x'
     const r = run(e, wt, argv, input)
     assert.equal(r.code, 1, argv.join(' '))
@@ -194,7 +193,7 @@ test('a remark from an Issue-branch worktree follows the main tree ledger of tha
   let e = env('fix/14-wt')
   let r = run(e, wt, ['remark', '14'], '의견')
   assert.equal(r.code, 1)
-  assert.match(r.out, /only in an interactive turn; Issue #14's ledger is autonomous/)
+  assert.match(r.out, /Issue #14's ledger is autonomous; keep the content in ledger notes for the user/)
   assert.equal(posts(e), 0)
   fs.writeFileSync(ledgerIn(main, 14), JSON.stringify({ mode: 'interactive' }))
   e = env('fix/14-wt')

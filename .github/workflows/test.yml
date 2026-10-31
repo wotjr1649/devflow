@@ -1,4 +1,4 @@
-# Runs doctor and tests on Linux and macOS; required paths and integration gates: docs/specs/repository.md.
+# Runs tests on Linux and macOS; required paths and integration gates: docs/specs/repository.md.
 name: test
 # Any push runs on its own commit; a pull request into main also runs on the merge result GitHub would make (#73).
 on:
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node }}
-      # Same hooks setting as a local-merge clone (doctor checks it there); the tests make commits in temporary repositories.
+      # Same hooks setting as a local-merge clone; the tests make commits in temporary repositories.
       - run: git config core.hooksPath .githooks
       - run: git config --global user.name ci && git config --global user.email ci@example.invalid
       # The project gate, read from .devflow.json as the pre-push hook reads it, so the two cannot drift apart.

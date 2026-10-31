@@ -6,7 +6,6 @@ const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
 const crypto = require('crypto')
-const os = require('os')
 // Windows looks for git.exe and gh.exe in the working folder before PATH; a cloned repository must not supply them.
 if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
 
@@ -50,26 +49,13 @@ const USAGE = `usage: devflow-state <command>
   mode <n> autonomous|interactive < reason
                               change the ledger's mode, keeping the reason, time and session of the change; another
                               session taking over an unattended run claims it with mode <n> autonomous
-  running <n> add|done <label> [--worktree]
-                              record a background delegation as it starts and ends; the Stop hook waits while any runs.
-                              --worktree, before launching an M3 implementer, ties its isolation worktree to this Issue
-  tests <n> lock -- <test command> | tests <n> lock < <CI run URL of this repository or "rebase"> | tests <n> unlock < reason
-                              lock the .devflow.json "tests" files once the reproduction test is written: the hook
-                              refuses edits to them and doctor reports any changed since; unlock keeps the reason
+  running <n> add|done <label>
+                              record a background delegation as it starts and ends; the Stop hook waits while any runs
   release <n>                 when handing the Issue to another session: stop warning it about this one
-  pending | flush             queued posts; flush posts them once the ledger is interactive
-  pending drop <n> <id> [--posted] < reason
-                              take one queued post out in an interactive turn, keeping the reason in notes;
-                              --posted for one a flush posted but could not remove
-  metric <n> <key> [--undo] < note
-                              add one to interventions or filterFalsePositives in the ledger, with a note line;
-                              --undo takes one back (never below 0)
-  metric <n> eval <passed>/<total> --host claude|codex --rev <commit> < note
-                              record the cycle's trigger eval result
 Issue text writes go only to the branch's Issue (create and remark excepted); sub-issue add records its explicit targets
-under the working Issue. Commands and queue signatures do not grant authority. Text with local paths, secrets, hidden
-characters or HTML comments is refused. While the ledger's mode is autonomous, writes are queued.
-Ledger writes off an Issue branch (cleanup on main) take the Issue number; note and metric need its ledger
+under the working Issue. Commands do not grant authority. Text with local paths, secrets, hidden
+characters or HTML comments is refused. While the ledger's mode is autonomous, Issue writes are refused; keep the content in ledger notes for the user.
+Ledger writes off an Issue branch (cleanup on main) take the Issue number; note needs its ledger
 to exist. A detached HEAD writes no ledger.`
 // Checked before anything is posted. Only the rule name is ever printed, never the match.
 const LEAKS = [
@@ -94,11 +80,6 @@ const realEnv = {
       cwd: opts.cwd, input: opts.input, encoding: 'utf8', timeout: opts.timeout || RUN_TIMEOUT_MS, windowsHide: true,
     })
     return { code: r.status ?? (r.error ? r.error.code : 1), stdout: r.stdout || '', stderr: r.stderr || '' }
-  },
-  // A test command a lock runs: no shell, its output straight to the terminal so the agent sees why it failed.
-  exec(cmd, args, opts = {}) {
-    const r = spawnSync(cmd, args, { cwd: opts.cwd, stdio: ['ignore', 'inherit', 'inherit'], timeout: opts.timeout, windowsHide: true })
-    return { code: r.status ?? (r.error ? r.error.code : 1) }
   },
 }
 
@@ -140,7 +121,7 @@ function isCheckpoint(text) {
 
 const issueOf = b => { const m = /^[^/]+\/(\d+)-/.exec(b || ''); return m ? Number(m[1]) : null }
 
-// opts.session is the session id hash deciding a delegation; the hook passes its input's, and the CLI its own by default.
+// opts.session is the session id hash; the hook passes its input's, and the CLI its own by default.
 function repoContext(env, cwd, opts = {}) {
   const top = env.run('git', ['rev-parse', '--show-toplevel'], { cwd })
   if (top.code !== 0) return null
@@ -156,7 +137,7 @@ function repoContext(env, cwd, opts = {}) {
   const linked = !!main && differs(main.path, root)
   const store = linked ? main.path : root
   const session = 'session' in opts ? opts.session : (sessionId(env.vars) || {}).hash || null
-  const { bind, issue } = bindingOf({ root, store, linked, branch, session })
+  const { bind, issue } = bindingOf({ root, linked, branch })
   // A reftable repository keeps the stub "ref: refs/heads/.invalid" in HEAD, so git names the main tree's branch there;
   // when it cannot, the main tree counts as detached. The full ref, as --short may answer heads/<branch>, and the main
   // tree's git dir named, so an inherited GIT_DIR cannot answer for another worktree.
@@ -172,28 +153,16 @@ function repoContext(env, cwd, opts = {}) {
     mainDetached: linked && !mainBranch }
 }
 
-// #73 G1 (ADR-0028, ledger.md task worktree): which Issue a worktree works for. Git facts decide every worktree without
-// the marker Claude Code gives an Agent call's isolation worktree (.claude/worktrees/agent-*, branch worktree-agent-*,
-// 2.1.310): its own Issue branch, else none. A marked worktree is never its own branch's: it is bound to the one Issue
-// whose delegates.json names this session, once git proves the worktree belongs here, and unconfirmed otherwise, which
-// counts as locked and writes nothing. The marker is a precondition, never the evidence.
+// Claude isolation worktrees leave ledger and Issue writes to the main session.
 const caseKey = s => (process.platform === 'win32' ? s.toLowerCase() : s)
 const agentMarked = (root, branch) => /^worktree-agent-/.test(branch || '') || (/^agent-/.test(caseKey(path.basename(root))) &&
   caseKey(path.basename(path.dirname(root))) === 'worktrees' && caseKey(path.basename(path.dirname(path.dirname(root)))) === '.claude')
-function bindingOf({ root, store, linked, branch, session }) {
-  const own = issueOf(branch)
-  if (!agentMarked(root, branch)) return own ? { bind: 'own', issue: own } : { bind: linked ? 'independent' : 'none', issue: null }
-  // Only where Claude Code puts the worktree: exactly <main work tree>/.claude/worktrees/agent-*. A proof naming any other
-  // main work tree (a fake one the worktree's own files forge inside it, under any spelling) is no proof of a delegation.
-  const plain = p => (process.platform === 'win32' ? String(p).replace(/^[\\/]{2}[?.][\\/](?=[a-zA-Z]:)/, '') : String(p))
-  const slot = plain(root)
-  const placed = /^agent-/.test(caseKey(path.basename(slot))) && caseKey(path.basename(path.dirname(slot))) === 'worktrees' &&
-    caseKey(path.basename(path.dirname(path.dirname(slot)))) === '.claude' && !differs(path.dirname(path.dirname(path.dirname(slot))), plain(store))
-  if (!linked || !session || !placed) return { bind: 'unconfirmed', issue: null }
-  const { hits, unreadable } = delegatedIssues(store, session)
-  return hits.length === 1 && !unreadable ? { bind: 'bound', issue: hits[0] } : { bind: 'unconfirmed', issue: null }
+function bindingOf({ root, linked, branch }) {
+  if (agentMarked(root, branch)) return { bind: 'task', issue: null }
+  const issue = issueOf(branch)
+  return issue ? { bind: 'own', issue } : { bind: linked ? 'independent' : 'none', issue: null }
 }
-const taskWorktree = ctx => !!ctx && (ctx.bind === 'bound' || ctx.bind === 'unconfirmed')
+const taskWorktree = ctx => !!ctx && ctx.bind === 'task'
 
 const samePathKey = p => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
 const differs = (a, b) => samePathKey(a) !== samePathKey(b)
@@ -230,7 +199,7 @@ function mainTree(env, root, opts = {}) {
 }
 
 // A ledger left in a linked worktree by an older devflow: nothing writes for that Issue until it is moved, since the
-// two copies would part, and the mode the write queue reads would come from the wrong one.
+// two copies would part, and the mode deciding Issue writes would come from the wrong one.
 const legacyText = n => `Issue #${n}'s ledger is in this worktree (.work/devflow/i${n}); move it into the main work tree's ` +
   `.work/devflow/, merging the files if the main tree already has i${n}`
 const legacyOf = (ctx, n) => !!ctx && ctx.linked && !!n && fs.existsSync(ledgerPath(ctx.root, n)) &&
@@ -285,7 +254,7 @@ const ledgerPath = (root, n) => path.join(root, '.work', 'devflow', `i${n}`, 'le
 
 // The ledger comes from the working tree, which an archive controls: only a plain file of a bounded size is read, so a
 // FIFO cannot hold a write, the resume card or the Stop hook open (Issue #46). Anything else is refused rather than taken
-// for no ledger: a write would replace it, and the test-lock guard counts an unreadable ledger as locked. writeLedger
+// for no ledger: a write would replace it, and Issue writes cannot trust its mode. writeLedger
 // keeps to the same limit, so devflow never writes a ledger it would then refuse to read.
 const MAX_LEDGER_BYTES = 1 << 20
 function readLedger(root, n) {
@@ -298,30 +267,11 @@ function readLedger(root, n) {
     throw e
   }
   if (!st.isFile()) throw new Error(`Issue #${n}'s ledger is not a plain file`)
-  if (st.size > MAX_LEDGER_BYTES) throw new Error(`Issue #${n}'s ledger is over 1 MiB; trim its notes or queued posts by hand`)
+  if (st.size > MAX_LEDGER_BYTES) throw new Error(`Issue #${n}'s ledger is over 1 MiB; trim its notes by hand`)
   return JSON.parse(fs.readFileSync(p, 'utf8'))
 }
 
-// Every refusal by devflow-state and every block by the devflow hook appends one line here, so the cycle's guard blocks
-// are counted even after compaction (docs/specs/metrics.md). Separate from the ledger: two processes appending short
-// lines do not lose each other's writes, while a rewrite of the ledger would.
-const GUARD_LOG = 'guard-events.jsonl'
 const isLinkOrOther = p => { try { return !fs.lstatSync(p).isDirectory() } catch { return false } }
-
-// The line holds the time and a fixed id chosen by the caller, never the refused text. Never throws, never writes
-// through a link.
-function logGuard(root, n, guard) {
-  try {
-    const dir = path.join(root, '.work', 'devflow', `i${n}`)
-    if ([path.join(root, '.work'), path.join(root, '.work', 'devflow'), dir].some(isLinkOrOther)) return
-    fs.mkdirSync(dir, { recursive: true })
-    const file = path.join(dir, GUARD_LOG)
-    let st = null
-    try { st = fs.lstatSync(file) } catch {}
-    if (st && !st.isFile()) return
-    fs.appendFileSync(file, JSON.stringify({ at: Date.now(), guard }) + '\n')
-  } catch {}
-}
 
 // A whole new file under a temporary name, then one rename: a reader never sees half a ledger. Windows refuses the rename
 // while another process has the file open, so a few short retries.
@@ -460,24 +410,6 @@ function readSessions(root, n, { strict = false } = {}) {
     return {}
   }
 }
-// M3 delegations the main session recorded before launching (running <n> add <label> --worktree): label -> {session,
-// host, at}. Unlike sessions, a file that cannot be read is told apart from none, since it decides a lock: it throws.
-const delegatesPath = (root, n) => path.join(root, '.work', 'devflow', `i${n}`, 'delegates.json')
-const MAX_DELEGATES_BYTES = 65536
-function readDelegates(root, n) {
-  if (!issueDirOk(root, n)) throw new Error(`Issue #${n}'s folder is a link`)
-  let st
-  try {
-    st = fs.lstatSync(delegatesPath(root, n))
-  } catch (e) {
-    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return {}
-    throw e
-  }
-  if (!st.isFile() || st.size > MAX_DELEGATES_BYTES) throw new Error(`Issue #${n}'s delegates.json is not a small plain file`)
-  const v = JSON.parse(fs.readFileSync(delegatesPath(root, n), 'utf8'))
-  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`Issue #${n}'s delegates.json is not an object`)
-  return v
-}
 // The Issue numbers with a folder in the store; null when they cannot be listed or read exactly,
 // which callers deciding a lock or a post treat as unknown, not as no Issue. Names match in any case: where the file
 // system ignores case, I14 is the folder i14's ledger is read from.
@@ -492,28 +424,6 @@ function issueFolders(store) {
     return e.code === 'ENOENT' || e.code === 'ENOTDIR' ? [] : null
   }
 }
-// The Issues whose delegations name this session, and whether anything deciding that could not be read. A record
-// counts while its label is in that Issue's running, as running <n> add <label> --worktree leaves both under one lock:
-// a record left without its label (a ledger write that failed after it) binds nothing.
-function delegatedIssues(store, session) {
-  const hits = []
-  let unreadable = false
-  const issues = issueFolders(store)
-  if (!issues) return { hits, unreadable: true }
-  for (const n of issues) {
-    try {
-      const mine = Object.entries(readDelegates(store, n)).filter(([, e]) => e && typeof e === 'object' && e.session === session)
-      if (!mine.length) continue
-      const ledger = readLedger(store, n) || {}
-      const live = Array.isArray(ledger.running) ? ledger.running.filter(x => typeof x === 'string').map(x => x.trim()) : []
-      if (mine.some(([label]) => live.includes(label))) hits.push(n)
-    } catch {
-      unreadable = true
-    }
-  }
-  return { hits, unreadable }
-}
-
 const recent = (s, now) => Object.fromEntries(Object.entries(s).filter(([h, v]) => /^[0-9a-f]{12}$/.test(h) && v &&
   ['claude', 'codex'].includes(v.host) && Number.isFinite(v.at) && now - v.at < ACTIVE_MS && v.at <= now + 60000))
 
@@ -635,9 +545,7 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
   seen.checked.add('legacy ledger')
   const stop = reason => minimal(`${reason}; no Issue state shown.`)
   if (!ctx.repo) return stop('No GitHub origin')
-  if (ctx.bind === 'bound') return stop(`Task worktree of Issue #${ctx.issue} (M3): the main session owns its state, ledger and Issue writes`)
-  if (ctx.bind === 'unconfirmed') return stop('Task worktree with no confirmed delegation: it counts as locked and writes nothing; the ' +
-    'main session records it with devflow-state running <n> add <label> --worktree before launching')
+  if (taskWorktree(ctx)) return stop('Task worktree: the main session owns the state, ledger and Issue writes')
   if (!ctx.issue) return stop('Branch name has no Issue number (<type>/<issue>-<slug>)')
   const own = ctx.session ? [ctx.session] : []
   if (own.length) {
@@ -668,7 +576,7 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
   let commits = []
   let lastCommit = null
   if (!issueDirOk(ctx.store, n)) {
-    ledgerLines.push('Ledger: not read (Issue path is not a plain folder); most Issue writes post immediately, remark and ledger writes are refused')
+    ledgerLines.push('Ledger: not read (Issue path is not a plain folder); Issue and ledger writes are refused until it is fixed')
   } else {
     let ledger
     let unreadable = false
@@ -683,11 +591,10 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
     else {
       const task = ledger.task && typeof ledger.task === 'object' ? ledger.task : {}
       const count = v => (Number.isSafeInteger(v) && v > 0 ? v : '?')
-      // Writes queue only on "autonomous"; anything else posts at once, which the card says rather than hides.
+      // Writes are refused only on "autonomous"; anything else posts at once, which the card says rather than hides.
       // Only a missing key is the default: a present false, 0, null or "" is a malformed value, shown as invalid.
       const mode = !Object.hasOwn(ledger, 'mode') ? 'interactive' : MODES.includes(ledger.mode) ? ledger.mode : 'invalid (writes treat it as interactive)'
-      ledgerLines.push(`Ledger: task ${count(task.current)}/${count(task.total)} · mode ${mode} · ` +
-        `pending posts ${notAList(ledger) ? '? (not a list)' : queueOf(ledger).length}`)
+      ledgerLines.push(`Ledger: task ${count(task.current)}/${count(task.total)} · mode ${mode}`)
       const changed = ledger.modeChanged
       if (changed && typeof changed === 'object' && MODES.includes(changed.to) && typeof changed.at === 'string' && STAMP.test(changed.at)) {
         ledgerLines.push(`Mode: ${changed.to} since ${changed.at}`)
@@ -1079,11 +986,7 @@ function replaceIntent(body, intent) {
   return intent.trimEnd() + '\n' + (span ? '\n' + body.slice(span[0]) : '')
 }
 
-// The writes whose outcome depends on the Issue body. Posting checks them against the live body; queueing checks them
-// against the body as the queued posts before them will leave it (Issue #31).
-const BODY_OPS = new Set(['check', 'close', 'intent', 'state'])
-// state changes the body a later post meets but has no body rule of its own, so queueing it needs no lookup.
-const QUEUE_CHECKED = new Set(['check', 'close', 'intent'])
+// Validate writes against the live Issue body.
 function bodyRefusal(op, n, body, text) {
   if (op === 'check') {
     const done = checkCriteria(body, text.split(' ').map(Number))
@@ -1198,11 +1101,10 @@ function relationLookup(ctx, p, c) {
   return { childId: id(child), previous }
 }
 
-function postRelation(ctx, text, { verifyOnly = false } = {}) {
+function postRelation(ctx, text) {
   const [p, c] = relationOf(text)
   const label = `${ctx.repo}: #${p} -> #${c}`
-  const unknown = () => ({ code: 1, out: `${label}: posting state unknown; inspect the relationship before a new add`,
-    unconfirmed: { at: Date.now() } })
+  const unknown = () => ({ code: 1, out: `${label}: posting state unknown; inspect the relationship before a new add` })
   const result = got => {
     if (!got.previous) return null
     return got.previous.number === p && sameRepo(got.previous.repository.nameWithOwner, ctx.repo)
@@ -1210,10 +1112,9 @@ function postRelation(ctx, text, { verifyOnly = false } = {}) {
       : { code: 1, out: `${label}: refused, the child already has another parent` }
   }
   const before = relationLookup(ctx, p, c)
-  if (before.error) return verifyOnly ? unknown() : { code: 1, out: before.error }
+  if (before.error) return { code: 1, out: before.error }
   const existing = result(before)
   if (existing) return existing
-  if (verifyOnly) return unknown()
   // An explicit, narrow relationship exception; body writes still target only the branch's Issue.
   const r = ctx.env.run('gh', ['api', '--hostname', 'github.com', '--method', 'POST',
     `repos/${ctx.repo}/issues/${p}/sub_issues`, '-H', 'Accept: application/vnd.github+json',
@@ -1256,8 +1157,8 @@ function listSubIssues(env, cwd, n) {
   return { code: 1, out: 'sub-issue list exceeds ten pages; no complete list was returned' }
 }
 
-function post(ctx, op, n, text, title, opts = {}) {
-  if (op === 'sub-issue-add') return postRelation(ctx, text, opts)
+function post(ctx, op, n, text, title) {
+  if (op === 'sub-issue-add') return postRelation(ctx, text)
   const gh = (args, input) => ctx.env.run('gh', args, { cwd: ctx.root, input })
   const since = Date.now()
   let r
@@ -1308,23 +1209,17 @@ function post(ctx, op, n, text, title, opts = {}) {
     if (url) return { code: 0, out: `${url} (gh exit ${r.code}, but the ${op} is on GitHub)` }
     // A gh the time limit killed (an error code, not an exit status) may have sent the post, which GitHub may not
     // show yet: missing is unknown then, not failed.
-    if (url === null || typeof r.code === 'string') return { code: 1, out: UNKNOWN(op, r.code), unconfirmed: { at: since } }
+    if (url === null || typeof r.code === 'string') return { code: 1, out: UNKNOWN(op, r.code) }
   }
   return r.code === 0 ? { code: 0, out: r.stdout.trim() || `${op} #${n} done` } : { code: 1, out: `${op} failed (gh exit ${r.code})` }
 }
 
-// Writes run only in interactive turns; an autonomous ledger queues them for the next one.
-// Only the commands devflow-state offers reach gh, queued ones included.
+// Writes run only in interactive turns; autonomous runs keep proposed text in ledger notes.
 const WRITE_OPS = new Set(['state', 'intent', 'comment', 'remark', 'check', 'close', 'reopen', 'create', 'sub-issue-add'])
 
-// A refusal carries a guard id; it is logged to the branch's Issue and dropped from the result.
-// Logged under the branch's Issue; off an Issue branch under n, and only when n's folder exists, so a refusal for a
-// mistyped number leaves no folder behind (Issue #12).
+// Keep refusal ids internal to the command; no guard-event file is written.
 function guarded(ctx, r, n) {
   if (!r.guard) return r
-  if (ctx && ctx.issue) logGuard(ctx.store, ctx.issue, r.guard)
-  // A worktree logs under no Issue it does not work for (#73 G1): only a main work tree names one by number.
-  else if (ctx && n && !ctx.linked && !taskWorktree(ctx) && fs.existsSync(path.join(ctx.store, '.work', 'devflow', `i${n}`))) logGuard(ctx.store, n, r.guard)
   return { code: r.code, out: r.out }
 }
 
@@ -1349,75 +1244,21 @@ function ledgerGate(ctx, n, what, { append }) {
   return null
 }
 // A task worktree's delegate writes nothing of the ledger or the Issue: the main session does (ledger.md task worktree).
-const UNCONFIRMED = '; this task worktree has no confirmed delegation, so it counts as locked: the main session records it with ' +
-  'devflow-state running <n> add <label> --worktree before launching'
-const TASK_LEDGER = ctx => ({ code: 1, out: `refused: a task worktree writes no ledger; the main session does${ctx.bind === 'unconfirmed' ? UNCONFIRMED : ''}`, guard: 'state-other-issue' })
-const TASK_POST = ctx => ({ code: 1, out: `refused: a task worktree posts no Issue text; the main session does${ctx.bind === 'unconfirmed' ? UNCONFIRMED : ''}`, guard: 'state-other-issue' })
+const TASK_LEDGER = () => ({ code: 1, out: 'refused: a task worktree writes no ledger; the main session does', guard: 'state-other-issue' })
+const TASK_POST = () => ({ code: 1, out: 'refused: a task worktree posts no Issue text; the main session does', guard: 'state-other-issue' })
+const AUTONOMOUS = n => ({ code: 1, out: `refused: Issue #${n}'s ledger is autonomous; keep the content in ledger notes for the user` })
 const NO_LEDGER = n => ({ code: 1, out: `refused: no ledger for Issue #${n} here; check the number` })
 // Rechecked under the lock: a ledger removed after ledgerGate looked is not brought back holding one line. Its folder,
 // if removed in that window too, comes back empty: withLock creates it to hold the lock.
 const MISSING = Symbol('missing ledger')
-// The queue is a list; any other value was written by hand and is left for a person to fix, not dropped (Issue #35).
-const NOT_A_LIST = "refused: the ledger's pendingPosts is not a list; a person fixes the ledger by hand"
-const notAList = ledger => ledger.pendingPosts !== undefined && ledger.pendingPosts !== null &&
-  (!Array.isArray(ledger.pendingPosts) || ledger.pendingPosts.some(p => !p || typeof p !== 'object'))
-const queueOf = ledger => (Array.isArray(ledger.pendingPosts) ? ledger.pendingPosts : [])
-// The ledger is a working-tree file a clone or an unpacked archive can bring along, queue and all. So each queued post
-// carries an HMAC under a key kept outside every repository (DEVFLOW_HOME, else ~/.devflow), and flush posts nothing
-// while the queue holds a post without a matching one. The mark covers the repository too, so a copy of the work tree in
-// a fork does not post there.
-const queueKeyFile = () => {
-  const home = process.env.DEVFLOW_HOME
-  // A relative value would put the key in whatever folder this runs in, a repository included.
-  if (home && !path.isAbsolute(home)) return null
-  return path.join(home || path.join(os.homedir(), '.devflow'), 'queue.key')
-}
-const KEY_SHAPE = /^[0-9a-f]{64}$/
-// Queueing runs unattended, maybe in a sandbox that cannot write outside the workspace, so mode autonomous makes the key
-// first, in the interactive turn.
-const NO_KEY = () => `no queue key at ${queueKeyFile() || 'DEVFLOW_HOME, which must be an absolute path'}; it is made on first use ` +
-  'and must stay a plain file of 64 hex characters, and a sandbox that cannot write there needs it made beforehand, in ' +
-  'an interactive turn, by devflow-state mode <issue> autonomous or a ledger-update that sets mode autonomous'
-function queueKey(create) {
-  const file = queueKeyFile()
-  if (!file) return null
-  for (let i = 0; i < 2; i++) {
-    try {
-      const st = fs.lstatSync(file)
-      if (!st.isFile() || st.size !== 64) return null
-      const key = fs.readFileSync(file, 'utf8')
-      return KEY_SHAPE.test(key) ? key : null
-    } catch (err) {
-      if (err.code !== 'ENOENT' || !create) return null
-    }
-    // Written whole under another name and linked into place, so a second process never reads half a key or replaces
-    // the one the first already signed with.
-    const tmp = `${file}.${token()}`
-    try {
-      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
-      fs.writeFileSync(tmp, crypto.randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 })
-      fs.linkSync(tmp, file)
-    } catch (err) {
-      if (err.code !== 'EEXIST') return null
-    } finally {
-      try { fs.rmSync(tmp, { force: true }) } catch {}
-    }
-  }
-  return null
-}
-const macOf = (key, repo, p) => crypto.createHmac('sha256', key)
-  .update(JSON.stringify([repo, p.id, p.op, p.issue, p.title ?? null, p.text ?? null, p.at ?? null])).digest('hex')
-const signedWith = (key, repo, p) => typeof p.mac === 'string' && KEY_SHAPE.test(p.mac) &&
-  crypto.timingSafeEqual(Buffer.from(p.mac), Buffer.from(macOf(key, repo, p)))
-const POST_ID = /^[\w-]{1,64}$/
-const ZERO = Symbol('nothing to undo')
+const ZERO = Symbol('nothing to remove')
 const gone = (ctx, n) => !ctx.issue && !fs.existsSync(ledgerPath(ctx.store, n))
 
-function write(env, cwd, op, n, text = '', title, opts = {}) {
+function write(env, cwd, op, n, text = '', title) {
   if (!WRITE_OPS.has(op)) return { code: 1, out: `refused: ${op} is not a devflow-state write` }
   const ctx = repoContext(env, cwd)
   if (op === 'remark') return guarded(ctx, remark(ctx, n, text), n)
-  return guarded(ctx, attempt(ctx, op, n, text, title, opts))
+  return guarded(ctx, attempt(ctx, op, n, text, title))
 }
 
 // A remark (Issue #77) is a plain comment on any existing Issue of this repository: no checkpoint, so read and the card
@@ -1444,7 +1285,7 @@ function remark(ctx, n, text) {
     }
     if (!own) return { code: 1, out: `refused: Issue #${ctx.issue}'s ledger cannot be read, so whether this run is unattended is unknown`, guard: 'state-ledger-unsafe' }
     if (own.mode === 'autonomous') {
-      return { code: 1, out: `refused: a remark is posted only in an interactive turn; Issue #${ctx.issue}'s ledger is autonomous`, guard: 'state-remark-unattended' }
+      return AUTONOMOUS(ctx.issue)
     }
   }
   const got = fetchIssue(ctx, n)
@@ -1459,29 +1300,15 @@ function remark(ctx, n, text) {
   return { code: 0, out: `${ctx.repo}#${n} (${String(got.issue.state || '').toLowerCase()}) ${title}: ${r.out}` }
 }
 
-// The lines a ship checkpoint carries (Issue #50): whether the trigger eval ran, and any test unlock. The measurement
-// line is optional, since only a measured cycle has one (#104). Any stage word starting with "ship" counts, so
-// "ship(부분)" is no way around it.
-function shipMissing(text, ledger) {
-  const ls = lines(text)
-  if (!/^### Checkpoint ship/i.test(ls[0] || '')) return ''
-  const need = [['"- 트리거 eval:"', /^-\s*트리거 eval\s*:/]]
-  if ((Array.isArray(ledger.notes) ? ledger.notes : []).some(s => typeof s === 'string' && s.startsWith('tests unlocked:'))) {
-    need.push(['"- 시험 잠금 해제"', /^-\s*시험 잠금 해제/])
-  }
-  return need.filter(([, re]) => !ls.some(l => re.test(l.trim()))).map(([name]) => name).join(', ')
-}
-
-// A worktree off any Issue branch has no queue for a new Issue (#73 G1, ledger.md task worktree). Its create is refused
-// while evidence says this may be an unattended run: the main work tree's Issue is autonomous (the queue the old
-// fallback gave), or an autonomous ledger this session switched, took over or wrote within the half hour, or one whose
+// A worktree off any Issue branch has no ledger for a new Issue (#73 G1, ledger.md task worktree). Its create is refused
+// while evidence says this may be an unattended run: the main work tree's Issue is autonomous, or an autonomous ledger this session switched, took over or wrote within the half hour, or one whose
 // session is unknown. Nothing here proves a person is present: without such evidence it posts, as from the main tree.
 function unattendedRun(ctx) {
   const now = Date.now()
   // Only the run's owning session or the user can settle it: another Issue's mode is not this session's to switch.
   const busy = (why, ask) => ({ code: 1, guard: 'state-create-unattended',
     out: `refused: a new Issue is not posted from this worktree while ${why}; ask the session that owns it, or the user, ` +
-      `to ${ask} before retrying` })
+      `to ${ask} before retrying; keep the content in ledger notes for the user` })
   const unknown = (what, entry) => busy(`${what}, so whether an unattended run is under way is unknown`, `check or repair ${entry}`)
   if (!issueFolders(ctx.store)) return unknown('the Issue folders cannot be listed or read exactly', '.work and .work/devflow')
   // Each entry is judged by the name listed and none is followed: a link or file in place of a folder, or a case variant
@@ -1581,7 +1408,7 @@ function sessionsRecord(root, n) {
   }
 }
 
-function attempt(ctx, op, n, text, title, { flushing = false, verifyOnly = false } = {}) {
+function attempt(ctx, op, n, text, title) {
   if (!ctx || !ctx.repo) return { code: 1, out: 'refused: not a devflow repository with a GitHub origin' }
   if (taskWorktree(ctx)) return TASK_POST(ctx)
   // A detached HEAD may be an Issue branch mid-rebase in an unattended run, as for remark.
@@ -1600,160 +1427,26 @@ function attempt(ctx, op, n, text, title, { flushing = false, verifyOnly = false
   const why = refusal(op, text, title)
   if (why) return { code: 1, ...why }
   const owner = ctx.issue || n
-  // Decided and queued under the ledger lock, so a queue another process changes in between is not overwritten.
-  let live = null
-  let unread = ''
-  const decide = ledger => {
-    const queued = queueOf(ledger)
-    if (live && ledger.mode === 'autonomous' && !flushing) {
-      // A queued post that fails its own rule is skipped, as a person dropping it at flush would leave the body.
-      let body = live.body
-      for (const p of (Array.isArray(queued) ? queued : []).filter(p => p && p.issue === n && BODY_OPS.has(p.op) && typeof p.text === 'string')) {
-        if (!bodyRefusal(p.op, n, body, p.text)) body = nextBody(p.op, body, p.text, live.writer)
-      }
-      const no = bodyRefusal(op, n, body, text)
-      if (no) return { result: { ...no, out: `${no.out} (checked before queueing, with the queued posts applied)` } }
-    }
-    // A queued check posted after this intent would land on the renumbered criteria.
-    if (op === 'intent' && !flushing && ledger.mode !== 'autonomous' && queued.some(p => p.op === 'check' && p.issue === n)) {
-      return { result: { code: 1, out: 'refused: a queued check waits for this Issue; flush the queue first', guard: 'state-intent-pending-check' } }
-    }
-    if (ledger.mode !== 'autonomous' || flushing) return { result: null }
-    if (notAList(ledger)) return { result: { code: 1, out: NOT_A_LIST } }
-    // Check numbers were read from the body before a queued intent renumbers it.
-    if (op === 'check' && queued.some(p => p.op === 'intent' && p.issue === n)) {
-      return { result: { code: 1, out: 'refused: a queued intent renumbers the criteria; check after it is posted', guard: 'state-check-after-intent' } }
-    }
-    const key = queueKey(true)
-    if (!key) return { result: { code: 1, out: `refused: ${NO_KEY()}` } }
-    const post = { id: token(), op, issue: n, title, text, at: new Date().toISOString() }
-    const pendingPosts = [...queued, { ...post, mac: macOf(key, ctx.repo, post) }]
-    return { ledger: { ...ledger, pendingPosts }, result: { code: 0, out: `queued ${op} for the next interactive turn (${pendingPosts.length} pending)${unread}` } }
+  // Reading the mode does not mutate old ledgers or create a queue, signing key or lock. A mode that cannot be read
+  // (a linked or odd Issue folder, a ledger that does not parse) may be autonomous, so nothing is posted.
+  if (owner && !issueDirOk(ctx.store, owner)) return LOCKED(owner, 'unsafe')
+  let ledger
+  try {
+    ledger = owner ? readLedger(ctx.store, owner) || {} : {}
+  } catch {
+    return { code: 1, out: `refused: Issue #${owner}'s ledger cannot be read, so whether this run is unattended is unknown`, guard: 'state-ledger-unsafe' }
   }
-  // An interactive write only reads the ledger, so it needs no lock and a folder that cannot take one does not stop it.
-  // Queueing is decided again under the lock. A new Issue from a branch without one has no ledger yet.
-  const peek = owner && issueDirOk(ctx.store, owner) ? readLedger(ctx.store, owner) || {} : {}
-  const short = op === 'comment' && shipMissing(text, peek)
-  if (short) return { code: 1, guard: 'state-ship-lines', out: `refused: the ship checkpoint has no ${short} line (references/ship.md, step 5)` }
-  // A queued post whose body rule fails would only show at flush, after the unattended run reported it queued, and would
-  // hold every later post (Issue #31). The Issue is read now, outside the ledger lock; decide replays the queue on it under
-  // the lock. When it cannot be read (an offline run), the post queues unchecked and flush checks it, as before.
-  live = null
-  unread = ''
-  if (owner && peek.mode === 'autonomous' && !flushing && QUEUE_CHECKED.has(op)) {
-    const got = fetchIssue(ctx, n)
-    if (got.error) unread = ` (not checked before queueing: ${got.error}; flush checks it)`
-    else live = { body: got.issue.body || '', writer: WRITERS.has(got.issue.authorAssociation) }
-  }
-  const queued = owner && peek.mode === 'autonomous' && !flushing ? updateLedger(ctx.store, owner, decide) : { ok: true, result: decide(peek).result }
-  if (!queued.ok) return LOCKED(owner, queued.why)
-  return queued.result || post(ctx, op, n, text, title, { verifyOnly })
+  if (ledger.mode === 'autonomous') return AUTONOMOUS(owner)
+  return post(ctx, op, n, text, title)
 }
 
-// Adds one to a manual metric and appends its note in one step, so an agent never rewrites the ledger by hand to count.
-const METRICS = new Set(['interventions', 'filterFalsePositives'])
-// The trigger eval's result for the cycle, {passed, total}, set under the lock like the counts (Issue #27).
-// Each host's trigger eval is kept apart, with the commit it ran on (Issue #50); a result from before then was the Claude run.
-const EVAL_USAGE = 'usage: devflow-state metric <issue> eval <passed>/<total> --host claude|codex --rev <commit> < note'
-function metricEval(env, cwd, n, score, note, host, rev) {
-  const line = String(note || '').trim().split(/\r?\n/)[0].trim()
-  const m = /^(\d+)\/(\d+)$/.exec(String(score || ''))
-  if (!m || !line || Number(m[2]) < 1 || Number(m[1]) > Number(m[2]) || !['claude', 'codex'].includes(host) || !/^[0-9a-f]{7,40}$/i.test(rev || '')) {
-    return { code: 2, out: EVAL_USAGE }
-  }
-  const ctx = repoContext(env, cwd)
-  const no = ledgerGate(ctx, n, 'metrics', { append: true })
-  if (no) return no
-  const passed = Number(m[1])
-  const total = Number(m[2])
-  const said = `eval ${host} ${passed}/${total} @${rev}`
-  const r = updateLedger(ctx.store, n, ledger => {
-    if (gone(ctx, n)) return { result: MISSING }
-    const old = ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}
-    const was = old.eval && typeof old.eval === 'object' ? old.eval : {}
-    const hosts = 'passed' in was ? { claude: { passed: was.passed, total: was.total } } : was
-    const metrics = { ...old, eval: { ...hosts, [host]: { passed, total, rev } } }
-    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${said}: ${line}`]
-    return { ledger: { ...ledger, metrics, notes }, result: true }
-  })
-  if (r.ok && r.result === MISSING) return NO_LEDGER(n)
-  return r.ok ? { code: 0, out: said } : guarded(ctx, LOCKED(n, r.why), n)
-}
-
-// Takes one queued post out, with the reason in notes: a post flush cannot make (a create or close the current rules
-// refuse) or one already posted would otherwise block or repeat (Issue #27).
-const DROP_USAGE = 'usage: devflow-state pending drop <issue> <id> [--posted] < reason'
-function pendingDrop(env, cwd, n, id, reason, { posted = false } = {}) {
-  const line = String(reason || '').trim().split(/\r?\n/)[0].trim()
-  if (!n || !id || !line) return { code: 2, out: DROP_USAGE }
-  const ctx = repoContext(env, cwd)
-  const no = ledgerGate(ctx, n, 'queued posts', { append: true })
-  if (no) return no
-  const r = updateLedger(ctx.store, n, ledger => {
-    if (gone(ctx, n)) return { result: MISSING }
-    // The queue waits for the person, as flush does.
-    if (ledger.mode === 'autonomous') return { result: { refused: 'refused: queued posts are dropped in an interactive turn, once the person has seen them (set mode to interactive first)' } }
-    const queued = Array.isArray(ledger.pendingPosts) ? ledger.pendingPosts : []
-    const hit = queued.find(p => p && p.id === id)
-    if (!hit) return { result: ZERO }
-    // A fresh claim means a flush may be posting it right now; only one flush reported as posted but unremoved goes.
-    const at = hit.claimed && (typeof hit.claimed.at === 'number' ? hit.claimed.at : Date.parse(hit.claimed.at))
-    // A claim dated ahead of now is void, as flush holds it.
-    if (!posted && Number.isFinite(at) && Date.now() - at < CLAIM_MS && at <= Date.now() + 60000) {
-      return { result: { refused: `refused: ${id} is claimed by a flush that may still post it; if that flush reported it posted but not removed, add --posted` } }
-    }
-    const pendingPosts = queued.filter(p => p !== hit)
-    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `dropped queued ${hit.op} (${id}): ${line}`]
-    return { ledger: { ...ledger, pendingPosts, notes }, result: pendingPosts.length }
-  })
-  if (r.ok && r.result === MISSING) return NO_LEDGER(n)
-  if (r.ok && r.result === ZERO) return { code: 1, out: `refused: no queued post ${id} for Issue #${n}` }
-  if (r.ok && r.result && r.result.refused) return { code: 1, out: r.result.refused }
-  return r.ok ? { code: 0, out: `pending ${r.result}` } : guarded(ctx, LOCKED(n, r.why), n)
-}
-
-// undo takes one back, with its reason in notes, for a count that turned out wrong (Issue #22); never below zero.
-function metric(env, cwd, n, key, note, { undo = false } = {}) {
-  const line = String(note || '').trim().split(/\r?\n/)[0].trim()
-  if (!METRICS.has(key) || !line) return { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives [--undo] < note' }
-  const ctx = repoContext(env, cwd)
-  const no = ledgerGate(ctx, n, 'metrics', { append: true })
-  if (no) return no
-  const r = updateLedger(ctx.store, n, ledger => {
-    if (gone(ctx, n)) return { result: MISSING }
-    const metrics = { ...(ledger.metrics && typeof ledger.metrics === 'object' ? ledger.metrics : {}) }
-    const now = Number.isInteger(metrics[key]) ? metrics[key] : 0
-    if (undo && now <= 0) return { result: ZERO }
-    metrics[key] = now + (undo ? -1 : 1)
-    const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : []), `${key} ${undo ? '-1' : '+1'}: ${line}`]
-    return { ledger: { ...ledger, metrics, notes }, result: metrics[key] }
-  })
-  if (r.ok && r.result === MISSING) return NO_LEDGER(n)
-  if (r.ok && r.result === ZERO) return { code: 1, out: `refused: ${key} is already 0 for Issue #${n}` }
-  return r.ok ? { code: 0, out: `${key} ${r.result}` } : guarded(ctx, LOCKED(n, r.why), n)
-}
-
-// Adds or removes one background delegation in running, under the lock, keeping the others: ledger-update replaces the
-// whole key, so a session moving the task on would drop a delegation still running and the Stop hook would continue
-// over it (Issue #24).
-const RUNNING_USAGE = 'usage: devflow-state running <issue> add <label> [--worktree] | running <issue> done <label>'
-// --worktree (#73 G1): an M3 implementer about to be launched in an isolation worktree. delegates.json ties that task
-// worktree to this Issue through this session (ledger.md task worktree), so it is written before launching, from the
-// Issue's own branch; one session delegates for one Issue at a time, so a task worktree's Issue is never ambiguous.
-function running(env, cwd, n, op, label, { worktree = false } = {}) {
+const RUNNING_USAGE = 'usage: devflow-state running <issue> add <label> | running <issue> done <label>'
+function running(env, cwd, n, op, label) {
   const name = String(label || '').trim()
-  if (!['add', 'done'].includes(op) || !name || /[\r\n]/.test(name) || (worktree && op !== 'add')) return { code: 2, out: RUNNING_USAGE }
+  if (!['add', 'done'].includes(op) || !name || /[\r\n]/.test(name)) return { code: 2, out: RUNNING_USAGE }
   const ctx = repoContext(env, cwd)
   const no = ledgerGate(ctx, n, 'running', { append: true })
   if (no) return no
-  if (worktree && (ctx.bind !== 'own' || ctx.branchIssue !== n)) return { code: 1, out: `refused: a worktree delegation is recorded from Issue #${n}'s own branch` }
-  if (worktree && !ctx.session) return { code: 1, out: 'refused: no session id, so a task worktree could not be tied to this session' }
-  if (worktree) {
-    const { hits, unreadable } = delegatedIssues(ctx.store, ctx.session)
-    const other = hits.find(k => k !== n)
-    if (other) return { code: 1, out: `refused: this session already delegates worktree tasks for Issue #${other}; finish them (running ${other} done <label>) first` }
-    if (unreadable) return { code: 1, out: 'refused: a delegation record or Issue folder cannot be read, so whether this session delegates elsewhere is unknown' }
-  }
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
     // Older shapes become labels done can remove: {} is empty, an object lists its keys, other values their trimmed text
@@ -1762,39 +1455,16 @@ function running(env, cwd, n, op, label, { worktree = false } = {}) {
     const items = Array.isArray(v) ? v : v && typeof v === 'object' ? Object.keys(v) : [v]
     const label = x => (typeof x === 'string' ? x.trim() : x === null || x === undefined || x === false ? '' : JSON.stringify(x))
     const now = [...new Set(items.map(label).filter(Boolean))]
-    // The record goes first, under the same lock, for a label nothing runs or records yet: a ledger write that then
-    // fails leaves it without its running label, which binds nothing (delegatedIssues).
-    let delegates
-    try {
-      delegates = readDelegates(ctx.store, n)
-    } catch {
-      return { result: { refused: `refused: Issue #${n}'s delegates.json cannot be read; a person fixes it by hand` } }
-    }
-    // A label is a key of its own whatever it reads (__proto__, constructor): never one an object inherits.
-    const had = Object.hasOwn(delegates, name)
-    if (worktree && (had || now.includes(name))) {
-      return { result: { refused: `refused: "${name}" is already running or recorded for Issue #${n}; a worktree delegation takes a new label` } }
-    }
-    if (worktree) delegates = { ...delegates, [name]: { session: ctx.session, host: (sessionId(env.vars) || {}).host || 'claude', at: new Date().toISOString() } }
-    else if (op === 'done' && had) delete delegates[name]
-    if (worktree || had) {
-      // Its readers refuse a larger file, which would leave every agent worktree of this store unconfirmed.
-      if (Buffer.byteLength(JSON.stringify(delegates, null, 2) + '\n') > MAX_DELEGATES_BYTES) {
-        return { result: { refused: `refused: the delegation record would be too large (over ${MAX_DELEGATES_BYTES} bytes); use a shorter label` } }
-      }
-      writeJson(delegatesPath(ctx.store, n), delegates)
-    }
-    if (op === 'done' && !now.includes(name)) return { result: had ? now : ZERO }
+    if (op === 'done' && !now.includes(name)) return { result: ZERO }
     const next = op === 'add' ? (now.includes(name) ? now : [...now, name]) : now.filter(x => x !== name)
     return { ledger: { ...ledger, running: next }, result: next }
   })
-  if (r.ok && r.result && r.result.refused) return { code: 1, out: r.result.refused }
   if (r.ok && r.result === MISSING) return NO_LEDGER(n)
   if (r.ok && r.result === ZERO) return { code: 1, out: `refused: "${name}" is not running for Issue #${n}` }
   return r.ok ? { code: 0, out: `running ${r.result.length}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
-// Mode changes keep their reason and time under the same lock as the mode the Issue write queue reads.
+// Mode changes keep their reason and time under the ledger lock.
 const MODE_USAGE = 'usage: devflow-state mode <issue> autonomous|interactive < reason'
 function mode(env, cwd, n, value, reason) {
   const line = String(reason || '').split(/\r?\n/)[0].trim()
@@ -1802,7 +1472,6 @@ function mode(env, cwd, n, value, reason) {
   const ctx = repoContext(env, cwd)
   const no = ledgerGate(ctx, n, 'mode changes', { append: true })
   if (no) return no
-  if (value === 'autonomous' && !queueKey(true)) return { code: 1, out: `refused: the unattended run could not queue its posts: ${NO_KEY()}` }
   const r = updateLedger(ctx.store, n, ledger => {
     if (gone(ctx, n)) return { result: MISSING }
     const notes = [...(Array.isArray(ledger.notes) ? ledger.notes : [])]
@@ -1825,9 +1494,10 @@ function mode(env, cwd, n, value, reason) {
 
 // The keys the router and the Stop hook decide by take only the values docs/specs/ledger.md defines (Issue #34): another
 // repository's agent wrote branch names into path. Other keys are taken as sent.
-const STAGES = ['discover', 'start', 'design', 'plan', 'ready', 'build', 'verify', 'review', 'ship', 'cleanup', 'learn', 'done']
+const STAGES = ['discover', 'start', 'design', 'plan', 'build', 'verify', 'review', 'ship', 'cleanup', 'learn', 'done']
 const count = v => Number.isInteger(v) && v >= 1
 function ledgerValueError(patch) {
+  if (patch.stage === 'ready') return 'ready is now part of plan; use stage plan'
   if ('stage' in patch && !STAGES.includes(patch.stage)) return `stage is one of ${STAGES.join(', ')}; got ${JSON.stringify(patch.stage)}`
   if ('path' in patch && !['spike', 'bounded', 'architectural'].includes(patch.path)) {
     return `path is the lifecycle path (spike, bounded or architectural), not a branch; got ${JSON.stringify(patch.path)}`
@@ -1841,84 +1511,6 @@ function ledgerValueError(patch) {
   return null
 }
 
-// Locks the project's test files for a fix once its reproduction test is written: the hook then refuses edits to them
-// and doctor reports any that changed since the commit recorded here (Issue #20). Unlocking takes a reason, kept in notes.
-// A lock needs evidence that the test failed before the fix (Issue #50): the lock runs the test command and locks only
-// when it fails, or, for a test that does not run here, takes a CI run of this repository; a relock after a rebase
-// carries the evidence the unlock kept. Free text is not evidence.
-const TESTS_USAGE = 'usage: devflow-state tests <issue> lock -- <test command> | tests <issue> lock < <CI run URL of this repository ' +
-  'or "rebase"> | tests <issue> unlock < reason'
-const LOCK_TIMEOUT_MS = 10 * 60000
-function testsLock(env, cwd, n, op, reason, command = []) {
-  const why = String(reason || '').trim().split(/\r?\n/)[0].trim()
-  if (!['lock', 'unlock'].includes(op) || (op === 'unlock' && !why)) return { code: 2, out: TESTS_USAGE }
-  const ctx = repoContext(env, cwd)
-  let failing = null
-  if (op === 'lock') {
-    let globs
-    try {
-      globs = JSON.parse(fs.readFileSync(path.join(ctx ? ctx.root : cwd, '.devflow.json'), 'utf8')).tests
-    } catch {}
-    if (globs === undefined || (Array.isArray(globs) && !globs.length)) return { code: 1, out: 'refused: no "tests" globs in .devflow.json, so there is nothing to lock' }
-    if (!Array.isArray(globs) || globs.some(g => typeof g !== 'string' || !g)) return { code: 1, out: 'refused: "tests" in .devflow.json must be a list of path globs' }
-    if (!ctx || !ctx.head) return { code: 1, out: 'refused: there is no commit to lock the tests at' }
-    // Lock after the reproduction test is committed: doctor compares the tests with the locked commit.
-    const testsDirty = () => {
-      const r = env.run('git', ['status', '--porcelain', '--', ...globs.map(g => `:(glob)${g}`)], { cwd: ctx.root })
-      return r.code === 0 && r.stdout.trim() ? r.stdout.trimEnd() : ''
-    }
-    const dirty = testsDirty()
-    if (dirty) return { code: 1, out: 'refused: commit the test files first; uncommitted:\n' + dirty }
-    const no = ledgerGate(ctx, n, 'test locks', { append: true })
-    if (no) return no
-    const held = readLedger(ctx.store, n) || {}
-    // Already locked: nothing runs and the lock stays at its commit.
-    if (held.testsLocked) return { code: 0, out: `tests already locked at ${held.testsLocked.at}` }
-    if (command.length) {
-      // Run outside the ledger lock: a test run can take minutes.
-      // In the folder this was called from, where the hook resolved the command's paths.
-      const ran = env.exec(command[0], command.slice(1), { cwd: path.resolve(cwd), timeout: LOCK_TIMEOUT_MS })
-      const shown = command.join(' ').slice(0, 200)
-      if (typeof ran.code === 'string') {
-        return { code: 1, out: `refused: the test command did not run (${ran.code}); on Windows a .cmd runner such as npm cannot start without a ` +
-          'shell: run the test file with node directly, or lock with the CI run that saw it fail' }
-      }
-      if (ran.code === 0) return { code: 1, out: 'refused: the test command passed; a test never seen failing proves nothing, so run it before the fix' }
-      if (testsDirty()) return { code: 1, out: 'refused: the test command changed the test files, so it says nothing about the committed test' }
-      failing = { command: shown, exit: ran.code }
-    } else {
-      const ci = ctx.repo && new RegExp(`^https://github\\.com/${ctx.repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/actions/runs/\\d+`, 'i').exec(why)
-      if (ci) failing = { ci: ci[0] }
-      else if (why === 'rebase' && held.testsFailing && typeof held.testsFailing === 'object') failing = { ...held.testsFailing, rebased: true }
-      else if (why === 'rebase') return { code: 1, out: `refused: no earlier failing lock of Issue #${n} to carry over a rebase` }
-      else return { code: 2, out: TESTS_USAGE }
-    }
-  }
-  const no = ledgerGate(ctx, n, 'test locks', { append: true })
-  if (no) return no
-  const said = f => (f.command ? `seen failing: ${f.command} (exit ${f.exit})` : `seen failing in CI: ${f.ci}`) + (f.rebased ? ', carried over a rebase' : '')
-  const r = updateLedger(ctx.store, n, ledger => {
-    if (gone(ctx, n)) return { result: MISSING }
-    const notes = Array.isArray(ledger.notes) ? ledger.notes : []
-    if (op === 'lock') {
-      if (ledger.testsLocked) return { result: `tests already locked at ${ledger.testsLocked.at}` }
-      const at = ctx.head
-      const brief = failing.command ? `seen failing: ${failing.command}, exit ${failing.exit}` : said(failing)
-      return { ledger: { ...ledger, testsLocked: { at, failing }, notes: [...notes, `tests locked at ${at}: ${said(failing)}`] },
-        result: `tests locked at ${at} (${brief})` }
-    }
-    if (!ledger.testsLocked) return { result: ZERO }
-    // Only an unlock for a rebase keeps the evidence for the relock: after any other reason the test may be new or rewritten.
-    const { testsLocked, testsFailing, ...rest } = ledger
-    const kept = why === 'rebase' && testsLocked.failing ? { testsFailing: testsLocked.failing } : {}
-    return { ledger: { ...rest, ...kept, notes: [...notes, `tests unlocked: ${why}`] }, result: 'tests unlocked' }
-  })
-  if (r.ok && r.result === MISSING) return NO_LEDGER(n)
-  if (r.ok && r.result === ZERO) return { code: 1, out: `refused: tests are not locked for Issue #${n}` }
-  return r.ok ? { code: 0, out: r.result } : guarded(ctx, LOCKED(n, r.why), n)
-}
-
-// Appends one line to notes. ledger-update replaces whole keys, so two sessions adding notes that way would drop one.
 function note(env, cwd, n, text) {
   const line = String(text || '').trim().split(/\r?\n/)[0].trim()
   if (!line) return { code: 2, out: 'usage: devflow-state note <issue> < line' }
@@ -1934,131 +1526,7 @@ function note(env, cwd, n, text) {
   return r.ok ? { code: 0, out: `notes ${r.result}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
-// A flush claims the whole queue under the lock and posts outside it, removing each item by id once posted. Another
-// flush that finds a fresh claim leaves the queue alone: posting part of it would break the order. An item posted by a
-// flush that died before removing it can post again once its claim expires.
-const CLAIM_MS = 10 * 60000
-const REMOVE_WAIT_MS = 10000
-function flush(env, cwd, { waitMs = REMOVE_WAIT_MS } = {}) {
-  const ctx = repoContext(env, cwd)
-  if (taskWorktree(ctx)) return TASK_POST(ctx)
-  if (!ctx || !ctx.branchIssue) return { code: 1, out: 'refused: no devflow Issue branch' }
-  // Posts are marked for the repository origin names, so without one none could be checked.
-  if (!ctx.repo) return { code: 1, out: 'refused: not a devflow repository with a GitHub origin' }
-  const n = ctx.branchIssue
-  if (legacyOf(ctx, n)) return LEGACY(n)
-  const by = token()
-  const now = Date.now()
-  const key = queueKey(false)
-  const claim = updateLedger(ctx.store, n, ledger => {
-    // Queued posts wait for a person: an unattended run cannot flush its own queue.
-    if (ledger.mode === 'autonomous') return { result: 'autonomous' }
-    if (notAList(ledger)) return { result: 'notlist' }
-    // Without the key nothing can be checked, and that says nothing about the posts, so they are left as they are.
-    if (!key && queueOf(ledger).length) return { result: 'nokey' }
-    // A post this machine did not queue stops the whole flush; each gets an id a person can drop it by.
-    const named = queueOf(ledger).map(p => (typeof p.id === 'string' && POST_ID.test(p.id) ? p : { ...p, id: token() }))
-    const unsigned = named.filter(p => !signedWith(key, ctx.repo, p)).map(p => p.id)
-    if (unsigned.length) return { ledger: { ...ledger, pendingPosts: named }, result: { unsigned } }
-    const queued = queueOf(ledger)
-    // A claim dated ahead of now is void: it would hold the queue for as long as the date says.
-    if (queued.some(p => p.claimed && now - p.claimed.at < CLAIM_MS && p.claimed.at <= now + 60000)) return { result: 'busy' }
-    const pendingPosts = queued.map(p => ({ ...p, id: p.id || token(), claimed: { by, at: now } }))
-    return { ledger: { ...ledger, pendingPosts }, result: pendingPosts.map(p => p.id) }
-  })
-  if (!claim.ok) return guarded(ctx, LOCKED(n, claim.why))
-  if (claim.result === 'autonomous') return guarded(ctx, { code: 1, out: 'refused: the ledger is in autonomous mode; flush in an interactive turn', guard: 'state-autonomous-flush' })
-  if (claim.result === 'busy') return { code: 1, out: 'refused: another flush is posting this queue; try again later' }
-  if (claim.result === 'notlist') return { code: 1, out: NOT_A_LIST }
-  if (claim.result === 'nokey') return { code: 1, out: `refused: nothing was posted, since no queued post can be checked: ${NO_KEY()}` }
-  if (claim.result.unsigned) {
-    return guarded(ctx, { code: 1, guard: 'state-unsigned-post', out: `refused: queued posts ${claim.result.unsigned.join(', ')} were not ` +
-      'queued by devflow-state on this machine for this repository (or were queued before posts were marked or before ' +
-      'origin changed), so nothing ' +
-      `was posted; read them with devflow-state pending, post any you still want yourself, then take each out: devflow-state pending drop ${n} <id> < reason` })
-  }
-  const posts = claim.ledger ? claim.ledger.pendingPosts : []
-  const out = []
-  const tryUpdate = fn => {
-    try {
-      return updateLedger(ctx.store, n, fn, { waitMs })
-    } catch {
-      return { ok: false }
-    }
-  }
-  let posted = 0
-  let failed = false
-  let stuck = null
-  let unsure = null
-  // Posts go in order and stop at the first failure: a later intent would renumber the criteria a failed check names.
-  // A posted item still in the queue would post again, so one that cannot be removed stops the flush too.
-  for (const p of posts) {
-    // A post an earlier flush could not confirm is read back before it is sent: it may be on GitHub already (#49).
-    // The ledger is a working-tree file: only this branch's Issue is read back (any other is refused by write below), and
-    // a mark that is not a past time is not guessed at.
-    let r = null
-    if (p.unconfirmed && p.op === 'sub-issue-add') {
-      const at = p.unconfirmed.at
-      r = !Number.isFinite(at) || at <= 0 || at > now + 60000
-        ? { code: 1, out: `sub-issue-add (${p.id}): invalid unconfirmed mark; inspect the relationship` }
-        : write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true, verifyOnly: true })
-    }
-    if (p.unconfirmed && READ_BACK.has(p.op)) {
-      const at = p.unconfirmed.at
-      if (!Number.isFinite(at) || at <= 0 || at > now + 60000) {
-        r = { code: 1, out: `${p.op} (${p.id}): its unconfirmed mark is not a past time; look at the Issue, then drop it or fix the ledger` }
-      } else if (p.op === 'create' || p.issue === ctx.branchIssue) {
-        const url = postedAlready(ctx, p.op, p.issue, p.text, p.title, at)
-        if (url) r = { code: 0, out: `${p.op} (${p.id}) was already on GitHub: ${url}` }
-        else if (url === null) {
-          r = { code: 1, out: `${p.op} (${p.id}): posting state still unknown (reading the Issue back failed)`, unconfirmed: p.unconfirmed }
-        }
-      }
-    }
-    if (!r) r = write(env, cwd, p.op, p.issue, p.text, p.title, { flushing: true })
-    out.push(r.out)
-    if (r.code !== 0) {
-      if (r.unconfirmed) {
-        unsure = { id: p.id, at: r.unconfirmed.at }
-        out.push(`flush stopped at ${p.op} (${p.id}); if the Issue has it, take it out: devflow-state pending drop ${p.issue} ${p.id} ` +
-          '--posted < reason; otherwise flush again, which reads it back before posting')
-      } else {
-        out.push(`flush stopped at ${p.op} (${p.id}); fix the cause, or take it out: devflow-state pending drop ${p.issue} ${p.id} < reason`)
-      }
-      failed = true
-      break
-    }
-    posted++
-    if (!tryUpdate(l => (notAList(l) ? { result: 'notlist' } : { ledger: { ...l, pendingPosts: queueOf(l).filter(q => q.id !== p.id) } })).ok) {
-      stuck = p
-      break
-    }
-  }
-  if (failed || stuck) {
-    // What was not posted goes back unclaimed for the next flush; an unremoved item keeps its claim, so no flush
-    // posts it again before someone removes it.
-    // One whose posting is unknown keeps a mark, so the next flush reads it back before sending it (#49).
-    const back = tryUpdate(l => notAList(l) ? { result: 'notlist' } : ({
-      ledger: { ...l, pendingPosts: queueOf(l).map(q => {
-        const left = q.claimed && q.claimed.by === by && !(stuck && q.id === stuck.id) ? (({ claimed, ...rest }) => rest)(q) : q
-        return unsure && q.id === unsure.id ? { ...left, unconfirmed: { at: unsure.at } } : left
-      }) },
-    }))
-    if (stuck) out.push(`posted ${stuck.op} (${stuck.id}) but could not remove it from the queue; remove it with devflow-state pending drop ${stuck.issue} ${stuck.id} --posted < reason before the next flush, or it posts again in ${CLAIM_MS / 60000} min`)
-    if (!back.ok) out.push(`the queue stays claimed for ${CLAIM_MS / 60000} min`)
-    if (!back.ok && unsure) {
-      out.push(`the unconfirmed mark on ${unsure.id} could not be saved, so the next flush would post it without reading it back: ` +
-        'look at the Issue first, and drop it with --posted if it is there')
-    }
-    const later = posts.length - posted - (failed ? 1 : 0)
-    if (later > 0) out.push(`${later} later posts wait behind the ${failed ? 'failed' : 'unremoved'} one`)
-  }
-  return { code: failed || stuck ? 1 : 0, out: out.join('\n') || 'nothing pending' }
-}
-
-// Writes that count as this session's activity (Issue #10). After one succeeds, it is recorded and the other sessions
-// that wrote to the same Issue in the last 30 minutes are named; without an id of its own a session cannot tell.
-const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'sub-issue', 'ledger-update', 'metric', 'note', 'running', 'mode', 'tests', 'flush'])
+const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'sub-issue', 'ledger-update', 'note', 'running', 'mode'])
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
   const r = command(argv, stdin, env, cwd)
   const me = sessionId(env.vars)
@@ -2125,21 +1593,12 @@ function command(argv, stdin, env, cwd) {
       if (no) return no
       // Top-level keys are replaced as sent; a note goes through note, which appends under the lock.
       const patch = JSON.parse(input())
-      if (patch && typeof patch === 'object' && ('testsLocked' in patch || 'testsFailing' in patch)) {
-        return { code: 1, out: `refused: ${'testsLocked' in patch ? 'testsLocked' : 'testsFailing'} changes only through devflow-state tests <issue> lock|unlock` }
-      }
-      // Queued posts are devflow-state's own; replacing them would drop public writes waiting for the user (Issue #27).
       const wrong = patch && typeof patch === 'object' && !Array.isArray(patch) ? ledgerValueError(patch) : 'a ledger update is a JSON object of keys'
       if (wrong) return { code: 1, out: `refused: ${wrong}` }
       if (patch && typeof patch === 'object' && 'modeChanged' in patch) {
         return { code: 1, out: 'refused: modeChanged is written only by devflow-state mode' }
       }
-      if (patch && typeof patch === 'object' && 'pendingPosts' in patch) {
-        return { code: 1, out: 'refused: pendingPosts changes only through devflow-state (flush, pending drop)' }
-      }
-      // A new ledger can start autonomous here, so this makes the queue key as mode autonomous does.
-      if (patch.mode === 'autonomous' && !queueKey(true)) return { code: 1, out: `refused: the unattended run could not queue its posts: ${NO_KEY()}` }
-      // notes only grow: replacing them would drop another session's lines and the reasons tests were unlocked (Issue #20).
+      // Notes only grow, preserving other sessions' evidence.
       const r = updateLedger(ctx.store, n, ledger => {
         if ('mode' in patch && fs.existsSync(ledgerPath(ctx.store, n))) {
           return { result: { refused: 'refused: mode changes only through devflow-state mode <issue> autonomous|interactive < reason' } }
@@ -2147,6 +1606,10 @@ function command(argv, stdin, env, cwd) {
         // A new ledger may set mode, to one of its two values (Issue #34).
         if ('mode' in patch && !['interactive', 'autonomous'].includes(patch.mode)) {
           return { result: { refused: `refused: mode is interactive or autonomous; got ${JSON.stringify(patch.mode)}` } }
+        }
+        // Posts an older devflow queued wait for the user, who reads them and posts what they approve (ADR-0031).
+        if ('pendingPosts' in patch) {
+          return { result: { refused: 'refused: pendingPosts from an older devflow are kept; show them to the user and post what they approve' } }
         }
         const old = Array.isArray(ledger.notes) ? ledger.notes : []
         if ('notes' in patch && (!Array.isArray(patch.notes) || old.some((line, k) => patch.notes[k] !== line))) return { result: ZERO }
@@ -2166,13 +1629,10 @@ function command(argv, stdin, env, cwd) {
     case 'note':
       return num(rest[0]) ? note(env, cwd, num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state note <issue> < line' }
     case 'running':
-      return num(rest[0]) && (rest.length === 3 || (rest.length === 4 && rest[3] === '--worktree'))
-        ? running(env, cwd, num(rest[0]), rest[1], rest[2], { worktree: rest.length === 4 }) : { code: 2, out: RUNNING_USAGE }
+      return num(rest[0]) && rest.length === 3
+        ? running(env, cwd, num(rest[0]), rest[1], rest[2]) : { code: 2, out: RUNNING_USAGE }
     case 'mode':
       return num(rest[0]) && rest.length === 2 ? mode(env, cwd, num(rest[0]), rest[1], input()) : { code: 2, out: MODE_USAGE }
-    case 'tests':
-      if (num(rest[0]) && rest[1] === 'lock' && rest[2] === '--' && rest.length > 3) return testsLock(env, cwd, num(rest[0]), 'lock', '', rest.slice(3))
-      return num(rest[0]) && rest.length === 2 ? testsLock(env, cwd, num(rest[0]), rest[1], input()) : { code: 2, out: TESTS_USAGE }
     case 'release': {
       const n = num(rest[0])
       if (!n) return { code: 2, out: 'usage: devflow-state release <issue>' }
@@ -2192,28 +1652,6 @@ function command(argv, stdin, env, cwd) {
       if (!Object.hasOwn(held, me.hash)) return { code: 0, out: `this session holds nothing in Issue #${n}` }
       return releaseSessions(ctx.store, n, [me.hash]) ? { code: 0, out: `released this session from Issue #${n}` } : failed()
     }
-    case 'pending': {
-      if (rest[0] === 'drop') {
-        const ok = num(rest[1]) && rest[2] && (rest.length === 3 || (rest.length === 4 && rest[3] === '--posted'))
-        return ok ? pendingDrop(env, cwd, num(rest[1]), rest[2], input(), { posted: rest[3] === '--posted' }) : { code: 2, out: DROP_USAGE }
-      }
-      const ctx = repoContext(env, cwd)
-      const ledger = (ctx && ctx.issue && readLedger(ctx.store, ctx.issue)) || {}
-      if (notAList(ledger)) return { code: 1, out: NOT_A_LIST }
-      const posts = queueOf(ledger)
-      return { code: 0, out: posts.length ? JSON.stringify(posts, null, 2) : 'nothing pending' }
-    }
-    case 'flush':
-      return flush(env, cwd)
-    case 'metric':
-      if (num(rest[0]) && rest[1] === 'eval') {
-        const opt = k => (rest.indexOf(k) > 2 ? rest[rest.indexOf(k) + 1] : undefined)
-        return rest.length === 7 ? metricEval(env, cwd, num(rest[0]), rest[2], input(), opt('--host'), opt('--rev')) : { code: 2, out: EVAL_USAGE }
-      }
-      if (!num(rest[0]) || rest.length > 3 || (rest[2] !== undefined && rest[2] !== '--undo')) {
-        return { code: 2, out: 'usage: devflow-state metric <issue> interventions|filterFalsePositives [--undo] < note' }
-      }
-      return metric(env, cwd, num(rest[0]), rest[1], input(), { undo: rest[2] === '--undo' })
     default:
       return { code: 2, out: USAGE }
   }
@@ -2230,4 +1668,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { queueKey, macOf, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, GUARD_LOG, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, logGuard, metric, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, read, write, flush, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

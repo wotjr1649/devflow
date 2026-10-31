@@ -5,7 +5,7 @@ that both hosts load.
 
 devflow keeps work state in GitHub Issues so a session can resume after compaction
 or a restart, lets one main agent decide and write code while subagents read and
-verify, and backs its rules with scripts, hooks and CI rather than prose alone.
+verify, and leaves checking to review and CI rather than blocking hooks.
 
 **Status:** in use. devflow runs its own development, from Issue #1 on, on Claude Code and Codex.
 
@@ -13,7 +13,7 @@ verify, and backs its rules with scripts, hooks and CI rather than prose alone.
 - Why each choice was made: [docs/design/decisions/](docs/design/decisions/)
 - Contracts: [documents](docs/specs/documents.md), [issues](docs/specs/issues.md), [ledger](docs/specs/ledger.md),
   [lifecycle](docs/specs/lifecycle.md), [orchestration](docs/specs/orchestration.md),
-  [repository](docs/specs/repository.md), [metrics](docs/specs/metrics.md), [eval](docs/specs/eval.md)
+  [repository](docs/specs/repository.md), [eval](docs/specs/eval.md)
 
 ## Install
 
@@ -37,7 +37,7 @@ codex plugin add devflow@wotjr1649
 
 Start a new session after installation. In Codex, review and trust this plugin's hooks in `/hooks`; installation
 alone does not trust them. When migrating from `devflow@devflow`, confirm the new installation and hook trust before
-disabling the old plugin to avoid missing guards or running duplicate hooks. Keep other plugins enabled.
+disabling the old plugin to avoid running duplicate hooks. Keep other plugins enabled.
 
 To update after the publisher advances the release tag in the catalog:
 
@@ -53,10 +53,6 @@ updates both catalog entries after the release passes validation. The plugin man
 Claude Code to replace its cached copy. See [release and rollback](docs/specs/repository.md#릴리스와-롤백).
 If Codex registers a local checkout of the shared catalog, use the
 [local catalog update procedure](https://github.com/wotjr1649/marketplace#codex에-로컬-catalog-checkout을-등록한-경우).
-
-From a checkout of this repository, compare an installed copy with its release tag using
-`node bin/devflow-install-check --ref v0.3.1 <installed-plugin-directory>`. It checks tracked files; separately check
-for unexpected files left in an installation.
 
 For local development, this repository's catalogs are named `devflow-local`, with the identifier
 `devflow@devflow-local`. Codex installs from that catalog; Claude Code can load the same clean worktree directly
@@ -83,12 +79,10 @@ choices alone.
    ```bash
    git clone https://github.com/wotjr1649/devflow.git
    cd devflow
-   node bin/devflow-doctor
    node --test --test-timeout=120000 tests/*.test.js
    ```
 
-   Doctor prints `ok`, and warnings still pass. The test run takes a couple of minutes and reports `fail 0`;
-   a few skipped tests are normal.
+   The test run takes a couple of minutes and reports `fail 0`; a few skipped tests are normal.
 
 3. Confirm Claude Code loads this checkout. `CLAUDE_CONFIG_DIR` points the command at an empty scratch profile,
    so nothing is written to your default one:
@@ -104,7 +98,7 @@ choices alone.
 This confirms the checkout is sound and loads. It does not open a session, exercise hooks, or cover Codex and the
 release channel. Opening a session with a dedicated profile, logging in, trusting hooks and installing are owner
 decisions; the [local development runbook](docs/local-development.md) covers them, including isolated test
-profiles and what to verify for each kind of change. The resume card and Issue guard run only in a project with a
+profiles and what to verify for each kind of change. The resume card and session hooks run only in a project with a
 `.devflow.json`; see the [repository contract](docs/specs/repository.md).
 
 ## Prerequisites and limits
@@ -112,9 +106,9 @@ profiles and what to verify for each kind of change. The resume card and Issue g
 - Node.js 22 or 24 (the CI matrix), Git and authenticated GitHub CLI (`gh`) must be available to hooks and commands.
   Issue tracking expects a `github.com` origin and an account with write access to that repository.
 - Installing the plugin does not configure a project. Add its `.devflow.json` and project files using the
-  [repository contract](docs/specs/repository.md); without that profile the resume card and Issue guard do not run.
-- Hooks are guardrails, not an OS sandbox. Shell analysis cannot resolve arbitrary runtime-generated commands,
-  and host timeouts can bypass hook enforcement. Keep credential scope and host permissions appropriate.
+  [repository contract](docs/specs/repository.md); without that profile the hooks do not run.
+- Hooks block nothing: they resume work and track sessions. Issue text posted without `devflow-state` skips its
+  public text filter, and test changes are left to review. Keep credential scope and host permissions appropriate.
 - Codex uses its built-in agents; this plugin does not install Codex agent definitions. A report-only instruction
   does not restrict their tools. See [host facts](docs/research/host-facts.md#codex).
 - Before clearing a Codex session, complete the [handoff](docs/specs/ledger.md#동시-세션): release its record last,

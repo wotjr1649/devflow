@@ -2,7 +2,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('fs')
-const os = require('os')
 const path = require('path')
 const tmpdir = require('./tmpdir')
 const state = require('../bin/devflow-state')
@@ -10,7 +9,7 @@ const state = require('../bin/devflow-state')
 const BRANCH = 'feat/1-x'
 const ok = stdout => ({ code: 0, stdout, stderr: '' })
 const fakeToken = () => 'ghp_' + 'a1'.repeat(18)
-// Built at run time so the published file holds no path-shaped literal (bin/devflow-doctor).
+// Built at run time so the published file holds no path-shaped literal (public text filter).
 const winPath = () => ['C:', 'Users', 'me', 'x'].join(String.fromCharCode(92))
 const homePath = () => ['', 'home', 'me', 'x'].join('/')
 
@@ -68,18 +67,6 @@ function env(root, { data = issue(), gh = null, log = ok(''), branch = BRANCH, h
 }
 
 const ghWrites = e => e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue')
-// Posts as devflow-state queues them on this machine: each with an id and the mark its queue key gives it.
-const signed = (posts, repo = 'o/r') => posts.map((p, i) => {
-  const post = { id: String(i).padStart(16, '0'), ...p }
-  return { ...post, mac: state.macOf(state.queueKey(true), repo, post) }
-})
-// Runs fn with DEVFLOW_HOME set to home, then puts the test folder's back.
-const withHome = (home, fn) => {
-  const was = process.env.DEVFLOW_HOME
-  process.env.DEVFLOW_HOME = home
-  try { return fn() } finally { process.env.DEVFLOW_HOME = was }
-}
-
 test('card shows the writer state block as data with the latest checkpoint', () => {
   const out = state.card(env(repo()), '.')
   assert.match(out, /^\[devflow\] o\/r · feat\/1-x · HEAD abc1234/)
@@ -142,7 +129,7 @@ test('card refuses a branch without an Issue number', () => {
 test('card lists commits made after the ledger', () => {
   const root = repo({ ledger: { lastCommit: 'a0b1234', mode: 'interactive', task: { current: 2, total: 5 } } })
   const out = state.card(env(root, { log: ok('def5678 fix parser\n') }), '.')
-  assert.match(out, /Ledger: task 2\/5 · mode interactive · pending posts 0/)
+  assert.match(out, /Ledger: task 2\/5 · mode interactive/)
   assert.match(out, /Commits after the ledger:\n {2}def5678 fix parser/)
 })
 
@@ -215,21 +202,6 @@ test('write reports a failed post', () => {
   assert.deepEqual(r, { code: 1, out: 'reopen failed (gh exit 1)' })
 })
 
-test('autonomous ledger queues writes and flush posts them', () => {
-  const root = repo({ ledger: { mode: 'autonomous' } })
-  const e = env(root)
-  assert.match(state.write(e, '.', 'comment', 1, checkpoint('later')).out, /queued comment/)
-  assert.equal(ghWrites(e).length, 0)
-  assert.match(state.flush(e, '.').out, /autonomous mode/)
-  assert.equal(ghWrites(e).length, 0)
-  const file = path.join(root, '.work/devflow/i1/ledger.json')
-  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), mode: 'interactive' }))
-  const r = state.flush(e, '.')
-  assert.equal(r.code, 0)
-  assert.equal(ghWrites(e).length, 1)
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).pendingPosts, [])
-})
-
 test('check marks only the named acceptance criteria', () => {
   const body = '## 문제\n- [ ] not a criterion\n\n## 수용 기준\n- [ ] one\n- [x] two\n- [ ] three,\n  wrapped\n\n## 현재 상태\n- 단계: build\n'
   const done = state.checkCriteria(body, [1, 3])
@@ -295,16 +267,12 @@ test('read withholds the title along with the body of a non-writer Issue (2026-1
   assert.match(r.out, /\(title withheld\)/)
 })
 
-test('write and flush refuse gh issue commands devflow-state does not offer (2026-10-01 final review)', () => {
+test('write refuses gh issue commands devflow-state does not offer', () => {
   for (const op of ['lock', 'pin', 'develop', 'delete', 'transfer']) {
     const e = env(repo())
-    assert.match(state.write(e, '.', op, 1, '', undefined, { flushing: true }).out, /not a devflow-state write/)
-    assert.equal(ghWrites(e).length, 0, op)
+    assert.match(state.write(e, '.', op, 1).out, /not a devflow-state write/)
+    assert.equal(ghWrites(e).length, 0)
   }
-  const root = repo({ ledger: { mode: 'interactive', pendingPosts: signed([{ op: 'lock', issue: 1 }]) } })
-  const e = env(root)
-  assert.equal(state.flush(e, '.').code, 1)
-  assert.equal(ghWrites(e).length, 0)
 })
 
 test('git and gh are not taken from the working folder on Windows (2026-10-01 final review)', { skip: process.platform !== 'win32' || !process.env.SystemRoot }, () => {
@@ -318,324 +286,12 @@ test('git and gh are not taken from the working folder on Windows (2026-10-01 fi
   assert.match(out, /^git version/)
 })
 
-// Issue #6: refusals are logged by fixed id; the real repository's log must not change while these tests run.
-const guardLog = (root, n = 1) => path.join(root, '.work', 'devflow', `i${n}`, 'guard-events.jsonl')
-const guardLines = (root, n = 1) => (fs.existsSync(guardLog(root, n)) ? fs.readFileSync(guardLog(root, n), 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [])
-
-const realLog = (() => {
-  const r = require('child_process').spawnSync('git', ['branch', '--show-current'], { cwd: path.join(__dirname, '..'), encoding: 'utf8' })
-  const m = /^[^/]+\/(\d+)-/.exec((r.stdout || '').trim())
-  return m ? guardLog(path.join(__dirname, '..'), Number(m[1])) : null
-})()
-const realCount = () => (realLog && fs.existsSync(realLog) ? fs.readFileSync(realLog, 'utf8').split('\n').filter(Boolean).length : 0)
-let realBefore = 0
-test.before(() => { realBefore = realCount() })
-test.after(() => assert.equal(realCount(), realBefore, 'the test suite wrote to the real guard log'))
-
-test('a refusal is logged by a fixed id, without its text, and the result is unchanged', () => {
-  const root = repo()
-  const e = env(root)
-  const r = state.write(e, '.', 'comment', 1, checkpoint('t') + `\n- 토큰 ${fakeToken()}`)
-  assert.equal(r.code, 1)
-  assert.match(r.out, /^refused: comment text contains GitHub token$/)
-  assert.deepEqual(Object.keys(r), ['code', 'out'])
-  const lines = guardLines(root)
-  assert.equal(lines.length, 1)
-  assert.deepEqual(Object.keys(lines[0]), ['at', 'guard'])
-  assert.equal(lines[0].guard, 'state-leak')
-  assert.ok(Number.isInteger(lines[0].at))
-  assert.doesNotMatch(fs.readFileSync(guardLog(root), 'utf8'), /ghp_/)
-})
-
-test('each refusal kind has its own id and is logged to the branch Issue', () => {
-  const body = '## 문제\n\n## 수용 기준\n- [ ] one\n\n' + block() + '\n'
-  const cases = [
-    [r => state.write(env(r), '.', 'comment', 7, checkpoint('x')), 'state-other-issue'],
-    [r => state.write(env(r), '.', 'comment', 1, '그냥 메모'), 'state-checkpoint-shape'],
-    [r => state.write(env(r), '.', 'check', 1, 'all'), 'state-check-args'],
-    [r => state.write(env(r), '.', 'state', 1, '- 단계: x'), 'state-block-shape'],
-    [r => state.write(env(r), '.', 'create', undefined, 'x', 'y'.repeat(200)), 'state-create-shape'],
-    [r => state.write(env(r), '.', 'check', 1, '1'), 'state-no-criteria'],
-    [r => state.write(env(r, { data: issue({ body }) }), '.', 'check', 1, '4'), 'state-no-criterion'],
-    [r => state.flush(env(r), '.'), 'state-autonomous-flush', { mode: 'autonomous' }],
-  ]
-  for (const [run, id, ledger] of cases) {
-    const root = repo(ledger ? { ledger } : {})
-    assert.equal(run(root).code, 1, id)
-    assert.deepEqual(guardLines(root).map(l => l.guard), [id])
-  }
-})
-
-test('metric adds one to a ledger metric and appends its note, keeping the other keys', () => {
-  const root = repo({ ledger: { metrics: { filterFalsePositives: 2, eval: { passed: 1, total: 2 } }, notes: ['a'], stage: 'build' } })
-  const r = state.metric(env(root), '.', 1, 'interventions', 'user moved the work back to design\nsecond line ignored')
-  assert.deepEqual(r, { code: 0, out: 'interventions 1' })
-  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  assert.deepEqual(ledger.metrics, { filterFalsePositives: 2, eval: { passed: 1, total: 2 }, interventions: 1 })
-  assert.deepEqual(ledger.notes, ['a', 'interventions +1: user moved the work back to design'])
-  assert.equal(ledger.stage, 'build')
-  assert.equal(state.metric(env(root), '.', 1, 'filterFalsePositives', 'hook blocked a read').out, 'filterFalsePositives 3')
-})
-
-test('tests lock records the commit, unlock needs a reason and leaves it in notes (#20)', () => {
-  const root = repo()
-  const e = env(root)
-  const run = (input, ...a) => state.main(['tests', '1', ...a], () => input, e, '.')
-  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  assert.match(run('', 'lock').out, /no "tests" globs in \.devflow\.json/, 'off unless the project lists its tests')
-  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
-  // Since #50 a lock needs evidence that the test failed: here, the test command run by the lock itself.
-  e.exec = () => ({ code: 1 })
-  assert.deepEqual(state.main(['tests', '1', 'lock', '--', 'node', 't.js'], () => '', e, '.'), { code: 0, out: 'tests locked at abc1234 (seen failing: node t.js, exit 1)' })
-  assert.deepEqual(ledger().testsLocked, { at: 'abc1234', failing: { command: 'node t.js', exit: 1 } })
-  assert.equal(run('  ', 'unlock').code, 2, 'unlock needs a reason')
-  assert.deepEqual(run('the test asserted the old message', 'unlock'), { code: 0, out: 'tests unlocked' })
-  assert.equal(ledger().testsLocked, undefined)
-  assert.equal(ledger().notes[ledger().notes.length - 1], 'tests unlocked: the test asserted the old message')
-  assert.equal(run('again', 'unlock').code, 1, 'nothing to unlock')
-  assert.equal(run('', 'freeze').code, 2)
-  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": "tests/**" }')
-  assert.match(run('', 'lock').out, /"tests" .* list of path globs/)
-  // Review: ledger-update cannot lift or move the lock, and uncommitted tests are not locked.
-  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
-  state.main(['note', '1'], () => 'a line', e, '.')
-  assert.match(state.main(['ledger-update', '1'], () => '{"notes":[]}', e, '.').out, /notes only grow/)
-  assert.equal(state.main(['ledger-update', '1'], () => JSON.stringify({ notes: [...ledger().notes, 'more'] }), e, '.').code, 0)
-  const lifted = state.main(['ledger-update', '1'], () => '{"testsLocked":null}', e, '.')
-  assert.equal(lifted.code, 1)
-  assert.match(lifted.out, /testsLocked changes only through/)
-  const dirty = env(root)
-  const real = dirty.run
-  dirty.run = (cmd, args, opts) => (cmd === 'git' && args[0] === 'status' ? ok(' M tests/a.test.js\n') : real(cmd, args, opts))
-  const refused = state.main(['tests', '1', 'lock'], () => '', dirty, '.')
-  assert.equal(refused.code, 1)
-  assert.match(refused.out, /commit the test files first/)
-})
-
-// Issue #50: a lock needs evidence that the reproduction test failed before the fix.
-test('a lock runs the test command and locks only when it fails; a passing or unrunnable command is refused (#50)', () => {
-  const root = repo({ ledger: { stage: 'build', notes: [] } })
-  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
-  const e = env(root)
-  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  const lock = (...cmd) => state.main(['tests', '1', 'lock', '--', ...cmd], () => '', e, '.')
-  e.exec = () => ({ code: 0 })
-  assert.match(lock('node', 'a.test.js').out, /passed/)
-  e.exec = () => ({ code: 'ENOENT' })
-  assert.match(lock('npm', 'test').out, /did not run \(ENOENT\)/)
-  assert.equal(ledger().testsLocked, undefined)
-  const runs = []
-  e.exec = (cmd, args, opts) => { runs.push([cmd, ...args]); return { code: 1 } }
-  assert.equal(lock('node', '--test', 'tests/a.test.js').code, 0)
-  assert.deepEqual(runs, [['node', '--test', 'tests/a.test.js']])
-  assert.deepEqual(ledger().testsLocked.failing, { command: 'node --test tests/a.test.js', exit: 1 })
-  assert.equal(ledger().notes.at(-1), 'tests locked at abc1234: seen failing: node --test tests/a.test.js (exit 1)')
-  // Already locked: nothing runs, the lock stays where it was.
-  assert.match(lock('node', 'x.js').out, /already locked at abc1234/)
-  assert.equal(runs.length, 1)
-  // A command that changes the test files proves nothing about the committed test.
-  state.main(['tests', '1', 'unlock'], () => 'a new reproduction test for a review finding', e, '.')
-  const real = e.run
-  e.exec = () => { e.run = (cmd, args, opts) => (cmd === 'git' && args[0] === 'status' ? ok(' M tests/a.test.js\n') : real(cmd, args, opts)); return { code: 1 } }
-  assert.match(lock('node', 'a.js').out, /changed the test files/)
-  e.run = real
-  assert.equal(ledger().testsLocked, undefined)
-})
-
-test('without a command a lock takes only checkable evidence: a CI run of this repository, or rebase after an earlier failing lock (#50)', () => {
-  const root = repo({ ledger: { stage: 'build', notes: [] } })
-  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
-  const e = env(root)
-  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  const lock = input => state.main(['tests', '1', 'lock'], () => input, e, '.')
-  assert.equal(lock('').code, 2)
-  assert.equal(lock('I ran it and it failed').code, 2)
-  assert.equal(lock('https://github.com/other/repo/actions/runs/123').code, 2)
-  assert.equal(lock('rebase').code, 1, 'no earlier failing lock to carry')
-  assert.equal(lock('https://github.com/o/r/actions/runs/37241236301 macOS and Linux only').code, 0)
-  assert.deepEqual(ledger().testsLocked.failing, { ci: 'https://github.com/o/r/actions/runs/37241236301' })
-  state.main(['tests', '1', 'unlock'], () => 'rebase', e, '.')
-  assert.deepEqual(ledger().testsFailing, { ci: 'https://github.com/o/r/actions/runs/37241236301' }, 'unlock keeps the evidence for a relock')
-  assert.equal(lock('rebase').code, 0)
-  assert.deepEqual(ledger().testsLocked.failing, { ci: 'https://github.com/o/r/actions/runs/37241236301', rebased: true })
-  assert.match(state.main(['ledger-update', '1'], () => '{"testsFailing":{"ci":"x"}}', e, '.').out, /testsFailing changes only through/)
-  // Review: only an unlock for a rebase keeps the evidence; a test rewritten or added after any other unlock is seen failing again.
-  state.main(['tests', '1', 'unlock'], () => 'a reproduction test for a review finding', e, '.')
-  assert.equal(ledger().testsFailing, undefined)
-  assert.equal(lock('rebase').code, 1)
-  assert.equal(ledger().testsLocked, undefined)
-})
-
-test('a lock without a GitHub origin is refused with a reason, not an exception, and a rebase relock still works (#50)', () => {
-  const root = repo({ ledger: { stage: 'build', notes: [], testsFailing: { command: 'node t.js', exit: 1 } } })
-  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
-  const e = env(root)
-  const real = e.run
-  e.run = (cmd, args, opts) => (cmd === 'git' && args[0] === 'remote' ? { code: 2, stdout: '', stderr: '' } : real(cmd, args, opts))
-  const lock = input => state.main(['tests', '1', 'lock'], () => input, e, '.')
-  const r = lock('https://github.com/o/r/actions/runs/1')
-  assert.equal(r.code, 2)
-  assert.doesNotMatch(r.out, /Cannot read|TypeError/)
-  assert.equal(lock('rebase').code, 0)
-})
-
-test('the test command runs in the folder devflow-state was called from, where the hook resolved its paths (#50)', () => {
-  const root = repo({ ledger: { stage: 'build', notes: [] } })
-  fs.writeFileSync(path.join(root, '.devflow.json'), '{ "tests": ["tests/**"] }')
-  const e = env(root)
-  const sub = path.join(root, 'tests')
-  fs.mkdirSync(sub)
-  let ranIn = null
-  e.exec = (cmd, args, opts) => { ranIn = opts.cwd; return { code: 1 } }
-  assert.equal(state.main(['tests', '1', 'lock', '--', 'node', 'a.test.js'], () => '', e, sub).code, 0)
-  assert.equal(ranIn, sub)
-})
-
-test('metric eval records passed/total per host with the revision it ran on, under the lock, keeping the other metrics (#27, #50)', () => {
-  // A ledger from before #50 holds one result, which was the Claude run.
-  const root = repo({ ledger: { metrics: { interventions: 2, eval: { passed: 40, total: 41 } }, notes: [], stage: 'ship' } })
-  const e = env(root)
-  const ev = (score, ...a) => state.main(['metric', '1', 'eval', score, ...a], () => 'trigger eval after a description change', e, '.')
-  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  assert.deepEqual(ev('28/29', '--host', 'codex', '--rev', 'def5678'), { code: 0, out: 'eval codex 28/29 @def5678' })
-  assert.deepEqual(ledger().metrics, { interventions: 2, eval: { claude: { passed: 40, total: 41 }, codex: { passed: 28, total: 29, rev: 'def5678' } } })
-  assert.deepEqual(ev('41/41', '--host', 'claude', '--rev', 'abc1234'), { code: 0, out: 'eval claude 41/41 @abc1234' })
-  assert.deepEqual(ledger().metrics.eval, { claude: { passed: 41, total: 41, rev: 'abc1234' }, codex: { passed: 28, total: 29, rev: 'def5678' } })
-  assert.equal(ledger().notes.at(-1), 'eval claude 41/41 @abc1234: trigger eval after a description change')
-  for (const v of ['42/41', 'x/2', '1/0', '']) assert.equal(ev(v, '--host', 'claude', '--rev', 'abc1234').code, 2, v)
-  assert.equal(ev('1/2').code, 2, 'the host and revision are required')
-  assert.equal(ev('1/2', '--host', 'gemini', '--rev', 'abc1234').code, 2)
-  assert.equal(ev('1/2', '--host', 'codex', '--rev', 'HEAD').code, 2, 'a commit id, not a name that moves')
-  assert.equal(state.main(['metric', '1', 'eval', '1/2', '--host', 'codex', '--rev', 'abc1234'], () => ' ', e, '.').code, 2, 'a note is required')
-})
-
-test('pending drop takes one queued post out with its reason, only in an interactive turn and never under a live flush (#27)', () => {
-  const fresh = { by: 'other', at: new Date().toISOString() }
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive', notes: [], pendingPosts: [
-    { id: 'p1', op: 'close', issue: 1 }, { id: 'p2', op: 'comment', issue: 1 }, { id: 'p3', op: 'comment', issue: 1, claimed: fresh }] } })
-  const e = env(root)
-  const drop = (input, ...a) => state.main(['pending', 'drop', ...a], () => input, e, '.')
-  const ledger = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  assert.deepEqual(drop('criterion 2 is still open', '1', 'p1'), { code: 0, out: 'pending 2' })
-  assert.deepEqual(ledger().pendingPosts.map(p => p.id), ['p2', 'p3'])
-  assert.equal(ledger().notes[ledger().notes.length - 1], 'dropped queued close (p1): criterion 2 is still open')
-  assert.equal(drop('x', '1', 'p9').code, 1)
-  assert.equal(drop(' ', '1', 'p2').code, 2, 'a reason is required')
-  assert.equal(drop('x', 'p2').code, 2, 'the Issue number comes first')
-  // A flush holding a fresh claim may still post it; only a post flush reported as posted but unremoved goes.
-  assert.match(drop('x', '1', 'p3').out, /claimed by a flush/)
-  assert.deepEqual(drop('flush said it posted', '1', 'p3', '--posted'), { code: 0, out: 'pending 1' })
-  // Unattended runs leave the queue to the person, as flush does.
-  fs.writeFileSync(path.join(root, '.work/devflow/i1/ledger.json'), JSON.stringify({ ...ledger(), mode: 'autonomous' }))
-  assert.match(drop('x', '1', 'p2').out, /interactive/)
-})
-
-// The ledger is a working-tree file, so a cloned or unpacked repository can bring a queue of its own: flush posts only
-// what devflow-state queued with this machine's key, and nothing at all while anything else is in the queue.
-test('flush posts nothing while the queue holds a post devflow-state did not queue on this machine', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: [
-    { op: 'comment', issue: 1, text: checkpoint('brought along') },
-    { id: 'p2', op: 'comment', issue: 1, text: checkpoint('forged'), at: '2026-10-01T00:00:00Z', mac: 'ab'.repeat(32) }] } })
-  const e = env(root)
-  const flushed = state.flush(e, '.')
-  assert.equal(flushed.code, 1)
-  assert.match(flushed.out, /not queued by devflow-state on this machine/)
-  assert.match(flushed.out, /p2/)
-  assert.equal(ghWrites(e).length, 0)
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-unsigned-post'])
-  // Each one has an id to drop it by, and none is left claimed.
-  const left = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8')).pendingPosts
-  assert.equal(left.length, 2)
-  assert.ok(left.every(p => typeof p.id === 'string' && p.id && !p.claimed))
-  assert.match(flushed.out, new RegExp(left[0].id))
-})
-
-test('a post queued in an unattended run carries this machine\'s key and flushes', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'autonomous' } })
-  const e = env(root)
-  assert.match(state.write(e, '.', 'comment', 1, checkpoint('queued')).out, /^queued comment/)
-  const key = fs.readFileSync(path.join(process.env.DEVFLOW_HOME, 'queue.key'), 'utf8')
-  assert.match(key, /^[0-9a-f]{64}$/)
-  const file = path.join(root, '.work/devflow/i1/ledger.json')
-  const queued = JSON.parse(fs.readFileSync(file, 'utf8'))
-  assert.match(queued.pendingPosts[0].mac, /^[0-9a-f]{64}$/)
-  // A queued post whose text changed afterwards no longer matches its mark.
-  fs.writeFileSync(file, JSON.stringify({ ...queued, mode: 'interactive', pendingPosts: [{ ...queued.pendingPosts[0], text: checkpoint('changed') }] }))
-  assert.match(state.flush(e, '.').out, /not queued by devflow-state on this machine/)
-  fs.writeFileSync(file, JSON.stringify({ ...queued, mode: 'interactive' }))
-  const flushed = state.flush(e, '.')
-  assert.equal(flushed.code, 0, flushed.out)
-  assert.equal(ghWrites(e).length, 1)
-})
-
-test('a post marked for another repository is not posted here, as in a work tree copied into a fork', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text: checkpoint('x') }], 'o/other') } })
-  const e = env(root)
-  assert.match(state.flush(e, '.').out, /not queued by devflow-state on this machine for this repository/)
-  assert.equal(ghWrites(e).length, 0)
-})
-
-test('without a readable key flush posts nothing and leaves the queue as it was, not calling it foreign', () => {
-  const posts = signed([{ op: 'comment', issue: 1, text: checkpoint('x') }])
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: posts } })
-  const e = env(root)
-  const r = withHome(tmpdir('devflow-nohome-'), () => state.flush(e, '.'))
-  assert.equal(r.code, 1)
-  assert.match(r.out, /no queued post can be checked: no queue key at /)
-  assert.doesNotMatch(r.out, /pending drop/)
-  assert.equal(ghWrites(e).length, 0)
-  assert.deepEqual(guardLines(root), [])
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8')).pendingPosts, posts)
-})
-
-test('mode autonomous makes the queue key in the interactive turn, before a sandboxed run would need it', () => {
-  const home = path.join(tmpdir('devflow-home-'), 'fresh')
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive' } })
-  const r = withHome(home, () => state.main(['mode', '1', 'autonomous'], () => 'away', env(root), '.'))
-  assert.equal(r.code, 0, r.out)
-  assert.match(fs.readFileSync(path.join(home, 'queue.key'), 'utf8'), /^[0-9a-f]{64}$/)
-})
-
-test('a new ledger started autonomous through ledger-update makes the queue key too', () => {
-  const home = path.join(tmpdir('devflow-home-'), 'fresh')
-  const root = repo()
-  const r = withHome(home, () => state.main(['ledger-update', '1'], () => '{"mode":"autonomous","stage":"build"}', env(root), '.'))
-  assert.equal(r.code, 0, r.out)
-  assert.match(fs.readFileSync(path.join(home, 'queue.key'), 'utf8'), /^[0-9a-f]{64}$/)
-  assert.match(withHome('rel', () => state.main(['ledger-update', '1'], () => '{"mode":"autonomous"}', env(root), '.')).out, /could not queue its posts/)
-})
-
-test('flush without a GitHub origin refuses before calling any post foreign', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text: checkpoint('x') }]) } })
-  const e = env(root)
-  const run = e.run
-  e.run = (cmd, args, opts) => (cmd === 'git' && args.join(' ') === 'remote get-url origin' ? { code: 2, stdout: '', stderr: '' } : run(cmd, args, opts))
-  assert.deepEqual(state.flush(e, '.'), { code: 1, out: 'refused: not a devflow repository with a GitHub origin' })
-  assert.deepEqual(guardLines(root), [])
-  assert.equal(ghWrites(e).length, 0)
-})
-
-test('a relative DEVFLOW_HOME, which would put the key in the repository, is refused', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive' } })
-  const r = withHome('.devflow', () => state.main(['mode', '1', 'autonomous'], () => 'away', env(root), '.'))
-  assert.equal(r.code, 1)
-  assert.match(r.out, /DEVFLOW_HOME, which must be an absolute path/)
-  assert.equal(withHome('.devflow', () => state.queueKey(true)), null)
-  assert.equal(fs.existsSync(path.join(root, '.devflow')), false)
-  assert.equal(fs.existsSync('.devflow'), false)
-})
-
-test('pending drop treats a claim dated ahead of now as void, as flush does', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive', notes: [], pendingPosts: [{ id: 'p1', op: 'comment', issue: 1, claimed: { by: 'f', at: Date.now() + 3600e3 } }] } })
-  assert.deepEqual(state.main(['pending', 'drop', '1', 'p1'], () => 'brought along', env(root), '.'), { code: 0, out: 'pending 0' })
-})
-
-test('ledger-update leaves pendingPosts to devflow-state and keeps running delegations (#27)', () => {
+test('ledger-update preserves old pendingPosts and keeps running delegations (#27)', () => {
   const root = repo({ ledger: { stage: 'build', running: ['reviewer'], pendingPosts: [{ id: 'p1' }] } })
   const e = env(root)
   const up = body => state.main(['ledger-update', '1'], () => body, e, '.')
-  assert.match(up('{"pendingPosts":[]}').out, /pendingPosts .*devflow-state/)
   assert.match(up('{"running":[]}').out, /running .*running <issue> done/)
+  assert.match(up('{"pendingPosts":[]}').out, /pendingPosts from an older devflow are kept/)
   assert.equal(up('{"stage":"verify"}').code, 0)
   const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
   assert.deepEqual([ledger.running, ledger.pendingPosts, ledger.stage], [['reviewer'], [{ id: 'p1' }], 'verify'])
@@ -644,19 +300,6 @@ test('ledger-update leaves pendingPosts to devflow-state and keeps running deleg
   assert.equal(state.main(['ledger-update', '1'], () => '{"stage":"build","running":[]}', env(fresh), '.').code, 0)
 })
 
-test('metric --undo takes one back with its reason, and never goes below zero (#22)', () => {
-  const root = repo()
-  const e = env(root)
-  assert.equal(state.main(['metric', '1', 'filterFalsePositives'], () => 'counted a reviewer remark', e, '.').code, 0)
-  const r = state.main(['metric', '1', 'filterFalsePositives', '--undo'], () => 'a reviewer agent is not a devflow device', e, '.')
-  assert.deepEqual(r, { code: 0, out: 'filterFalsePositives 0' })
-  const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
-  assert.equal(ledger.metrics.filterFalsePositives, 0)
-  assert.equal(ledger.notes[ledger.notes.length - 1], 'filterFalsePositives -1: a reviewer agent is not a devflow device')
-  const zero = state.main(['metric', '1', 'filterFalsePositives', '--undo'], () => 'again', e, '.')
-  assert.equal(zero.code, 1)
-  assert.match(zero.out, /already 0/)
-})
 
 test('running adds and removes one delegation under the lock and keeps the others (#24)', () => {
   const root = repo()
@@ -765,7 +408,6 @@ test('mode follows ledger scope, append and lock refusals (#32)', () => {
   const unsafe = change(env(root))
   assert.equal(unsafe.code, 1)
   assert.match(unsafe.out, /not a plain folder/)
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-other-issue', 'state-detached', 'state-ledger-locked', 'state-ledger-unsafe'])
   fs.rmdirSync(lock)
   assert.equal(change(env(root, { branch: 'main' })).code, 0, 'a named non-Issue branch may change an existing ledger')
   assert.equal(change(env(empty)).code, 0, 'the Issue branch may start its own ledger, like running and tests')
@@ -880,96 +522,6 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
   // A new ledger: mode is checked too.
   const fresh = repo()
   assert.match(state.main(['ledger-update', '1'], () => '{"mode":"auto"}', env(fresh), '.').out, /mode is interactive or autonomous/)
-})
-
-test('a pendingPosts that is not a list is refused, never thrown on or overwritten (#35)', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'autonomous', pendingPosts: { broken: true } } })
-  const e = env(root)
-  const file = path.join(root, '.work/devflow/i1/ledger.json')
-  const queued = state.write(e, '.', 'comment', 1, checkpoint('x'))
-  assert.equal(queued.code, 1)
-  assert.match(queued.out, /pendingPosts is not a list/)
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).pendingPosts, { broken: true }, 'the unknown queue is left for a person')
-  fs.writeFileSync(file, JSON.stringify({ stage: 'build', mode: 'interactive', pendingPosts: { broken: true } }))
-  const flushed = state.flush(e, '.')
-  assert.equal(flushed.code, 1)
-  assert.match(flushed.out, /pendingPosts is not a list/)
-  assert.match(state.card(e, '.'), /pending posts \? \(not a list\)/)
-  assert.equal(ghWrites(e).length, 0)
-})
-
-test('pending drop honours the claim time flush really writes, in milliseconds (#35)', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive', notes: [], pendingPosts: [{ id: 'p1', op: 'comment', issue: 1, claimed: { by: 'f', at: Date.now() } }] } })
-  assert.match(state.main(['pending', 'drop', '1', 'p1'], () => 'x', env(root), '.').out, /claimed by a flush/)
-})
-
-test('a queue with a non-object item is not a list either, and pending says so (#35 review)', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'autonomous', pendingPosts: [null] } })
-  const e = env(root)
-  assert.match(state.write(e, '.', 'comment', 1, checkpoint('x')).out, /pendingPosts is not a list/)
-  const listed = state.main(['pending'], () => '', e, '.')
-  assert.equal(listed.code, 1)
-  assert.match(listed.out, /pendingPosts is not a list/)
-})
-
-test('flush does not write over a queue a person broke while it was posting (#35 review)', () => {
-  const root = repo({ ledger: { stage: 'build', mode: 'interactive', pendingPosts: signed([{ id: 'p1', op: 'comment', issue: 1, text: checkpoint('x') }]) } })
-  const file = path.join(root, '.work/devflow/i1/ledger.json')
-  // While the post is out, the ledger's queue is hand-edited into something that is not a list.
-  const e = env(root)
-  const run = e.run
-  e.run = (cmd, args, opts) => {
-    if (cmd === 'gh' && args[0] === 'issue') fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), pendingPosts: 'hand edited' }))
-    return run(cmd, args, opts)
-  }
-  state.flush(e, '.')
-  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).pendingPosts, 'hand edited')
-})
-
-test('metric refuses another Issue, unknown metrics and an empty note', () => {
-  const root = repo()
-  assert.match(state.metric(env(root), '.', 7, 'interventions', 'x').out, /only to the branch's Issue #1/)
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-other-issue'])
-  assert.equal(state.metric(env(root), '.', 1, 'calls', 'x').code, 2)
-  assert.equal(state.metric(env(root), '.', 1, 'interventions', '  ').code, 2)
-  assert.equal(fs.existsSync(path.join(root, '.work/devflow/i1/ledger.json')), false)
-})
-
-test('logGuard never throws and does not write through a linked folder or file', t => {
-  const root = repo()
-  const outside = tmpdir('devflow-out-')
-  fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
-  fs.symlinkSync(outside, path.join(root, '.work', 'devflow', 'i1'), 'junction')
-  state.logGuard(root, 1, 'state-leak')
-  assert.deepEqual(fs.readdirSync(outside), [])
-  assert.doesNotThrow(() => state.logGuard(path.join(root, 'missing', '\0bad'), 1, 'state-leak'))
-  const root2 = repo()
-  fs.mkdirSync(path.join(root2, '.work', 'devflow', 'i1'), { recursive: true })
-  const target = path.join(outside, 'target.jsonl')
-  fs.writeFileSync(target, '')
-  try { fs.symlinkSync(target, guardLog(root2)) } catch { return t.skip('file symlinks need privileges here') }
-  state.logGuard(root2, 1, 'state-leak')
-  assert.equal(fs.readFileSync(target, 'utf8'), '')
-})
-
-test('concurrent appends from several processes keep every line whole', { timeout: 60000 }, async () => {
-  const root = repo()
-  const start = path.join(root, 'start')
-  // Each child gives up waiting for the start signal after a while, and is waited on from the moment it starts, so
-  // neither a child that ends early nor a test that fails first leaves anything hanging (#15).
-  const script = `const s = require(${JSON.stringify(path.resolve(__dirname, '../bin/devflow-state'))});` +
-    `const fs = require('fs'); const end = Date.now() + 30000;` +
-    `while (!fs.existsSync(${JSON.stringify(start)})) if (Date.now() > end) process.exit(9);` +
-    `for (let i = 0; i < 200; i++) s.logGuard(${JSON.stringify(root)}, 1, 'state-leak')`
-  const { spawn } = require('child_process')
-  const kids = Array.from({ length: 6 }, () => spawn(process.execPath, ['-e', script], { stdio: 'ignore' }))
-  const exits = kids.map(k => new Promise((resolve, reject) => { k.once('exit', resolve); k.once('error', reject) }))
-  await new Promise(r => setTimeout(r, 300))
-  fs.writeFileSync(start, '')
-  assert.deepEqual(await Promise.all(exits), kids.map(() => 0))
-  const raw = fs.readFileSync(guardLog(root), 'utf8').split('\n').filter(Boolean)
-  assert.equal(raw.length, 1200)
-  for (const l of raw) assert.equal(JSON.parse(l).guard, 'state-leak')
 })
 
 // gh api --include prints a status line, headers, a blank line, then the body; real gh output uses CRLF.
@@ -1120,7 +672,6 @@ test('intent refuses the state heading, a missing criteria section, a long body 
     assert.equal(r.code, 1)
     assert.match(r.out, /^refused: /)
     assert.equal(ghWrites(e).length, 0)
-    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-shape'])
   }
 })
 
@@ -1137,24 +688,7 @@ test('intent applies the public filter to the body and the title without echoing
     assert.match(r.out, /^refused: intent text contains /)
     assert.doesNotMatch(r.out, /ghp_|Users|hidden/)
     assert.equal(ghWrites(e).length, 0)
-    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-leak'])
   }
-})
-
-test('intent goes only to the branch Issue and queues with its title while autonomous', () => {
-  const e0 = env(repo())
-  assert.match(state.write(e0, '.', 'intent', 7, intentOf(['- [ ] one'])).out, /only to the branch's Issue #1/)
-  assert.equal(ghWrites(e0).length, 0)
-  const root = repo({ ledger: { mode: 'autonomous' } })
-  const e = env(root, { data: issue({ body: oldBody(['- [ ] one']) }) })
-  assert.match(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one']), '새 제목').out, /queued intent/)
-  assert.equal(ghWrites(e).length, 0)
-  const file = path.join(root, '.work/devflow/i1/ledger.json')
-  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), mode: 'interactive' }))
-  assert.equal(state.flush(e, '.').code, 0)
-  const w = ghWrites(e)
-  assert.equal(w.length, 1)
-  assert.deepEqual(w[0].args.slice(-2), ['--title', '새 제목'])
 })
 
 test('state adds the block to an Issue that has none, and create needs plain criteria (#27)', () => {
@@ -1166,35 +700,6 @@ test('state adds the block to an Issue that has none, and create needs plain cri
   assert.match(created('## 문제\nx\n\n## 수용 기준\n\n- [ ] a\n  - [ ] nested\n').out, /each criterion/)
   assert.equal(created(`## 문제\nx\n\n## 수용 기준\n- [ ] a\n\n${block('없음')}\n`).code, 0, 'a new Issue may name no branch yet')
   assert.match(created('## 문제\nx\n\n## 수용 기준\n- [x] a\n').out, /starts with every criterion unchecked/)
-})
-
-test('an unattended write is checked against the Issue as the queue will leave it, before it is queued (#31)', () => {
-  const body = `## 문제\nx\n\n## 수용 기준\n- [x] a\n- [ ] b\n\n${block()}\n`
-  const root = repo({ ledger: { stage: 'build', mode: 'autonomous' } })
-  const e = env(root, { data: issue({ body }) })
-  const queue = () => JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8')).pendingPosts || []
-  const early = state.write(e, '.', 'close', 1)
-  assert.equal(early.code, 1)
-  assert.match(early.out, /criterion 2 is not checked.*before queueing/)
-  assert.equal(queue().length, 0, 'nothing queued that flush would refuse')
-  assert.match(state.write(e, '.', 'check', 1, '3').out, /no acceptance criterion 3/)
-  assert.equal(state.write(e, '.', 'check', 1, '2').code, 0)
-  assert.equal(state.write(e, '.', 'close', 1).code, 0, 'the queued check leaves every criterion checked')
-  assert.deepEqual(queue().map(p => p.op), ['check', 'close'])
-  assert.equal(ghWrites(e).length, 0)
-  // intent's order rule too: criteria below the state block.
-  const below = `## 문제\nx\n\n${block()}\n\n## 수용 기준\n- [ ] a\n`
-  const root2 = repo({ ledger: { stage: 'build', mode: 'autonomous' } })
-  const r2 = state.write(env(root2, { data: issue({ body: below }) }), '.', 'intent', 1, intentOf(['- [ ] a']))
-  assert.equal(r2.guard || guardLines(root2).map(l => l.guard)[0], 'state-intent-order')
-  // An Issue that cannot be read (offline) does not stop the run: the post queues unchecked and flush checks it.
-  const root3 = repo({ ledger: { stage: 'build', mode: 'autonomous' } })
-  const offline = env(root3, { gh: { code: 1, stdout: '', stderr: 'offline' } })
-  const r3 = state.write(offline, '.', 'close', 1)
-  assert.equal(r3.code, 0)
-  assert.match(r3.out, /not checked before queueing/)
-  // state needs no lookup at all.
-  assert.equal(state.write(offline, '.', 'state', 1, block()).code, 0)
 })
 
 test('a pipe marks a table only in a paragraph with a delimiter row (#33)', () => {
@@ -1267,36 +772,6 @@ test('intent refuses an old body whose criteria sit below the state block', () =
   assert.equal(r.code, 1)
   assert.match(r.out, /^refused: /)
   assert.equal(ghWrites(e).length, 0)
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-order'])
-})
-
-test('a check queued after a queued intent is refused; one queued before it is kept', () => {
-  const root = repo({ ledger: { mode: 'autonomous' } })
-  // Criteria to check: since #31 a check is judged against the body before it is queued.
-  const e = env(root, { data: issue({ body: oldBody(['- [ ] one']) }) })
-  assert.match(state.write(e, '.', 'check', 1, '1').out, /queued check/)
-  assert.match(state.write(e, '.', 'intent', 1, intentOf(['- [ ] one'])).out, /queued intent/)
-  const r = state.write(e, '.', 'check', 1, '1')
-  assert.equal(r.code, 1)
-  assert.match(r.out, /^refused: /)
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-check-after-intent'])
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8')).pendingPosts.map(p => p.op), ['check', 'intent'])
-})
-
-test('flush stops at the first failed post and keeps it and every later post in order (2026-10-02 final review)', () => {
-  const root = repo({ ledger: { mode: 'autonomous' } })
-  // Queued against four criteria; by flush time a person cut the Issue to three, so the check fails then (#31 moved the
-  // queue-time case to queueing itself).
-  const queuedAgainst = env(root, { data: issue({ body: oldBody(['- [ ] one', '- [ ] two', '- [ ] three', '- [ ] four']) }) })
-  assert.equal(state.write(queuedAgainst, '.', 'check', 1, '4').code, 0)
-  assert.equal(state.write(queuedAgainst, '.', 'intent', 1, intentOf(['- [ ] one', '- [ ] two', '- [ ] three', '- [ ] four'])).code, 0)
-  const e = env(root, { data: issue({ body: oldBody(['- [ ] one', '- [ ] two', '- [ ] three']) }) })
-  const file = path.join(root, '.work/devflow/i1/ledger.json')
-  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), mode: 'interactive' }))
-  const r = state.flush(e, '.')
-  assert.equal(r.code, 1)
-  assert.equal(ghWrites(e).length, 0, 'the intent behind the failed check is not posted')
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).pendingPosts.map(p => p.op), ['check', 'intent'])
 })
 
 test('intent refuses task items in other list forms and a second criteria section (2026-10-02 final review)', () => {
@@ -1306,22 +781,10 @@ test('intent refuses task items in other list forms and a second criteria sectio
     const r = state.write(e, '.', 'intent', 1, intentOf(crit))
     assert.equal(r.code, 1, crit.join(' / '))
     assert.equal(ghWrites(e).length, 0)
-    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-shape'])
   }
   const root = repo()
   const r = state.write(env(root), '.', 'intent', 1, intentOf(['- [ ] a']) + '\n## 수용 기준\n- [x] b\n')
   assert.equal(r.code, 1)
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-shape'])
-})
-
-test('a direct intent is refused while a check for the Issue still waits in the queue (2026-10-02 security review)', () => {
-  const root = repo({ ledger: { mode: 'interactive', pendingPosts: [{ op: 'check', issue: 1, text: '1' }] } })
-  const e = env(root, { data: issue({ body: oldBody(['- [ ] one']) }) })
-  const r = state.write(e, '.', 'intent', 1, intentOf(['- [ ] one', '- [ ] two']))
-  assert.equal(r.code, 1)
-  assert.match(r.out, /^refused: /)
-  assert.equal(ghWrites(e).length, 0)
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-pending-check'])
 })
 
 test('checks hidden in HTML comments or written by a non-writer are not carried (2026-10-02 security review)', () => {
@@ -1346,7 +809,6 @@ test('a comment mark in the criteria is not plain: check refuses, intent carries
     const root = repo()
     const c = state.write(env(root, { data: issue({ body: old }) }), '.', 'check', 1, '3')
     assert.match(c.out, /^refused: .*not plain/)
-    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-criteria-unplain'])
   }
 })
 
@@ -1383,7 +845,6 @@ test('intent refuses nested or quoted task items under the criteria heading (202
     const root = repo()
     const r = state.write(env(root), '.', 'intent', 1, intentOf(crit))
     assert.equal(r.code, 1, crit.join(' / '))
-    assert.deepEqual(guardLines(root).map(l => l.guard), ['state-intent-shape'])
   }
 })
 
@@ -1535,26 +996,6 @@ test('a criteria heading hidden in a comment is skipped for check, carry and the
 })
 
 // Issue #50: a ship checkpoint carries the lines the ship steps require, or it is not posted.
-test('a ship checkpoint without the trigger eval or (after an unlock) unlock line is refused; measurement is optional (#50, #104)', () => {
-  const root = repo({ ledger: { stage: 'ship', notes: [] } })
-  const e = env(root)
-  const post = text => state.main(['comment', '1'], () => text, e, '.')
-  const ship = (...ls) => ['### Checkpoint ship — 끝', '- 변경: abc1234', ...ls].join('\n')
-  const evalLine = '- 트리거 eval: 실행 안 함. 스킬 변경 없음'
-  const measured = '- 측정(v2): calls 1, tools 2'
-  let r = post(ship(measured))
-  assert.equal(r.code, 1)
-  assert.match(r.out, /ship checkpoint .*"- 트리거 eval:"/)
-  assert.equal(post(ship(measured).replace('Checkpoint ship', 'Checkpoint ship(부분)')).code, 1, 'a variant of the stage word is still a ship')
-  assert.equal(post(ship(evalLine, measured)).code, 0)
-  assert.equal(post(ship(evalLine)).code, 0, 'an unmeasured cycle needs no measurement line')
-  assert.equal(post(checkpoint('ship 아님')).code, 0, 'other stages are not checked')
-  fs.writeFileSync(path.join(root, '.work/devflow/i1/ledger.json'), JSON.stringify({ stage: 'ship', notes: ['tests unlocked: a review reproduction test'] }))
-  r = post(ship(evalLine, measured))
-  assert.equal(r.code, 1)
-  assert.match(r.out, /"- 시험 잠금 해제"/)
-  assert.equal(post(ship(evalLine, measured, '- 시험 잠금 해제 1회: 리뷰 재현 시험 추가')).code, 0)
-})
 
 // Issue #77 (and #70): remark posts a plain remark on any existing Issue of this repository, from any branch. It is no
 // checkpoint, so read and the card never take it for state, and it widens none of the branch-Issue writes.
@@ -1600,6 +1041,14 @@ test('remark refuses a missing Issue, a checkpoint shape, empty and over-long te
   }
 })
 
+test('an Issue write is refused when the work Issue mode cannot be read (#104 review)', () => {
+  const root = repo({ ledger: { mode: 'interactive' } })
+  const e = env(root)
+  fs.writeFileSync(path.join(root, '.work/devflow/i1/ledger.json'), '{not json')
+  assert.match(state.write(e, '.', 'comment', 1, '### Checkpoint build — x\n- y').out, /cannot be read, so whether this run is unattended is unknown/)
+  assert.equal(ghWrites(e).length, 0)
+})
+
 test('remark on a closed Issue posts without reopening it; a non-writer title is withheld (#77)', () => {
   let e = env(repo(), { data: other({ state: 'CLOSED' }), branch: 'main' })
   assert.match(state.write(e, '.', 'remark', 7, '사후 메모').out, /^o\/r#7 \(closed\) Other: /)
@@ -1614,9 +1063,8 @@ test('remark reads only the caller work Issue ledger: autonomous there refuses, 
   let root = repo({ ledger: { mode: 'autonomous' } })
   let e = env(root, { data: other() })
   const r = state.write(e, '.', 'remark', 7, '의견')
-  assert.match(r.out, /only in an interactive turn/)
+  assert.match(r.out, /autonomous; keep the content in ledger notes for the user/)
   assert.equal(remarks(e).length, 0)
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-remark-unattended'])
   // On main the target's own autonomous ledger is someone else's run: it neither blocks nor changes.
   root = repo()
   const target = path.join(root, '.work/devflow/i7')
@@ -1630,30 +1078,16 @@ test('remark reads only the caller work Issue ledger: autonomous there refuses, 
   assert.equal(fs.existsSync(path.join(root, '.work/devflow/i7')), false)
 })
 
-test('a remark refusal is logged under the work Issue, else only in an existing target folder (#77)', () => {
-  let root = repo()
-  state.write(env(root, { data: other() }), '.', 'remark', 7, checkpoint('x'))
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-remark-checkpoint'])
-  root = repo()
-  state.write(env(root, { data: other(), branch: 'main' }), '.', 'remark', 7, checkpoint('x'))
-  assert.equal(fs.existsSync(path.join(root, '.work/devflow/i7')), false)
-  fs.mkdirSync(path.join(root, '.work/devflow/i7'), { recursive: true })
-  state.write(env(root, { data: other(), branch: 'main' }), '.', 'remark', 7, checkpoint('x'))
-  assert.deepEqual(guardLines(root, 7).map(l => l.guard), ['state-remark-checkpoint'])
-})
-
 test('remark refuses a detached HEAD, a transferred Issue and empty text with a guard id; read keeps the last checkpoint (#77 review)', () => {
   let root = repo({ ledger: { mode: 'autonomous' } })
   let e = env(root, { data: other(), branch: '' })
   assert.match(state.write(e, '.', 'remark', 7, '의견').out, /not a detached HEAD/)
   assert.equal(remarks(e).length, 0)
-  assert.deepEqual(guardLines(root).map(l => l.guard), [])
   e = env(repo(), { data: other({ url: 'https://github.com/elsewhere/r/issues/7' }), branch: 'main' })
   assert.match(state.write(e, '.', 'remark', 7, '의견').out, /does not resolve to an Issue of o\/r/)
   assert.equal(remarks(e).length, 0)
   root = repo()
   state.write(env(root, { data: other() }), '.', 'remark', 7, ' \n')
-  assert.deepEqual(guardLines(root).map(l => l.guard), ['state-remark-shape'])
   // A remark posted after the last checkpoint is not what read or the card show as the latest state.
   const nodes = [...issue().comments.nodes, { body: '분석 의견', authorAssociation: 'OWNER', url: 'u-remark', createdAt: '2026-10-02T00:00:00Z' }]
   const data = issue({ comments: { nodes } })
@@ -1983,10 +1417,10 @@ test('N2 A2d: a ledger mode or lastCommit that is present but false, 0, null or 
     assert.equal(e.calls.filter(c => c.args[0] === 'log').length, 0)
   }
   for (const mode of ['interactive', 'autonomous']) {
-    assert.match(state.card(env(repo({ ledger: { ...base, mode } })), '.'), new RegExp(`mode ${mode} · `))
+    assert.match(state.card(env(repo({ ledger: { ...base, mode } })), '.'), new RegExp(`mode ${mode}\n`))
   }
   const missing = state.card(env(repo({ ledger: base })), '.')
-  assert.match(missing, /mode interactive · /)
+  assert.match(missing, /mode interactive\n/)
   assert.doesNotMatch(missing, /lastCommit is not/)
   const e = env(repo({ ledger: { ...base, lastCommit: 'a0b1234' } }), { log: ok('def5678 fix parser\n') })
   assert.match(state.card(e, '.'), /Commits after the ledger:\n {2}def5678 fix parser/)
@@ -2008,4 +1442,71 @@ test('N2 A13: a private file name with a newline from the folder listing cannot 
   assert.equal(toolLines(out).length, 1)
   assert.match(out, TOOL_LAST)
   assert.doesNotMatch(out, /evil/)
+})
+
+test('autonomous Issue writes are refused without posts or ledger changes, including old fields', () => {
+  const ledger = { mode: 'autonomous', testsLocked: { at: 'abc1234' }, testsFailing: true,
+    pendingPosts: 'old malformed queue', metrics: { interventions: 3 }, counts: { continue: 1 }, notes: ['saved'] }
+  const root = repo({ ledger })
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const before = fs.readFileSync(file, 'utf8')
+  const cases = [
+    [['state', '1'], block()], [['intent', '1'], intentOf(['- [ ] one'])],
+    [['comment', '1'], checkpoint('x')], [['remark', '7'], 'review'], [['check', '1', '1'], ''],
+    [['create', '--title', 'new'], '## 수용 기준\n- [ ] one\n'], [['close', '1'], ''], [['reopen', '1'], ''],
+    [['sub-issue', 'add', '2', '3'], ''],
+  ]
+  for (const [argv, text] of cases) {
+    const e = env(root)
+    e.vars = { CODEX_THREAD_ID: 'autonomous-test' }
+    const r = state.main(argv, () => text, e, '.')
+    assert.equal(r.code, 1, argv.join(' '))
+    assert.match(r.out, /autonomous; keep the content in ledger notes for the user/)
+    assert.equal(e.calls.filter(c => c.cmd === 'gh').length, 0)
+    assert.equal(fs.readFileSync(file, 'utf8'), before)
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ['ledger.json'])
+  }
+})
+
+test('old ledger fields do not block interactive writes or affect the resume card', () => {
+  const old = { mode: 'interactive', task: { current: 1, total: 2 }, pendingPosts: { broken: true },
+    testsLocked: true, testsFailing: true, metrics: [], counts: { old: 1 }, notes: ['tests unlocked: old'] }
+  const root = repo({ ledger: old })
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const before = fs.readFileSync(file, 'utf8')
+  const e = env(root)
+  const out = state.card(e, '.')
+  assert.match(out, /Ledger: task 1\/2 · mode interactive/)
+  assert.doesNotMatch(out, /pending|locked|metrics/)
+  const text = '### Checkpoint ship — complete\n- 검증: tests passed'
+  assert.equal(state.main(['comment', '1'], () => text, e, '.').code, 0)
+  assert.equal(ghWrites(e).length, 1)
+  assert.equal(fs.readFileSync(file, 'utf8'), before)
+  assert.equal(state.main(['intent', '1'], () => intentOf(['- [ ] one']), e, '.').code, 0)
+  assert.equal(fs.readFileSync(file, 'utf8'), before)
+})
+
+test('removed commands and running --worktree have no effects', () => {
+  const root = repo()
+  const e = env(root)
+  for (const argv of [['tests', '1', 'lock'], ['metric', '1', 'eval'], ['pending'], ['flush'],
+    ['pending', 'drop', '1', 'p1'], ['running', '1', 'add', 'task', '--worktree']]) {
+    assert.equal(state.main(argv, () => 'unused', e, '.').code, 2)
+  }
+  assert.equal(e.calls.length, 0)
+  assert.equal(fs.existsSync(path.join(root, '.work')), false)
+})
+
+test('ready ledgers remain readable while new validated stage writes use plan', () => {
+  const root = repo({ ledger: { stage: 'ready', mode: 'interactive' } })
+  const data = issue({ body: issue().body.replace('- 단계: build', '- 단계: ready') })
+  const e = env(root, { data })
+  assert.match(state.card(e, '.'), /- 단계: ready/)
+  assert.match(state.read(e, '.', 1).out, /- 단계: ready/)
+  assert.equal(state.main(['ledger'], () => '', e, '.').code, 0)
+  const rejected = state.main(['ledger-update', '1'], () => '{"stage":"ready"}', e, '.')
+  assert.equal(rejected.code, 1)
+  assert.match(rejected.out, /ready is now part of plan/)
+  assert.equal(state.readLedger(root, 1).stage, 'ready')
+  assert.equal(state.main(['ledger-update', '1'], () => '{"stage":"plan"}', e, '.').code, 0)
 })

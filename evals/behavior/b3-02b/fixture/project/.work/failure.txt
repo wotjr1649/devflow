@@ -1,1 +1,0 @@
-Supplied synthetic output: tests/crates.test.js:5 AssertionError: expected 2, actual 1 for crates(7). Head cb45e23bfd0872aa55b29a92b5dc1aa599fe5cb5.

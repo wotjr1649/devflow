@@ -14,8 +14,8 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
    위임은 증거가 있을 때만 넓힌다. 근거: [ADR-0005](decisions/ADR-0005-main-first-execution.md)
 3. **지침과 리뷰로 일하고, 막는 장치는 두지 않는다.** 스킬은 안내하고, 훅은 재개와 세션만 다루고, 리뷰가 결함과 시험
    변경을 보고, CI는 테스트로 마지막에 막는다. 근거: [ADR-0031](decisions/ADR-0031-guidance-over-enforcement.md)
-4. **짧은 지침, 필요할 때 재는 설정.** 라우터 스킬과 references, 크기 예산. 트리거율은 호출 필드가 바뀔 때, 사이클 비용은
-   요청하거나 비교할 때 잰다. 측정: [metrics](../specs/metrics.md)
+4. **짧은 지침.** 라우터 스킬과 references, 크기 예산. 트리거 eval은 호출 필드가 바뀔 때 선택해서 돌린다
+   ([eval](../specs/eval.md)).
 5. **사람은 게이트에만.** 범위가 정해지면 끝까지 진행하고, 원격 쓰기와 사용자만 정할 수 있는 결정만 묻는다.
 
 ## 계층
@@ -27,13 +27,13 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 | 스킬 | 절차 | 플러그인 `skills/` | 같은 폴더 | 안내 |
 | 에이전트 | 격리된 작업, 도구 제한 | 플러그인 `agents/` | 내장 explorer·worker | Claude reviewer는 읽기 도구만 제공. 셸 도구가 있는 보고 역할과 Codex의 보고 전용은 지시이며 파일 시스템 격리가 아니다 |
 | 훅 | 재개와 세션 | `hooks/hooks.json` | `hooks/hooks.json` | 막지 않는다. 재개 카드, 자율 계속, 세션 해제만 |
-| 스크립트 | 검사·분석 | `bin/` | 스킬이 경로로 실행 | 결정적 |
+| 스크립트 | 장부·Issue 입출력·재개 카드 | `bin/devflow-state` | 스킬이 경로로 실행 | 공개 텍스트 필터. 거치지 않는 게시는 막지 않는다 |
 | git hook·CI | 최종 관문 | 공통 | 공통 | 결정적 |
-| eval | 스킬 호출의 회귀 | `claude plugin eval`, skill-creator | 같은 프롬프트 세트 | 측정 |
+| eval | 스킬 호출의 회귀(선택) | `claude plugin eval`, skill-creator | 실행기 없음 | 측정 |
 
 ## 단계
 
-구상 → 착수 → 설계 → 계획 → 구현 가능성 확인 → 구현 → 검증 → 리뷰 → 통합 → 정리 → 회고, 11단계다.
+구상 → 착수 → 설계 → 계획 → 구현 → 검증 → 리뷰 → 통합 → 정리 → 회고, 10단계다.
 
 - 경로(spike, bounded, architectural)에 따라 일부만 돈다.
 - 계획의 작업마다 구현·검증·리뷰를 반복한다.
@@ -45,20 +45,18 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 ## 구성
 
 - **스킬 7개**
-  - `devflow`: 라우터. 담당 스킬이 없는 단계와 표준 적용은 플러그인 루트의 [`references/`](../../references/)에 둔다. 여러 스킬이 함께 쓰는 생명주기 문서이기 때문이다([ADR-0023](decisions/ADR-0023-shared-lifecycle-references.md)).
+  - `devflow`: 라우터. 담당 스킬이 없는 단계는 플러그인 루트의 [`references/`](../../references/)에 둔다. 여러 스킬이 함께 쓰는 생명주기 문서이기 때문이다([ADR-0023](decisions/ADR-0023-shared-lifecycle-references.md)).
   - 생명주기 스킬: `development-start`, `pr-review-workflow`, `workspace-cleanup`
   - 보조 스킬: `grilling`, `writing-for-agents`, `prompt-generator`
   - 근거: [ADR-0010](decisions/ADR-0010-single-router-skill.md), [ADR-0009](decisions/ADR-0009-auto-invoked-support-skills.md)
-- **Claude 에이전트**: 도구와 effort로 나눈 정의 6개(explorer, verifier, diagnostician, reviewer, implementer,
-  implementer-deep). 역할의 관점은 지시서가 정한다. 모델, effort, 승격: [orchestration](../specs/orchestration.md#모델과-effort)
+- **Claude 에이전트**: 도구로 나눈 정의 3개(explorer, reviewer, implementer). 역할의 관점(탐색, 요약, 원인 분석, 검증,
+  설계, 보안)은 지시서가 정한다. 모델, effort, 승격: [orchestration](../specs/orchestration.md#모델과-effort)
 - **Claude Workflows**: devflow는 배포하지 않고 실행 모드로도 두지 않는다. 사용자가 devflow 밖에서 직접 실행한다
   ([ADR-0017](decisions/ADR-0017-drop-m4-defer-route.md))
 - **훅**: 재개 카드(SessionStart), 자율 모드 전용 계속(Stop), 세션이 끝날 때 해제(SessionEnd, 돌지 않으면 30분 만료).
   공개 전 관문은 git pre-push다
-- **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드), `devflow-doctor`(구조·문서 감사),
-  `devflow-metrics`(세션 기록에서 사이클 지표, 읽기 전용), `devflow-install-check`(배포 worktree와 설치본이 `main`과 같은지).
-  `devflow-codex-eval`은 설치된 스킬의 수동 트리거 평가를 실행한다([eval](../specs/eval.md)).
-  리뷰에 넘기는 BASE..HEAD diff 파일(`review-package`)은 스크립트 없이 라우터의 review reference가 `git diff`로 만든다
+- **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드) 하나다. 감사·지표·eval·설치 비교 실행기는
+  0.4.0에서 지웠다([ADR-0031](decisions/ADR-0031-guidance-over-enforcement.md)). 리뷰에 넘기는 BASE..HEAD diff 파일(`review-package`)은 스크립트 없이 pr-review-workflow의 review reference가 `git diff`로 만든다
 - **템플릿과 eval**: Issue intent, REVIEW.md, AGENTS.md, ignore·attributes 블록, 트리거 eval
 
 배치(저장소 루트 = 플러그인 루트): [ADR-0002](decisions/ADR-0002-repository-root-is-plugin-root.md).

@@ -11,7 +11,7 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
   확인되지 않은 일은 discover로 보낸다([ADR-0018](../design/decisions/ADR-0018-new-work-goes-to-development-start.md)).
 - 담당 스킬이 있는 단계는 그 스킬을 이름으로 부르고, 없는 단계는 라우터의 단계 reference를 읽는다.
 - review·ship은 `pr-review-workflow`를 진입점으로 유지한다. devflow 전용 순서는 공통
-  [review](../../skills/pr-review-workflow/references/review.md)가 가리키는 [devflow review](../../references/review.md)와 [ship](../../references/ship.md)이 소유한다.
+  [review](../../skills/pr-review-workflow/references/review.md)와 [ship](../../references/ship.md)이 소유한다.
   일반 PR 관문은 담당 스킬의 references를 적용하며, review-only는 ship·cleanup으로 확대하지 않는다.
 - 단계를 옮길 때 장부와 Issue 현재 상태의 "단계"를 바꾼다. 작업 루프 안에서 build와 verify를 오가는 것은 장부에만
   적는다.
@@ -20,19 +20,19 @@ devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무�
 
 ## 사용자 탐색
 
-스킬 진입점 7개와 내부 단계 11개 및 done은 유지한다. 사용자에게는 아래 다섯 milestone으로 현재 위치를 설명한다.
+스킬 진입점 7개와 내부 단계 10개 및 done은 유지한다. 사용자에게는 아래 다섯 milestone으로 현재 위치를 설명한다.
 이름은 중립적으로 쓰고 상태(진행 중·충족·막힘·미확인)를 따로 표시한다. 단계에 들어왔다는 이유로 충족으로 표시하지
 않는다. 충족은 해당 범위의 exit 증거가 있을 때만 쓰며, 막힘은 의존 행동에만 적용한다.
 
 | Milestone | 내부 단계 | 나가는 데 필요한 증거 |
 |---|---|---|
 | 방향 (Direction) | discover, start | 확인된 intent·수용 기준, Issue 연결, 작업 브랜치와 기준선 |
-| 준비 (Preparation) | design, plan, ready | 해결된 주요 결정, 작업별 계획·증명, 필요한 전제와 go. bounded는 design에서 정한 한 변경·검사, 전제 확인과 `runMode` |
+| 준비 (Preparation) | design, plan | 해결된 주요 결정, 작업별 계획·증명, 필요한 전제와 go. bounded는 design에서 정한 한 변경·검사, 전제 확인과 `runMode` |
 | 증분 (Increment) | 작업별 build ↔ verify | 현재 작업의 사용자 결과와 적용 revision에서의 검증 |
 | 수용 (Acceptance) | 마지막 작업 뒤 전체 verify, review | 범위 전체 수용 기준의 실행 증거와 필수 리뷰·발견 사항 처리 |
 | 전달 (Delivery) | ship, cleanup, 필요할 때 learn; done은 Issue 종료 상태 | 실제 통합 범위와 Issue 종료, 남은 로컬 정리 확인 |
 
-bounded는 plan 단계와 go 체크포인트 없이 ready를 design 안에서 처리하므로, 계획 파일이나 go가 없다는 이유로 준비를
+bounded는 plan 단계와 go 체크포인트 없이 전제 확인을 design 안에서 처리하므로, 계획 파일이나 go가 없다는 이유로 준비를
 미확인으로 두지 않는다. 작업 검증과 전체 수용 검증은 scope로 구별한다.
 부분 통합은 전달된 부분만 설명하며 상위 범위의 충족을 뜻하지 않는다. Issue done과 로컬 closeout은 구별하고, learn은
 교훈이 있을 때만 한다. milestone은 새 저장 상태·승인 관문·Issue 게시 주기가 아니다.
@@ -50,7 +50,7 @@ Issue의 confirmed intent·큰 단계와 체크포인트의 검증 기록, 장�
 대조한다. 누락·오래된 증거·진짜 충돌은 미확인으로 표시하고 의존 행동을 보류한다. 최신 timestamp만으로 충돌을 지우거나
 이전 FAIL을 PASS로 바꾸지 않는다. 기존 경계 업데이트를 쓰고 매 응답마다 긴 진행표를 만들지 않는다.
 
-복귀는 아래 [되돌아가기](#되돌아가기)를 그대로 따른다. 동작 실패는 증분, 계획 오류는 준비의 plan → ready, 설계 가정
+복귀는 아래 [되돌아가기](#되돌아가기)를 그대로 따른다. 동작 실패는 증분, 계획 오류는 준비의 plan, 설계 가정
 실패는 준비의 design으로 돌아간다. intent·수용 기준 변경은 방향에서 기존 사용자 확인을 거친다. 이유·보존할 증거·다시
 충족할 exit·다음 행동을 알리고, 같은 범위의 수정에 새 인터뷰를 요구하지 않는다.
 
@@ -61,14 +61,13 @@ Issue의 confirmed intent·큰 단계와 체크포인트의 검증 기록, 장�
 | 1 | discover 구상 | 무엇을 왜 만들지: 문제, 사용자, 성공 기준, 제외 범위. 관측·주장·추정·미확인을 나누고, 무엇을 만들지 열려 있으면 컨셉과 최소 범위를 비교 | intent 초안, 또는 조사 결과·보류/중단 이유와 재개 조건 | 사용자가 intent를 확인하면 start. 문제와 관측 가능한 수용 기준을 이미 담은 구현 요청은 그 자체가 확인된 intent라 재인터뷰 없이 start. spike는 버릴 시험과 보고로 끝남. Issue가 생기기 전의 조사·초안만·보류·중단은 결과를 보고하고 끝나며 Issue·브랜치·장부·제품 변경을 만들지 않음 | 라우터 reference, grilling |
 | 2 | start 착수 | Issue 등록과 대조, 수용 기준 확정, 작업 브랜치, 기준선 검사 | Issue 본문, 브랜치 | Issue 연결 확인, 기준선 통과 | development-start |
 | 3 | design 설계 | 요구사항과 설계 정리, 대안 비교, 우려 지점 표시, 계약이 바뀌면 spec과 결정 기록 | 설계 노트 또는 `docs/specs/`, 결정 기록 | 사용자만 정할 결정이 해결됨 | 라우터 reference, reviewer(설계 관점), grilling |
-| 4 | plan 계획 | 작업별 파일, 순서, interfaces, 증명, 위험 | 비공개 계획과 공개 요약 | 계획이 작성됨 | 라우터 reference |
-| 5 | ready 구현 가능성 확인 | [계획 품질](orchestration.md#계획) 점검, 전제(의존성, 도구, 권한, 검사 명령) 확인, 실행 모드 선택 | go 또는 no-go 체크포인트 | go | 라우터 reference. 계획이 `highRisk` 경로를 건드리거나 작업이 5개 이상이면 reviewer(설계 관점)가 한 번 검토 |
-| 6 | build 구현 | 모드별 실행, 실패 테스트 확인, 작업 단위 커밋 | 커밋 | 계획의 작업이 끝남 | 라우터 reference, 구현 에이전트 |
-| 7 | verify 검증 | 수용 기준을 실제로 실행해 확인, [실행 모드](orchestration.md#실행-모드)에 따른 동작 확인 | 검증 증거 | 기준마다 실행 증거가 있음 | 라우터 reference, 모드에 따른 verifier |
-| 8 | review 리뷰 | [실행 모드](orchestration.md#실행-모드)에 따른 최종 검토, 발견 사항 처리 | 발견 사항과 처리 | 정확성·요구사항 결함이 없음 | pr-review-workflow |
-| 9 | ship 통합 | 통합 방식에 따른 push·PR·CI·머지, Issue 완료와 후속 Issue | 통합된 기본 브랜치, 종료된 Issue | 통합과 종료를 확인함 | pr-review-workflow |
-| 10 | cleanup 정리 | 브랜치와 worktree 정리 | 정리 기록 | 정리 완료 | workspace-cleanup |
-| 11 | learn 회고 | 교훈을 알맞은 곳에 둠 | 아래 "회고와 기억" | 교훈이 있을 때만 | 라우터 reference, 둘 곳이 에이전트가 읽는 파일이면 writing-for-agents |
+| 4 | plan 계획 | 작업별 파일, 순서, interfaces, 증명, 위험. [계획 품질](orchestration.md#계획) 점검, 전제(의존성, 도구, 권한, 검사 명령) 확인, 실행 모드 선택 | 비공개 계획, 공개 요약과 go 또는 no-go 체크포인트 | go | 라우터 reference. 계획이 신뢰 경계(인증·권한·비밀·훅·외부 입력 처리)를 바꾸거나 작업이 5개 이상이면 reviewer(설계 관점)가 한 번 검토 |
+| 5 | build 구현 | 모드별 실행, 실패 테스트 확인, 작업 단위 커밋 | 커밋 | 계획의 작업이 끝남 | 라우터 reference, 구현 에이전트 |
+| 6 | verify 검증 | 수용 기준을 실제로 실행해 확인, [실행 모드](orchestration.md#실행-모드)에 따른 동작 확인 | 검증 증거 | 기준마다 실행 증거가 있음 | 라우터 reference, 모드에 따른 실행 검증(explorer) |
+| 7 | review 리뷰 | [실행 모드](orchestration.md#실행-모드)에 따른 최종 검토, 발견 사항 처리 | 발견 사항과 처리 | 정확성·요구사항 결함이 없음 | pr-review-workflow |
+| 8 | ship 통합 | 통합 방식에 따른 push·PR·CI·머지, Issue 완료와 후속 Issue | 통합된 기본 브랜치, 종료된 Issue | 통합과 종료를 확인함 | pr-review-workflow |
+| 9 | cleanup 정리 | 브랜치와 worktree 정리 | 정리 기록 | 정리 완료 | workspace-cleanup |
+| 10 | learn 회고 | 교훈을 알맞은 곳에 둠 | 아래 "회고와 기억" | 교훈이 있을 때만 | 라우터 reference, 둘 곳이 에이전트가 읽는 파일이면 writing-for-agents |
 
 ship은 Issue 브랜치에서 상태 블록을 done으로 쓰고 Issue를 닫는다. `local-merge`는 통합 전에, `pr-ci`는 병합 결과를 확인한
 뒤에 한다. 범위가 남은 부분 통합은 닫지 않고 남은 범위를 상태에 둔다. 브랜치를 지운 뒤에는 그 Issue에
@@ -82,8 +81,8 @@ Codex의 메인이 맡는다.
 | 경로 | 도는 단계 |
 |---|---|
 | spike: 가능한지만 확인 | discover → build(버릴 시험) → 보고 |
-| bounded: 이미 있는 흐름 수정 | start → design(채팅으로 짧게, ready 포함) → build → verify → review → ship → cleanup |
-| architectural: 새 하위 시스템, 의존되는 인터페이스 변경 | 1~10, 교훈이 있으면 11 |
+| bounded: 이미 있는 흐름 수정 | start → design(채팅으로 짧게, 전제 확인 포함) → build → verify → review → ship → cleanup |
+| architectural: 새 하위 시스템, 의존되는 인터페이스 변경 | 1~9, 교훈이 있으면 10 |
 
 애매하면 무거운 쪽으로 분류하고, 숨은 복잡도가 드러나면 올린다. 설계해 보니 바꿀 파일이 1~2개이고 interface가 바뀌지
 않으면 bounded로 내리고 이유를 장부에 남긴다. 작은 변경에서는 무거운 절차가 결과를 낫게 하지 않고 비용만 늘린다는
@@ -103,11 +102,11 @@ Codex의 메인이 맡는다.
 | 생긴 일 | 돌아갈 단계 | 사용자에게 묻나 |
 |---|---|---|
 | 자기 변경의 버그, 검사 실패, verify 미달 | build | 아니요 |
-| 리뷰 발견 사항 | build → verify. 동작이나 권한을 바꾼 수정이면 범위를 좁힌 재리뷰, 문구·형식 수정이면 doctor와 CI([재검증](orchestration.md#리뷰)) | 아니요 |
+| 리뷰 발견 사항 | build → verify. 동작이나 권한을 바꾼 수정이면 범위를 좁힌 재리뷰, 문구·형식 수정이면 CI([재검증](orchestration.md#리뷰)) | 아니요 |
 | 통합 중 CI 실패 | 조기 종료한 Issue를 다시 열고 상태를 build로 되돌림 | 아니요 |
-| 계획이 틀림(파일, 순서, interface), 설계는 유효 | plan → ready, 비공개 계획을 그 자리에서 고침 | 아니요 |
-| 설계 가정이 깨짐(새 제약, 접근 방식 불가) | design → plan → ready, 오래 남을 결정은 결정 기록 | 사용자만 정할 결정이면 예 |
-| 요구사항이나 수용 기준이 바뀜(측정 미달 뒤 포함, 원래 기준과 결과는 체크포인트에) | discover 또는 start, 사용자가 확인한 intent를 `devflow-state intent`로 교체 | 예 |
+| 계획이 틀림(파일, 순서, interface), 설계는 유효 | plan, 비공개 계획을 그 자리에서 고침 | 아니요 |
+| 설계 가정이 깨짐(새 제약, 접근 방식 불가) | design → plan, 오래 남을 결정은 결정 기록 | 사용자만 정할 결정이면 예 |
+| 요구사항이나 수용 기준이 바뀜(원래 기준과 결과는 체크포인트에) | discover 또는 start, 사용자가 확인한 intent를 `devflow-state intent`로 교체 | 예 |
 | 범위 밖의 새 문제 | 재현된 결함과 사용자가 미루기로 정한 것은 바로 후속 Issue로, 그 밖은 장부에 남겨 ship 때 한 번에 제안 | 제안하는 것만 예 |
 | ship에서 push가 거부됨 | Issue 브랜치에서 Issue를 다시 열고 상태를 되돌림. 검사 실패면 build, 그 밖은 ship | 아니요 |
 | 외부 요인으로 막힘 | 현재 상태에 막힘을 적고 멈춤 | 예 |
@@ -118,7 +117,7 @@ Codex의 메인이 맡는다.
 
 ## eval
 
-실행 조건, 판정, Codex 실행기와 예산은 [eval](eval.md)이 정한다.
+트리거 eval은 선택이며, 실행 조건과 방법은 [eval](eval.md)이 정한다.
 
 ## 회고와 기억
 
@@ -126,10 +125,10 @@ learn은 교훈이 있을 때만 돈다. 교훈은 성격에 따라 둔다.
 
 | 교훈 | 둘 곳 |
 |---|---|
-| 기계로 막을 수 있음 | 훅, 테스트, doctor 검사. 옮긴 뒤 AGENTS.md에서 지운다. 안전 하한선은 남긴다([documents](documents.md#에이전트가-읽는-글) 10번) |
+| 테스트로 확인할 수 있음 | 테스트. 옮긴 뒤 AGENTS.md에서 지운다. 안전 하한선은 남긴다([documents](documents.md#에이전트가-읽는-글) 10번) |
 | 특정 영역에만 해당 | 그 영역의 spec이나 문서, 그리고 AGENTS.md 문서 지도의 한 행 |
-| 저장소 전체, 두 번 반복, 기계로 막을 수 없음 | AGENTS.md Gotchas. 예산을 넘으면 덜 쓰이는 항목을 문서로 옮긴다 |
-| 여러 저장소에 공통인 절차 | devflow 스킬. 스킬 목록을 바꾸면 [eval](#eval) |
+| 저장소 전체, 두 번 반복, 테스트로 확인할 수 없음 | AGENTS.md Gotchas. 예산을 넘으면 덜 쓰이는 항목을 문서로 옮긴다 |
+| 여러 저장소에 공통인 절차 | devflow 스킬. 스킬 목록을 바꾸면 [eval](#eval)을 선택해 돌릴 수 있다 |
 | 개인 선호, 모든 저장소 공통 규칙 | 사용자 전역 지침. devflow는 제안만 한다 |
 | 경위와 결정 이력 | Issue 체크포인트, 결정 기록, 커밋 메시지 |
 | 그 컴퓨터에만 해당하는 환경 | 비공개 handoff나 호스트의 개인 메모리. 공용 지침에는 넣지 않는다 |

@@ -22,7 +22,7 @@ above; they are listed so the ideas can be traced.
 | `references/discover.md`, `docs/specs/lifecycle.md` (discover row) | [obra/superpowers](https://github.com/obra/superpowers/blob/2ce8aa15d05bd57213e6f746f953aafb7ded7a8b/skills/brainstorming/SKILL.md) `2ce8aa15`, `skills/brainstorming/SKILL.md`: a request that already says what it wants goes ahead without questions, look before asking, lay out approaches before building; adapted to discover's dispositions and devflow's existing start and decision owners |
 | `agents/explorer.md` | `feature-dev` `code-explorer`: return the key files and let the main session read them |
 | `agents/reviewer.md` | `pr-review-toolkit` and superpowers' task reviewer: an explicit BASE..HEAD diff, no verdict handed over |
-| `agents/implementer.md`, `agents/implementer-deep.md`, `agents/diagnostician.md` | superpowers: status words for delegated work, a stronger model after repeated failures, cause before fix |
+| `agents/implementer.md`, `agents/explorer.md` (diagnosis) | superpowers: status words for delegated work, a stronger model after repeated failures, cause before fix |
 | `hooks/`, `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/` | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail): one repository root packaged for both hosts, a Node hook runtime |
 
 ## Imported owner skills

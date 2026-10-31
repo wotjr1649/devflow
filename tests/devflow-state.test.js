@@ -291,6 +291,7 @@ test('ledger-update preserves old pendingPosts and keeps running delegations (#2
   const e = env(root)
   const up = body => state.main(['ledger-update', '1'], () => body, e, '.')
   assert.match(up('{"running":[]}').out, /running .*running <issue> done/)
+  assert.match(up('{"pendingPosts":[]}').out, /pendingPosts from an older devflow are kept/)
   assert.equal(up('{"stage":"verify"}').code, 0)
   const ledger = JSON.parse(fs.readFileSync(path.join(root, '.work/devflow/i1/ledger.json'), 'utf8'))
   assert.deepEqual([ledger.running, ledger.pendingPosts, ledger.stage], [['reviewer'], [{ id: 'p1' }], 'verify'])
@@ -1038,6 +1039,14 @@ test('remark refuses a missing Issue, a checkpoint shape, empty and over-long te
     assert.match(r.out, why)
     assert.equal(remarks(e).length, 0)
   }
+})
+
+test('an Issue write is refused when the work Issue mode cannot be read (#104 review)', () => {
+  const root = repo({ ledger: { mode: 'interactive' } })
+  const e = env(root)
+  fs.writeFileSync(path.join(root, '.work/devflow/i1/ledger.json'), '{not json')
+  assert.match(state.write(e, '.', 'comment', 1, '### Checkpoint build — x\n- y').out, /cannot be read, so whether this run is unattended is unknown/)
+  assert.equal(ghWrites(e).length, 0)
 })
 
 test('remark on a closed Issue posts without reopening it; a non-writer title is withheld (#77)', () => {

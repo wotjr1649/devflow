@@ -26,6 +26,8 @@
 
 같은 폴더의 `sessions.json`과 `ledger.lock`은 [동시 세션](#동시-세션)에 쓴다.
 옛 장부의 `testsLocked`, `testsFailing`, `pendingPosts`, `metrics`와 옛 집계 값은 무시하며 자동으로 지우거나 다시 쓰지 않는다.
+`ledger-update`도 `pendingPosts`를 바꾸지 않는다. 남은 게시 후보는 사용자가 읽고 승인한 것만 게시한다.
+작업 Issue의 장부를 읽을 수 없으면(링크나 파일인 Issue 폴더, 해석되지 않는 장부) 자율 모드일 수 있으므로 Issue에 쓰지 않는다.
 시험 잠금, 지표 명령, 게시 대기열·서명 키, 위임 결속, 차단 로그는 제공하지 않는다.
 `stage: ready`인 옛 장부는 읽지만 새 ledger-update에서 stage로 쓰면 plan에 통합되었다는 이유로 거부한다.
 

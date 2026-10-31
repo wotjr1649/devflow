@@ -576,7 +576,7 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
   let commits = []
   let lastCommit = null
   if (!issueDirOk(ctx.store, n)) {
-    ledgerLines.push('Ledger: not read (Issue path is not a plain folder); most Issue writes post immediately, remark and ledger writes are refused')
+    ledgerLines.push('Ledger: not read (Issue path is not a plain folder); Issue and ledger writes are refused until it is fixed')
   } else {
     let ledger
     let unreadable = false
@@ -1427,8 +1427,15 @@ function attempt(ctx, op, n, text, title) {
   const why = refusal(op, text, title)
   if (why) return { code: 1, ...why }
   const owner = ctx.issue || n
-  // Reading the mode does not mutate old ledgers or create a queue, signing key or lock.
-  const ledger = owner && issueDirOk(ctx.store, owner) ? readLedger(ctx.store, owner) || {} : {}
+  // Reading the mode does not mutate old ledgers or create a queue, signing key or lock. A mode that cannot be read
+  // (a linked or odd Issue folder, a ledger that does not parse) may be autonomous, so nothing is posted.
+  if (owner && !issueDirOk(ctx.store, owner)) return LOCKED(owner, 'unsafe')
+  let ledger
+  try {
+    ledger = owner ? readLedger(ctx.store, owner) || {} : {}
+  } catch {
+    return { code: 1, out: `refused: Issue #${owner}'s ledger cannot be read, so whether this run is unattended is unknown`, guard: 'state-ledger-unsafe' }
+  }
   if (ledger.mode === 'autonomous') return AUTONOMOUS(owner)
   return post(ctx, op, n, text, title)
 }
@@ -1599,6 +1606,10 @@ function command(argv, stdin, env, cwd) {
         // A new ledger may set mode, to one of its two values (Issue #34).
         if ('mode' in patch && !['interactive', 'autonomous'].includes(patch.mode)) {
           return { result: { refused: `refused: mode is interactive or autonomous; got ${JSON.stringify(patch.mode)}` } }
+        }
+        // Posts an older devflow queued wait for the user, who reads them and posts what they approve (ADR-0031).
+        if ('pendingPosts' in patch) {
+          return { result: { refused: 'refused: pendingPosts from an older devflow are kept; show them to the user and post what they approve' } }
         }
         const old = Array.isArray(ledger.notes) ? ledger.notes : []
         if ('notes' in patch && (!Array.isArray(patch.notes) || old.some((line, k) => patch.notes[k] !== line))) return { result: ZERO }

@@ -37,7 +37,7 @@ Claude Code와 Codex가 `hooks/hooks.json` 한 정의와 `hooks/devflow-hook.js`
 
 PreToolUse와 PostToolUse는 등록하지 않는다. 훅은 Issue 쓰기·시험 파일·프로필·장부 편집을 차단하지 않고,
 셸 명령·HTTP·GraphQL·MCP 입력을 분석하지 않으며, 차단 기록이나 편집 후 doctor 감사도 만들지 않는다.
-`devflow-state`를 거치는 Issue 공개 필터와 대기열은 그 CLI의 동작이며 훅의 강제가 아니다.
+`devflow-state`를 거치는 Issue 공개 필터와 자율 모드의 쓰기 거부는 그 CLI의 동작이며 훅의 강제가 아니다.
 
 ## 입력과 안전한 파일 읽기
 

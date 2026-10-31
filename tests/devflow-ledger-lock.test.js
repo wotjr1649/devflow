@@ -438,15 +438,15 @@ test('the resume card reports an unavailable hook identity without assuming the 
 
 // Linked Issue folders are not followed; session warnings are validated and capped.
 
-test('interactive writes go on through a linked Issue folder, whose ledger is not read', () => {
+test('a linked Issue folder is not followed, and its unknown mode refuses Issue writes (#104 review)', () => {
   const root = repo()
   const outside = tmpdir('devflow-out-')
   fs.mkdirSync(path.join(root, '.work', 'devflow'), { recursive: true })
   fs.symlinkSync(outside, dir(root), 'junction')
   fs.writeFileSync(path.join(outside, 'ledger.json'), JSON.stringify({ mode: 'autonomous' }))
   const e = env(root)
-  assert.equal(state.write(e, '.', 'comment', 1, '### Checkpoint build — x\n- y').code, 0)
-  assert.equal(ghWrites(e).length, 1, 'posted without following the linked ledger')
+  assert.match(state.write(e, '.', 'comment', 1, '### Checkpoint build — x\n- y').out, /not a plain folder/)
+  assert.equal(ghWrites(e).length, 0, 'nothing posted while the mode is unknown')
   assert.deepEqual(fs.readdirSync(outside), ['ledger.json'])
 })
 

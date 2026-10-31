@@ -1,5 +1,0 @@
-{
-  "integration": "local-merge",
-  "highRisk": [],
-  "verify": "git diff --check"
-}

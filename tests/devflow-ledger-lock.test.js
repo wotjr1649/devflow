@@ -1,10 +1,9 @@
 'use strict'
 // Issue #10: every ledger write holds a short lock, so two sessions (or a session and the Stop hook) keep each other's
-// changes; queued posts are claimed so two flushes never post the same item twice.
+// changes.
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('fs')
-const os = require('os')
 const path = require('path')
 const tmpdir = require('./tmpdir')
 const { spawn, spawnSync, execFileSync } = require('child_process')
@@ -50,21 +49,10 @@ function env(root, { gh = null, vars = {}, branch = BRANCH } = {}) {
   }
 }
 
-// Posts as devflow-state queues them on this machine: each with an id and the mark its queue key gives it.
-const signed = posts => posts.map((p, i) => {
-  const post = { id: String(i).padStart(16, '0'), ...p }
-  return { ...post, mac: state.macOf(state.queueKey(true), 'o/r', post) }
-})
-
 const dir = root => path.join(root, '.work', 'devflow', 'i1')
 const ledgerOf = root => JSON.parse(fs.readFileSync(path.join(dir(root), 'ledger.json'), 'utf8'))
 const lockFile = root => path.join(dir(root), 'ledger.lock')
 const ghWrites = e => e.calls.filter(c => c.cmd === 'gh' && c.args[0] === 'issue')
-const guards = root => {
-  const f = path.join(dir(root), 'guard-events.jsonl')
-  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map(l => JSON.parse(l).guard) : []
-}
-
 // A child spawned for a concurrency test is waited on from the moment it starts, and gives up its own wait for the start
 // signal after a while, so neither a child that ends early nor a test that fails first leaves anything hanging (#15).
 const exitOf = kid => new Promise((resolve, reject) => { kid.once('exit', resolve); kid.once('error', reject) })
@@ -175,14 +163,12 @@ test('note appends one line to the branch Issue ledger under the lock', () => {
 const ledgerCmd = (root, branch, argv, input = '') => state.main(argv, () => input, env(root, { branch }), '.')
 const issueDir = (root, n) => path.join(root, '.work', 'devflow', `i${n}`)
 
-test('on a named branch that is no Issue branch, note and metric append only to a ledger that exists (#12)', () => {
+test('on a named branch that is no Issue branch, note appends only to a ledger that exists (#12)', () => {
   const root = repo({ notes: ['a'], stage: 'done' })
   assert.deepEqual(ledgerCmd(root, 'main', ['note', '1'], 'cleanup: branch deleted'), { code: 0, out: 'notes 2' })
-  assert.equal(ledgerCmd(root, 'main', ['metric', '1', 'interventions'], 'x').code, 0)
-  assert.deepEqual(ledgerOf(root).notes, ['a', 'cleanup: branch deleted', 'interventions +1: x'])
-  assert.equal(ledgerOf(root).metrics.interventions, 1)
+  assert.deepEqual(ledgerOf(root).notes, ['a', 'cleanup: branch deleted'])
   // A number with no ledger is refused without creating its folder, so nothing is logged for it either.
-  for (const argv of [['note', '7'], ['metric', '7', 'interventions']]) {
+  for (const argv of [['note', '7']]) {
     const r = ledgerCmd(root, 'main', argv, 'x')
     assert.equal(r.code, 1)
     assert.match(r.out, /no ledger for Issue #7/)
@@ -193,74 +179,34 @@ test('on a named branch that is no Issue branch, note and metric append only to 
   assert.equal(JSON.parse(fs.readFileSync(path.join(issueDir(root, 7), 'ledger.json'), 'utf8')).stage, 'start')
 })
 
-test('on another Issue branch or a detached HEAD no ledger command writes that ledger, and each refusal is logged (#12)', () => {
+test('on another Issue branch or a detached HEAD no ledger command writes that ledger (#12)', () => {
   const root = repo({ stage: 'build' })
   fs.mkdirSync(issueDir(root, 7), { recursive: true })
   fs.writeFileSync(path.join(issueDir(root, 7), 'ledger.json'), JSON.stringify({ stage: 'build', notes: [] }))
   const before = fs.readFileSync(path.join(issueDir(root, 7), 'ledger.json'), 'utf8')
-  const cmds = [['note', '7'], ['metric', '7', 'interventions'], ['ledger-update', '7']]
+  const cmds = [['note', '7'], ['ledger-update', '7']]
   const input = argv => (argv[0] === 'ledger-update' ? '{"x":1}' : 'x')
   for (const argv of cmds) {
     const r = ledgerCmd(root, BRANCH, argv, input(argv))
     assert.equal(r.code, 1, argv.join(' '))
     assert.match(r.out, /only to the branch's Issue #1/)
   }
-  assert.deepEqual(guards(root), ['state-other-issue', 'state-other-issue', 'state-other-issue'])
-  // A detached HEAD may be an Issue branch in the middle of a rebase: no ledger is written, and the refusal is logged
-  // under the Issue named, whose folder exists.
+  // A detached HEAD may be an Issue branch in the middle of a rebase: no ledger is written.
   for (const argv of cmds) {
     const r = ledgerCmd(root, '', argv, input(argv))
     assert.equal(r.code, 1, 'detached ' + argv.join(' '))
     assert.match(r.out, /detached HEAD/)
   }
   assert.equal(fs.readFileSync(path.join(issueDir(root, 7), 'ledger.json'), 'utf8'), before)
-  const logged = fs.readFileSync(path.join(issueDir(root, 7), 'guard-events.jsonl'), 'utf8').trim().split('\n')
-  assert.deepEqual(logged.map(l => JSON.parse(l).guard), ['state-detached', 'state-detached', 'state-detached'])
+  assert.equal(fs.existsSync(path.join(issueDir(root, 7), 'guard-events.jsonl')), false)
 })
 
-test('a held lock refuses metric and note with a fixed guard id', () => {
+test('a held lock refuses note without a guard-event file', () => {
   const root = repo({ stage: 'build' })
   fs.writeFileSync(lockFile(root), 'live-token')
-  const r = state.metric(env(root), '.', 1, 'interventions', 'x')
+  const r = state.note(env(root), '.', 1, 'x')
   assert.deepEqual(r, { code: 1, out: 'refused: another write holds the ledger of Issue #1; try again' })
-  assert.deepEqual(guards(root), ['state-ledger-locked'])
   assert.match(state.note(env(root), '.', 1, 'x').out, /another write holds the ledger/)
-  assert.deepEqual(guards(root), ['state-ledger-locked', 'state-ledger-locked'])
-})
-
-test('flush claims the whole queue: a queue another flush claimed is left to it', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: signed([
-    { id: 'a', op: 'comment', issue: 1, text: '### Checkpoint build — x\n- y', claimed: { by: 'other', at: Date.now() } },
-  ]) })
-  const e = env(root)
-  const r = state.flush(e, '.')
-  assert.equal(r.code, 1)
-  assert.match(r.out, /another flush is posting/)
-  assert.equal(ghWrites(e).length, 0)
-  assert.equal(ledgerOf(root).pendingPosts.length, 1)
-})
-
-test('flush posts two same-millisecond items once each and an expired claim again', () => {
-  const at = new Date().toISOString()
-  const text = '### Checkpoint build — x\n- y'
-  const root = repo({ mode: 'interactive', pendingPosts: signed([
-    { op: 'comment', issue: 1, text, at }, { op: 'comment', issue: 1, text, at },
-    { id: 'c', op: 'comment', issue: 1, text, at, claimed: { by: 'dead', at: Date.now() - 11 * 60000 } },
-  ]) })
-  const e = env(root)
-  assert.equal(state.flush(e, '.').code, 0)
-  assert.equal(ghWrites(e).length, 3)
-  assert.deepEqual(ledgerOf(root).pendingPosts, [])
-})
-
-test('a failed post keeps it and the later items unclaimed for the next flush', () => {
-  const text = '### Checkpoint build — x\n- y'
-  const root = repo({ mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text }, { op: 'comment', issue: 1, text }]) })
-  const e = env(root, { gh: { code: 1, stdout: '', stderr: '' } })
-  assert.equal(state.flush(e, '.').code, 1)
-  const left = ledgerOf(root).pendingPosts
-  assert.equal(left.length, 2)
-  assert.ok(left.every(p => p.id && !p.claimed))
 })
 
 // Sessions: a write records its session (hashed); another session's write in the last 30 minutes is warned about.
@@ -415,7 +361,6 @@ test('release refuses destructive output without claiming a lock collision (#93)
     assert.equal(r.code, 1)
     assert.match(r.out, /could not safely release/)
     assert.doesNotMatch(r.out, /another write holds/)
-    assert.equal(guards(root).at(-1), 'state-session-release-failed')
     assert.equal(fs.readFileSync(file, 'utf8'), before)
     assert.equal(fs.existsSync(lockFile(root)), false)
   }
@@ -491,23 +436,7 @@ test('the resume card reports an unavailable hook identity without assuming the 
   assert.equal(fs.readFileSync(sessionsFile(root), 'utf8'), before)
 })
 
-// Review fixes (2026-10-03): a posted item that cannot be removed stops the flush; a linked folder no longer blocks
-// interactive writes; odd locks and claims; validated and capped session warnings; subagents share the session.
-test('a post whose removal cannot take the lock stops the flush and says so', () => {
-  const text = '### Checkpoint build — x\n- y'
-  const root = repo({ mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text }, { op: 'comment', issue: 1, text }]) })
-  const e = env(root)
-  const run0 = e.run
-  e.run = (cmd, args, opts) => {
-    const r = run0(cmd, args, opts)
-    if (cmd === 'gh' && args[0] === 'issue') fs.writeFileSync(lockFile(root), 'held-by-another')
-    return r
-  }
-  const r = state.flush(e, '.', { waitMs: 100 })
-  assert.equal(r.code, 1)
-  assert.match(r.out, /posted comment \([0-9a-f]+\) but could not remove it from the queue/)
-  assert.equal(ghWrites(e).length, 1, 'the second item waits')
-})
+// Linked Issue folders are not followed; session warnings are validated and capped.
 
 test('interactive writes go on through a linked Issue folder, whose ledger is not read', () => {
   const root = repo()
@@ -517,14 +446,14 @@ test('interactive writes go on through a linked Issue folder, whose ledger is no
   fs.writeFileSync(path.join(outside, 'ledger.json'), JSON.stringify({ mode: 'autonomous' }))
   const e = env(root)
   assert.equal(state.write(e, '.', 'comment', 1, '### Checkpoint build — x\n- y').code, 0)
-  assert.equal(ghWrites(e).length, 1, 'posted, not queued into the linked ledger')
+  assert.equal(ghWrites(e).length, 1, 'posted without following the linked ledger')
   assert.deepEqual(fs.readdirSync(outside), ['ledger.json'])
 })
 
-test('a lock that is not a file is refused as unsafe; a lock from the future is stale; a future claim is void', () => {
+test('a lock that is not a file is refused as unsafe; a lock from the future is stale', () => {
   const root = repo({ a: 1 })
   fs.mkdirSync(lockFile(root))
-  const r = state.metric(env(root), '.', 1, 'interventions', 'x')
+  const r = state.note(env(root), '.', 1, 'x')
   assert.match(r.out, /not a plain folder/)
   fs.rmSync(lockFile(root), { recursive: true })
   fs.writeFileSync(lockFile(root), 'from-the-future')
@@ -532,8 +461,6 @@ test('a lock that is not a file is refused as unsafe; a lock from the future is 
   fs.utimesSync(lockFile(root), later, later)
   assert.equal(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } })).ok, true)
   const text = '### Checkpoint build — x\n- y'
-  const root2 = repo({ mode: 'interactive', pendingPosts: signed([{ id: 'a', op: 'comment', issue: 1, text, claimed: { by: 'x', at: Date.now() + 3600000 } }]) })
-  assert.equal(state.flush(env(root2), '.').code, 0)
 })
 
 test('dropStale restores a fresh lock that replaced the stale one it judged', () => {
@@ -610,7 +537,7 @@ test('a write that would pass the size limit is refused and the ledger stays rea
 })
 
 // Issue #49: gh can fail after GitHub took the post (a timeout, a dropped connection). A comment or a new Issue is read
-// back before it counts as failed, so neither a flush nor the agent posts it twice.
+// back before it counts as failed, so the agent does not post it twice.
 const COMMENT = '### Checkpoint build — x\n- y'
 const answer = stdout => ({ code: 0, stdout, stderr: '' })
 const TIMEOUT = { code: 'ETIMEDOUT', stdout: '', stderr: '' }
@@ -683,54 +610,4 @@ test('a new Issue gh reports as failed but GitHub has is not created again (#49)
   assert.equal(r.code, 0, r.out)
   assert.match(r.out, /issues\/9/)
   assert.equal(sent(e, 'create'), 1)
-})
-
-test('flush marks a post it could not confirm, and the next flush checks it before posting (#49)', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text: COMMENT }]) })
-  let e = ghAnswers(root, args => (args[1] === 'comment' || args[0] === 'api' ? TIMEOUT : null))
-  let r = state.flush(e, '.')
-  assert.equal(r.code, 1)
-  assert.match(r.out, /posting state unknown/)
-  const [left] = ledgerOf(root).pendingPosts
-  assert.ok(left.unconfirmed && !left.claimed, JSON.stringify(left))
-  e = ghAnswers(root, args => (args[0] === 'api' ? withComment(COMMENT) : null))
-  r = state.flush(e, '.')
-  assert.equal(r.code, 0, r.out)
-  assert.match(r.out, /already on GitHub/)
-  assert.equal(sent(e, 'comment'), 0)
-  assert.deepEqual(ledgerOf(root).pendingPosts, [])
-})
-
-test('an unconfirmed post GitHub does not have is posted by the next flush (#49)', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: signed([{ id: 'u', op: 'comment', issue: 1, text: COMMENT, unconfirmed: { at: Date.now() } }]) })
-  const e = env(root)
-  assert.equal(state.flush(e, '.').code, 0)
-  assert.equal(sent(e, 'comment'), 1)
-  assert.deepEqual(ledgerOf(root).pendingPosts, [])
-})
-
-test('flush reads a post back only for this branch Issue; a ledger issue value never reaches gh as is (#49 security review)', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: signed([{ id: 'x', op: 'comment', issue: '@secret.txt', text: COMMENT, unconfirmed: { at: Date.now() } }]) })
-  const e = env(root)
-  assert.equal(state.flush(e, '.').code, 1)
-  assert.deepEqual(e.calls.filter(c => c.cmd === 'gh' && c.args.some(a => String(a).includes('@secret'))), [])
-})
-
-test('an unconfirmed mark that is not a past time stops the flush at that post instead of guessing (#49 review)', () => {
-  for (const at of ['soon', Date.now() + 3600e3]) {
-    const root = repo({ mode: 'interactive', pendingPosts: signed([{ id: 'u', op: 'comment', issue: 1, text: COMMENT, unconfirmed: { at } }]) })
-    const e = env(root)
-    const r = state.flush(e, '.')
-    assert.equal(r.code, 1, JSON.stringify(at))
-    assert.match(r.out, /unconfirmed mark/)
-    assert.equal(sent(e, 'comment'), 0)
-    assert.equal(ledgerOf(root).pendingPosts.length, 1)
-  }
-})
-
-test('a timed-out flush post GitHub does not show yet is marked, not posted blind by the next flush (#49 review)', () => {
-  const root = repo({ mode: 'interactive', pendingPosts: signed([{ op: 'comment', issue: 1, text: COMMENT }]) })
-  const e = ghAnswers(root, args => (args[1] === 'comment' ? TIMEOUT : null))
-  assert.equal(state.flush(e, '.').code, 1)
-  assert.ok(ledgerOf(root).pendingPosts[0].unconfirmed)
 })

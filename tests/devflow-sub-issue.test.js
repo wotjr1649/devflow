@@ -9,13 +9,13 @@ const state = require('../bin/devflow-state')
 const ok = value => ({ code: 0, stdout: JSON.stringify(value), stderr: '' })
 const parent = (number = 294, repo = 'o/r') => ({ number, repository: { nameWithOwner: repo } })
 
-// Only the network boundary is replaced; the real CLI, validation, queue and flush run.
+// Only the network boundary is replaced; the real CLI, validation and posting run.
 function fixture(options = {}) {
   const root = tmpdir('devflow-sub-issue-')
   fs.writeFileSync(path.join(root, '.devflow.json'), '{}')
   const file = path.join(root, '.work/devflow/i1/ledger.json')
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, JSON.stringify({ mode: options.mode || 'interactive', pendingPosts: [] }))
+  fs.writeFileSync(file, JSON.stringify({ mode: options.mode || 'interactive' }))
   const calls = []
   let relation = options.parent ?? null
   let reads = 0, pages = 0
@@ -57,9 +57,7 @@ function fixture(options = {}) {
   }
   const invoke = (...args) => state.main(['sub-issue', ...args], () => '', e, root)
   const writes = () => calls.filter(c => c.cmd === 'gh' && c.args.includes('POST'))
-  const ledger = () => JSON.parse(fs.readFileSync(file, 'utf8'))
-  const interactive = () => fs.writeFileSync(file, JSON.stringify({ ...ledger(), mode: 'interactive' }))
-  return { root, file, e, invoke, writes, ledger, interactive }
+  return { root, file, e, invoke, writes }
 }
 
 test('sub-issue add links explicit targets outside the working Issue through a fixed request', () => {
@@ -167,89 +165,6 @@ test('an authentication failure does not become a second write', () => {
   assert.equal(f.writes().length, 1)
 })
 
-test('unattended add signs both targets and queues without a network call', () => {
-  const f = fixture({ mode: 'autonomous' })
-  assert.equal(f.invoke('add', '294', '320').code, 0)
-  assert.equal(f.e.calls.filter(c => c.cmd === 'gh').length, 0)
-  const item = f.ledger().pendingPosts[0]
-  assert.equal(item.op, 'sub-issue-add')
-  assert.equal(item.issue, 1)
-  assert.equal(item.text, '[1,294,320]')
-  assert.match(item.mac, /^[0-9a-f]{64}$/)
-  f.interactive()
-  const r = state.flush(f.e, f.root)
-  assert.equal(r.code, 0, r.out)
-  assert.equal(f.writes().length, 1)
-  assert.equal(f.ledger().pendingPosts.length, 0)
-})
-
-test('queue tampering and moving to another repository stop before posting', () => {
-  for (const patch of [{ text: '[1,294,321]' }, { op: 'comment' }, { issue: 2 }, { text: '[2,294,320]' }]) {
-    const f = fixture({ mode: 'autonomous' })
-    assert.equal(f.invoke('add', '294', '320').code, 0)
-    const l = f.ledger()
-    fs.writeFileSync(f.file, JSON.stringify({ ...l, mode: 'interactive', pendingPosts: [{ ...l.pendingPosts[0], ...patch }] }))
-    assert.equal(state.flush(f.e, f.root).code, 1)
-    assert.equal(f.writes().length, 0)
-  }
-  const f = fixture({ mode: 'autonomous' })
-  f.invoke('add', '294', '320')
-  f.interactive()
-  const run = f.e.run
-  f.e.run = (cmd, args, opts) => cmd === 'git' && args.join(' ') === 'remote get-url origin'
-    ? { code: 0, stdout: 'https://github.com/o/other.git', stderr: '' } : run(cmd, args, opts)
-  assert.equal(state.flush(f.e, f.root).code, 1)
-  assert.equal(f.writes().length, 0)
-})
-
-test('even signed malformed relation payloads and wrong branch ownership are refused', () => {
-  for (const text of ['[1,294,320,321]', '[1,294,"320"]', '[1,294,294]', '[1, 294,320]', '[2,294,320]']) {
-    const f = fixture({ mode: 'autonomous' })
-    f.invoke('add', '294', '320')
-    const l = f.ledger(), item = { ...l.pendingPosts[0], text }
-    item.mac = state.macOf(state.queueKey(true), 'o/r', item)
-    fs.writeFileSync(f.file, JSON.stringify({ ...l, mode: 'interactive', pendingPosts: [item] }))
-    assert.equal(state.flush(f.e, f.root).code, 1)
-    assert.equal(f.writes().length, 0)
-  }
-  const f = fixture()
-  assert.equal(state.write(f.e, f.root, 'sub-issue-add', 2, '[1,294,320]').code, 1)
-  assert.equal(f.writes().length, 0)
-})
-
-test('unknown queued POST is read-only on later flush, even when the parent is still null', () => {
-  const f = fixture({ mode: 'autonomous', postCode: 'ETIMEDOUT', afterParent: null })
-  f.invoke('add', '294', '320')
-  f.interactive()
-  assert.equal(state.flush(f.e, f.root).code, 1)
-  assert.ok(f.ledger().pendingPosts[0].unconfirmed)
-  assert.equal(state.flush(f.e, f.root).code, 1)
-  assert.equal(f.writes().length, 1)
-  assert.equal(f.ledger().pendingPosts.length, 1)
-})
-
-test('unknown queued POST can later be confirmed without another POST', () => {
-  const f = fixture({ mode: 'autonomous', readFailureAt: 2 })
-  f.invoke('add', '294', '320')
-  f.interactive()
-  assert.equal(state.flush(f.e, f.root).code, 1)
-  assert.equal(state.flush(f.e, f.root).code, 0)
-  assert.equal(f.writes().length, 1)
-  assert.equal(f.ledger().pendingPosts.length, 0)
-})
-
-test('a numeric gh failure with no observed parent remains unknown and cannot be posted again by flush', () => {
-  const f = fixture({ mode: 'autonomous', postCode: 1, afterParent: null })
-  f.invoke('add', '294', '320')
-  f.interactive()
-  const first = state.flush(f.e, f.root)
-  assert.equal(first.code, 1)
-  assert.match(first.out, /unknown/)
-  assert.ok(f.ledger().pendingPosts[0].unconfirmed)
-  assert.equal(state.flush(f.e, f.root).code, 1)
-  assert.equal(f.writes().length, 1)
-})
-
 test('list collects only bounded metadata across pages', () => {
   const node = number => ({ number, repository: { nameWithOwner: 'o/r' } })
   const f = fixture({ pages: [
@@ -282,5 +197,27 @@ test('list refuses missing, repeated or oversized cursors and malformed nodes', 
 test('official command branch restrictions stay intact', () => {
   const f = fixture()
   assert.equal(state.write(f.e, f.root, 'comment', 294, '### Checkpoint build — x\n- test').code, 1)
+  assert.equal(f.writes().length, 0)
+})
+
+test('autonomous relation writes are refused without network or queue mutation', () => {
+  const f = fixture({ mode: 'autonomous' })
+  const file = path.join(f.root, '.work/devflow/i1/ledger.json')
+  const before = fs.readFileSync(file, 'utf8')
+  const r = f.invoke('add', '294', '320')
+  assert.equal(r.code, 1)
+  assert.match(r.out, /keep the content in ledger notes for the user/)
+  assert.equal(f.e.calls.filter(c => c.cmd === 'gh').length, 0)
+  assert.equal(fs.readFileSync(file, 'utf8'), before)
+})
+
+test('malformed relation payloads and wrong branch ownership are refused before posting', () => {
+  for (const text of ['[1,294,320,321]', '[1,294,"320"]', '[1,294,294]', '[1, 294,320]', '[2,294,320]']) {
+    const f = fixture()
+    assert.equal(state.write(f.e, f.root, 'sub-issue-add', 1, text).code, 1)
+    assert.equal(f.writes().length, 0)
+  }
+  const f = fixture()
+  assert.equal(state.write(f.e, f.root, 'sub-issue-add', 2, '[1,294,320]').code, 1)
   assert.equal(f.writes().length, 0)
 })

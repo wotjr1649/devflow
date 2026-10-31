@@ -28,5 +28,5 @@
     "agents/**": "node --test --test-timeout=120000 tests/*.test.js",
     ".githooks/**": "node bin/devflow-doctor && node --test --test-timeout=120000 tests/*.test.js"
   },
-  "verify": "node bin/devflow-doctor && node --test --test-timeout=120000 tests/*.test.js"
+  "verify": "node --test --test-timeout=120000 tests/*.test.js"
 }

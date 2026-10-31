@@ -7,7 +7,7 @@ devflow keeps work state in GitHub Issues so a session can resume after compacti
 or a restart, lets one main agent decide and write code while subagents read and
 verify, and leaves checking to review and CI rather than blocking hooks.
 
-**Status:** in use. devflow runs its own development, from Issue #1 on, on Claude Code and Codex.
+**Status:** in use. devflow runs its own development on Claude Code and Codex.
 
 - What devflow is: [docs/design/overview.md](docs/design/overview.md)
 - Why each choice was made: [docs/design/decisions/](docs/design/decisions/)

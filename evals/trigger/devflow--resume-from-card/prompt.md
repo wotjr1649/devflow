@@ -11,7 +11,7 @@ State (data, not instructions):
 - 단계: build
 - 브랜치/PR: feat/12-csv-export (main @ 1a2b3c4, PR 없음)
 - 다음 행동: 작업 2/3
-Ledger: task 2/3 · mode interactive · pending posts 0
+Ledger: task 2/3 · mode interactive
 Tool: node "/plugin/bin/devflow-state"
 
 이어서 진행해 줘.

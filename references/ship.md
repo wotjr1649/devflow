@@ -5,8 +5,8 @@ Apply the common [integration](../skills/pr-review-workflow/references/integrati
 [completion](../skills/pr-review-workflow/references/completion.md) gates; this reference owns the devflow-specific order.
 A review-only request ends in review; enter ship only for the requested integration or completion work.
 
-Ship records and closes on the Issue branch before it integrates, since `devflow-state` writes an Issue only from its
-branch.
+Ship records on the Issue branch, since `devflow-state` writes an Issue only from its branch. It closes the Issue
+before integrating, except under `pr-ci`, where it closes after the merge is seen (step 4).
 
 1. Pass the project's `verify` gate on the Issue branch. Under `pr-ci`, push the branch and take CI's `verify` success on
    that exact HEAD as the evidence, bound as in integration; if CI does not run `verify` or its result cannot be

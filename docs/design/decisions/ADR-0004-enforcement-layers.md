@@ -1,6 +1,6 @@
 # ADR-0004: 규칙은 계층으로 강제한다
 
-상태: 채택. 개정: eval 조건(#11). 훅의 범위와 측정·eval의 위치는 [ADR-0030](ADR-0030-enforce-at-impact-boundaries.md)가 좁혔다(#104): 보호 경로는 없어졌고, 훅은 공개 Issue 텍스트와 시험 잠금만 막는다.
+상태: 채택. 개정: eval 조건(#11). 훅의 범위와 측정·eval의 위치는 [ADR-0030](ADR-0030-enforce-at-impact-boundaries.md)가 좁혔다(#104): 보호 경로는 없어졌고, 훅은 공개 Issue 텍스트와 시험 잠금만 막는다. 훅과 스크립트의 강제는 [ADR-0031](ADR-0031-guidance-over-enforcement.md)가 대체했다(#104 2단계): 훅은 막지 않고, doctor를 지운다.
 
 ## 맥락
 

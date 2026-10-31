@@ -1,6 +1,6 @@
 # ADR-0028: linked worktree는 독립이 기본이고, 명시한 M3 위임만 부모 Issue에 연결한다
 
-상태: 채택 (#73, 2026-10-24 사용자 결정: 독립 worktree 기본, 명시 M3 연결만 부모 Issue 공유).
+상태: 채택 (#73, 2026-10-24 사용자 결정: 독립 worktree 기본, 명시 M3 연결만 부모 Issue 공유). 위임 worktree 결속(running --worktree, delegates.json)은 시험 잠금과 함께 [ADR-0031](ADR-0031-guidance-over-enforcement.md)가 대체했다(#104 2단계).
 
 ## 맥락
 

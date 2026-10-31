@@ -12,9 +12,8 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
    둔다. compact나 세션 교체 뒤에도 재개 카드 하나로 이어 간다. 근거: [ADR-0003](decisions/ADR-0003-issue-as-state.md)
 2. **결정과 쓰기는 한 곳, 판단 보조는 여러 곳.** 메인이 쓰고, 서브에이전트는 맥락 보호와 새 시각의 검증을 맡는다.
    위임은 증거가 있을 때만 넓힌다. 근거: [ADR-0005](decisions/ADR-0005-main-first-execution.md)
-3. **규칙은 계층으로, 강제는 영향 경계에만.** 스킬은 안내하고, 스크립트는 분석하고, 훅은 공개 Issue 텍스트 게시만 그 순간
-   막고, CI는 마지막에 막고, eval은 스킬 호출의 회귀를 잡는다. 근거: [ADR-0004](decisions/ADR-0004-enforcement-layers.md),
-   [ADR-0030](decisions/ADR-0030-enforce-at-impact-boundaries.md)
+3. **지침과 리뷰로 일하고, 막는 장치는 두지 않는다.** 스킬은 안내하고, 훅은 재개와 세션만 다루고, 리뷰가 결함과 시험
+   변경을 보고, CI는 테스트로 마지막에 막는다. 근거: [ADR-0031](decisions/ADR-0031-guidance-over-enforcement.md)
 4. **짧은 지침, 필요할 때 재는 설정.** 라우터 스킬과 references, 크기 예산. 트리거율은 호출 필드가 바뀔 때, 사이클 비용은
    요청하거나 비교할 때 잰다. 측정: [metrics](../specs/metrics.md)
 5. **사람은 게이트에만.** 범위가 정해지면 끝까지 진행하고, 원격 쓰기와 사용자만 정할 수 있는 결정만 묻는다.
@@ -27,7 +26,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 | 프로젝트 AGENTS.md | 사실·명령·문서 지도·경계 | CLAUDE.md가 없으면 직접 로드 | 로드 | 안내 |
 | 스킬 | 절차 | 플러그인 `skills/` | 같은 폴더 | 안내 |
 | 에이전트 | 격리된 작업, 도구 제한 | 플러그인 `agents/` | 내장 explorer·worker | Claude reviewer는 읽기 도구만 제공. 셸 도구가 있는 보고 역할과 Codex의 보고 전용은 지시이며 파일 시스템 격리가 아니다 |
-| 훅 | 행동 시점 게이트 | `hooks/hooks.json` | `hooks/hooks.json` | 공개 Issue 텍스트와 시험 잠금만 막는 가드레일. Claude Code는 훅의 오류·시간 초과를 통과시키므로 devflow의 PreToolUse는 분석이 길어지면 스스로 거부한다 |
+| 훅 | 재개와 세션 | `hooks/hooks.json` | `hooks/hooks.json` | 막지 않는다. 재개 카드, 자율 계속, 세션 해제만 |
 | 스크립트 | 검사·분석 | `bin/` | 스킬이 경로로 실행 | 결정적 |
 | git hook·CI | 최종 관문 | 공통 | 공통 | 결정적 |
 | eval | 스킬 호출의 회귀 | `claude plugin eval`, skill-creator | 같은 프롬프트 세트 | 측정 |
@@ -54,8 +53,8 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
   implementer-deep). 역할의 관점은 지시서가 정한다. 모델, effort, 승격: [orchestration](../specs/orchestration.md#모델과-effort)
 - **Claude Workflows**: devflow는 배포하지 않고 실행 모드로도 두지 않는다. 사용자가 devflow 밖에서 직접 실행한다
   ([ADR-0017](decisions/ADR-0017-drop-m4-defer-route.md))
-- **훅**: 재개 카드(SessionStart), 공개 Issue 텍스트 쓰기 차단(PreToolUse), 자율 모드 전용 계속(Stop),
-  시험 잠금과 분석 시간 제한, 지침 파일 편집 시 감사, 세션이 끝날 때 해제(SessionEnd, 돌지 않으면 30분 만료), 공개 전 관문(git pre-push)
+- **훅**: 재개 카드(SessionStart), 자율 모드 전용 계속(Stop), 세션이 끝날 때 해제(SessionEnd, 돌지 않으면 30분 만료).
+  공개 전 관문은 git pre-push다
 - **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드), `devflow-doctor`(구조·문서 감사),
   `devflow-metrics`(세션 기록에서 사이클 지표, 읽기 전용), `devflow-install-check`(배포 worktree와 설치본이 `main`과 같은지).
   `devflow-codex-eval`은 설치된 스킬의 수동 트리거 평가를 실행한다([eval](../specs/eval.md)).

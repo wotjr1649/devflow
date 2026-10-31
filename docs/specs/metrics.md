@@ -72,14 +72,14 @@
 | 지표 | 1회 | 세지 않는 것 |
 |---|---|---|
 | `interventions` | 사용자가 에이전트의 단계, 경로, 방법, 산출물을 바로잡은 메시지 하나. 한 메시지에 여러 곳을 고쳐도 1이다 | 에이전트가 물은 질문의 답(선택지 밖의 답 포함), 원격 쓰기 승인, "계속", 새 요청, 사용자 지시 사항의 실행 |
-| `filterFalsePositives` | devflow의 결정적 장치(`devflow-state` 공개 필터와 쓰기 거부, PreToolUse 훅, `devflow-doctor`, pre-push 관문)가 정당한 동작을 막아 문구나 방법을 바꾼 일 하나 | 실제 위반을 막은 경우, 호스트·전역 지침의 거부 |
+| `filterFalsePositives` | devflow의 결정적 장치(`devflow-state` 공개 필터와 쓰기 거부, `devflow-doctor`, pre-push 관문)가 정당한 동작을 막아 문구나 방법을 바꾼 일 하나 | 실제 위반을 막은 경우, 호스트·전역 지침의 거부 |
 
-`guardBlocks`는 자동이다. devflow 훅의 차단(Issue 텍스트 쓰기, 시험 잠금, 검사 실패)과 `devflow-state`의
-거부가 그 Issue의 `.work/devflow/i<issue>/guard-events.jsonl`에 시각과 고정 id로 한 줄씩 남는다. 명령, 경로, 입력은
-남기지 않는다. 훅의 기록 대상은 [task worktree](ledger.md#task-worktree) 귀속 판정을 따른다. 자기 Issue 브랜치 또는
+`guardBlocks`는 자동이다. 훅은 아무것도 막지 않으므로(ADR-0031) `devflow-state`의
+거부만 그 Issue의 `.work/devflow/i<issue>/guard-events.jsonl`에 시각과 고정 id로 한 줄씩 남는다. 명령, 경로, 입력은
+남기지 않는다. 기록 대상은 [task worktree](ledger.md#task-worktree) 귀속 판정을 따른다. 자기 Issue 브랜치 또는
 연결이 확인된 위임의 Issue에만 기록하며, Issue 없는 독립 worktree는 주 작업 트리의 Issue를 빌리지 않는다. 연결이
-확인되지 않은 task worktree도 Issue를 추정해 기록하지 않는다. 이 경우 차단은 유지되지만 `guardBlocks`에 집계되지 않는다.
-기록 대상 판정은 writer 경고용 세션 기록과 구별하며, 위임 연결은 기록된 세션 id와 훅 입력의 일치에 의존한다.
+확인되지 않은 task worktree도 Issue를 추정해 기록하지 않는다. 이 경우 거부는 유지되지만 `guardBlocks`에 집계되지 않는다.
+기록 대상 판정은 writer 경고용 세션 기록과 구별하며, 위임 연결은 기록된 세션 id와 현재 세션의 일치에 의존한다.
 기록 위치는 [Issue 폴더](repository.md#issue-폴더)가 정한다. 훅이 읽는 git 메타데이터는 로컬 경로의 작은 일반 파일뿐이어서, 읽기가 훅의 시간 제한을 넘겨 판정을 바꾸지 않는다.
 `devflow-doctor`와 pre-push 관문은 기록하지 않는다. ship에서 이 기록 중 정당한 동작을 막은 것을 가려
 `filterFalsePositives`로 센다.

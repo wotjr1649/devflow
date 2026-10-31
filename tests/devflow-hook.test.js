@@ -323,7 +323,12 @@ test('PR #105 review forms: option values, curl case and --next, GraphQL comment
     `curl -x http://localhost:8080 --json '{"body":"x"}' ${endpoint}`,
     `curl --json '{"body":"x"}' ${endpoint} --next -X GET https://example.com`,
     "gh api graphql -f query='mutation { addComment # note\n(input:{}) { clientMutationId } }'",
+    `curl --json '{"body":"x"}' ${endpoint} --next -X GET https://api.github.com/graphql`,
   ]) assert.ok(check(c), c)
+  const comments = '# addComment\n'.repeat(20000)
+  const started = Date.now()
+  assert.equal(check(`gh api graphql -f query='mutation { resolveReviewThread(input:{}) { clientMutationId } }\n${comments}'`), null)
+  assert.ok(Date.now() - started < 2000, 'a long comment run stays fast')
   assert.equal(check('gh issue create --help'), null)
   assert.equal(check(`curl -X GET ${endpoint}`), null)
   const d = dir(true)

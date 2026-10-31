@@ -33,7 +33,9 @@ const CONTENT_WRITES = new Set(['set-content', 'sc', 'add-content', 'ac', 'out-f
 const GIT_WRITES = new Set(['rm', 'mv', 'checkout', 'restore', 'clean'])
 const SCRIPT_FLAG =/^(-[A-Za-z]*c[A-Za-z]*|-com\w*|-e|-ec|-en\w*|\/[ck])$/i
 const HTTP_GRAPHQL = /api\.github\.com\/graphql/i
-const ISSUE_MUTATION = /\bmutation\b[\s\S]*\b(createIssue|updateIssue|addComment|updateIssueComment)\s*(?:#[^\n]*(?:\n|$)\s*)*(?:\(|\{)/
+const ISSUE_MUTATION = /\bmutation\b[\s\S]*\b(createIssue|updateIssue|addComment|updateIssueComment)\s*(?:\(|\{)/
+// A GraphQL comment may sit between a field and its arguments; the raw text is tested too, for a # inside a string.
+const issueMutation = q => ISSUE_MUTATION.test(q) || ISSUE_MUTATION.test(q.replace(/#[^\n]*/g, ''))
 const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
@@ -360,7 +362,7 @@ function apiWrite(args, ctx) {
   if (!endpoint) return null
   const route = endpoint.text.replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+/, '').replace(/^api\/v3\//i, '').toLowerCase()
   if (!endpoint.dynamic && route === 'graphql') {
-    return queries.some(q => ISSUE_MUTATION.test(q)) ? 'gh api graphql Issue text mutation' : null
+    return queries.some(issueMutation) ? 'gh api graphql Issue text mutation' : null
   }
   if (endpoint.dynamic || !/(^|\/)issues(?:\/|$|\?)/.test(route)) return null
   const writes = method ? method !== 'GET' : fields
@@ -434,13 +436,13 @@ function httpWrite(args, ctx, client) {
       : (ctx.cwds || [ctx.cwd]).map(cwd => readScript(cwd, file))
     payloads.push(...texts.map(text => item ? JSON.stringify({ [item[1]]: text }) : text))
   }
-  if (HTTP_GRAPHQL.test(src)) {
-    return payloads.some(p => {
-      let query = p
-      try { query = JSON.parse(p)?.query } catch {}
-      return typeof query === 'string' && ISSUE_MUTATION.test(query)
-    }) ? 'direct GitHub GraphQL Issue text mutation' : null
-  }
+  if (HTTP_GRAPHQL.test(src) && payloads.some(p => {
+    let query = p
+    try { query = JSON.parse(p)?.query } catch {}
+    return typeof query === 'string' && issueMutation(query)
+  })) return 'direct GitHub GraphQL Issue text mutation'
+  // One command may also reach a REST Issue path (curl --next), so that is checked as well.
+  if (!HTTP_ISSUES.test(src)) return null
   // curl --next starts another request with its own method, so a later GET cannot clear an earlier post.
   if (method !== null && !/^(POST|PATCH|PUT|DELETE)$/i.test(method) && !args.some(a => /^(--next|-:)$/.test(a.text))) return null
   return payloads.some(p => {

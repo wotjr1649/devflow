@@ -40,7 +40,7 @@
 같은 값으로의 전환은 거부한다. 다만 다른 세션이 이미 autonomous인 작업에 `mode <n> autonomous`를 하면 거부하지 않고
 `modeChanged.session`만 그 세션으로 바꾼다(재귀속, 이유는 notes에). 새 세션이 autonomous 작업을 이어받으면 사용자가
 있을 때 interactive로 바꾸고, 무인으로 이어 가면 먼저 재귀속한다. bypass(Claude)나 yolo(Codex) 같은 승인 설정은 사람이 있는지를 말하지 않으므로 기준으로
-쓰지 않는다. Stop 훅은 이때만 계속을 요청하고, 장부만 읽는다.
+쓰지 않는다. Stop 훅은 이때만 계속을 요청하고, 장부 잠금 아래에서 계속 횟수를 더한다.
 
 - 조건: 단계가 build나 verify이고 열린 작업이 있으며, `blocked`, 열린 `decisions`, `running`이 비어 있다
   ([작업 장부 키](#작업-장부-키)). 원격 쓰기 확인을 기다리는 것도 `blocked`에 적는다.
@@ -69,15 +69,13 @@ worktree의 Issue는 그 worktree 브랜치의 Issue뿐이다. Issue 브랜치�
   뺀다. 기록은 그 이름이 장부 `running`에 있을 때만 센다(장부 쓰기가 실패해 이름 없이 남은 기록은 아무것도 잇지 않는다).
 - 연결(bound): worktree가 정확히 `<주 작업 트리>/.claude/worktrees/agent-*`에 있고 git이 그 주 작업 트리를 증명하며(다른
   위치, 브랜치 표지만 있는 worktree, 그 worktree 안이나 다른 철자의 주 작업 트리는 연결되지 않는다), 세션 id, 그 세션을 가리키는 기록이 정확히 한 Issue에 있고 Issue 폴더 목록과
-  기록을 모두 읽을 수 있을 때만이다(대소문자만 다른 폴더 이름도 그 Issue로 센다). 연결된 worktree는 부모 장부를 읽고 시험 잠금·차단 기록·doctor의 잠금 검사를 따르며, 카드는 부모의 task
+  기록을 모두 읽을 수 있을 때만이다(대소문자만 다른 폴더 이름도 그 Issue로 센다). 연결된 worktree는 부모 장부를 읽고 doctor의 잠금 검사를 따르며, 카드는 부모의 task
   worktree임과 상태를 메인 세션이 가진다는 한 줄을 보인다.
-- 확인 불가: 표지가 있는데 위 조건 중 하나라도 빠지면 독립으로 풀지 않는다. 훅은 시험과 프로필을 잠긴 것으로 보고 기록
-  복구를 안내하고(시험 목록이 없어도 프로필은 잠긴다), 편집 도구로 자기 worktree 밖의 파일(주 작업 트리의 Issue 장부와 위임 기록 포함)을 쓰지 못하게 하며(경로 글자로 판단하고
-  링크는 따라가지 않는다. 셸 쓰기와 셸로 만든 링크는 이 보호 밖이다), git
-  메타데이터를 읽지 못해도 경로 표지로 판정한다. doctor는 잠금 여부를 알 수 없어 실패한다.
+- 확인 불가: 표지가 있는데 위 조건 중 하나라도 빠지면 독립으로 풀지 않는다. 훅은 시험·프로필·장부·위임 기록과 worktree 밖의 파일 편집을 차단하지 않는다.
+  doctor는 잠금 여부를 알 수 없어 실패한다.
 - 표지가 있는 worktree의 `devflow-state` 장부·Issue 쓰기·create·remark·flush·release는 Issue 브랜치에서도 거부한다.
-  훅은 Issue 텍스트 게시만 막으며 무인·위임의 직접 상태·관계 쓰기는 통과한다.
-- 판정은 `devflow-state`의 한 함수로 CLI·훅·doctor가 같이 한다. 훅은 입력의 `session_id`를 쓰고 자기 환경 변수는 읽지
+  훅은 Issue 텍스트 게시와 직접 상태·관계 쓰기를 모두 차단하지 않는다.
+- 판정은 `devflow-state`의 한 함수로 CLI·doctor와 Stop 훅이 같이 한다. Stop 훅은 입력의 `session_id`를 쓰고 자기 환경 변수는 읽지
   않는다. 이름 표지는 연결의 필요조건이지 증거가 아니다. host가 격리 worktree의 폴더와 브랜치 이름을 둘 다 바꾸면 위임이
   독립으로 보인다(Claude Code 2.1.310에서 확인한 규칙).
 - create: Issue 브랜치가 아닌 linked worktree에는 대기열이 없다. 주 작업 트리 브랜치의 Issue가 autonomous, 이 세션이

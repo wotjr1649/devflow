@@ -30,7 +30,7 @@ architectural 경로의 계획은 대화를 보지 못한 엔지니어가 계획
 - 새 동작의 테스트는 수정 전에, 또는 수정을 되돌린 상태에서 실패하는 것을 한 번 확인한다. 테스트를 먼저 쓸지 나중에
   쓸지는 프로젝트 규칙을 따른다. 어느 쪽이든 실패를 확인하지 않은 테스트는 그 수정을 증명하지 못한다.
 - 버그 수정은 재현 테스트를 먼저 만들어 실패를 확인한 뒤 코드를 고친다. 이때 그 테스트는 고치지 않는다. `.devflow.json`에
-  `tests`를 적은 프로젝트는 재현 시험을 커밋한 뒤 잠가 훅과 관문이 이를 지키게 한다([repository](repository.md#devflowjson)).
+  `tests`를 적은 프로젝트는 재현 시험을 커밋한 뒤 잠가 관문이 이를 검사하게 한다([repository](repository.md#devflowjson)).
 
 ## 실행 모드
 
@@ -201,6 +201,6 @@ Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이�
 | 구현·리뷰 에이전트 | 플러그인 `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`) | 내장 explorer·worker, 띄울 때 모델·effort 지정 |
 | 질문 후 재개 | `SendMessage` | 같은 에이전트에 후속 작업 |
 | 병렬 쓰기 (M3) | Agent 호출마다 `isolation: "worktree"` | 사용하지 않음 |
-| 재개 카드, Issue 텍스트 쓰기 차단, 시험 잠금, 자율 계속, 세션이 끝날 때 해제 | `hooks/hooks.json` | 같은 파일 |
+| 재개 카드(SessionStart), 자율 계속(Stop), 세션이 끝날 때 해제(SessionEnd) | `hooks/hooks.json` | 같은 파일 |
 
 Codex의 SessionEnd는 서브에이전트에서 돌지 않는다. 훅이 돌지 않고 끝난 세션은 30분 뒤 만료된다([동시 세션](ledger.md#동시-세션)).

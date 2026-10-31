@@ -10,7 +10,7 @@ verify, and leaves checking to review and CI rather than blocking hooks.
 **Status:** in use. devflow runs its own development on Claude Code and Codex.
 
 - What devflow is: [docs/design/overview.md](docs/design/overview.md)
-- Why each choice was made: [docs/design/decisions/](docs/design/decisions/)
+- Current choices and reasons: [docs/design/current-decisions.md](docs/design/current-decisions.md)
 - Contracts: [documents](docs/specs/documents.md), [issues](docs/specs/issues.md), [ledger](docs/specs/ledger.md),
   [lifecycle](docs/specs/lifecycle.md), [orchestration](docs/specs/orchestration.md),
   [repository](docs/specs/repository.md), [eval](docs/specs/eval.md)

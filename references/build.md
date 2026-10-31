@@ -19,7 +19,7 @@ passing, and the ledger holds the last commit and the next task.
   reproduction test that fails, and the fix leaves that test as it is. A test never seen failing proves nothing.
 - Fix the code, not the test. Change a test only when the requirement changed or its expectation is wrong, and say which
   in the commit or the checkpoint: review reads test changes for this
-  ([ADR-0031](../docs/design/decisions/ADR-0031-guidance-over-enforcement.md)).
+  ([implementation and verification](../docs/specs/orchestration.md#구현과-검증)).
 - Run the checks that execute the change and the behaviour it affects - the project's tests for the paths touched and
   their callers. When nothing justifies a narrower set (shared code, configuration, test tooling), run the full
   `verify` locally now. The integration gate's full `verify` follows the integration profile

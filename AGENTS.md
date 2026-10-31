@@ -1,7 +1,7 @@
 # devflow
 
 devflow is a Claude Code and Codex plugin. Specs define behavior, code implements it,
-decision records explain why, and GitHub Issues track work.
+current design decisions explain why, and GitHub Issues track work.
 
 ## Read what your task touches
 
@@ -11,13 +11,14 @@ decision records explain why, and GitHub Issues track work.
 | changing the product's purpose, layers or components | `docs/design/overview.md` |
 | writing or reviewing plans, prompts, instructions or agent outputs | `docs/specs/documents.md` |
 | writing Issues or checkpoints, or changing I/O or resume cards | `docs/specs/issues.md` |
+| relying on gh credentials or a credential boundary | `docs/specs/credentials.md` |
 | changing the ledger, unattended work or concurrent sessions | `docs/specs/ledger.md` |
 | changing layout, installation or hooks | `docs/specs/repository.md`, `docs/specs/hooks.md` |
 | preparing or testing a development plugin | `docs/local-development.md` |
 | clarifying intent or changing stage transitions | `docs/specs/lifecycle.md` |
 | changing execution modes, delegation or models | `docs/specs/orchestration.md` |
 | changing the trigger eval | `docs/specs/eval.md` |
-| revisiting a decision | `docs/design/decisions/` |
+| revisiting a design choice | `docs/design/current-decisions.md` |
 | relying on host behavior | `docs/research/host-facts.md`; if local behavior differs, `docs/research/sources.md` |
 | adapting material from another project | `SOURCES.md` |
 

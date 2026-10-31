@@ -9,11 +9,11 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 ## 원칙
 
 1. **기억은 Issue에.** 상태는 Issue 본문의 현재 상태 블록과 체크포인트 댓글에 두고, 작업 단위의 진행은 로컬 장부에
-   둔다. compact나 세션 교체 뒤에도 재개 카드 하나로 이어 간다. 근거: [ADR-0003](decisions/ADR-0003-issue-as-state.md)
+   둔다. compact나 세션 교체 뒤에도 재개 카드 하나로 이어 간다. 근거: [상태와 재개](current-decisions.md#상태와-재개)
 2. **결정과 쓰기는 한 곳, 판단 보조는 여러 곳.** 메인이 쓰고, 서브에이전트는 맥락 보호와 새 시각의 검증을 맡는다.
-   위임은 증거가 있을 때만 넓힌다. 근거: [ADR-0005](decisions/ADR-0005-main-first-execution.md)
+   위임은 증거가 있을 때만 넓힌다. 근거: [실행과 위임](current-decisions.md#실행과-위임)
 3. **지침과 리뷰로 일하고, 막는 장치는 두지 않는다.** 스킬은 안내하고, 훅은 재개와 세션만 다루고, 리뷰가 결함과 시험
-   변경을 보고, CI는 테스트로 마지막에 막는다. 근거: [ADR-0031](decisions/ADR-0031-guidance-over-enforcement.md)
+   변경을 보고, CI는 테스트로 마지막에 막는다. 근거: [지침과 보호](current-decisions.md#지침과-보호)
 4. **짧은 지침.** 라우터 스킬과 references, 크기 예산. 트리거 eval은 호출 필드가 바뀔 때 선택해서 돌린다
    ([eval](../specs/eval.md)).
 5. **사람은 게이트에만.** 범위가 정해지면 끝까지 진행하고, 기존 사용자 권한에 포함되지 않는 효과와 사용자만 정할
@@ -46,19 +46,17 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 ## 구성
 
 - **스킬 7개**
-  - `devflow`: 라우터. 담당 스킬이 없는 단계는 플러그인 루트의 [`references/`](../../references/)에 둔다. 여러 스킬이 함께 쓰는 생명주기 문서이기 때문이다([ADR-0023](decisions/ADR-0023-shared-lifecycle-references.md)).
+  - `devflow`: 라우터. 담당 스킬이 없는 단계는 플러그인 루트의 [`references/`](../../references/)에 둔다. 여러 스킬이 함께 읽는 이유는 [진입점과 단계](current-decisions.md#진입점과-단계)에 있다.
   - 생명주기 스킬: `development-start`, `pr-review-workflow`, `workspace-cleanup`
   - 보조 스킬: `grilling`, `writing-for-agents`, `prompt-generator`
-  - 근거: [ADR-0010](decisions/ADR-0010-single-router-skill.md), [ADR-0009](decisions/ADR-0009-auto-invoked-support-skills.md)
+  - 선택과 이유: [진입점과 단계](current-decisions.md#진입점과-단계).
 - **Claude 에이전트**: 도구로 나눈 정의 3개(explorer, reviewer, implementer). 역할의 관점(탐색, 요약, 원인 분석, 검증,
   설계, 보안)은 지시서가 정한다. 모델, effort, 승격: [orchestration](../specs/orchestration.md#모델과-effort)
 - **Claude Workflows**: devflow는 배포하지 않고 실행 모드로도 두지 않는다. 사용자가 devflow 밖에서 직접 실행한다
-  ([ADR-0017](decisions/ADR-0017-drop-m4-defer-route.md))
+  ([실행 모드](../specs/orchestration.md#실행-모드))
 - **훅**: 재개 카드(SessionStart), 자율 모드 전용 계속(Stop), 세션이 끝날 때 해제(SessionEnd, 돌지 않으면 30분 만료).
-  공개 전 관문은 git pre-push다
-- **스크립트**: `devflow-state`(장부, Issue 읽기·쓰기와 필터, 재개 카드) 하나다. 감사·지표·eval·설치 비교 실행기는
-  0.4.0에서 지웠다([ADR-0031](decisions/ADR-0031-guidance-over-enforcement.md)). 리뷰에 넘기는 BASE..HEAD diff 파일(`review-package`)은 스크립트 없이 pr-review-workflow의 review reference가 `git diff`로 만든다
+  통합 전 검증은 [repository](../specs/repository.md#통합과-ci)의 통합 방식을 따른다.
+- **스크립트**: `devflow-state`는 장부·Issue 입출력·재개 카드를 맡는다. 리뷰에 넘기는 BASE..HEAD diff 파일(`review-package`)은 pr-review-workflow의 review reference가 `git diff`로 만든다.
 - **템플릿과 eval**: Issue intent, REVIEW.md, AGENTS.md, ignore·attributes 블록, 트리거 eval
 
-배치(저장소 루트 = 플러그인 루트): [ADR-0002](decisions/ADR-0002-repository-root-is-plugin-root.md).
-두 호스트 공통 원본: [ADR-0001](decisions/ADR-0001-cross-host-single-source.md).
+배치와 공통 원본의 이유: [공통 원본](current-decisions.md#공통-원본).

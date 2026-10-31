@@ -1,7 +1,7 @@
 # 저장소 계약
 
 devflow가 프로젝트에 권장하는 구조, ignore·attributes 블록, AGENTS.md 형식, 기계용 프로필을 정한다. 이를 검사하는
-실행기는 없다([ADR-0031](../design/decisions/ADR-0031-guidance-over-enforcement.md)).
+실행기는 없다([선택의 이유](../design/current-decisions.md#지침과-보호)).
 
 ## 폴더
 
@@ -14,7 +14,7 @@ devflow가 프로젝트에 권장하는 구조, ignore·attributes 블록, AGENT
 ├── .github/ISSUE_TEMPLATE/intent.md
 ├── docs/
 │   ├── specs/                 제품 계약 (추적)
-│   ├── design/decisions/      결정 기록 (추적)
+│   ├── design/current-decisions.md  현재 설계 결정 (추적)
 │   ├── prompts/  plans/       비공개 (ignore)
 ├── artifacts/                 근거·handoff (ignore)
 ├── .work/                     임시·대용량 (ignore)
@@ -141,7 +141,7 @@ Generated files and anything CI already enforces.
 
 0.4.0에서 지운 키(`tests`, `highRisk`, `checks`, `private`, `allowLocalPaths`, `specs`, `decisions`, `agentsMd`,
 `protected`)는 남아 있어도 오류 없이 무시한다. 시험 잠금은 없다. 시험 변경은 리뷰가 본다
-([ADR-0031](../design/decisions/ADR-0031-guidance-over-enforcement.md)). 훅의 입력 읽기·세션 해제 경로 판정과 한계는
+([선택의 이유](../design/current-decisions.md#지침과-보호)). 훅의 입력 읽기·세션 해제 경로 판정과 한계는
 [hooks](hooks.md)를 따른다.
 
 `local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업 트리가 깨끗하고 push하는 커밋이 HEAD일 때만 `verify`를
@@ -157,15 +157,57 @@ Generated files and anything CI already enforces.
 
 ## 통합과 CI
 
-devflow 자체는 `pr-ci`다([ADR-0027](../design/decisions/ADR-0027-pr-ci-integration.md)). CI는 push와 main 대상 PR마다
-Linux·macOS·Windows, Node 22·24로 `verify`를 돌린다(PR은 병합 결과). Windows job은 ruleset의 필수 check가 아니지만
-아래 "전부 성공"에 든다(#103). 통합 조건: 브랜치 HEAD push CI와 PR 최신 병합 결과 CI의
-전부 성공, merge commit, PR head가 독립 리뷰(M0 포함)를 받은 SHA, 또는 그 뒤 main 병합만 더해 diff가 같은 SHA(둘 다
-PR에 기록). 누락·취소·건너뜀·다른 커밋·출처가 다른 같은 이름은 통과가 아니고, ruleset이 ADR-0027과 다르면
-통합하지 않는다.
+devflow 자체는 `pr-ci`다. CI는 push와 main 대상 PR마다 Linux·macOS·Windows, Node 22·24로 `verify`를 돌린다.
+브랜치 push는 브랜치 HEAD, PR은 현재 base와 head의 최신 병합 결과를 검사한다. 통합 조건은 이 두 CI의 전부 성공,
+merge commit, PR head가 독립 리뷰(M0 포함)를 받은 SHA이거나 그 뒤 main 병합만 더해 diff가 같은 SHA인 것이다.
+리뷰한 SHA와 main 병합만 더한 경우의 SHA를 PR에 기록한다. 누락·취소·건너뜀·다른 커밋·출처가 다른 같은 이름은 통과가 아니다.
+CI 성공은 수용 기준별 실행 증거와 독립 리뷰를 대신하지 않는다. 전체 `verify`의 근거와 로컬 검사 범위는
+[.devflow.json](#devflowjson)을 따른다.
+
+PR 본문은 공개 요약, 리뷰 근거와 리뷰한 SHA, `Refs #<n>`을 담는다. PR 본문·커밋·merge commit 메시지에는 Issue를 닫는
+키워드를 쓰지 않는다. Issue 종료는 `devflow-state`가 병합 확인 뒤에 한다. 문서만 바뀐 PR과 M0도 같은 통합 조건을 따른다.
+기존 제품 커밋과 검토한 SHA를 보존하도록 merge commit으로 통합하며 squash·rebase는 쓰지 않는다. 선형 이력 강제와 함께 쓰지 않는다.
+뒤처진 브랜치는 main을 병합해 갱신한다.
+
+### main의 서버 보호
+
+main에 활성 ruleset 하나를 두고 우회 주체는 두지 않는다. 규칙은 다음과 같다.
+
+- 브랜치 삭제 금지와 강제 push 금지.
+- PR 경유: 필요한 승인 수는 0, 대화 해결 필수, 허용하는 병합 방식은 merge만.
+- 아래 네 필수 check의 strict 통과. 출처는 GitHub Actions 앱(integration id `15368`)의 `.github/workflows/test.yml`이다.
+
+| 필수 check |
+|---|
+| `test (ubuntu-latest, 22)` |
+| `test (ubuntu-latest, 24)` |
+| `test (macos-latest, 22)` |
+| `test (macos-latest, 24)` |
+
+Windows job은 ruleset의 필수 check가 아니지만 통합 조건의 CI 전부 성공에 포함된다. 필수 check로 바꾸는 일은 ruleset 변경이므로
+별도 사용자 지시로 한다. 혼자 운영하므로 자기 승인을 요구하지 않고, 다른 호스트의 독립 리뷰를 GitHub 승인으로 위장하지 않는다.
+서버 보호가 이 기준과 다르면 통합하지 않는다.
+
+로컬 pre-push는 `local-merge`의 통합 관문이다. `pr-ci`에서는 훅을 켜지 않아도 되며, 켜 둔 클론에서만 브랜치 push 전 검사로 돈다.
+`pr-ci`의 통합 관문은 서버의 ruleset과 PR check다.
 
 [ship](lifecycle.md#단계)의 검사·기록 뒤, 통합 직전에 base·head·규칙·check를 다시 읽는다. 뒤처지면 main을 병합한다
-([리뷰](orchestration.md#리뷰)). 병합 뒤 main SHA·CI 확인 후 완료·정리한다.
+([리뷰](orchestration.md#리뷰)). 병합 뒤 실제 main SHA와 main CI를 확인한 후 완료·정리한다.
+
+### 자체 통합 정책의 되돌림
+
+서버 보호를 먼저 끄고 빠져나오지 않는다. ruleset이 PR을 요구하므로 되돌림도 현행 통합 관문을 거친 PR로 한다.
+바꾸는 설정의 이전 값과 실행 근거는 작업 기록에 남긴다.
+
+1. 되돌림 PR은 devflow 저장소 고유의 통합 정책만 대상으로 한다. `.devflow.json`, AGENTS.md, 이 절, pr-review-workflow의
+   integration reference 중 devflow 전용 문구를 함께 맞춘다. 다른 `pr-ci` 프로젝트에도 적용되는 lifecycle·orchestration·ship의
+   통합 방식별 규칙은 유지한다. 현재 결정 요약의 해당 선택과 이유도 되돌림 대상에 맞춘다.
+2. 이 보호 기준과 `.github/workflows/test.yml`의 `pull_request` trigger는 유지한 채 PR을 병합한다. 되돌림 진행과
+   `되돌림 중: ruleset 해제 대기` 상태는 작업 Issue와 장부에 기록한다. 그 PR 병합 뒤부터 ruleset 해제까지는 통합하지 않는다.
+3. ruleset 해제는 별도 사용자 승인으로 실행한다. 해제를 확인한 뒤 작업 기록의 대기 상태를 해제하고, spec과 현재 결정 요약을
+   실제 적용된 정책에 맞춘다.
+4. `pull_request` trigger 제거는 그다음 증분에서 한다. 되돌림 PR과 서버 보호 해제 사이에 먼저 제거하지 않는다.
+
 ## 버전
 
 두 플러그인 매니페스트의 `version`은 같아야 하며 `tests/devflow-config.test.js`가 검사한다.

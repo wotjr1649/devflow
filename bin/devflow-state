@@ -520,7 +520,7 @@ function card(env, cwd, { sessionId: hookSession } = {}) {
   const seen = { top: null, legacy: [], broad: [], sessions: [], checked: new Set() }
   const warnings = () => [...seen.legacy, ...seen.broad, ...seen.sessions]
   // The minimal card: no state, the warnings found so far and the exact Tool line; without room for the Tool line, the
-  // terminal error, which routes nothing (docs/design/decisions/ADR-0026-resume-card-budget.md).
+  // terminal error, which routes nothing (docs/specs/issues.md#예산과-의미-보존).
   const minimal = (reason, failed) => {
     const unchecked = WARNING_CHECKS.filter(c => !seen.checked.has(c))
     const lead = [...(seen.top ? [seen.top] : []), ...warnings(),
@@ -1607,7 +1607,7 @@ function command(argv, stdin, env, cwd) {
         if ('mode' in patch && !['interactive', 'autonomous'].includes(patch.mode)) {
           return { result: { refused: `refused: mode is interactive or autonomous; got ${JSON.stringify(patch.mode)}` } }
         }
-        // Posts an older devflow queued wait for the user, who reads them and posts what they approve (ADR-0031).
+        // Posts an older devflow queued wait for the user, who reads them and posts what they approve (docs/specs/ledger.md).
         if ('pendingPosts' in patch) {
           return { result: { refused: 'refused: pendingPosts from an older devflow are kept; show them to the user and post what they approve' } }
         }

@@ -510,7 +510,7 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
   assert.match(branch.out, /path is the lifecycle path \(spike, bounded or architectural\), not a branch/)
   assert.match(up({ stage: 'coding' }).out, /stage is one of discover, start/)
   assert.match(up({ runMode: 'M5' }).out, /runMode starts with M0 to M3/)
-  assert.match(up({ runMode: 'M4' }).out, /runMode starts with M0 to M3/, 'M4 left the run modes (ADR-0017)')
+  assert.match(up({ runMode: 'M4' }).out, /runMode starts with M0 to M3/, 'M4 is outside the execution modes; see docs/specs/orchestration.md')
   assert.match(up({ task: { current: 1 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: -1, total: 2 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: 0, total: 0 } }).out, /task is \{current, total\}/, 'the Stop hook would read 0/0 as an open task')

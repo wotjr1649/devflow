@@ -410,11 +410,8 @@ function httpWrite(args, ctx, client) {
   const httpie = client === 'http' || client === 'https'
   let method = null
   for (let i = 0; i < args.length; i++) {
-    // shortcut: ordinary flags and items only (not stdin bodies or every client option); the hook is a guardrail, not isolation
-    if (httpie && method === null && /^(GET|HEAD|OPTIONS|POST|PATCH|PUT|DELETE)$/i.test(args[i].text)) {
-      method = args[i].text
-      continue
-    }
+    // shortcut: ordinary flags and items only (not stdin bodies or every client option); the hook is a guardrail, not isolation.
+    // HTTPie's positional method is not read (an option's value can look like one), so a text item blocks even on GET.
     const verb = /^(?:--request|--method|-Method)(?:=([\s\S]*))?$|^-X([\s\S]*)$/i.exec(args[i].text)
     if (verb) {
       method = verb[1] || verb[2] || args[++i]?.text || ''

@@ -8,7 +8,10 @@ A review-only request ends in review; enter ship only for the requested integrat
 Ship records and closes on the Issue branch before it integrates, since `devflow-state` writes an Issue only from its
 branch.
 
-1. Run the project's `verify` gate on the Issue branch.
+1. Pass the project's `verify` gate on the Issue branch. Under `pr-ci`, push the branch and take CI's `verify` success on
+   that exact HEAD as the evidence, bound as in integration; if CI does not run `verify` or its result cannot be
+   verified, run `verify` locally. Other profiles run it locally
+   ([.devflow.json](../docs/specs/repository.md#devflowjson)).
 2. When the change adds, removes or renames a skill or changes a `SKILL.md` name or description, the trigger eval in
    [eval](../docs/specs/eval.md) is available; it is optional, and the user runs it in their terminal. Note in the ship
    checkpoint whether it ran and its result.

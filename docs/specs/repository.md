@@ -135,7 +135,8 @@ Generated files and anything CI already enforces.
 
 - `integration`: `pr-ci`, `local-merge`, `push-on-request` 중 하나. 통합 방식을 정한다.
 - `branch`: Issue 브랜치 이름 형식. 장부와 재개 카드는 이름 속 Issue 번호로 브랜치의 Issue를 찾는다.
-- `verify`: 통합 관문인 한 줄 전체 검사 명령. ship, pre-push, CI가 돌린다.
+- `verify`: 통합 관문인 한 줄 전체 검사 명령. `local-merge`에서는 ship과 pre-push가, `pr-ci`에서는 CI가,
+  `push-on-request`에서는 ship이 로컬에서 돌린다.
 
 0.4.0에서 지운 키(`tests`, `highRisk`, `checks`, `private`, `allowLocalPaths`, `specs`, `decisions`, `agentsMd`,
 `protected`)는 남아 있어도 오류 없이 무시한다. 시험 잠금은 없다. 시험 변경은 리뷰가 본다
@@ -147,10 +148,17 @@ Generated files and anything CI already enforces.
 클론마다 하고(호스트 설정이 아닌 저장소 설정이지만 훅을 켜는 일이라 소유자 지시로 한다), 훅이 꺼진 클론에서는 통합
 커밋에 검사 줄을 쓴다.
 
+`pr-ci` 저장소에서 통합 관문인 전체 `verify`의 근거는 같은 revision을 실제로 검사한 CI다. 브랜치 push는 HEAD, PR은 최신 병합
+결과에서 프로젝트의 `verify` step이 성공해야 하며, 확인 방법은 pr-review-workflow의 integration을 따른다. 로컬에서는
+변경과 그 영향을 받는 동작을 실행하는 검사(건드린 경로와 그 호출자의 테스트)만 돌린다. 범위를 좁힐 근거가 없으면(공유
+코드·설정·테스트 도구 변경) 그 자리에서 전체 `verify`를 로컬로 돌린다. CI가 `verify`를 돌리지 않거나 그 결과를 확인할 수 없으면 로컬에서
+전체 `verify`를 돌리고, 필수 CI는 따로 기다린다. CI 성공은 수용 기준별 실행 증거와 독립 리뷰를 대신하지 않는다(#103).
+
 ## 통합과 CI
 
 devflow 자체는 `pr-ci`다([ADR-0027](../design/decisions/ADR-0027-pr-ci-integration.md)). CI는 push와 main 대상 PR마다
-Linux·macOS, Node 22·24로 `verify`를 돌린다(PR은 병합 결과). 통합 조건: 브랜치 HEAD push CI와 PR 최신 병합 결과 CI의
+Linux·macOS·Windows, Node 22·24로 `verify`를 돌린다(PR은 병합 결과). Windows job은 ruleset의 필수 check가 아니지만
+아래 "전부 성공"에 든다(#103). 통합 조건: 브랜치 HEAD push CI와 PR 최신 병합 결과 CI의
 전부 성공, merge commit, PR head가 독립 리뷰(M0 포함)를 받은 SHA, 또는 그 뒤 main 병합만 더해 diff가 같은 SHA(둘 다
 PR에 기록). 누락·취소·건너뜀·다른 커밋·출처가 다른 같은 이름은 통과가 아니고, ruleset이 ADR-0027과 다르면
 통합하지 않는다.

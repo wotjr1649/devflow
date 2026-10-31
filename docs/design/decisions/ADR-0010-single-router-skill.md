@@ -1,7 +1,7 @@
 # ADR-0010: 책임별 단계를 라우터가 기존 단계 스킬로 보낸다
 
 상태: 채택 (사용자 결정). 개정: 카드가 있어도 새 작업 요청은 development-start가 받고 경로를 가른다
-([ADR-0018](ADR-0018-new-work-goes-to-development-start.md), #45).
+([ADR-0018](ADR-0018-new-work-goes-to-development-start.md), #45). 0.4.0에서 doctor와 표준 적용 reference가 없어졌다([ADR-0031](ADR-0031-guidance-over-enforcement.md)).
 
 개정(#51): 단계는 11개와 종료 상태 `done`이다. 아래의 12개 표기는 잘못된 수치였으며
 현재 계약은 [lifecycle](../../specs/lifecycle.md#단계)을 따른다.

@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "devflow",
-      "description": "An Issue-driven development loop for Claude Code and Codex: resume from Issues, delegate reads and checks, back rules with hooks.",
+      "description": "An Issue-driven development loop for Claude Code and Codex: resume from Issues, delegate reads and checks, leave checking to review and CI.",
       "source": "./"
     }
   ]

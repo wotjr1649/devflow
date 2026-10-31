@@ -15,7 +15,7 @@ Explain the goal, current increment's user result, milestone and separate status
 conditions, next primary action, blockers/open decisions and applicable revision. Task k/N is a count, not a percentage.
 Refresh at resume, stage completion, increment completion, milestone transitions, rollback, scope changes or blockers,
 not every message.
-Pre-Issue entry and other skills' direct returns are outside this change; a missing card does not authorize routing.
+Pre-Issue entry and other skills' direct returns are outside this procedure; a missing card does not authorize routing.
 
 Read confirmed intent and coarse state with the card's Tool `read <issue>`, and the same Issue's task progress and
 blockers with `ledger <issue>`. Recorded verification evidence is in the ledger's notes and the Issue's checkpoints;
@@ -33,7 +33,7 @@ failed results.
 For a truncated card, recover the full filtered Issue and ledger, then the relevant local plan/evidence through their
 existing readers before relying on omitted facts. Do not guess completion or repair state automatically. If identity
 or conflict remains unresolved, show position unverified, hold the dependent effect and name the cheapest owner read
-or evidence comparison next; continue independent covered work. This recovery procedure does not fix card truncation.
+or evidence comparison next; continue independent covered work. Card truncation follows the card budget rules in [issues](../docs/specs/issues.md#예산과-의미-보존).
 
 Apply the lifecycle's return rules: behavior failure to Increment; plan error to plan in Preparation; broken
 assumption to design in Preparation; changed intent/acceptance to Direction through the existing confirmation path.

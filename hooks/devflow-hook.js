@@ -33,7 +33,7 @@ const CONTENT_WRITES = new Set(['set-content', 'sc', 'add-content', 'ac', 'out-f
 const GIT_WRITES = new Set(['rm', 'mv', 'checkout', 'restore', 'clean'])
 const SCRIPT_FLAG =/^(-[A-Za-z]*c[A-Za-z]*|-com\w*|-e|-ec|-en\w*|\/[ck])$/i
 const HTTP_GRAPHQL = /api\.github\.com\/graphql/i
-const ISSUE_MUTATION = /\bmutation\b[\s\S]*\b(createIssue|updateIssue|addComment|updateIssueComment)\s*(?:\(|\{)/
+const ISSUE_MUTATION = /\bmutation\b[\s\S]*\b(createIssue|updateIssue|addComment|updateIssueComment)\s*(?:#[^\n]*(?:\n|$)\s*)*(?:\(|\{)/
 const ALIAS_TIMEOUT_MS = 3000
 const MAX_DEPTH = 6
 const MAX_SCRIPT_BYTES = 256 * 1024
@@ -377,7 +377,9 @@ function ghWrite(args, ctx, depth) {
   if (!sub) return null
   if (sub.dynamic) return null
   const s = sub.text.toLowerCase()
-  if (['issue', 'api'].includes(s) && args.some(a => a.text === '--help' || a.text === '-h')) return null
+  // Help only where no bare option before it can take it as a value (--title -h posts "-h").
+  if (['issue', 'api'].includes(s) && args.some((a, k) => (a.text === '--help' || a.text === '-h') &&
+    !/^-[^=]*$/.test(args[k - 1]?.text ?? ''))) return null
   if (s === 'issue') {
     i++
     skipFlags()
@@ -412,7 +414,8 @@ function httpWrite(args, ctx, client) {
   for (let i = 0; i < args.length; i++) {
     // shortcut: ordinary flags and items only (not stdin bodies or every client option); the hook is a guardrail, not isolation.
     // HTTPie's positional method is not read (an option's value can look like one), so a text item blocks even on GET.
-    const verb = /^(?:--request|--method|-Method)(?:=([\s\S]*))?$|^-X([\s\S]*)$/i.exec(args[i].text)
+    // curl's -x is --proxy, so -X keeps its case.
+    const verb = /^(?:--request|--method|-Method)(?:=([\s\S]*))?$/i.exec(args[i].text) || /^-X()([\s\S]*)$/.exec(args[i].text)
     if (verb) {
       method = verb[1] || verb[2] || args[++i]?.text || ''
       continue
@@ -438,7 +441,8 @@ function httpWrite(args, ctx, client) {
       return typeof query === 'string' && ISSUE_MUTATION.test(query)
     }) ? 'direct GitHub GraphQL Issue text mutation' : null
   }
-  if (method !== null && !/^(POST|PATCH|PUT|DELETE)$/i.test(method)) return null
+  // curl --next starts another request with its own method, so a later GET cannot clear an earlier post.
+  if (method !== null && !/^(POST|PATCH|PUT|DELETE)$/i.test(method) && !args.some(a => /^(--next|-:)$/.test(a.text))) return null
   return payloads.some(p => {
     if (!p) return true
     try {
@@ -643,7 +647,8 @@ function cwdsAlong(cmds, start, narrow) {
 // ctx.cwds holds the folders the command being checked may run in; text it runs (a script, a substitution) starts there.
 function analyze(src, ctx, depth = 0, cmdShell = false, powershell = false) {
   if (!src) return null
-  if (depth > MAX_DEPTH) return null
+  // Too deep to check: passes, except while tests are locked (the lock still holds, docs/specs/hooks.md).
+  if (depth > MAX_DEPTH) return ctx.protect ? TOO_DEEP : null
   // Shell-specific quotes and comments can hide writes from the other reading. PowerShell block comments end at
   // the first #>, backslashes are literal, and backticks escape rather than substitute. Keep the Bash reading too.
   if (!powershell && (src.includes('<#') || src.includes("$'") || /[\\`]/.test(src))) {
@@ -851,6 +856,7 @@ const testLocked = (root, r, unconfirmed) => unconfirmed
     'and unlock it: devflow-state tests <issue> unlock < reason.')
 
 const TEST_LOCKED = 'write to locked test path '
+const TOO_DEEP = 'command nested too deeply to check'
 
 // After an instruction file changes, report what doctor finds about it; nothing when it finds nothing.
 function auditEdit(root, cwd, toolInput) {
@@ -1154,6 +1160,8 @@ function handle(raw, env = state.realEnv, deadline = performance.now() + ANALYSI
       const kind = tool.startsWith('mcp__') ? mcpIssueWrite(tool, input.tool_input)
         : issueWrite(input.tool_input && input.tool_input.command, { cwd, env, protect, deadline })
       if (!kind) return ''
+      if (kind === TOO_DEEP) return blocked(root, 'test-locked', 'devflow: tests are locked for this fix, and this command nests ' +
+        'scripts too deeply to check for test writes. Run the steps directly.')
       if (kind.startsWith(TEST_LOCKED)) return testLocked(root, kind.slice(TEST_LOCKED.length), tests.unconfirmed)
       return blocked(root, 'issue-write', `devflow: Issue writes go through devflow-state (${[...state.WRITE_OPS].join(', ')}), which filters ` +
         `paths, secrets and length before posting. Blocked: ${kind}.`)

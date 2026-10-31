@@ -315,6 +315,25 @@ test('HTTPie items and static files enforce the REST and GraphQL text boundary',
   }
 })
 
+test('PR #105 review forms: option values, curl case and --next, GraphQL comments, and the lock past the depth limit', () => {
+  const endpoint = 'https://api.github.com/repos/o/r/issues/1/comments'
+  for (const c of [
+    'gh issue create --title -h --body x',
+    'gh issue comment 1 --body --help',
+    `curl -x http://localhost:8080 --json '{"body":"x"}' ${endpoint}`,
+    `curl --json '{"body":"x"}' ${endpoint} --next -X GET https://example.com`,
+    "gh api graphql -f query='mutation { addComment # note\n(input:{}) { clientMutationId } }'",
+  ]) assert.ok(check(c), c)
+  assert.equal(check('gh issue create --help'), null)
+  assert.equal(check(`curl -X GET ${endpoint}`), null)
+  const d = dir(true)
+  for (let k = 0; k < 8; k++) fs.writeFileSync(path.join(d, `s${k}.sh`), k < 7 ? `bash s${k + 1}.sh\n` : 'rm tests/x.test.js\n')
+  assert.equal(hook.issueWrite('bash s0.sh', { cwd: d, env: noAliases }), null, 'no lock: a deep chain passes')
+  const protect = ts => ts.find(t => t.path.endsWith('x.test.js'))?.path ?? null
+  assert.equal(hook.issueWrite('bash s0.sh', { cwd: d, env: noAliases, protect }), 'command nested too deeply to check',
+    'a lock holds past the depth limit')
+})
+
 test('unreadable and cyclic gh aliases pass', () => {
   const env = { run: () => ({ code: 0, stdout: 'a: b\nb: a\n' }) }
   assert.equal(hook.issueWrite('gh a 1', { env }), null)

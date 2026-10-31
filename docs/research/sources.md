@@ -61,7 +61,7 @@
   - [Worktrees](https://code.claude.com/docs/en/worktrees): 서브에이전트 worktree 격리의 기준 브랜치와 정리(M3).
   - [Subagents](https://code.claude.com/docs/en/sub-agents): 메인과 서브에이전트의 선택 기준,
     재개와 `SendMessage`, 도구 필터.
-  - [Hooks](https://code.claude.com/docs/en/hooks): Stop의 block, SessionStart 10,000자 상한, Windows 셸 선택.
+  - [Hooks](https://code.claude.com/docs/en/hooks): exit 2와 거부만 막고 다른 오류와 시간 초과는 통과, Stop의 block, SessionStart 10,000자 상한, Windows 셸 선택.
   - [Workflows](https://code.claude.com/docs/en/workflows),
     [Agent teams](https://code.claude.com/docs/en/agent-teams),
     [Best practices](https://code.claude.com/docs/en/best-practices).

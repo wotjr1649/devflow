@@ -76,7 +76,8 @@
   기본은 원격 기본 브랜치에서 갈라지고(`worktree.baseRef: "head"` 설정이면 지금 HEAD), 바뀐 것이 없으면 지워지고 바뀐 것이
   있으면 남는다([Subagents](https://code.claude.com/docs/en/sub-agents), [Worktrees](https://code.claude.com/docs/en/worktrees)).
   관찰(2026-10-03): 서브에이전트 worktree 생성 뒤 공용 `core.hooksPath`가 `.githooks`에서 메인 체크아웃의 절대 경로로 바뀌어 있었다.
-  문서로 보장된 동작은 아니다.
+  격리 서브에이전트가 도는 동안에는 부모 세션과 다른 서브에이전트의 기록 `gitBranch`가 주 작업 트리의 실제 브랜치가 아니라
+  그 서브에이전트 worktree의 브랜치였다. 기록의 브랜치만으로 작업을 귀속하지 않는다. 둘 다 문서로 보장된 동작은 아니다.
 - `agents/review/x.md`처럼 하위 폴더에 두면 이름이 `<plugin>:review:x`가 된다.
 - 호출의 `subagent_type`과 실행 기록의 `agentType`도 `devflow:implementer`처럼 플러그인 이름이 붙는다. 에이전트 종류로
   거르는 다른 플러그인의 훅(예: ponytail의 `PONYTAIL_SUBAGENT_MATCHER`)도 이 이름을 본다(2026-10-01).
@@ -124,6 +125,8 @@
 
 **훅**
 
+- PreToolUse 명령이 exit code 2로 끝나면 동작이 막히고 stderr가 Claude에게 전달된다. 다른 non-zero exit와 시간
+  초과(기본 600초)는 막지 않고 그대로 진행한다. devflow는 이 이벤트를 등록하지 않는다.
 - 맥락을 넣을 때는 `hookSpecificOutput.additionalContext`를 쓴다. SessionStart의 값은 문자열마다 10,000자까지이고,
   넘으면 파일로 저장된 뒤 경로와 앞 2,000자만 들어간다.
 - Stop은 decision `block`과 reason(또는 exit 2)으로 종료를 막는다. 입력의 `stop_hook_active`로 반복을 막는다.
@@ -266,6 +269,8 @@
 - 실행 기록: rollout은 `~/.codex/sessions/YYYY/MM/DD/`와 `archived_sessions/`에 있다(2026-10-02 관찰).
   `session_meta.source.subagent.thread_spawn`이 부모 스레드·깊이·`agent_role`을 담는다.
   모델과 effort는 턴마다 `turn_context.model`과 `turn_context.effort`에 있다.
+- Windows에서 rollout 파일의 수정 시각은 생성 시각에 머문다(2026-10-03, 파일 5개, 마지막 레코드는 최대 1시간 40분 뒤).
+  원본은 새 파일을 열 때 수정 시각을 직접 설정한다. 수정 시각으로 기록이 새로 쓰였는지 판단할 수 없다.
 
 **셸 환경과 sandbox** (2026-10-02, [config reference](https://learn.chatgpt.com/docs/config-file/config-reference))
 - `shell_environment_policy`: `inherit`(all, core, none), `set`, 필터. 기본적으로 이름에 KEY, SECRET, TOKEN이 든

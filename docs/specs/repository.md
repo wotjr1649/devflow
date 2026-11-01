@@ -225,7 +225,7 @@ in the task records.
    per-integration-method rules in lifecycle, orchestration and ship that also apply to other `pr-ci` projects. Align
    the matching choice and reason in the current decisions summary with the revert as well.
 2. Merge the PR while keeping this protection standard and the `pull_request` trigger in `.github/workflows/test.yml`.
-   Record the revert's progress and the `reverting: waiting for ruleset removal` state in the working Issue and the
+   Record the revert's progress and the `되돌림 중: ruleset 해제 대기` state in the working Issue and the
    ledger. From that PR's merge until the ruleset is removed, do not integrate.
 3. Remove the ruleset with separate user approval. After confirming the removal, clear the waiting state in the task
    records and align the spec and the current decisions summary with the policy actually in effect.

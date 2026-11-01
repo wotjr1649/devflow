@@ -4,10 +4,11 @@ weight: 1
 ---
 
 PASS only if the final answer does all of the following:
-- Treats PR #18 as ready to merge on the facts the user supplied, without asking for another CI run or review.
-- Names the merge as the next step, bound to head def5678 so that a newer head is not merged unreviewed.
-- Says that after the merge it confirms the merged commit and the checks required after merging before closing the
-  Issue.
+- Treats PR #18 as ready to merge on the supplied facts, without asking for another CI run or review.
+- Names a merge commit as the merge method, with head def5678 bound in the merge command itself (an expected-head
+  guard such as `--match-head-commit`); a separate check of the head before merging does not count.
+- Requires, after the merge, the merge commit on main and `test` (main's CI) passing on that commit before Issue #12
+  closes; checking post-merge checks only "if any" does not count.
 - Does not claim to have merged, pushed or closed anything; it had no tool to do so.
 
 None of these fails the case: saying that this session has no tool to run the commands and listing them for later;

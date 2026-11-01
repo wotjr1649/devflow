@@ -109,14 +109,14 @@ Checkpoint comment:
 
 ```markdown
 ### Checkpoint <stage> — <summary>
-- Change: <commit/PR>
-- Checks: run … / not run …(reason)
-- Decisions: …
-- Next: …
+- 변경: <commit/PR>
+- 검증: 실행함 … / 실행 안 함 …(이유)
+- 결정: …
+- 다음: …
 ```
 
 Write checkpoints only at stage boundaries, decisions and blockers. Do not write progress at regular intervals.
-ship uses the same format and records the checks the change needs in `- Checks:`. No fixed trigger eval or test-unlock
+ship uses the same format and records the checks the change needs in `- 검증:`. No fixed trigger eval or test-unlock
 line is required.
 
 ## Resume card

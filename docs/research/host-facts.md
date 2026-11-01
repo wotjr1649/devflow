@@ -274,6 +274,10 @@
   요청한 4조합(gpt-6-luna `high`, gpt-6.1-terra `medium`·`high`, gpt-6.1-sol `high`)과, 모델 이름 없이 spec 역할 표만 읽게 한
   실행 검증(gpt-6.1-terra `high`)이 서브에이전트 rollout의 `turn_context.model`·`effort`와 일치했다. 조합마다 한 번 확인했다.
   동시 스레드 상한은 `agents.max_concurrent_threads_per_session`이다.
+- `spawn_agent`의 `fork_turns`는 기본 `"all"`로 부모 대화를 물려주고, `"none"`이면 부모 이력 없이 시작한다. 도구 설명상
+  `"all"`에서는 모델 지정을 받지 않고 부모 모델을 쓴다. 관찰(2026-11-01, 0.166.0, 조건마다 1회): 부모 대화에만 있던 표식을
+  `"all"` 자식은 답했고 `"none"` 자식은 찾지 못했다. `"none"` 자식은 이전 대화의 요약은 보인다고 답했으나 그 내용은
+  확인하지 않았다.
 - 관찰(2026-11-01, 0.166.0, 과거 devflow 작업 비교): 같은 지시서로 기계적 구현 3건은 gpt-6.1-terra `medium`과 gpt-6.1-sol
   `high`가 모두 원래 PR의 회귀 테스트와 전체 테스트를 통과했다. 결함 4개를 심은 diff 3개의 리뷰(둘 다 `high`)는 3회
   반복에서 둘 다 매번 4개를 찾았고, 거짓 지적은 terra 2(계획 요약의 모호한 문구에서 나온 같은 정밀도 지적)·sol 0이었다.

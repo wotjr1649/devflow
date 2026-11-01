@@ -42,6 +42,12 @@ which selects [review](../pr-review-workflow/references/review.md) or [ship](../
 [build](../../references/build.md), [verify](../../references/verify.md), [learn](../../references/learn.md); briefs
 take summary, diagnosis, verification, design or security views from [perspectives](../../references/perspectives.md).
 
+## Codex subagents
+
+Spawn each Codex subagent with `fork_turns: "none"` and give it everything through its brief. The default, `"all"`,
+hands it this conversation and the parent's model, so its review or verification is no longer independent and the
+role's model does not apply ([host-facts](../../docs/research/host-facts.md#codex)).
+
 ## Moving
 
 A stage is done when its [단계](../../docs/specs/lifecycle.md#단계) condition holds. Before an Issue exists (discover

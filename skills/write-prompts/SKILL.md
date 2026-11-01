@@ -1,6 +1,6 @@
 ---
 name: write-prompts
-description: Drafts or revises prompts passed to a model (chat, system, task, handoff, delegation) when asked or when work moves to another session; not for harness-loaded instruction files or task execution.
+description: Drafts or revises prompts passed to a model (chat, system, task, handoff, delegation) when asked; not for discussion-only requests, harness-loaded instruction files or task execution.
 ---
 
 # Write Prompts

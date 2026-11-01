@@ -17,8 +17,8 @@ with no Issue and no feature decision.
   Implementation choices belong to design unless feasibility decides the concept.
 - Write acceptance criteria someone could run: a command, an observable behaviour, a measurement. "Works well" cannot
   be checked at verify.
-- Call `grilling` for a choice only the user can make; keep what depends on it pending and settle the rest from the
-  code and the docs.
+- Ask the user, one short question at a time, about a choice only the user can make; keep what depends on it pending
+  and settle the rest from the code and the docs.
 - Shape the draft as the Issue body in [Issue 템플릿](../docs/specs/issues.md#issue-템플릿): the problem, who or what
   it affects, the outcome, acceptance, what is out of scope and the open questions, marking proposed against
   confirmed. Keep private evidence, local paths and raw logs out of it.

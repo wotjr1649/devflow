@@ -13,7 +13,8 @@ bounded path, in a design note on the architectural one.
   write targets from repository files, git metadata or tool output - gets that review on any path, with the reviewing agent
   trying to break it; check each bypass it claims with the real renderer or command
   ([리뷰](../docs/specs/orchestration.md#리뷰)).
-- Call `grilling` for decisions only the user can make; the rest is yours.
+- Ask the user, one short question at a time, about decisions only the user can make; keep what depends on them
+  pending, and settle the rest yourself.
 - If the design turns out to touch one or two files with no interface change, move to the bounded path and add a `notes`
   line with the reason. Hidden complexity moves the other way.
 - On the bounded path there is no plan stage: run the prerequisite checks from [plan](plan.md) here and record

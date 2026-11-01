@@ -1,0 +1,6 @@
+interface:
+  display_name: "Decision Interview"
+  short_description: "Settle ideas, plans and consequential choices one question at a time"
+  default_prompt: "Use $decision-interview to clarify my idea, plan or implementation choice."
+policy:
+  allow_implicit_invocation: true

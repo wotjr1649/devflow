@@ -45,10 +45,10 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 
 ## 구성
 
-- **스킬 7개**
+- **스킬 8개**
   - `devflow`: 라우터. 담당 스킬이 없는 단계는 플러그인 루트의 [`references/`](../../references/)에 둔다. 여러 스킬이 함께 읽는 이유는 [진입점과 단계](current-decisions.md#진입점과-단계)에 있다.
   - 생명주기 스킬: `development-start`, `pr-review-workflow`, `workspace-cleanup`
-  - 보조 스킬: `grilling`, `writing-for-agents`, `prompt-generator`
+  - 독립 스킬: `decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`. 생명주기가 부르지 않고 어느 저장소에서나 따로 쓴다. 이유: [독립 스킬](current-decisions.md#독립-스킬).
   - 선택과 이유: [진입점과 단계](current-decisions.md#진입점과-단계).
 - **Claude 에이전트**: 도구로 나눈 정의 3개(explorer, reviewer, implementer). 역할의 관점(탐색, 요약, 원인 분석, 검증,
   설계, 보안)은 지시서가 정한다. 모델, effort, 승격: [orchestration](../specs/orchestration.md#모델과-effort)

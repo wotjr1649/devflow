@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: Route Issue-tracked work in a repository with .devflow.json to its lifecycle stage. Use when continuing the Issue a [devflow] resume card shows, after /clear or compaction, when a stage's work is done, or when new information may send the work back to an earlier stage. Not for starting new work, which development-start takes.
+description: Route Issue-tracked work in a repository with .devflow.json to its lifecycle stage. Use when continuing the Issue a [devflow] resume card shows, after /clear or compaction, when a stage's work is done, when writing a resume prompt for its Issue, or when new information may send the work back to an earlier stage. Not for starting new work, which development-start takes.
 ---
 
 # devflow
@@ -26,7 +26,7 @@ Write the Issue at stage boundaries, decisions and blockers: the state block (15
 [keys](../../docs/specs/ledger.md#작업-장부-키); keep them current, change `running` only with
 `running <issue> add|done <label>`, and add notes only with `note`.
 
-Read [sessions](../../references/sessions.md) for progress/returns, and before handing off or `/clear`, switching unattended mode, intent updates or closed-branch
+Read [sessions](../../references/sessions.md) for progress/returns, and before handing off or `/clear` or writing a resume prompt or a brief for another session, switching unattended mode, intent updates or closed-branch
 writes. Use five milestones with separate status; keep routing stages and
 recover truncated state from owners.
 

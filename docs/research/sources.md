@@ -60,14 +60,17 @@
     `tool_used: Skill` 판정.
   - [Worktrees](https://code.claude.com/docs/en/worktrees): 서브에이전트 worktree 격리의 기준 브랜치와 정리(M3).
   - [Subagents](https://code.claude.com/docs/en/sub-agents): 메인과 서브에이전트의 선택 기준,
-    재개와 `SendMessage`, 도구 필터.
+    재개와 `SendMessage`, 도구 필터, 호출할 때의 `model`·`effort` 우선순위.
   - [Hooks](https://code.claude.com/docs/en/hooks): exit 2와 거부만 막고 다른 오류와 시간 초과는 통과, Stop의 block, SessionStart 10,000자 상한, Windows 셸 선택.
   - [Workflows](https://code.claude.com/docs/en/workflows),
     [Agent teams](https://code.claude.com/docs/en/agent-teams),
     [Best practices](https://code.claude.com/docs/en/best-practices).
   - [Memory and AGENTS.md](https://code.claude.com/docs/en/memory),
     [Context window](https://code.claude.com/docs/en/context-window),
-    [Model config](https://code.claude.com/docs/en/model-config).
+    [Model config](https://code.claude.com/docs/en/model-config): 별칭 해석, effort 단계, `ultrathink`.
+  - [Models overview](https://platform.claude.com/docs/en/about-claude/models/overview),
+    [Effort](https://platform.claude.com/docs/en/build-with-claude/effort): 모델별 가격·용도와 권장 effort(haiku는
+    `medium`에서 시작, `low`는 긴 에이전트 작업에서 검색·확인을 건너뛰기 쉽다).
   - 내장 [agents-md 플러그인](https://github.com/anthropics/claude-code/tree/main/mods/agents-md) (2282079, 2026-09-30):
     AGENTS.md를 컨텍스트마다 다시 찾는 방식, compact 뒤 재계산.
 - Codex
@@ -76,7 +79,13 @@
     [Hooks](https://learn.chatgpt.com/docs/hooks): 플러그인 훅, SessionStart 매처, Stop 입출력, 경로 변수.
   - [Build plugins](https://developers.openai.com/plugins/build/plugins): 로컬 소스 마켓플레이스 형식, 설치 캐시 위치.
   - [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents): 내장·커스텀 에이전트,
-    띄울 때 지정한 모델과 effort의 우선순위.
+    띄울 때 지정한 모델과 effort의 우선순위, luna는 `high`에서 시작.
+  - [Models](https://learn.chatgpt.com/docs/models), [OpenAI models](https://developers.openai.com/api/docs/models),
+    [Latest model](https://developers.openai.com/api/docs/guides/latest-model): ID별 용도와 가격, terra는 `medium`에서
+    시작, 가장 어려운 코딩은 sol·astra.
+  - terra 코딩 성능(2026-11-01): [Artificial Analysis](https://artificialanalysis.ai/articles/gpt-6-1-terra-pushes-the-cost-efficiency-frontier)
+    Coding Agent Index terra 48·sol 54·luna 31, [시스템 카드 부록](https://deploymentsafety.openai.com/gpt-6-1-terra/addendum-to-gpt-6-astra-system-card-gpt-6.1-terra)
+    Sandbox Bench terra 22.7%·sol 41.9%.
   - [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md): 탐색 순서, 크기 한도.
   - [Multi-agent (Responses API)](https://developers.openai.com/api/docs/guides/responses-multi-agent):
     spawn·message·follow-up·wait 기본 기능.

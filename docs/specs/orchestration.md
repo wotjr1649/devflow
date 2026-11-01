@@ -150,26 +150,27 @@ Glob에 없더라도 경로를 직접 읽고, 필수 누락은 검토 한계로 
 메인 컨트롤러의 모델과 effort는 사용자가 고른다. devflow는 메인에서 실행되는 스킬에 `effort`를 지정하지 않는다.
 메인의 effort 변경은 프롬프트 캐시를 무효화한다. effort 차이는 캐시를 따로 쓰는 서브에이전트에만 둔다.
 
-Claude Code에서 서브에이전트의 effort는 에이전트 정의에서만 정해지고, 모델은 호출할 때 `model`로 바꿀 수 있다(호출
-값이 정의보다 우선한다). 그래서 에이전트 정의는 effort 단계별로 두고 모델은 호출할 때 고른다.
+Claude Code는 호출할 때의 `model`(별칭만)과 `effort`가 에이전트 정의보다 우선한다. 같은 모델 승격은 호출 `effort`로 하고
+`ultrathink`는 쓰지 않는다([host-facts](../research/host-facts.md)). Claude 열은 계열 별칭이고, 별칭이 없는 Codex 열은
+새 버전이 나오면 고친다. fable과 astra는 쓰지 않는다. 괄호는 정의의 기본값이다.
 
 | 역할 | Claude 기본 | Claude 승격 | Codex |
 |---|---|---|---|
-| 탐색 | `explorer` Sonnet 5.5 `medium` | — | gpt-6-luna `high` (부족하면 `xhigh`) |
-| 테스트·로그 요약 | `explorer` + 요약 관점 → Sonnet 5.5 `medium` | — | gpt-6-luna `high` (부족하면 `xhigh`) |
-| 실패 원인 분석 | `explorer` + 원인 분석 관점 → Sonnet 5.5 `medium` | `model: opus` → Opus 5.5 `medium` | gpt-6.1-sol `high`, worker에 보고만 하도록 지시 |
-| 기계적 구현 | `implementer` Sonnet 5.5 `medium` | `model: opus` → Opus 5.5 `medium` | gpt-6.1-sol `high` |
-| 판단이 필요한 구현 | `implementer` + `model: opus` → Opus 5.5 `medium` | — | gpt-6.1-sol `high` |
-| 설계 대안, 계획 검증 | `reviewer` + 설계 관점 → Opus 5.5 `high` | — | 메인이 수행 |
-| 실행 검증 | `explorer` + 검증 관점 → Sonnet 5.5 `medium` | — | worker에 보고만 하도록 지시 |
-| 작업별 리뷰 | `reviewer` + `model: sonnet` → Sonnet 5.5 `high` | — | gpt-6.1-sol `high` |
-| 최종 리뷰 | `reviewer` Opus 5.5 `high` | — | gpt-6.1-sol `high` |
-| 보안·고위험 리뷰 | `reviewer` + 보안 관점 → Opus 5.5 `high` | — | gpt-6.1-sol `high` |
+| 탐색 | `explorer` + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (부족하면 `xhigh`) |
+| 테스트·로그 요약 | `explorer` + 요약 관점 + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (부족하면 `xhigh`) |
+| 실패 원인 분석 | `explorer` + 원인 분석 관점 + `effort: high` (`sonnet`) | `model: opus` | gpt-6.1-sol `high`, worker에 보고만 하도록 지시 |
+| 기계적 구현 | `implementer` (`sonnet` `medium`) | `model: opus` | gpt-6.1-terra `medium` (승격: gpt-6.1-sol `high`) |
+| 판단이 필요한 구현 | `implementer` + `model: opus` (`medium`) | `effort: high` | gpt-6.1-sol `high` |
+| 설계 대안, 계획 검증 | `reviewer` + 설계 관점 (`opus` `high`) | — | 메인이 수행 |
+| 실행 검증 | `explorer` + 검증 관점 (`sonnet` `medium`) | — | gpt-6.1-terra `high`, worker에 보고만 하도록 지시 |
+| 작업별 리뷰 | `reviewer` + `model: sonnet` (`high`) | — | gpt-6.1-terra `high` |
+| 최종 리뷰 | `reviewer` (`opus` `high`) | — | gpt-6.1-sol `high` |
+| 보안·고위험 리뷰 | `reviewer` + 보안 관점 (`opus` `high`) | — | gpt-6.1-sol `high` |
 
-에이전트 정의는 도구로 나눈 3개다. 읽기와 명령 실행만 하는 `explorer`(`medium`), 읽기만 하는 `reviewer`(`high`), 파일을
-고치는 `implementer`(`medium`). 역할의 차이(탐색, 요약, 원인 분석, 검증, 설계, 보안 같은 관점)는 지시서가 정하고, 승격은
-호출할 때 `model`로 한다([선택의 이유](../design/current-decisions.md#실행과-위임)). 정의에 `omitClaudeMd`를 두지
-않는다. 프로젝트 지침과 경계를 그대로 받아야 하기 때문이다.
+에이전트 정의는 도구로 나눈 3개다. 읽기와 명령 실행만 하는 `explorer`, 읽기만 하는 `reviewer`, 파일을 고치는
+`implementer`. 역할의 차이(탐색, 요약, 원인 분석, 검증, 설계, 보안 같은 관점)는 지시서가 정한다
+([선택의 이유](../design/current-decisions.md#실행과-위임)). 정의에 `omitClaudeMd`를 두지 않는다. 프로젝트 지침과 경계를
+그대로 받아야 하기 때문이다.
 
 Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔다. 지시서 마지막 문단으로 추가 리뷰를 막고, 끝까지 진행하라는 줄을 둔다.
 
@@ -180,13 +181,13 @@ Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔�
 | 조건 | 판정 | 결과 |
 |---|---|---|
 | 같은 작업에서 2회 고쳐도 실패 | 횟수 | 승격 열로 한 칸 ([수정 루프](#수정-루프)) |
-| 검사·CI 실패의 원인이 분명하지 않음 | 메인 | explorer의 원인 분석. 원인을 찾지 못하면 `model: opus`로 한 번 더 |
+| 검사·CI 실패의 원인이 분명하지 않음 | 메인 | explorer의 원인 분석(`effort: high`). 원인을 찾지 못하면 `model: opus`로 한 번 더 |
 | 작업이 여러 모듈의 interface에 걸치거나, 구현 중 판단(여러 파일의 일관성, 알고리즘 선택)이 필요함 | 계획 | 판단이 필요한 구현으로 분류. 설계 판단은 위임 전에 메인이 정한다 |
 | 지시서가 모호함 | 구현 에이전트 | 승격하지 않고 `NEEDS_DECISION`으로 종료 |
 | 신뢰 경계(인증·권한·비밀·훅·외부 입력 처리)를 바꿈 | diff | 보안 관점 리뷰를 따로 한 번 |
 | 한 파일 안의 기계적 변경이고 신뢰 경계를 건드리지 않음 | diff | 작업별 리뷰를 생략. 최종 리뷰가 확인한다 |
 
-이 표와 승격 밖의 route(다른 역할의 effort 정의, 훅 강제, 선언형 route)는 보류다. 다시 볼 조건은
+이 표와 승격 밖의 route(훅 강제, 선언형 route)는 보류다. 다시 볼 조건은
 [route와 Workflow의 재검토](../design/current-decisions.md#실행과-위임)를 따른다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선한다.
 다만 호스트의 현재 도구 지침이 지정 권한을 제한할 수 있으므로 그 지침을 먼저 따른다. 표의 값이 실제로 적용되는지는
 실행 기록으로 확인하고, 확인하지 못하면 미확인으로 남긴다.

@@ -45,8 +45,8 @@ take summary, diagnosis, verification, design or security views from [perspectiv
 ## Codex subagents
 
 Spawn each Codex subagent with `fork_turns: "none"` and give it everything through its brief. The default, `"all"`,
-hands it this conversation and the parent's model, so its review or verification is no longer independent and the
-role's model does not apply ([host-facts](../../docs/research/host-facts.md#codex)).
+hands it this conversation, so its review or verification is no longer independent
+([host-facts](../../docs/research/host-facts.md#codex)).
 
 ## Moving
 

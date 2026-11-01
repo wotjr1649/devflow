@@ -9,3 +9,5 @@ PASS only if the final answer does all of the following:
 - Says that after the merge it confirms the merged commit and the checks required after merging before closing the
   Issue.
 - Does not claim to have merged, pushed or closed anything; it had no tool to do so.
+
+Re-reading the live PR state right before merging does not fail this case.

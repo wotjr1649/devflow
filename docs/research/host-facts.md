@@ -85,8 +85,12 @@
 **서브에이전트**
 - `AskUserQuestion`은 모든 서브에이전트에서 제거된다.
 - 재개: `SendMessage`로 보내면 대화 기록 전체와 호출 시 지정한 모델이 유지된다. 내장 Explore·Plan은 재개할 수 없다.
-- 모델은 호출의 `model` 파라미터, 정의의 `model`, `CLAUDE_CODE_SUBAGENT_MODEL`, 메인 모델 순으로 정해진다. effort는
-  정의의 `effort`로만 정하고 호출할 때 바꾸는 방법은 없다.
+- 모델은 호출의 `model` 파라미터(별칭만), 정의의 `model`, `CLAUDE_CODE_SUBAGENT_MODEL`, 메인 모델 순으로 정해진다.
+  effort는 `CLAUDE_CODE_EFFORT_LEVEL`, 호출의 `effort`(v2.1.292+, fork 제외, 재개 후 유지), 정의의 `effort` 순이다
+  (2026-11-01, [sub-agents](https://code.claude.com/docs/en/sub-agents)).
+- `ultrathink`는 터미널에 직접 입력한 턴만 `xhigh`로 올린다(v2.1.311+, Bedrock 불가). 관찰(2026-11-01, v2.1.316,
+  haiku): 서브에이전트 프롬프트에 넣으면 실행 기록의 `effort`·`perTurnEffort`가 정의의 `medium` 그대로였고 추가 지시도
+  붙지 않았다.
 - `SendMessage`가 있는 서브에이전트에게는 `main`과 이름 붙은 에이전트 목록이 주어진다(v2.1.206+).
 - 중첩은 기본 3단계까지(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), 동시 실행은 20개까지다.
 - 대화형 세션에서는 기본이 백그라운드 실행이고, 백그라운드에서는 쓸 수 있는 도구가 줄어든다.
@@ -104,7 +108,11 @@
 - `compact` 매처가 있는 SessionStart 훅의 출력은 compact된 컨텍스트에 추가된다.
 
 **effort**
-- Opus 5.5와 Sonnet 5.5는 `low`~`max`를 지원하고 기본은 `medium`이다. Haiku 4.5는 effort를 지원하지 않는다.
+- Opus 5.5, Sonnet 5.5, Haiku 5.5는 `low`~`max`를 지원하고 기본은 `medium`이다. Haiku 4.5는 effort를 지원하지 않는다.
+  지원하지 않는 단계를 고르면 그 아래에서 지원하는 가장 높은 단계를 쓴다(2026-11-01).
+- 별칭 `haiku`·`sonnet`·`opus`·`fable`은 Anthropic API에서 최신 버전으로, Bedrock·Google Cloud·Foundry에서는 이전
+  버전(예: `haiku` → Haiku 4.5)으로 해석된다. 메인과 같은 계열의 별칭은 메인의 정확한 모델로 실행된다(2026-11-01,
+  [model-config](https://code.claude.com/docs/en/model-config)).
 - 메인 세션에서 effort를 바꾸면 캐시가 무효화된다.
 
 **플러그인 eval** (v2.1.269+)
@@ -261,6 +269,8 @@
   다만 0.160.0의 `spawn_agent` 도구 설명은 서브에이전트가 기본으로 현재 모델을 물려받으며 "사용자가 명시적으로 다른 모델을
   요청하지 않으면 `model`을 정하지 말라"고 한다(2026-10-04, 설치된 바이너리의 문자열). 지시서의 모델 지정을 따르는지는 확인하지 않았다.
   동시 스레드 상한은 `agents.max_concurrent_threads_per_session`이다.
+- 모델 ID에는 최신 버전을 따르는 별칭이 없다. `gpt-6.1-terra`는 Codex CLI 0.159.0+가 필요하다(2026-11-01,
+  [models](https://learn.chatgpt.com/docs/models), 로컬 0.166.0).
 - 문서는 커스텀 에이전트를 이름으로 고를 수 있고, 내장 에이전트와 이름이 같으면 커스텀이 우선한다고 한다.
 - 실행 중인 서브에이전트를 조정, 중지, 닫을 수 있다.
 - 관찰(2026-10-01, 프로젝트 `.codex/agents/*.toml`): 커스텀 에이전트를 이름으로 고를 수 있고, 정의의 `model`과

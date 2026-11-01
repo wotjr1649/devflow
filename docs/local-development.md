@@ -1,103 +1,113 @@
-# 로컬 개발본 실행과 시험
+# Running and testing a local development build
 
-Codex와 Claude Code는 같은 깨끗한 worktree의 커밋을 시험한다. Codex는 그 파일을 설치 캐시로 복사하고,
-Claude Code는 `--plugin-dir`로 폴더를 직접 로딩한다. 두 호스트의 시험 프로필은 한 번 준비한 뒤 재사용한다.
-이 안내는 PowerShell 7과 저장소 주 작업 트리 루트를 기준으로 한다. Windows 실제 백엔드 시험은
-PowerShell 7로만 진행하며 Windows PowerShell 5는 검증 범위에서 제외한다.
+Codex and Claude Code test a commit from the same clean worktree. Codex copies those files into its install cache, and
+Claude Code loads the folder directly with `--plugin-dir`. The test profiles for both hosts are prepared once and reused.
+This guide assumes PowerShell 7 and the root of the repository's main work tree. Real Windows backend tests are run only
+with PowerShell 7, and Windows PowerShell 5 is outside the verification scope.
 
-## 실행 위치와 표시
+## Locations and labels
 
-| 대상 | 역할 | 로딩 방식과 표시 |
+| Target | Role | Loading method and label |
 |---|---|---|
-| Issue 작업 브랜치·worktree | 코드 수정, 검사, 커밋 | 개발 작업 위치 |
-| `.work/plugin-test/source` | 검증할 커밋만 담는 설치 소스 | 두 호스트가 공유하는 detached worktree |
-| `.work/plugin-test/smoke` | 도구·훅 동작을 시험하는 프로젝트 | 소스와 분리된 실행 위치 |
-| `.work/plugin-test/codex-home` | Codex 시험 설정·인증·캐시 | `devflow@devflow-local` 설치 |
-| `.work/plugin-test/claude-home` | Claude 시험 설정·인증·기록 | 직접 로딩한 `devflow@inline` |
-| 실사용 프로필 | 배포된 버전 사용 | `devflow@wotjr1649` |
+| Issue working branch, worktree | Code changes, checks, commits | Development work location |
+| `.work/plugin-test/source` | Install source holding only the commit to verify | Detached worktree shared by both hosts |
+| `.work/plugin-test/smoke` | Project for testing tool and hook behavior | Run location separate from the source |
+| `.work/plugin-test/codex-home` | Codex test settings, authentication, cache | `devflow@devflow-local` installed |
+| `.work/plugin-test/claude-home` | Claude test settings, authentication, history | Directly loaded `devflow@inline` |
+| Everyday profile | Uses the released version | `devflow@wotjr1649` |
 
-코드 수정은 Issue 작업 브랜치에서 한다. `source`는 시험할 커밋의 복사본으로 유지하고, 세션 기록이나
-장부를 만들 수 있는 시험은 `smoke`에서 한다. 두 호스트가 사용하는 커밋을 바꿀 때는 진행 중인 시험을 먼저 종료한다.
+Code changes are made on the Issue working branch. `source` is kept as a copy of the commit under test, and tests that
+can create session records or a ledger are done in `smoke`. Before changing the commit both hosts use, end the tests in
+progress first.
 
-`inline`은 원격 배포 표시가 아니다. Claude의 직접 로딩에서는 개발용 marketplace를 등록하지 않아도
-Installed에 `devflow @ inline`이 나타난다. marketplace 설치를 선택했을 때만 `devflow@devflow-local` 식별자를 쓴다.
-매니페스트 버전은 개발 중 그대로일 수 있으므로 버전 번호만으로 소스 커밋을 판단하지 않는다.
+`inline` is not a remote release label. With Claude's direct loading, `devflow @ inline` appears under Installed even
+without registering a development marketplace. The `devflow@devflow-local` identifier is used only when marketplace
+installation is chosen.
+The manifest version can stay the same during development, so do not judge the source commit by the version number
+alone.
 
-## 준비된 환경 열기
+## Opening a prepared environment
 
-로컬 실행 스크립트가 준비돼 있다면 주 작업 트리 루트에서 실행한다.
+If the local launch scripts are prepared, run them from the root of the main work tree.
 
 ```powershell
 & ./.work/plugin-test/start.ps1
 & ./.work/plugin-test/start-claude.ps1
 ```
 
-각 명령은 해당 호스트의 시험 세션을 열므로 한 번에 하나씩 실행한다. 이 스크립트들은 비공개 `.work`에
-둔 로컬 파일이며 clone에 포함되지 않는다. 파일이 없으면 아래 최초 설정의 직접 실행 방식을 사용한다.
-기존 스크립트가 있으면 이번 시험의 프로필·소스·실행 위치를 지정하는지 확인하고 사용자 변경을 보존한다.
+Each command opens a test session for its host, so run one at a time. These scripts are local files kept in the private
+`.work` and are not included in a clone. If the files are missing, use the direct launch from the first-time setup
+below.
+If scripts already exist, check that they point to this test's profile, source and run location, and preserve the
+user's changes.
 
-| 해야 하는 일 | 반복 시점 |
+| What to do | When to repeat |
 |---|---|
-| worktree와 프로필 준비 | 최초 1회 |
-| 로그인 | 최초 1회, 이후 인증이 해제돼 재로그인을 요구할 때 |
-| Codex 훅 검토·신뢰 | 최초 설정과 호스트가 재검토를 요구할 때 |
-| `source` 커밋 갱신 | 다른 개발 커밋을 시험할 때 |
-| Codex 캐시 재설치 | `source`를 갱신한 뒤 |
-| 새 시험 세션 열기 | 갱신한 개발본을 실제 호스트에서 확인할 때 |
+| Prepare the worktree and profiles | Once, the first time |
+| Log in | Once, the first time, and again when authentication is cleared and a new login is required |
+| Review and trust Codex hooks | At first-time setup and when the host asks for a new review |
+| Update the `source` commit | When testing another development commit |
+| Reinstall the Codex cache | After updating `source` |
+| Open a new test session | When checking the updated development build on the real host |
 
-같은 프로필을 계속 사용하면 저장된 로그인과 설정을 재사용한다. 로그인이나 훅 신뢰를 매 시험마다
-초기화하지 않는다. [Codex 인증 저장](https://learn.chatgpt.com/docs/auth#login-caching),
-[Claude 개발용 직접 로딩](https://code.claude.com/docs/en/plugins/create#load-a-plugin-for-one-session).
+Keeping the same profile reuses the saved login and settings. Do not reset the login or hook trust for every test.
+[Codex auth storage](https://learn.chatgpt.com/docs/auth#login-caching),
+[Claude direct loading for development](https://code.claude.com/docs/en/plugins/create#load-a-plugin-for-one-session).
 
-## 최초 설정
+## First-time setup
 
-이 절차는 해당 시험 환경의 생성·설치를 소유자가 지시했을 때 수행한다. 기존 환경이 있으면 재생성하지 않고
-다음 절의 커밋 갱신으로 진행한다. 비공개 파일이 없는 worktree를 쓰는 이유와 배포 경로는
-[배포 계약](specs/repository.md#배포)을 따른다.
+Follow this procedure when the owner has instructed the creation and installation of that test environment. If an
+environment already exists, do not recreate it; go on to the commit update in the next section. Why a worktree without
+private files is used, and the distribution path, follow the [distribution contract](specs/repository.md#distribution).
 
-PowerShell에서 다음 변수를 지정한다. `devflowRef`에는 저장소 검사에 통과한 커밋의 전체 SHA를 넣는다.
+Set the following variables in PowerShell. Put in `devflowRef` the full SHA of a commit that passed the repository
+checks.
 
 ```powershell
 $devflowTestRoot = Join-Path (Get-Location).Path '.work/plugin-test'
 $devflowSource = Join-Path $devflowTestRoot 'source'
 $devflowSmoke = Join-Path $devflowTestRoot 'smoke'
-$devflowRef = '<검증할 전체 커밋 SHA>'
+$devflowRef = '<full commit SHA to verify>'
 ```
 
-새 환경에는 `git worktree add --detach "$devflowSource" $devflowRef`로 소스를 준비하고, 소스 밖에
-`codex-home`, `claude-home`, `smoke` 폴더를 만든다. `smoke`에는 별도 Git 저장소와 `.devflow.json`을 준비한다.
-세션 훅 시험의 최소 프로필 예시는 `{}`다. 원격 origin이 없는 최소 시험 프로젝트는
-세션 시작과 해제를 시험할 수 있지만 GitHub Issue를 사용하는 개발 사이클 전체를 검증하지는 않는다.
+For a new environment, prepare the source with `git worktree add --detach "$devflowSource" $devflowRef`, and create the
+`codex-home`, `claude-home` and `smoke` folders outside the source. Prepare a separate Git repository and `.devflow.json`
+in `smoke`.
+A minimal profile example for session hook tests is `{}`. A minimal test project without a remote origin can test
+session start and release, but does not verify the whole development cycle that uses GitHub Issues.
 
-`source`에 `.work`, 비공개 계획, 인증 파일 같은 추가 파일을 넣지 않는다. Codex의 로컬 설치는 ignore된
-파일도 복사할 수 있다. 인증 파일을 기존 실사용 프로필에서 복사하지 않고 시험용 프로필에서 로그인한다.
+Do not put extra files such as `.work`, private plans or authentication files in `source`. Codex's local installation
+can copy ignored files too. Do not copy authentication files from the existing everyday profile; log in from the test
+profile.
 
-### Codex 설치와 실행
+### Installing and running Codex
 
-다음 블록은 해당 PowerShell 프로세스에서만 시험용 `CODEX_HOME`을 사용하고 종료 후 이전 값을 복원한다.
-marketplace 등록은 최초 1회, `plugin add`는 설치와 이후 캐시 갱신에 사용한다.
+The following block uses the test `CODEX_HOME` only in that PowerShell process and restores the previous value when it
+ends.
+Marketplace registration is done once, the first time, and `plugin add` is used for installation and later cache
+updates.
 
 ```powershell
 $devflowPreviousCodexHome = $env:CODEX_HOME
 try {
     $env:CODEX_HOME = Join-Path $devflowTestRoot 'codex-home'
     codex plugin marketplace add "$devflowSource"
-    if ($LASTEXITCODE -ne 0) { throw 'marketplace 등록 실패' }
+    if ($LASTEXITCODE -ne 0) { throw 'marketplace registration failed' }
     codex plugin add devflow@devflow-local
-    if ($LASTEXITCODE -ne 0) { throw '개발본 설치 실패' }
+    if ($LASTEXITCODE -ne 0) { throw 'development build installation failed' }
     codex plugin list --marketplace devflow-local --json
-    if ($LASTEXITCODE -ne 0) { throw '설치 목록 확인 실패' }
+    if ($LASTEXITCODE -ne 0) { throw 'install list check failed' }
     codex --no-daemon -C "$devflowSmoke"
 } finally {
     $env:CODEX_HOME = $devflowPreviousCodexHome
 }
 ```
 
-각 명령이 실패하면 다음 단계로 진행하지 않는다. 새 세션에서 로그인하고 `/hooks`에서 devflow의 명령을
-검토·신뢰한다. 이후에는 `start.ps1` 같은 로컬 실행 스크립트로 같은 프로필을 열면 된다.
-현재 CLI의 옵션 지원은 `codex --help`로 확인한다.
+If any command fails, do not go on to the next step. In the new session, log in and review and trust devflow's commands
+in `/hooks`. After that, open the same profile with a local launch script such as `start.ps1`.
+Check the current CLI's option support with `codex --help`.
 
-### Claude Code 직접 실행
+### Running Claude Code directly
 
 ```powershell
 $devflowPreviousClaudeHome = $env:CLAUDE_CONFIG_DIR
@@ -111,117 +121,134 @@ try {
 }
 ```
 
-새 프로필의 로그인과 호스트가 요구하는 신뢰 선택을 완료한다. `/plugin`의 Installed에서
-`devflow @ inline`, `Enabled`, 기대한 구성요소를 확인한다. 이 방식에서는 `devflow-local` marketplace의
-별도 등록·설치가 필요하지 않다. 이후에는 `start-claude.ps1` 같은 로컬 실행 스크립트를 재사용한다.
+Complete the new profile's login and the trust choices the host asks for. Under Installed in `/plugin`, check
+`devflow @ inline`, `Enabled` and the expected components. This method does not need a separate registration and
+installation of the `devflow-local` marketplace. After that, reuse a local launch script such as `start-claude.ps1`.
 
-## 다음 개발 커밋 시험하기
+## Testing the next development commit
 
-1. Issue 작업 브랜치에서 변경에 맞는 검사를 실행하고 시험할 변경을 커밋한다. 통합 관문은
-   [통합과 CI](specs/repository.md#통합과-ci)를 따른다.
-2. 위 변수를 다시 지정하고 `devflowRef`를 이번 시험 커밋으로 바꾼다. 두 호스트의 시험 세션을 종료한다.
-3. `source`의 추적 변경·untracked·ignored 파일을 확인한다. 추가 작업이 있으면 보존하고 원인을 확인한 뒤 갱신한다.
+1. On the Issue working branch, run the checks that fit the change and commit the change to test. Integration gates
+   follow [Integration and CI](specs/repository.md#integration-and-ci).
+2. Set the variables above again and change `devflowRef` to this test commit. End the test sessions of both hosts.
+3. Check `source` for tracked changes, untracked files and ignored files. If there is extra work, preserve it and find
+   the cause before updating.
 
    ```powershell
    git -C "$devflowSource" status --short --untracked-files=all
    git -C "$devflowSource" ls-files --others --ignored --exclude-standard
    ```
 
-4. 두 출력이 비어 있는 깨끗한 소스만 이번 커밋으로 옮긴다. 명령이 실패하면 설치를 진행하지 않는다.
+4. Move only a clean source, where both outputs are empty, to this commit. If a command fails, do not proceed with
+   installation.
 
    ```powershell
    git -C "$devflowSource" switch --detach $devflowRef
-   if ($LASTEXITCODE -ne 0) { throw '시험 커밋 갱신 실패' }
+   if ($LASTEXITCODE -ne 0) { throw 'test commit update failed' }
    git -C "$devflowSource" rev-parse HEAD
    ```
 
-5. Codex는 시험용 `CODEX_HOME`에서 `codex plugin add devflow@devflow-local`을 다시 실행해 캐시를 갱신한다.
-   위 Codex 블록의 프로필 설정·복원 범위를 사용하고 최초 marketplace 등록 명령은 생략한다.
-   Claude는 다음 `--plugin-dir` 실행에서 같은 소스를 읽는다.
-6. 설치 내용과 로딩 출처를 확인한 뒤 새 세션에서 변경한 기능의 정상·실패 경로를 시험한다.
+5. For Codex, run `codex plugin add devflow@devflow-local` again under the test `CODEX_HOME` to update the cache.
+   Use the profile setup and restore scope of the Codex block above, and skip the first-time marketplace registration
+   command.
+   Claude reads the same source on the next `--plugin-dir` run.
+6. After checking the installed content and loading source, test the normal and failure paths of the changed feature in
+   a new session.
 
-`source`만 갱신해도 Codex의 이미 설치된 캐시는 바뀌지 않는다. 재설치 결과의 `installedPath`를 확인하고,
-소스 SHA와 캐시 내용을 대조한다. 실사용 프로필에서 개발용 `plugin add`를 실행하지 않는다.
+Updating only `source` does not change Codex's already installed cache. Check `installedPath` in the reinstall result,
+and compare the source SHA with the cache contents. Do not run the development `plugin add` in the everyday profile.
 
-## 설치와 동작 검증
+## Verifying installation and behavior
 
-### Windows 셸과 읽기 출력
+### Windows shell and read output
 
-TUI를 연 터미널이 PowerShell 7이어도 모델의 도구가 같은 셸을 선택했다는 증거는 아니다.
-Codex의 `exec_command`에서는 `shell`에 확인한 `pwsh.exe` 경로와 `login=false`를 명시하고, 시험 시작 시
-`$PSVersionTable.PSVersion.Major`가 `7`인지 확인한다. 자식 셸을 확인하지 못한 실행은 PowerShell 7 검증으로 기록하지 않는다.
+A terminal that opened the TUI being PowerShell 7 is not evidence that the model's tools chose the same shell.
+In Codex's `exec_command`, set `shell` to the confirmed `pwsh.exe` path and `login=false` explicitly, and at the start of
+the test check that `$PSVersionTable.PSVersion.Major` is `7`. A run whose child shell was not confirmed is not recorded
+as PowerShell 7 verification.
 
-파일의 UTF-8 디코딩과 명령 출력의 인코딩은 별도 경계다. 이 기기의 Codex TUI에서 한글 링크 앵커가
-깨진 출력이 관찰됐다([호스트 관찰](research/host-facts.md#codex)). 깨진 출력을 원문을 읽었다는 증거나
-정확성·효율 비교의 통과 근거로 쓰지 않는다. 파일 읽기의 비ASCII 출력이 보존되지 않는 경로는 다음 방식으로
-JSON 문자열을 전달하고, 디코딩한 내용과 원문을 대조한다.
+UTF-8 decoding of files and encoding of command output are separate boundaries. On this machine, the Codex TUI was
+observed printing broken Korean link anchors ([host observations](research/host-facts.md#codex)). Do not use broken
+output as evidence of having read the original or as passing evidence in accuracy or efficiency comparisons. For paths
+where non-ASCII output of file reads is not preserved, pass a JSON string as follows, and compare the decoded content
+with the original.
 
 ```powershell
-Get-Content -LiteralPath '<읽을 파일의 절대 경로>' -Raw -Encoding utf8 |
+Get-Content -LiteralPath '<absolute path of the file to read>' -Raw -Encoding utf8 |
     ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii
 ```
 
-이 방식은 명시적 PowerShell 7 로컬 대조와 Codex 0.162.1 일반 TUI의 원문 대조를 통과했다(2026-10-14).
-새 환경의 확인을 콘솔 설정 변경이나 sandbox·훅 완화로 대체하지 않는다. 버전 비교에서는 양쪽에 같은 읽기 조건을 적용하고,
-그 조건을 준비한 효과와 스킬 변경의 효과를 구분한다.
+This method passed an explicit PowerShell 7 local comparison and an original-text comparison in the regular Codex
+0.162.1 TUI (2026-10-14).
+Do not replace the check in a new environment with console setting changes or sandbox or hook relaxation. In version
+comparisons, apply the same reading conditions to both sides, and separate the effect of preparing those conditions
+from the effect of the skill change.
 
-### 파일과 로딩 출처
+### Files and loading source
 
-주 작업 트리에서 Codex 설치 결과의 캐시 경로를 대조한다. 매니페스트의 `version`과, 바꾼 파일의 object id가
-시험 커밋과 같아야 한다.
+From the main work tree, compare the cache path of the Codex installation result. The manifest `version` and the object
+ids of the changed files must match the test commit.
 
 ```powershell
 git rev-parse "$($devflowRef):hooks/devflow-hook.js"
 git hash-object '<installedPath>/hooks/devflow-hook.js'
 ```
 
-캐시에 비공개 파일이나 예상 밖 파일이 없는지도 확인한다. worktree의 `.git` 연결 파일은 추적 파일이 아니지만
-로컬 폴더 복사에 포함될 수 있다.
+Also check that the cache has no private or unexpected files. The worktree's `.git` link file is not a tracked file but
+can be included in a local folder copy.
 
-Claude의 로딩 상태는 위 Claude 실행 블록의 프로필 설정·복원 범위를 사용하고, `claude` 실행 줄을 다음으로
-바꿔 확인한다. 블록 밖에서 이 명령만 실행하면 실사용 프로필의 설정도 조회할 수 있다.
+Check Claude's loading state using the profile setup and restore scope of the Claude launch block above, replacing the
+`claude` line with the following. Running only this command outside the block can also query the everyday profile's
+settings.
 
 ```powershell
 claude --plugin-dir "$devflowSource" plugin list
 ```
 
-`devflow@inline`, 지정한 소스 경로, `loaded`를 확인한다. 세션에서는 `/plugin`의 Installed와 Errors도
-확인한다. 원격 `devflow@wotjr1649`만 로딩됐으면 시험 세션의 프로필과 `--plugin-dir` 인자를 다시 확인한다.
+Check `devflow@inline`, the given source path and `loaded`. In the session, also check Installed and Errors in
+`/plugin`. If only the remote `devflow@wotjr1649` was loaded, check the test session's profile and the `--plugin-dir`
+argument again.
 
-### 변경에 맞는 검사
+### Checks that fit the change
 
-| 변경 | 필요한 확인 |
+| Change | Needed checks |
 |---|---|
-| 문서·설명 | 링크·명령·형식과 사실 확인 |
-| 스크립트·판단 로직 | 관련 테스트, 설치 캐시의 실제 훅 명령에 합성 입력을 준 검사 |
-| 스킬·훅 연결·세션 처리 | 위 검사와 새 호스트 세션에서 실제 로딩·카드·계속 횟수·세션 해제 확인 |
-| 설치·배포 경로 | 설치 파일 대조와 해당 경로의 설치·업데이트 시험 |
+| Docs, descriptions | Check links, commands, format and facts |
+| Scripts, decision logic | Related tests, and a check that feeds synthetic input to the real hook command in the install cache |
+| Skills, hook wiring, session handling | The checks above, plus checking real loading, the card, continuation count and session release in a new host session |
+| Install and distribution paths | Comparing installed files and testing installation and updates on that path |
 
-합성 입력 검사는 등록된 세 이벤트의 카드·계속·해제를 확인한다. 제거된 도구 이벤트의 입력은 출력 없이 끝나야 한다.
-기존 로컬 검사 파일이 있으면 기대 SHA·캐시 버전·입력이 이번 시험에 맞는지 먼저 확인한다.
-이전 차단 훅의 동작을 기대하는 검사는 현행 동작의 근거로 쓰지 않는다. 직접 훅 검사 통과와 호스트가 훅을 호출하는 전체 경로 통과는 별도의 증거다.
+The synthetic input check covers the card, continuation and release of the three registered events. Input for removed
+tool events must end without output.
+If local check files already exist, first confirm that the expected SHA, cache version and inputs fit this test.
+Checks that expect the behavior of the former blocking hook are not used as evidence of current behavior. Passing a
+direct hook check and passing the full path where the host invokes the hook are separate evidence.
 
-최종 저장소 검사는 개발 작업 브랜치에서 실행한다.
+Run the final repository checks on the development working branch.
 
 ```powershell
 node --test --test-timeout=120000 tests/*.test.js
 ```
 
-검증 기록에는 시험 커밋, 호스트 버전, 프로필·로딩 출처, 실행한 검사와 결과, 실행하지 않은 경로를 남긴다.
-로그인·플러그인 목록만 확인했다면 실제 모델 대화에서의 훅 동작까지 통과했다고 기록하지 않는다.
-공개 기록에는 인증 정보, 로컬 절대 경로와 원시 세션 내용을 포함하지 않는다.
+The verification record holds the test commit, host versions, profile and loading source, the checks run and their
+results, and the paths not run.
+If only login and the plugin list were checked, do not record that hook behavior in real model conversations passed.
+Public records do not include authentication information, local absolute paths or raw session content.
 
-sub-issue 기능을 시험할 때는 승인된 시험 저장소의 부모·자식 번호로 개발본 `bin/devflow-state`의
-`sub-issue add <부모번호> <자식번호>`와 `sub-issue list <부모번호>`를 실행한다. 같은 연결의 재실행과 다른 부모의
-거부를 확인하고 부모·자식 본문·상태도 전후 대조한다. 훅은 관계와 Issue 텍스트 쓰기를 모두 차단하지 않는다.
-`devflow-state` 경유는 지침이며, 직접 호출에는 CLI의 공개 필터와 자율 모드의 쓰기 거부가 적용되지 않는다.
-Claude Code와 Codex 각각 새 시험 세션에서 호출된 스크립트의 출처를 확인한다. CLI 자동 시험, 실제 API 쓰기,
-호스트 실행 경로는 각각 기록하며 하나로 다른 검증을 대신하지 않는다. 정책과 미확인 결과 처리의 기준은
-[Issue 입출력](specs/issues.md#issue-입출력)이다. 실제 시험 대상 생성·연결·정리는 승인된 범위에서만 수행한다.
+When testing the sub-issue feature, run the development build's `bin/devflow-state` with
+`sub-issue add <parent> <child>` and `sub-issue list <parent>`, using parent and child numbers in an approved test
+repository. Check rerunning the same link and the refusal of a different parent, and compare the parent and child bodies
+and states before and after. Hooks block neither relations nor Issue text writes.
+Going through `devflow-state` is an instruction, and direct calls do not get the CLI's public filter or the unattended
+mode's write refusal.
+In a new test session in each of Claude Code and Codex, check the source of the invoked script. Record the CLI automated
+tests, real API writes and host execution paths separately, and do not let one replace another verification. The policy
+and the handling of unconfirmed results follow [Issue I/O](specs/issues.md#issue-io). Create, link and clean up real
+test targets only within the approved scope.
 
-## 통합과 배포
+## Integration and distribution
 
-개발본 시험 뒤의 `main` 통합은 [통합과 CI](specs/repository.md#통합과-ci)를 따른다. 일반 Issue 통합과
-버전 변경은 [버전 정책](specs/repository.md#버전)에서 구분하며, 배포할 때는
-[릴리스와 롤백](specs/repository.md#릴리스와-롤백)의 태그·Release·공통 catalog·실사용 설치 검증 순서를 따른다.
-이 안내의 개발본 실행은 실사용 채널의 업데이트가 아니다.
+Integration into `main` after testing a development build follows [Integration and CI](specs/repository.md#integration-and-ci).
+Ordinary Issue integration and version changes are distinguished in the [version policy](specs/repository.md#version), and
+when distributing, follow the order of tags, Release, common catalog and everyday-install verification in [Release and
+rollback](specs/repository.md#release-and-rollback).
+Running a development build per this guide is not an update of the everyday channel.

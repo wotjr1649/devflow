@@ -1,148 +1,200 @@
-# 현재 설계 결정
+# Current design decisions
 
-현재 선택과 이유, 택하지 않은 대안, 다시 검토할 조건을 담는다. 동작 규칙은 연결된 spec이 소유하며 이 문서보다 우선한다.
+This document holds the current choices and their reasons, the alternatives not taken, and the conditions for revisiting
+them. The linked specs own the behavior rules and take precedence over this document.
 
-## 공통 원본
+## Single source
 
-**선택과 이유.** 저장소 루트를 두 호스트용 플러그인의 단일 원본으로 쓰고, 프로젝트 지침은 AGENTS.md 하나로 둔다.
-사본과 지침 로더가 나뉘면 같은 변경이 한쪽에만 적용된다. 스킬과 훅의 정의·진입점·정책·효과는 공유하고,
-호스트별 packaging metadata는 구분한다. 배치는 [repository](../specs/repository.md#배포), 지침 로드의 관찰 범위는
-[host-facts](../research/host-facts.md), 훅의 공통성·세션 귀속·검증 조건과 현재 미충족 사항은
-[hooks](../specs/hooks.md#두-호스트의-공통-계약)가 정한다. 파일을 공유한다는 사실만으로 두 호스트의 실행 효과가 같다고 보지 않는다.
+**Choice and reason.** The repository root is the single source of the plugin for both hosts, and project instructions
+live in one AGENTS.md. When copies and instruction loaders diverge, the same change lands on only one side. Skill and
+hook definitions, entry points, policies and effects are shared, while host-specific packaging metadata is kept apart.
+[repository](../specs/repository.md#distribution) sets the layout, [host-facts](../research/host-facts.md) the observed scope of
+instruction loading, and [hooks](../specs/hooks.md#common-contract-of-both-hosts) the commonality, session attribution and
+verification conditions of hooks and what is currently unmet. Sharing files alone is not taken to mean that the two
+hosts have the same execution effects.
 
-**대안.** 호스트별 저장소와 프로젝트 지침 사본은 동기화 부담 때문에 택하지 않는다. 별도 플러그인 하위 폴더는
-배포할 플러그인이 하나인 동안 경로만 늘린다.
+**Alternatives.** Per-host repositories and copies of project instructions are not taken because of the sync burden. A
+separate plugin subfolder only adds paths while there is one plugin to ship.
 
-**다시 볼 때.** 플러그인이 여럿이 되거나 배포 크기가 문제가 될 때, 호스트의 지침 로드·패키징 지원이 달라질 때 검토한다.
+**Revisit when.** Review when there are several plugins or the shipped size becomes a problem, or when a host's support
+for instruction loading or packaging changes.
 
-## 상태와 재개
+## State and resume
 
-**선택과 이유.** Issue는 기기와 호스트를 넘어 이어갈 상태를, 로컬 장부는 작업 진행과 비공개 내용을 맡는다.
-같은 사실을 프롬프트와 handoff에 복제하지 않아 재개 때 읽는 양과 상태 충돌을 줄인다. 기억 도구는 검색 계층으로 둔다.
-규칙은 [Issue 계약](../specs/issues.md), [장부](../specs/ledger.md), [문서](../specs/documents.md)가 소유한다.
-재개 카드는 다음 행동·막힘·경고와 복구 수단을 보호하며, 축약된 표시를 온전한 상태로 취급하지 않는다.
-인계는 자기 세션을 아는 동안 명시적으로 하고, SessionEnd는 보조 경로로 둔다.
-해제 순서는 [동시 세션](../specs/ledger.md#동시-세션), 이벤트·입력 읽기·안전한 파일 판독의 범위와 한계는
-[hooks](../specs/hooks.md)가 정한다.
+**Choice and reason.** The Issue holds the state to continue across machines and hosts, and the local ledger holds task
+progress and private content. Not duplicating the same facts in prompts and handoffs reduces what is read on resume and
+state conflicts. Memory tools are a search layer.
+[Issue contract](../specs/issues.md), [ledger](../specs/ledger.md) and [documents](../specs/documents.md) own the rules.
+The resume card protects the next action, blockers, warnings and recovery means, and a truncated display is not treated
+as complete state.
+Handoff is done explicitly while the session knows itself, and SessionEnd is a secondary path.
+[Concurrent sessions](../specs/ledger.md#concurrent-sessions) sets the release order, and [hooks](../specs/hooks.md) sets the scope
+and limits of events, input reading and safe file reading.
 
-**대안.** 로컬 파일만 쓰면 다른 기기에서 이어갈 수 없고, 모든 작업 진행을 Issue에 쓰면 공개 편집과 입력 표면이 늘어난다.
-최근 writer를 이전 세션으로 추측해 지우는 방식은 사용 중인 다른 세션을 해제할 수 있어 택하지 않는다.
+**Alternatives.** Local files alone cannot be continued on another machine, and writing all task progress to the Issue
+enlarges public edits and the input surface.
+Guessing that the most recent writer is the previous session and clearing it is not taken, because it can release
+another session that is in use.
 
-**다시 볼 때.** 기기 간 이어가기에서 필요한 정보가 반복해서 빠지거나, 호스트가 이전 세션 식별자와 종료를 보장할 때 검토한다.
+**Revisit when.** Review when needed information is repeatedly missing when continuing across machines, or when a host
+guarantees the previous session's identifier and its end.
 
-## 실행과 위임
+## Execution and delegation
 
-**선택과 이유.** 결정과 쓰기는 메인에 모으고, 서브에이전트는 맥락 보호와 별도 시각의 검증에 쓴다.
-구현 위임은 작업량이나 무인 실행처럼 메인의 맥락을 지킬 이유가 있을 때 쓰고, 병렬 쓰기는 파일이 겹치지 않고 인터페이스가
-고정됐을 때만 쓴다. 모드별 조건은 [실행 모드](../specs/orchestration.md#실행-모드)가 정한다. 모델과 effort는 역할과 증거에 맞춰 고르되
-메인 모델은 사용자가 정한다. 탐색·요약처럼 메인이 결과를 다시 판단하는 역할은 가장 싼 계열(haiku, luna)에 두고,
-같은 모델 승격은 호출 effort로 한다. fable과 astra는 토큰 비용이 커서 쓰지 않는다. Codex의 기계적 구현·실행 검증·작업별
-리뷰는 sol의 절반 가격에 코딩 에이전트 지표가 sol에 가까운 terra에 두고, 어려운 판단과 보안 리뷰는 sol에 남긴다.
-과거 작업으로 나란히 비교한 시험에서 terra는 세 역할 모두 sol과 같은 결과를 더 적은 비용으로 냈다([host-facts](../research/host-facts.md)).
-결정이 빠진 지시서에서는 두 모델 모두 드러나지 않은 빈칸을 말없이 정했으므로, 그 위험은 모델 승격이 아니라 메인이 지시서에 동작을 정해서 막는다.
-정의는 도구 차이로 나누고 관점은 지시서로 전달한다. 범위 밖의 결정은 종료·재개로 메인에 모은다.
-실행 모드·호스트별 지원·모델 지정 권한·승격·질문 절차와 보고 역할의 격리 한계는
-[orchestration](../specs/orchestration.md)이 정한다. Workflow는 devflow 밖에서 직접 실행한다.
+**Choice and reason.** Decisions and writes are gathered in the main session, and subagents serve context protection
+and verification from a separate viewpoint.
+Implementation is delegated when there is a reason to protect the main session's context, such as workload or an
+unattended run, and parallel writes are used only when files do not overlap and interfaces are fixed. [Execution
+modes](../specs/orchestration.md#execution-modes) sets the conditions per mode. Models and effort are chosen to fit the role and
+the evidence, but the user chooses the main model. Roles whose results the main session judges again, such as
+exploration and summarizing, go to the cheapest family (haiku, luna), and promotion within the same model is done
+through the call's effort. fable and astra are not used because their token cost is high. Codex mechanical
+implementation, execution verification and per-task review go to terra, which costs half of sol and is close to sol on
+coding-agent benchmarks; hard judgment and security review stay on sol.
+In side-by-side trials on past work, terra produced the same results as sol in all three roles at lower cost
+([host-facts](../research/host-facts.md)).
+With briefs missing decisions, both models silently filled unstated gaps, so that risk is prevented not by model
+promotion but by the main session settling the behavior in the brief.
+Definitions are split by tool differences, and perspectives are passed through the brief. Out-of-scope decisions are
+gathered in the main session through stop and resume.
+[orchestration](../specs/orchestration.md) sets execution modes, per-host support, authority to choose models,
+promotion, the question procedure and the isolation limits of reporting roles. Workflows are run directly outside
+devflow.
 
-**대안.** 항상 위임하면 새 컨텍스트와 보고 비용이 늘고, 항상 메인이 맡으면 큰 탐색이 맥락을 차지한다.
-모든 역할의 정의를 늘리거나 route를 훅으로 강제하는 방식은 필요성이 확인되기 전에는 택하지 않는다.
+**Alternatives.** Always delegating raises the cost of new contexts and reports, and the main session always doing the
+work lets large explorations take up its context.
+Adding definitions for every role or enforcing routes with hooks is not taken until the need is confirmed.
 
-**다시 볼 때.** 표와 승격 밖의 route(훅 강제, 선언형 route)는 승격이 실제 사이클에서
-반복되거나 같은 역할의 품질 부족이 리뷰 근거로 두 번 이상 확인될 때, Codex에서 표의 모델이 적용되지 않아 결과가
-달라질 때 다시 본다. terra 기계적 구현이 장부에서 sol로 승격되는 일이 반복되거나, terra 작업별 리뷰가 놓친 결함을
-최종 리뷰가 두 번 이상 잡으면 그 역할을 sol로 되돌린다. Workflow는 devflow 사이클 안에서 반복해서 쓰고 그 결과를 장부에 남겨야 할 때 실행 모드에 넣을지 다시 본다.
+**Revisit when.** Revisit routes beyond the table and promotion (hook enforcement, declarative routes) when promotion
+recurs in real cycles or the same role's lack of quality is confirmed by review evidence two or more times, or when in
+Codex the table's model is not applied and results differ. If terra mechanical implementation is repeatedly promoted to
+sol in the ledger, or the final review catches defects missed by terra per-task review two or more times, that role goes
+back to sol. Revisit whether to add Workflows to the execution modes when they are used repeatedly within devflow cycles
+and their results need to be recorded in the ledger.
 
-## 진입점과 단계
+## Entry points and stages
 
-**선택과 이유.** 새 작업은 development-start가 받고, 이어가기와 단계 전환은 devflow가 맡는다.
-기존 단계 스킬은 자기 책임을 유지하고, 여러 스킬이 읽는 생명주기 references는 플러그인 루트에 둔다.
-진입점의 역할을 좁혀 스킬 경합을 줄이고, 단계마다 다른 사용자 결정과 산출물을 드러낸다.
-라우팅·경로별 단계·되돌아가기는 [lifecycle](../specs/lifecycle.md), 문서 크기와 점진적 읽기는
-[documents](../specs/documents.md)가 정한다.
+**Choice and reason.** development-start takes new work, and devflow handles continuation and stage transitions.
+Existing stage skills keep their own responsibilities, and lifecycle references read by several skills live at the
+plugin root.
+Narrowing the entry points' roles reduces skill contention and exposes the user decisions and outputs that differ per
+stage.
+[lifecycle](../specs/lifecycle.md) sets routing, stages per path and going back, and
+[documents](../specs/documents.md) sets document size and progressive reading.
 
-**대안.** 라우터 하나에 기존 스킬을 모두 흡수하면 검증된 절차를 다시 쓰게 된다.
-새 작업에도 재개 라우터를 먼저 거치게 하면 착수 역할과 겹치고, 모든 경로에 같은 단계를 적용하면 작은 변경의 비용이 커진다.
+**Alternatives.** Folding all existing skills into one router would mean rewriting proven procedures.
+Sending new work through the resume router first overlaps with the start role, and applying the same stages to every
+path raises the cost of small changes.
 
-**다시 볼 때.** 새 작업이 반복해서 잘못 분류되거나 스킬 호출이 겹칠 때, 단계 비용이 결과보다 커질 때,
-호스트가 플러그인 루트의 공통 references를 읽지 못하게 될 때 검토한다.
+**Revisit when.** Review when new work is repeatedly misclassified or skill invocations overlap, when stage cost exceeds
+results, or when a host can no longer read the common references at the plugin root.
 
-## 독립 스킬
+## Independent skills
 
-**선택과 이유.** 결정 인터뷰, 프롬프트 작성과 감사, 에이전트 지침 설계는 플러그인과 함께 배포하는 독립 스킬이 맡는다
-(목록은 [overview](overview.md#구성)). 생명주기 references와 spec은 이 스킬들을 부르거나 가리키지 않고 필요한 행동을
-직접 적으며, 스킬 본문도 devflow를 언급하지 않는다. 그래야 `.devflow.json`이 없는 저장소에서도 그대로 쓰이고, 한쪽을
-고쳐도 다른 쪽 계약이 바뀌지 않는다. devflow 전용 인계 규칙은 [sessions](../../references/sessions.md)가 소유한다.
-같은 목록에 있으므로 description 매칭으로 생명주기 중에 호출될 수는 있으며, 이는 계약이 아니다. 예외로 devflow
-저장소의 재개 프롬프트 요청은 라우터와 프롬프트 작성 스킬이 함께 불리도록 둔다. 작성 스킬이 글을 쓰고, 라우터가
-sessions의 인계 규칙(Issue 가리키기, 예산, 파일 이름, 다른 세션의 해제)을 더하는 보완 관계다.
+**Choice and reason.** Decision interviews, prompt writing and auditing, and agent instruction design are handled by
+independent skills shipped with the plugin
+(list in [overview](overview.md#components)). Lifecycle references and specs do not invoke or point to these skills and state
+the needed actions directly, and the skill bodies do not mention devflow either. This keeps them usable as they are in
+repositories without `.devflow.json`, and changing one side does not change the other side's contract. Devflow-specific
+handoff rules are owned by [sessions](../../references/sessions.md).
+Being in the same list, they can be invoked during the lifecycle through description matching, and this is not a
+contract. As an exception, a resume-prompt request in a devflow repository lets the router and the prompt-writing skill
+be invoked together. They complement each other: the writing skill writes the text, and the router adds the handoff
+rules from sessions (pointing to the Issue, budget, file name, releasing another session).
 
-**대안.** 별도 저장소나 전역 설치로 두면 호스트 설정 변경이 필요하고 저장소의 트리거 eval로 측정할 수 없다.
-생명주기가 이름으로 부르게 하면 두 쪽이 서로의 변경에 묶인다.
+**Alternatives.** A separate repository or global installation would need host configuration changes and could not be
+measured with the repository's trigger eval.
+Having the lifecycle invoke them by name ties both sides to each other's changes.
 
-**다시 볼 때.** 생명주기 단계에서 이 스킬들이 반복해서 잘못 호출되거나 라우터와 겹칠 때, 독립 스킬이 devflow 밖에서
-배포되어야 할 때 검토한다.
+**Revisit when.** Review when these skills are repeatedly invoked wrongly during lifecycle stages or overlap with the
+router, or when the independent skills need to ship outside devflow.
 
-## 검증과 통합
+## Verification and integration
 
-**선택과 이유.** 실제 실행으로 수용 기준을 증명하고, 리뷰는 결함과 근거를 별도로 확인한다.
-작은 변경도 확장자나 줄 수보다 의미로 판단한다. 리뷰 보고는 짧은 산문으로 하고, 재리뷰는 동작이나 권한을 바꾼 수정에 좁힌다.
-검사와 리뷰의 범위는 [orchestration](../specs/orchestration.md#리뷰)이 소유한다.
-devflow 자체는 PR·서버 보호·merge commit으로 리뷰 SHA와 CI·통합 기록을 연결한다.
-CI는 해당 이벤트가 요구하는 revision을 실제로 검사한 근거여야 하며, 수용 기준별 실행 증거와 독립 리뷰를 대신하지 않는다.
-로컬 검사의 확대·대체 조건과 M0를 포함한 독립 리뷰·브랜치 HEAD 및 최신 병합 결과 CI·통합 직전 재확인·통합 후 확인은
-[repository](../specs/repository.md#통합과-ci)와 [검사 근거](../specs/repository.md#devflowjson)가 정한다.
+**Choice and reason.** Acceptance criteria are proven by real execution, and review separately checks defects and
+evidence.
+Even small changes are judged by meaning rather than file extension or line count. Review reports are short prose, and
+re-review is narrowed to fixes that changed behavior or permissions.
+[orchestration](../specs/orchestration.md#review) owns the scope of checks and review.
+devflow itself links the reviewed SHA to CI and the integration record through PRs, server protection and merge commits.
+CI must be evidence that the revision the event requires was actually checked, and it does not replace per-criterion
+execution evidence or independent review.
+[repository](../specs/repository.md#integration-and-ci) and [check evidence](../specs/repository.md#devflowjson) set the conditions
+for widening or substituting local checks, independent review including M0, CI on the branch HEAD and the latest merge
+result, the recheck right before integration, and the post-integration check.
 
-**대안.** 구조화 보고 CLI는 보고 형식의 비용이 결함 감소로 이어진다는 근거 없이 늘리지 않는다.
-로컬 관문만으로 main을 갱신하는 방식은 서버 보호를 대신하지 못한다. squash·rebase는 검토한 커밋 SHA의 보존에 맞지 않는다.
+**Alternatives.** A structured report CLI is not added without evidence that the cost of the report format leads to
+fewer defects.
+Updating main through local gates alone does not replace server protection. Squash and rebase do not fit preserving the
+reviewed commit SHA.
 
-**다시 볼 때.** 산문 형식 자체가 반복 결함의 원인으로 확인될 때, 같은 지점의 리뷰 지적이 되풀이될 때,
-CI 근거·리뷰 revision·통합 방식의 연결을 바꿔야 할 때 검토한다. 규칙이나 서버 보호를 먼저 우회하지 않는다.
+**Revisit when.** Review when the prose format itself is confirmed as the cause of repeated defects, when review findings
+at the same spot recur, or when the link between CI evidence, reviewed revision and integration method must change. Do
+not bypass the rules or server protection first.
 
-## 권한과 경계
+## Authority and boundaries
 
-**선택과 이유.** 권한의 출처는 사용자 요청과 사용자가 승인한 지침으로 한정한다. 같은 권한을 다시 묻거나 막힘으로 전체 작업을
-멈추면 사람이 게이트 밖에서도 기다리게 되고, 파일·Issue·도구 출력이 권한을 만들면 주입 경로가 된다.
-제품의 지원 범위와 사용자 권한을 분리하고, 의견·체크포인트·관계 추가는 상태 오염을 막도록 구분한다.
-linked worktree라는 사실만으로 다른 Issue의 상태나 쓰기를 물려주지 않는다.
-무인 구간에는 Issue 게시·push·통합을 미루고([자율 실행](../specs/ledger.md#자율-실행)), `devflow-state`는 Issue 쓰기를 거부한다. 이는 CLI 경로의 동작이며
-직접 게시를 막는 경계가 아니다.
-대상·필터는 [issues](../specs/issues.md#issue-입출력), 인증과 OS 격리 전제는 [credentials](../specs/credentials.md), 무인 실행·worktree·위임 종료와 부분 효과 확인은
-[ledger](../specs/ledger.md), 막힘 처리는 [lifecycle](../specs/lifecycle.md#되돌아가기)이 소유한다. 같은 OS 사용자의 셸과 자식 CLI 사이에는 자격 증명 경계가 없으며,
-격리 전제를 충족하기 전에는 이를 경계라고 부르지 않는다.
+**Choice and reason.** The sources of authority are limited to user requests and instructions the user approved. Asking
+again for the same authority or stopping all work on a blocker makes a person wait outside the gates too, and letting
+files, Issues or tool output create authority becomes an injection path.
+The product's supported scope is separated from user authority, and comments, checkpoints and relation additions are
+kept distinct to prevent state contamination.
+Being a linked worktree alone does not pass on another Issue's state or writes.
+In unattended stretches, Issue posting, push and integration are deferred ([unattended
+runs](../specs/ledger.md#unattended-runs)), and `devflow-state` refuses Issue writes. This is the behavior of the CLI path, not
+a boundary that blocks direct posting.
+[issues](../specs/issues.md#issue-io) owns targets and filters, [credentials](../specs/credentials.md) the
+authentication and OS isolation premises, [ledger](../specs/ledger.md) unattended runs, worktrees, delegation shutdown
+and checking partial effects, and [lifecycle](../specs/lifecycle.md#going-back) blocker handling. There is no credential
+boundary between the same OS user's shell and child CLIs, and it is not called a boundary until the isolation premises
+are met.
 
-**대안.** 개인의 상시 권한을 제품 기본값에 복사하거나, 작업 폴더의 값·세션 이름을 허가로 쓰는 방식은 택하지 않는다.
-인증 환경 변수나 설정 폴더만 나누는 방식도 읽을 수 있는 다른 자격 증명이 남으면 경계가 되지 않는다.
+**Alternatives.** Copying an individual's standing permissions into product defaults, or using values in the work folder
+or session names as permission, is not taken.
+Separating only authentication environment variables or configuration folders is not a boundary either while other
+readable credentials remain.
 
-**다시 볼 때.** 필요한 외부 효과나 대상이 기존 권한을 벗어날 때, 호스트가 자격 증명과 실행을 실제로 격리하는 수단을 제공할 때,
-위임 귀속이나 게시 대상의 신뢰 경계를 바꿀 때 검토한다. 재검토는 보호나 필수 검사를 생략할 권한이 아니다.
+**Revisit when.** Review when a needed external effect or target goes beyond existing authority, when a host provides a
+means that actually isolates credentials and execution, or when the trust boundary of delegation attribution or posting
+targets changes. Revisiting this decision is not authority to skip protections or required checks.
 
-## 지침과 보호
+## Instructions and protections
 
-**선택과 이유.** 개발 판단은 짧은 지침과 리뷰로 다루고, 테스트로 판정할 수 있는 효과는 테스트와 CI로 확인한다.
-훅은 재개·자율 계속·세션 해제를 맡는다. 입력·세션 처리·실제 호스트 증거의 제한은 [hooks](../specs/hooks.md),
-계속 조건은 [ledger](../specs/ledger.md#자율-실행)가 정한다. Issue CLI의 공개 필터와 무인 쓰기 거부는 그 경로의 동작이다.
-직접 게시를 훅이 막는 보안 경계로 해석하지 않는다. 시험 변경은 리뷰가 확인하며 안전 하한선은 지침에 남긴다.
-문서 규칙은 [documents](../specs/documents.md#에이전트가-읽는-글), 교훈의 배치는
-[lifecycle](../specs/lifecycle.md#회고와-기억)이 소유한다. 트리거 eval은 [eval](../specs/eval.md)의 선택 도구다.
+**Choice and reason.** Development judgment is handled by short instructions and review, and effects a test can decide
+are checked by tests and CI.
+Hooks handle resume, unattended continuation and session release. [hooks](../specs/hooks.md) sets the limits on input,
+session handling and real host evidence, and [ledger](../specs/ledger.md#unattended-runs) the continuation conditions. The Issue
+CLI's public filter and unattended write refusal are the behavior of that path.
+Direct posting is not read as a security boundary that hooks block. Review checks test changes, and the safety floor
+stays in the instructions.
+[documents](../specs/documents.md#text-agents-read) owns document rules, and
+[lifecycle](../specs/lifecycle.md#learn-and-memory) the placement of lessons. The trigger eval is an optional tool of
+[eval](../specs/eval.md).
 
-**대안.** 셸 명령 해석·게시 차단·시험 파일 잠금으로 모든 행동을 강제하는 방식은 우회 형식을 쫓는 비용이 크고 OS 격리도 대신하지 못한다.
-측정 점수를 통합이나 출시 조건으로 두면 장치 유지가 작업의 목적을 대신할 수 있다.
+**Alternatives.** Enforcing every action through shell command parsing, posting blocks and test file locks costs a lot in
+chasing bypass forms and does not replace OS isolation either.
+Making measured scores a condition for integration or release can let maintaining the mechanism replace the purpose of
+the work.
 
-**다시 볼 때.** 리뷰가 시험 약화나 공개 필터 누락을 반복해서 놓칠 때, 지침과 실제 사용에서 같은 결함이 재현될 때 검토한다.
-장치를 추가하기 전에 실패의 원인과 보호할 효과를 확인한다.
+**Revisit when.** Review when review repeatedly misses weakened tests or missing public filters, or when the same defect
+reproduces in instructions and real use.
+Before adding a mechanism, confirm the cause of the failure and the effect to protect.
 
-## 배포와 출처
+## Distribution and sources
 
-**선택과 이유.** 제작자 공통 marketplace는 각 플러그인의 독립 저장소와 릴리스 태그를 가리킨다.
-개발 시험과 배포를 구분하고, 호스트 설치·업데이트·릴리스는 그 효과를 포함한 사용자 지시로 한다.
-배포·버전·롤백은 [repository](../specs/repository.md#배포)가 소유한다.
-저장소는 Apache-2.0으로 배포하며 제3자 부분은 원래 라이선스와 고지를 보존한다. 복제한 내용과 아이디어 참고를 구분해
-[SOURCES](../../SOURCES.md)에 기록하고 [LICENSE](../../LICENSE), [LICENSES](../../LICENSES/), [NOTICE](../../NOTICE)를 유지한다.
-출처 기록은 현재 설계의 변경 이력과 달리 배포물의 provenance를 설명한다.
+**Choice and reason.** The author's common marketplace points to each plugin's independent repository and release tags.
+Development testing is kept apart from distribution, and host installation, updates and releases are done on user
+instruction that includes those effects.
+[repository](../specs/repository.md#distribution) owns distribution, versions and rollback.
+The repository is distributed under Apache-2.0, and third-party parts keep their original licenses and notices. Copied
+content and idea references are recorded separately in [SOURCES](../../SOURCES.md), and [LICENSE](../../LICENSE),
+[LICENSES](../../LICENSES/) and [NOTICE](../../NOTICE) are maintained.
+Unlike the change history of the current design, source records explain the provenance of what is shipped.
 
-**대안.** 플러그인마다 catalog를 따로 운영하면 제작자 단위 관리가 갈라진다.
-자동 교차 저장소 게시 파이프라인은 필요가 확인되기 전에는 공유 자격 증명과 실패 경로를 늘리지 않는다.
-MIT 단일 라이선스로 통일하는 방식은 선택한 특허 조항과 제3자 라이선스 구분에 맞지 않는다.
+**Alternatives.** Running a separate catalog per plugin splits per-author management.
+An automatic cross-repository publishing pipeline does not add shared credentials and failure paths until the need is
+confirmed.
+Unifying under a single MIT license does not fit the chosen patent clause or keeping third-party licenses distinct.
 
-**다시 볼 때.** 플러그인 배포가 반복해서 서로 묶이거나 catalog 갱신의 오류가 반복될 때,
-새 제3자 내용을 도입하거나 라이선스·배포 경계를 바꿀 때 검토한다.
+**Revisit when.** Review when plugin distributions are repeatedly tied to each other or catalog update errors recur, or
+when introducing new third-party content or changing the license or distribution boundary.

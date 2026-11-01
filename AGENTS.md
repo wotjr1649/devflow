@@ -41,8 +41,10 @@ Hook setup requires explicit instruction.
 
 ## Language
 
-Agent-loaded instructions, skills, prompts and hook output are English. Specs, design,
-research, plans, decisions, Issues and reports are Korean.
+Committed text is English: instructions, skills, references, specs, design, research, plans,
+commit messages, test messages and hook output. Issues, checkpoints, PR bodies and reports to the
+owner are Korean. Korean literals the Issue protocol parses and simulated user prompts in evals stay
+as they are.
 
 ## Boundaries
 

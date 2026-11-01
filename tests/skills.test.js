@@ -1,5 +1,5 @@
 'use strict'
-// Independent skills ship with the plugin but stay outside the lifecycle (docs/design/current-decisions.md, 독립 스킬):
+// Independent skills ship with the plugin but stay outside the lifecycle (docs/design/current-decisions.md, Independent skills):
 // the lifecycle never names them and they never mention devflow, so either side can change without the other (#124).
 const test = require('node:test')
 const assert = require('node:assert/strict')

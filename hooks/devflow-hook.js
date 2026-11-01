@@ -180,7 +180,7 @@ function provenMain(root, own, common) {
     if (key(path.dirname(own)) !== key(path.join(common, 'worktrees'))) return null
     const back = (smallFile(path.join(own, 'gitdir')) || '').trim()
     if (!back || isNetwork(back) || key(path.resolve(own, back)) !== key(path.join(root, '.git'))) return null
-    // As devflow-state decides (docs/specs/repository.md, Issue 폴더): a .devflow.json is not asked of the main tree,
+    // As devflow-state decides (docs/specs/repository.md, Issue folder): a .devflow.json is not asked of the main tree,
     // which may have a commit without one checked out; git's back link already ties the two.
     return fs.lstatSync(common).isDirectory() ? path.dirname(common) : null
   } catch {

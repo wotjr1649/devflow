@@ -1,139 +1,156 @@
-# 조사 출처
+# Research sources
 
-설계 근거로 쓴 자료다. 원문은 복사하지 않고 링크와 직접 쓴 요약만 둔다. 호스트 동작에 관한 주장이 의심스러우면
-여기서 원문을 다시 확인한다. 호스트 문서는 자주 바뀐다.
+Material used as design evidence. Originals are not copied; only links and our own summaries are kept. If a claim about
+host behavior looks doubtful, check the original here again. Host documentation changes often.
 
-## 사용자가 지정한 자료
+## Sources the user specified
 
 - [OpenAI: Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)
-  - 스킬 description은 짧고 범위가 겹치지 않게 쓴다.
-  - 여러 워크플로를 가진 스킬은 루트를 라우터로 둔다.
-  - 레시피식 지침은 새 모델을 묶는다.
-  - AGENTS.md에는 상황별 포인터를 둔다.
-  - 안전한 작업은 명시적으로 허가하고 강한 경계 문구를 재조정한다. 이전 모델을 막으려던 경계는 새 모델을 필요 이상
-    멈추게 할 수 있어 지침을 읽을 모델을 바꿀 때 [경계 문구](../specs/documents.md#에이전트가-읽는-글)를 다시 본다.
-  - 완료 조건을 먼저 정의한다.
+  - Write skill descriptions short and with non-overlapping scope.
+  - A skill with several workflows keeps its root as a router.
+  - Recipe-style instructions constrain newer models.
+  - AGENTS.md holds situational pointers.
+  - Permit safe work explicitly and recalibrate strong boundary wording. Boundaries meant to stop an older model can
+    stop a newer one more than needed, so review the [boundary wording](../specs/documents.md#text-agents-read) when
+    the model that reads the instructions changes.
+  - Define the completion condition first.
 - [Prompting Claude Opus 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
-  - 기본 effort는 `medium`이고, 효과를 측정한 뒤에만 높인다. `medium`이 코딩에서 Opus 5의 `high`와 같거나 낫다.
-  - 응답에 추론을 쓰라는 지시는 거절을 부른다.
-  - 무인 실행: 체크리스트를 유지하고 자동 계속은 2~3회로 제한한다.
-  - 진행 업데이트를 받는 방법, 붙여 넣은 텍스트 표시, 멀티에이전트 시간 신호.
+  - The default effort is `medium`; raise it only after measuring the effect. On coding, `medium` matches or beats
+    Opus 5 at `high`.
+  - Telling the model to write its reasoning in the response invites refusals.
+  - Unattended runs: keep a checklist and limit automatic continuation to 2-3 times.
+  - How to receive progress updates, how pasted text is shown, and time signals for multi-agent work.
 - [Prompting Claude Sonnet 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5-5)
-  - effort 단계가 재보정됐다. 에이전트 코딩은 잘 정의된 작업이면 `medium`, 어렵거나 긴 작업이면 `high`에서 시작한다.
-    가장 어려운 장기 작업에는 Opus가 낫다. `medium` 이하의 긴 작업에서는 끝나기 전에 멈추고 확인을 구하기 쉽다.
-  - 범위 문단: 끝까지 진행하되 요청하지 않은 추가는 하지 않는다.
-  - `xhigh`·`max`에서는 스스로 리뷰하고 리뷰어를 띄운다.
-  - 실제 검사를 돌린 경우만 검증으로 인정한다.
+  - The effort levels were recalibrated. For agentic coding, start at `medium` for well-defined tasks and at `high` for
+    hard or long ones. Opus is better for the hardest long-running work. On long tasks at `medium` or below, the model
+    tends to stop and ask for confirmation before finishing.
+  - Scope paragraph: carry on to the end but add nothing that was not asked for.
+  - At `xhigh` and `max` it reviews itself and spawns reviewers.
+  - Count only checks that were actually run as verification.
 - [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)
-  - 금지보다 이유를 쓴다. 강조어는 과잉 트리거를 부른다.
-  - 처방적인 단계보다 일반 지시가 낫다.
-  - 긴 작업에서는 새 컨텍스트가 파일 시스템으로 상태를 복원하는 편이 나을 수 있다.
-  - 상태 추적은 git과 진행 기록으로 한다.
+  - Give reasons rather than prohibitions. Emphasis words trigger over-reaction.
+  - General instructions beat prescriptive steps.
+  - On long tasks, a fresh context that restores state from the file system can work better.
+  - Track state with git and a progress record.
 - [Agentic coding is straining CI](https://claude.com/ko/blog/agentic-coding-is-straining-ci-heres-how-we-scaled-test-impact-analysis-at-anthropic)
-  - 에이전트가 늘면 CI 부하가 지수적으로 늘어난다.
-  - 영향받는 테스트만 고르면 에이전트가 스스로 검증하기 쉽다.
-  - 작은 PR, 서비스 계측.
+  - CI load grows exponentially as agents multiply.
+  - Selecting only the affected tests makes it easier for agents to verify themselves.
+  - Small PRs, service instrumentation.
 - [Skills explained](https://claude.com/ko/blog/skills-explained)
-  - 점진적 공개: 메타데이터, 본문(5,000토큰 미만), 필요할 때 파일.
-  - 프롬프트·프로젝트·서브에이전트·MCP와 스킬의 역할 차이.
-- [skill-creator 개선](https://claude.com/ko/blog/improving-skill-creator-test-measure-and-refine-agent-skills)
-  - 스킬은 역량 향상형과 선호 인코딩형으로 나뉜다.
-  - eval과 벤치마크, 블라인드 A/B, description 트리거 조정.
+  - Progressive disclosure: metadata, body (under 5,000 tokens), files when needed.
+  - How skills differ in role from prompts, projects, subagents and MCP.
+- [Improving skill-creator](https://claude.com/ko/blog/improving-skill-creator-test-measure-and-refine-agent-skills)
+  - Skills split into capability-uplift and preference-encoding kinds.
+  - Evals and benchmarks, blind A/B, description trigger tuning.
 - [The AI-native SDLC playbook](https://claude.com/blog/the-ai-native-sdlc-playbook)
-  - 단계마다 커밋된 산출물이 생기고, 다음 단계가 그것을 읽는다.
-  - 산출물마다 진실 원천 하나.
-  - plan mode, 짧은 CLAUDE.md, 조언으로서의 스킬과 강제로서의 훅.
-  - 피드백 루프, 설정 eval, REVIEW.md.
+  - Each stage produces a committed artifact that the next stage reads.
+  - One source of truth per artifact.
+  - Plan mode, a short CLAUDE.md, skills as advice and hooks as enforcement.
+  - Feedback loops, configuration evals, REVIEW.md.
 - [Capture as intent.md (Academy)](https://academy.claude.com/courses/ai-native-sdlc-playbook/capture-intent)
-  - 플레이북 Plan 단계와 같다. intent 템플릿, 검토 후 커밋, 측정 지표.
+  - Same as the playbook's Plan stage. Intent template, commit after review, measurement metrics.
 
-## 호스트 문서
+## Host documentation
 
 - Claude Code
-  - [Skills](https://code.claude.com/docs/en/skills): frontmatter, 호출 제어, 목록 예산, compact 뒤 다시 붙는 범위, eval.
-    반복 규칙을 훅으로 옮기라는 외부 안내와 devflow의 [현재 선택](../design/current-decisions.md#지침과-보호)은 구분한다.
+  - [Skills](https://code.claude.com/docs/en/skills): frontmatter, invocation control, listing budget, what is
+    re-attached after compact, eval. External advice to move repeated rules into hooks is kept separate from devflow's
+    [current choice](../design/current-decisions.md#instructions-and-protections).
   - [Plugin reference](https://code.claude.com/docs/en/plugins-reference),
     [Plugin components](https://code.claude.com/docs/en/plugins/components),
-    [Plugin loading](https://code.claude.com/docs/en/plugins/loading): 이름 공간, 에이전트 frontmatter 제한,
-    제자리 로드, 범위.
-  - [Plugin evals](https://code.claude.com/docs/en/plugin-evals): 플러그인 있을 때와 없을 때의 비교,
-    `tool_used: Skill` 판정.
-  - [Worktrees](https://code.claude.com/docs/en/worktrees): 서브에이전트 worktree 격리의 기준 브랜치와 정리(M3).
-  - [Subagents](https://code.claude.com/docs/en/sub-agents): 메인과 서브에이전트의 선택 기준,
-    재개와 `SendMessage`, 도구 필터, 호출할 때의 `model`·`effort` 우선순위.
-  - [Hooks](https://code.claude.com/docs/en/hooks): exit 2와 거부만 막고 다른 오류와 시간 초과는 통과, Stop의 block, SessionStart 10,000자 상한, Windows 셸 선택.
+    [Plugin loading](https://code.claude.com/docs/en/plugins/loading): namespaces, agent frontmatter limits,
+    in-place loading, scopes.
+  - [Plugin evals](https://code.claude.com/docs/en/plugin-evals): comparison with and without the plugin,
+    `tool_used: Skill` grading.
+  - [Worktrees](https://code.claude.com/docs/en/worktrees): base branch and cleanup of subagent worktree isolation (M3).
+  - [Subagents](https://code.claude.com/docs/en/sub-agents): criteria for choosing main versus subagent,
+    resume and `SendMessage`, tool filters, precedence of `model` and `effort` at invocation.
+  - [Hooks](https://code.claude.com/docs/en/hooks): only exit 2 and denial block while other errors and timeouts pass,
+    Stop block, the SessionStart 10,000-character cap, Windows shell selection.
   - [Workflows](https://code.claude.com/docs/en/workflows),
     [Agent teams](https://code.claude.com/docs/en/agent-teams),
     [Best practices](https://code.claude.com/docs/en/best-practices).
   - [Memory and AGENTS.md](https://code.claude.com/docs/en/memory),
     [Context window](https://code.claude.com/docs/en/context-window),
-    [Model config](https://code.claude.com/docs/en/model-config): 별칭 해석, effort 단계, `ultrathink`.
+    [Model config](https://code.claude.com/docs/en/model-config): alias resolution, effort levels, `ultrathink`.
   - [Models overview](https://platform.claude.com/docs/en/about-claude/models/overview),
-    [Effort](https://platform.claude.com/docs/en/build-with-claude/effort): 모델별 가격·용도와 권장 effort(haiku는
-    `medium`에서 시작, `low`는 긴 에이전트 작업에서 검색·확인을 건너뛰기 쉽다).
-  - 내장 [agents-md 플러그인](https://github.com/anthropics/claude-code/tree/main/mods/agents-md) (2282079, 2026-09-30):
-    AGENTS.md를 컨텍스트마다 다시 찾는 방식, compact 뒤 재계산.
+    [Effort](https://platform.claude.com/docs/en/build-with-claude/effort): price, use and recommended effort per model
+    (haiku starts at `medium`; `low` tends to skip searching and checking in long agentic work).
+  - Built-in [agents-md plugin](https://github.com/anthropics/claude-code/tree/main/mods/agents-md) (2282079,
+    2026-09-30): how AGENTS.md is looked up again for each context, and recomputation after compact.
 - Codex
-  - [Skills](https://learn.chatgpt.com/docs/build-skills): 위치, 묵시적 호출, `agents/openai.yaml`, 목록 예산.
+  - [Skills](https://learn.chatgpt.com/docs/build-skills): locations, implicit invocation, `agents/openai.yaml`,
+    listing budget.
   - [Plugins](https://learn.chatgpt.com/docs/plugins),
-    [Hooks](https://learn.chatgpt.com/docs/hooks): 플러그인 훅, SessionStart 매처, Stop 입출력, 경로 변수.
-  - [Build plugins](https://developers.openai.com/plugins/build/plugins): 로컬 소스 마켓플레이스 형식, 설치 캐시 위치.
-  - [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents): 내장·커스텀 에이전트,
-    띄울 때 지정한 모델과 effort의 우선순위, luna는 `high`에서 시작.
+    [Hooks](https://learn.chatgpt.com/docs/hooks): plugin hooks, SessionStart matchers, Stop input and output, path
+    variables.
+  - [Build plugins](https://developers.openai.com/plugins/build/plugins): local-source marketplace format, install cache
+    location.
+  - [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents): built-in and custom agents,
+    precedence of the model and effort given at spawn, luna starts at `high`.
   - [Models](https://learn.chatgpt.com/docs/models), [OpenAI models](https://developers.openai.com/api/docs/models),
-    [Latest model](https://developers.openai.com/api/docs/guides/latest-model): ID별 용도와 가격, terra는 `medium`에서
-    시작, 가장 어려운 코딩은 sol·astra.
-  - terra 코딩 성능(2026-11-01): [Artificial Analysis](https://artificialanalysis.ai/articles/gpt-6-1-terra-pushes-the-cost-efficiency-frontier)
-    Coding Agent Index terra 48·sol 54·luna 31, [시스템 카드 부록](https://deploymentsafety.openai.com/gpt-6-1-terra/addendum-to-gpt-6-astra-system-card-gpt-6.1-terra)
-    Sandbox Bench terra 22.7%·sol 41.9%.
-  - [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md): 탐색 순서, 크기 한도.
+    [Latest model](https://developers.openai.com/api/docs/guides/latest-model): use and price per ID, terra starts at
+    `medium`, sol and astra for the hardest coding.
+  - terra coding performance (2026-11-01): [Artificial Analysis](https://artificialanalysis.ai/articles/gpt-6-1-terra-pushes-the-cost-efficiency-frontier)
+    Coding Agent Index terra 48, sol 54, luna 31; [system card addendum](https://deploymentsafety.openai.com/gpt-6-1-terra/addendum-to-gpt-6-astra-system-card-gpt-6.1-terra)
+    Sandbox Bench terra 22.7%, sol 41.9%.
+  - [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md): lookup order, size limit.
   - [Multi-agent (Responses API)](https://developers.openai.com/api/docs/guides/responses-multi-agent):
-    spawn·message·follow-up·wait 기본 기능.
+    basic spawn, message, follow-up and wait capabilities.
 
-## 오케스트레이션 관련 글
+## Writing on orchestration
 
 - [Cognition: Don't Build Multi-Agents](https://cognition.com/blog/dont-build-multi-agents):
-  맥락을 공유하고, 쓰기는 한 곳에서 한다.
+  share context, and write from one place.
 - [Anthropic: Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents):
-  초기화 에이전트와 코딩 에이전트, 기능 목록, 진행 기록, 세션마다 기능 하나.
+  initializer agent and coding agent, feature list, progress record, one feature per session.
 - [Claude: When to use multi-agent systems](https://claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them):
-  토큰이 여러 배 든다. 맥락 경계로 나눈다. 검증 서브에이전트.
+  it costs several times the tokens. Split along context boundaries. Verification subagents.
 - [obra/superpowers](https://github.com/obra/superpowers): brainstorming, writing-plans,
-  subagent-driven development, 브랜치 마무리.
-  [Release notes](https://github.com/obra/superpowers/blob/main/RELEASE-NOTES.md)(v6.4.2까지): 경로 분류로 절차 규모
-  조절, 계획별 장부, 작업별 리뷰 한 번과 브랜치 리뷰 한 번, 위임마다 모델 명시, 효과 없던 계획 리뷰 루프 제거, 메인에서
-  바로 실행하는 가장 싼 방식, 트리거·트랜스크립트 테스트.
-- [Spec-driven development benchmark](https://uvik.net/spec-driven-development-benchmark/): 50개 티켓에서 spec 방식이
-  리뷰 결함을 줄였지만, 1~2개 파일 변경과 버그 수정에서는 이득이 없었다. 선택적으로 쓰라는 결론.
-- [Invariants, not frameworks](https://ranjankumar.in/spec-driven-development-invariants-not-frameworks): 상태는
-  디스크에, 작업 단위로 맥락을 묶음, 위치 추적, 단계마다 새 맥락. 쟁점은 절차 규모 조절.
-- [DORA 2025](https://dora.dev/research/2025/dora-report/): AI는 조직의 강점과 약점을 키우고, 처리량과 함께 불안정성도 올린다.
-- [METR](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/): 체감 생산성과 측정 생산성이
-  다르다. 효과는 측정으로 판단한다.
+  subagent-driven development, finishing a branch.
+  [Release notes](https://github.com/obra/superpowers/blob/main/RELEASE-NOTES.md) (through v6.4.2): path
+  classification to scale the procedure, a ledger per plan, one review per task and one per branch, an explicit model
+  for each delegation, removal of the plan-review loop that had no effect, the cheapest approach of running directly
+  in main, trigger and transcript tests.
+- [Spec-driven development benchmark](https://uvik.net/spec-driven-development-benchmark/): on 50 tickets the spec
+  approach reduced review defects, but gave no benefit for changes to 1-2 files or for bug fixes. Conclusion: use it
+  selectively.
+- [Invariants, not frameworks](https://ranjankumar.in/spec-driven-development-invariants-not-frameworks): state on
+  disk, context bound to the unit of work, position tracking, fresh context per stage. The point at issue is scaling
+  the procedure.
+- [DORA 2025](https://dora.dev/research/2025/dora-report/): AI amplifies an organization's strengths and weaknesses
+  and raises instability along with throughput.
+- [METR](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/): perceived and measured
+  productivity differ. Judge the effect by measurement.
 
-## 강제와 측정의 범위
+## Scope of enforcement and measurement
 
-[지침과 보호](../design/current-decisions.md#지침과-보호)를 선택할 때 참고한 자료다. 2026-10-31에 원문을 확인했다.
+Sources consulted when choosing [instructions and protection](../design/current-decisions.md#instructions-and-protections). The
+originals were checked on 2026-10-31.
 
 - [Anthropic: Demystifying evals for AI agents](https://www.anthropic.com/research/demystifying-evals-for-ai-agents)
-  (2026-01-09): 실제 실패에서 뽑은 20~50개 과제로 시작한다. 에이전트 제품을 만드는 팀을 위한 글이다. 채점은 가능하면
-  결정적으로 하고, 경로가 아니라 결과를 본다.
-- [OpenAI: Testing Agent Skills Systematically with Evals](https://developers.openai.com/blog/eval-skills): 스킬의 이름,
-  설명, 지침이 바뀔 때 10~20개 프롬프트와 소수의 필수 검사로 비교한다. CI 편입은 선택이다.
-- [Anthropic: Claude Code auto mode](https://www.anthropic.com/engineering/claude-code-auto-mode) (2026-03-25): 사용자는
-  수동 승인 요청의 93%를 수락한다. 승인 피로 때문에 막는 요청의 보호 효과가 작다. 오탐 차단은 사유와 함께 돌려줘 재시도
-  한 번으로 끝나게 한다.
+  (2026-01-09): start with 20-50 tasks drawn from real failures. It is written for teams building agent products.
+  Grade deterministically where possible and look at the outcome, not the path.
+- [OpenAI: Testing Agent Skills Systematically with Evals](https://developers.openai.com/blog/eval-skills): when a
+  skill's name, description or instructions change, compare with 10-20 prompts and a few required checks. Adding it to
+  CI is optional.
+- [Anthropic: Claude Code auto mode](https://www.anthropic.com/engineering/claude-code-auto-mode) (2026-03-25): users
+  accept 93% of manual approval requests. Because of approval fatigue, approval prompts that stop work protect little. A false-positive
+  block is returned with its reason so that one retry ends it.
 - [Naresh Jain: Are Harnesses Worth the Cost?](https://martinfowler.com/articles/are-harnesses-worth-the-cost.html)
-  (2026-10-13): 같은 서비스를 10회씩 만들었다. 강한 모델은 하네스가 있든 없든 10/10이었고, 하네스를 쓰면 토큰이 약 10배,
-  시간이 약 3배 들었다. 약한 모델은 3/10에서 10/10으로 올랐다. 과제 하나의 결과다.
-- 공개 워크플로 도구 7개(addyosmani/agent-skills, toss/apps-in-toss-harness, anthropics/claude-plugins-official,
-  cursor/plugins, mattpocock/skills, github/spec-kit, obra/superpowers)의 2026-10-31 조사에서는 TDD·리뷰·범위 같은 판단을
-  지침으로 두고 행동 eval을 선택 실행하는 구성이 관찰됐다. 이 조사 범위에서는 측정 점수를 병합·출시 조건으로 둔 도구를 찾지 못했다.
-  이 관찰은 해당 조사 시점과 도구 범위에 한정하며 전체 생태계나 이후 버전의 동작을 보장하지 않는다.
+  (2026-10-13): the same service was built 10 times each way. The strong model scored 10/10 with or without the
+  harness, and the harness cost about 10 times the tokens and about 3 times the time. The weak model rose from 3/10 to
+  10/10. It is the result of a single task.
+- A 2026-10-31 survey of 7 public workflow tools (addyosmani/agent-skills, toss/apps-in-toss-harness,
+  anthropics/claude-plugins-official, cursor/plugins, mattpocock/skills, github/spec-kit, obra/superpowers) observed a
+  setup that leaves judgments such as TDD, review and scope to instructions and runs behavior evals optionally. Within
+  that survey no tool was found that made a measured score a merge or release condition. This observation is limited to
+  the time and tools surveyed and does not guarantee the behavior of the whole ecosystem or of later versions.
 
-## 보안
+## Security
 
 - [Comment and Control](https://github.com/vectara/awesome-agent-failures/blob/main/docs/case-studies/comment-and-control-prompt-injection.md):
-  PR 제목, Issue 본문·댓글, 숨은 HTML 주석으로 코딩 에이전트가 비밀값을 공개 댓글에 게시했다. 공개 타임라인에 쓰는
-  에이전트에는 출력 필터, 최소 범위의 비밀값, 짧은 수명의 자격증명이 필요하다.
-- [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail): 두 호스트 패키징의 실제 사례.
+  through PR titles, Issue bodies and comments, and hidden HTML comments, a coding agent published secrets in a public
+  comment. An agent that writes to a public timeline needs output filtering, minimal-scope secrets and short-lived
+  credentials.
+- [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail): a real example of packaging for both hosts.

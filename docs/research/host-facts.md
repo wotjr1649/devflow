@@ -1,317 +1,382 @@
-# 호스트 사실
+# Host facts
 
-구현에 필요한 Claude Code·Codex 동작을 공식 문서와 실제 설치본에서 확인한 대로 적는다. 처음 확인한
-버전은 Claude Code 2.1.286, codex-cli 0.159.1이고, 그 뒤의 관찰은 항목에 날짜를 적고, 버전이 중요한 항목은 버전도
-적는다(예: 2026-10-01은 codex-cli 0.159.3, 2026-10-03은 0.160.0). "(관찰 날짜)"가 붙은 항목은 버릴 임시 저장소나 설치본에서 실제로 돌려 본
-결과다. 버전이 오르면 바뀔 수 있으므로, 이 문서와 실제 동작이 다르면
-[sources](sources.md)의 원문을 다시 확인하고 이 문서를 고친다.
+Claude Code and Codex behavior that the implementation needs, recorded as confirmed in the official documentation and in
+real installations. The first versions checked were Claude Code 2.1.286 and codex-cli 0.159.1. Later observations carry
+a date, and entries where the version matters carry the version too (for example, 2026-10-01 is codex-cli 0.159.3 and
+2026-10-03 is 0.160.0). An entry marked "(observation date)" is a result actually run in a throwaway repository or
+installation. Behavior can change when versions rise, so if this document differs from actual behavior, check the
+original in [sources](sources.md) again and fix this document.
 
-## gh와 GitHub 자격 증명 (2026-10-02)
+## gh and GitHub credentials (2026-10-02)
 
-- `GH_TOKEN`, `GITHUB_TOKEN` 순으로 저장된 자격 증명보다 우선한다. `GH_CONFIG_DIR`의 Windows 기본값은
-  `%AppData%\GitHub CLI`다([gh environment](https://cli.github.com/manual/gh_help_environment)).
-- keyring은 `GH_CONFIG_DIR`마다 나뉘지 않는다([cli/cli#14370](https://github.com/cli/cli/issues/14370)). 그래서
-  config 폴더를 나눠도 같은 OS 사용자의 프로세스는 같은 토큰을 꺼낼 수 있다.
-- `gh auth setup-git`을 한 기기에서는 git이 github.com에 `gh auth git-credential`로 인증해 push도 gh 토큰을 쓴다.
-- `gh api --include`는 상태 줄, 헤더, 빈 줄을 CRLF로 나눈다. OAuth·classic 토큰이면 GraphQL 응답에도
-  `X-Oauth-Scopes`(범위 목록)와 `X-Oauth-Client-Id`가 있다.
+- `GH_TOKEN`, then `GITHUB_TOKEN`, take precedence over stored credentials. The Windows default of `GH_CONFIG_DIR` is
+  `%AppData%\GitHub CLI` ([gh environment](https://cli.github.com/manual/gh_help_environment)).
+- The keyring is not split per `GH_CONFIG_DIR` ([cli/cli#14370](https://github.com/cli/cli/issues/14370)). So even with
+  separate config folders, processes of the same OS user can retrieve the same token.
+- On a machine where `gh auth setup-git` was run, git authenticates to github.com through `gh auth git-credential`, so
+  push also uses the gh token.
+- `gh api --include` separates the status line, headers and blank line with CRLF. With an OAuth or classic token, even a
+  GraphQL response carries `X-Oauth-Scopes` (the scope list) and `X-Oauth-Client-Id`.
 
 ## Claude Code
 
-**지침 로드**
-- 작업 폴더와 그 위쪽에 `CLAUDE.md`·`.claude/CLAUDE.md`·`CLAUDE.local.md`가 없으면 `AGENTS.md`를 읽는다(기본 설정
-  `claude-md-or-agents-md`). `~/.claude/CLAUDE.md`, managed CLAUDE.md, `.claude/rules/`는 이 판단에 들어가지 않고
-  함께 로드된다.
-- 직접 읽기는 2.1.277부터 지원한다. 2.1.276 이하에서 업그레이드한 직후 첫 세션은 읽지 못할 수 있다.
-- `AGENTS.md`와 `.claude/AGENTS.md`를 읽는다. `AGENTS.override.md`, `AGENTS.local.md`, `.agents/` 아래는 읽지 않는다
-  (Codex와 다르다).
-- 설정으로 직접 읽은 `AGENTS.md`에서는 InstructionsLoaded 훅이 발화하지 않는다. `CLAUDE.md`가 import한
-  `AGENTS.md`에서는 발화한다.
-- 설정으로 직접 읽은 `AGENTS.md` 안의 `@` import가 작업 폴더 밖을 가리키면, 그 프로젝트에서 외부 import를 이미
-  승인했을 때만 묻지 않고 로드된다. `CLAUDE.md`의 같은 import는 승인 창을 띄운다.
-- 서브에이전트도 같은 지침을 로드한다. 내장 Explore·Plan과 `omitClaudeMd: true`인 에이전트는 예외다.
+**Instruction loading**
+- If no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working folder or above it, `AGENTS.md` is
+  read (default setting `claude-md-or-agents-md`). `~/.claude/CLAUDE.md`, managed CLAUDE.md and `.claude/rules/` do not
+  enter this decision and are loaded alongside.
+- Direct reading is supported from 2.1.277. The first session right after upgrading from 2.1.276 or earlier may not
+  read it.
+- It reads `AGENTS.md` and `.claude/AGENTS.md`. It does not read `AGENTS.override.md`, `AGENTS.local.md` or anything
+  under `.agents/` (unlike Codex).
+- The InstructionsLoaded hook does not fire for an `AGENTS.md` read directly through the setting. It fires for an
+  `AGENTS.md` imported by `CLAUDE.md`.
+- If an `@` import inside an `AGENTS.md` read directly through the setting points outside the working folder, it loads
+  without asking only when the project has already approved external imports. The same import in `CLAUDE.md` raises an
+  approval dialog.
+- Subagents load the same instructions. The built-in Explore and Plan, and agents with `omitClaudeMd: true`, are
+  exceptions.
 
-**스킬**
-- frontmatter: `name`, `description`, `when_to_use`, `disable-model-invocation`, `user-invocable`, `allowed-tools`,
+**Skills**
+- Frontmatter: `name`, `description`, `when_to_use`, `disable-model-invocation`, `user-invocable`, `allowed-tools`,
   `disallowed-tools`, `model`, `effort`, `context: fork`, `agent`, `background`, `hooks`, `paths`, `shell`, `metadata`,
-  `license`, `compatibility`. 모르는 필드는 오류 없이 무시한다.
-- `paths`는 자동 호출을 그 glob에 맞는 파일을 다룰 때로 제한한다. 호출을 보장하지 않는다. 직접 호출(`/name`)은 막지 않는다.
-- 스킬 본문에서 `${CLAUDE_SKILL_DIR}`, `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PROJECT_DIR}`를 치환한다. Codex는 경로 변수를
-  치환한다는 문서가 없고 스킬 파일 경로를 알려 주므로, 두 호스트가 읽는 스킬은 상대 링크를 쓴다.
-- 스킬 목록 예산은 컨텍스트의 1%이고, 항목 하나(description + when_to_use)는 1,536자에서 잘린다. 넘치면 덜 쓰는
-  스킬의 description부터 뺀다.
-- compact 뒤 스킬 목록은 다시 붙지 않는다. 호출했던 스킬 본문은 스킬마다 앞 5,000토큰, 합계 25,000토큰까지 다시 붙는다.
-- 플러그인 스킬은 `skillOverrides`의 영향을 받지 않는다. 사용하지 않는 스킬은 `/skill-doctor`로 찾는다.
+  `license`, `compatibility`. Unknown fields are ignored without error.
+- `paths` limits automatic invocation to when files matching the glob are being handled. It does not guarantee
+  invocation. It does not block direct invocation (`/name`).
+- In a skill body, `${CLAUDE_SKILL_DIR}`, `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PROJECT_DIR}` are substituted. Codex has
+  no documented path-variable substitution and tells the model the skill file path, so skills read by both hosts use
+  relative links.
+- The skill listing budget is 1% of the context, and one entry (description + when_to_use) is cut at 1,536 characters.
+  When it overflows, descriptions of the least-used skills are dropped first.
+- The skill listing is not re-attached after compact. The bodies of skills that were invoked are re-attached, the first
+  5,000 tokens of each skill up to 25,000 tokens in total.
+- Plugin skills are not affected by `skillOverrides`. Find unused skills with `/skill-doctor`.
 
-**플러그인**
-- 매니페스트는 `.claude-plugin/plugin.json`이고 `name`만 필수다. 구성 요소는 `<plugin>:<name>`으로 이름이 붙는다.
-- `marketplace.json`: `name`, `owner{name,email}`, `plugins[{name, description, source}]`. `source: "./"`로 마켓플레이스
-  루트를 플러그인으로 가리킬 수 있다.
-- 로컬 디렉터리 마켓플레이스의 상대 경로 플러그인은 제자리에서 로드된다. 수정은 `/reload-plugins`로 반영되고 버전을
-  올릴 필요가 없다. `--plugin-dir`은 그 세션에서만 같은 이름의 설치본을 대체한다.
-- 관찰(2026-10-01): 세션 도중 사용자 범위로 설치한 플러그인은 그 세션에서 `/reload-plugins`를 실행하면 스킬과 에이전트가
-  바로 쓸 수 있게 된다. 그 전에는 이름으로 불러도 "Unknown skill"이다.
-- 관찰(2026-10-01, 임시 `CLAUDE_CONFIG_DIR`): `source: "./"`로 설치하면 `plugins/cache/<marketplace>/<plugin>/<version>/`에
-  복사본(`.git` 제외, ignore된 비공개 폴더 포함)이 생기고 `installPath`도 그곳을 가리킨다. 그래도 세션 훅이 받는
-  `CLAUDE_PLUGIN_ROOT`는 원본 폴더라서 로드는 제자리다. 임시 설정 폴더에서는 인증 없이 설치할 수 있고, 인증 없는
-  `claude -p`도 실패하기 전에 SessionStart 훅을 실행한다. `--debug`를 붙이면 설정 폴더의 `debug/`에 훅 출력과
-  `provided additionalContext (<n> chars)`가 남아서, 모델 호출 없이 SessionStart 훅을 확인할 수 있다.
-- 관찰(2026-10-01, 사용자 범위 설치본): SessionStart 훅의 맥락은 세션 기록에 `hook_additional_context` 첨부로 들어가고
-  화면에는 나오지 않는다. 확인은 세션 기록에서 한다.
-- 플러그인 루트의 `bin/`은 Bash 도구의 PATH에 들어간다.
-- 경로 변수: `${CLAUDE_PLUGIN_ROOT}`(설치본 위치, 버전마다 바뀜), `${CLAUDE_PLUGIN_DATA}`(업데이트를 넘어 유지).
-- 플러그인 루트의 `CLAUDE.md`는 로드되지 않는다. 검증은 `claude plugin validate <dir>`로 한다.
-- `claude --plugin-dir . plugin list --json`은 모델을 부르지 않고 `devflow@inline`(범위 `session`)으로 로드를 보여 준다(2026-10-01).
+**Plugins**
+- The manifest is `.claude-plugin/plugin.json` and only `name` is required. Components are named `<plugin>:<name>`.
+- `marketplace.json`: `name`, `owner{name,email}`, `plugins[{name, description, source}]`. `source: "./"` can point a
+  plugin at the marketplace root, so the root itself is the plugin.
+- A relative-path plugin in a local directory marketplace is loaded in place. Edits take effect with `/reload-plugins`
+  and the version need not be raised. `--plugin-dir` replaces an installed copy of the same name for that session only.
+- Observation (2026-10-01): for a plugin installed at user scope in the middle of a session, running `/reload-plugins`
+  in that session makes its skills and agents usable at once. Before that, calling them by name gives "Unknown skill".
+- Observation (2026-10-01, temporary `CLAUDE_CONFIG_DIR`): installing with `source: "./"` creates a copy (excluding
+  `.git`, including ignored private folders) under `plugins/cache/<marketplace>/<plugin>/<version>/`, and `installPath`
+  also points there. Even so, the `CLAUDE_PLUGIN_ROOT` that a session hook receives is the original folder, so loading is
+  in place. In a temporary config folder, installation works without authentication, and `claude -p` without
+  authentication also runs the SessionStart hook before failing. With `--debug`, the hook output and
+  `provided additionalContext (<n> chars)` are left in `debug/` of the config folder, so the SessionStart hook can be
+  checked without a model call.
+- Observation (2026-10-01, user-scope installation): the SessionStart hook's context enters the session record as a
+  `hook_additional_context` attachment and does not appear on screen. Check it in the session record.
+- `bin/` at the plugin root is added to the Bash tool's PATH.
+- Path variables: `${CLAUDE_PLUGIN_ROOT}` (installed location, changes with each version), `${CLAUDE_PLUGIN_DATA}`
+  (persists across updates).
+- `CLAUDE.md` at the plugin root is not loaded. Validate with `claude plugin validate <dir>`.
+- `claude --plugin-dir . plugin list --json` shows the load as `devflow@inline` (scope `session`) without calling the
+  model (2026-10-01).
 
-**훅 실행 환경(관찰)**
-- macOS GitHub 실행기의 Node 22에서 훅이 `fs.readFileSync(0)`으로 210KB 입력을 읽다가 80회 중 3회 끝나지 않았다(기계 정지 없음).
-  같은 빠른 경로의 큰 파이프 입력 결함이 Node에 보고되어 있다([nodejs/node#66341](https://github.com/nodejs/node/issues/66341)).
-  훅은 스트림으로 읽는다.
+**Hook execution environment (observation)**
+- On Node 22 of a macOS GitHub runner, a hook reading 210KB of input with `fs.readFileSync(0)` did not finish in 3 of 80
+  runs (no machine stall). A defect of this fast path with large piped input has been reported against Node
+  ([nodejs/node#66341](https://github.com/nodejs/node/issues/66341)). Hooks read as a stream.
 
-**플러그인 에이전트**
-- 지원하는 필드: `name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`, `memory`,
+**Plugin agents**
+- Supported fields: `name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`, `memory`,
   `background`, `omitClaudeMd`, `isolation: worktree`, `color`
-- 무시하는 필드: `permissionMode`, `hooks`, `mcpServers`, `initialPrompt`
-- worktree 격리는 Agent 호출마다 `isolation: "worktree"`로도 준다. 격리 worktree는 `.claude/worktrees/` 아래 새 브랜치로,
-  기본은 원격 기본 브랜치에서 갈라지고(`worktree.baseRef: "head"` 설정이면 지금 HEAD), 바뀐 것이 없으면 지워지고 바뀐 것이
-  있으면 남는다([Subagents](https://code.claude.com/docs/en/sub-agents), [Worktrees](https://code.claude.com/docs/en/worktrees)).
-  관찰(2026-10-03): 서브에이전트 worktree 생성 뒤 공용 `core.hooksPath`가 `.githooks`에서 메인 체크아웃의 절대 경로로 바뀌어 있었다.
-  격리 서브에이전트가 도는 동안에는 부모 세션과 다른 서브에이전트의 기록 `gitBranch`가 주 작업 트리의 실제 브랜치가 아니라
-  그 서브에이전트 worktree의 브랜치였다. 기록의 브랜치만으로 작업을 귀속하지 않는다. 둘 다 문서로 보장된 동작은 아니다.
-- `agents/review/x.md`처럼 하위 폴더에 두면 이름이 `<plugin>:review:x`가 된다.
-- 호출의 `subagent_type`과 실행 기록의 `agentType`도 `devflow:implementer`처럼 플러그인 이름이 붙는다. 에이전트 종류로
-  거르는 다른 플러그인의 훅(예: ponytail의 `PONYTAIL_SUBAGENT_MATCHER`)도 이 이름을 본다(2026-10-01).
+- Ignored fields: `permissionMode`, `hooks`, `mcpServers`, `initialPrompt`
+- Worktree isolation can also be given per Agent call as `isolation: "worktree"`. The isolated worktree is a new branch
+  under `.claude/worktrees/`, by default branched from the remote default branch (from the current HEAD if
+  `worktree.baseRef: "head"` is set); it is removed if nothing changed and kept if something changed
+  ([Subagents](https://code.claude.com/docs/en/sub-agents), [Worktrees](https://code.claude.com/docs/en/worktrees)).
+  Observation (2026-10-03): after a subagent worktree was created, the shared `core.hooksPath` had changed from
+  `.githooks` to an absolute path of the main checkout. While an isolated subagent was running, the recorded `gitBranch`
+  of the parent session and of other subagents was the branch of that subagent worktree, not the real branch of the main
+  work tree. Do not attribute work by the recorded branch alone. Neither is documented behavior.
+- Placing an agent in a subfolder such as `agents/review/x.md` names it `<plugin>:review:x`.
+- The call's `subagent_type` and the run record's `agentType` also carry the plugin name, as in `devflow:implementer`.
+  Hooks of other plugins that filter by agent type (for example ponytail's `PONYTAIL_SUBAGENT_MATCHER`) also see this
+  name (2026-10-01).
 
-**서브에이전트**
-- `AskUserQuestion`은 모든 서브에이전트에서 제거된다.
-- 재개: `SendMessage`로 보내면 대화 기록 전체와 호출 시 지정한 모델이 유지된다. 내장 Explore·Plan은 재개할 수 없다.
-- 모델은 호출의 `model` 파라미터(별칭만), 정의의 `model`, `CLAUDE_CODE_SUBAGENT_MODEL`, 메인 모델 순으로 정해진다.
-  effort는 `CLAUDE_CODE_EFFORT_LEVEL`, 호출의 `effort`(v2.1.292+, fork 제외, 재개 후 유지), 정의의 `effort` 순이다
-  (2026-11-01, [sub-agents](https://code.claude.com/docs/en/sub-agents)).
-- `ultrathink`는 터미널에 직접 입력한 턴만 `xhigh`로 올린다(v2.1.311+, Bedrock 불가). 관찰(2026-11-01, v2.1.316,
-  haiku): 서브에이전트 프롬프트에 넣으면 실행 기록의 `effort`·`perTurnEffort`가 정의의 `medium` 그대로였고 추가 지시도
-  붙지 않았다.
-- 관찰(2026-11-01, v2.1.316): 호출 `model`·`effort` 6조합(explorer+haiku, explorer+haiku+`high`, explorer+sonnet,
-  explorer+`high`, implementer+opus+`high`, reviewer+sonnet)이 실행 기록의 `message.model`·`effort`와 모두 일치했다.
-  호출 `effort`가 정의의 `effort`보다 우선했다. 조합마다 한 번, 파일 개수를 세는 작은 작업으로 확인했다.
-- `SendMessage`가 있는 서브에이전트에게는 `main`과 이름 붙은 에이전트 목록이 주어진다(v2.1.206+).
-- 중첩은 기본 3단계까지(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), 동시 실행은 20개까지다.
-- 대화형 세션에서는 기본이 백그라운드 실행이고, 백그라운드에서는 쓸 수 있는 도구가 줄어든다.
-- 실행 기록은 `~/.claude/projects/<프로젝트>/<세션>/subagents/agent-<id>.jsonl`이다. 줄마다 실제 모델(`message.model`)과
-  `effort`·`perTurnEffort`가 있고, 옆의 `.meta.json`에 `agentType`, 요청한 `model`, `spawnDepth`가 있다(2026-10-01).
-  `prompt_snapshot` 항목의 `tools`가 실제로 받은 도구 목록이고, `instructions` 항목이 로드된 지침 파일 목록이다.
-  플러그인 에이전트의 `tools`에 그 세션에 없는 도구(꺼진 `PowerShell`)를 적으면 오류 없이 빠진다.
+**Subagents**
+- `AskUserQuestion` is removed from all subagents.
+- Resume: sending with `SendMessage` keeps the whole conversation history and the model given at the call. The built-in
+  Explore and Plan cannot be resumed.
+- The model is decided in this order: the call's `model` parameter (aliases only), the definition's `model`,
+  `CLAUDE_CODE_SUBAGENT_MODEL`, the main model. Effort is in this order: `CLAUDE_CODE_EFFORT_LEVEL`, the call's `effort`
+  (v2.1.292+, not for fork, kept after resume), the definition's `effort` (2026-11-01,
+  [sub-agents](https://code.claude.com/docs/en/sub-agents)).
+- `ultrathink` raises only a turn typed directly in the terminal to `xhigh` (v2.1.311+, not on Bedrock). Observation
+  (2026-11-01, v2.1.316, haiku): placed in a subagent prompt, the run record's `effort` and `perTurnEffort` stayed at
+  the definition's `medium` and no extra instruction was attached.
+- Observation (2026-11-01, v2.1.316): six call `model` and `effort` combinations (explorer+haiku,
+  explorer+haiku+`high`, explorer+sonnet, explorer+`high`, implementer+opus+`high`, reviewer+sonnet) all matched the run
+  record's `message.model` and `effort`. The call's `effort` took precedence over the definition's `effort`. Each
+  combination was checked once, with a small task of counting files.
+- A subagent that has `SendMessage` is given `main` and a list of named agents (v2.1.206+).
+- Nesting is up to 3 levels by default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), and up to 20 run concurrently.
+- In an interactive session, the default is background execution, and in the background fewer tools are available.
+- The run record is `~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`. Each line has the actual model
+  (`message.model`) and `effort` and `perTurnEffort`, and the adjacent `.meta.json` has `agentType`, the requested
+  `model` and `spawnDepth` (2026-10-01). The `tools` of the `prompt_snapshot` entry is the list of tools actually
+  received, and the `instructions` entry is the list of loaded instruction files. If a plugin agent's `tools` names a
+  tool absent from that session (a disabled `PowerShell`), it is dropped without error.
 
 **compact**
-- 다시 주입되는 것: 프로젝트 루트 CLAUDE.md, 자동 메모리, plan mode의 계획
-- 설정으로 직접 읽은 상위 폴더의 AGENTS.md도 다시 들어간다. 내장 `agents-md` 플러그인이 엔진이 컨텍스트를 만들 때마다
-  디스크에서 AGENTS.md를 찾아 `project` 지침으로 넣고, 이 재계산은 compact와 `/clear` 뒤에도 일어난다. 하위 폴더의
-  AGENTS.md는 그 폴더의 파일을 다시 Read할 때 붙는다.
-- 최근에 다룬 파일을 최대 5개까지 다시 읽는다. 5,000토큰이 넘는 파일은 경로만 남는다.
-- `compact` 매처가 있는 SessionStart 훅의 출력은 compact된 컨텍스트에 추가된다.
+- Re-injected: the project root CLAUDE.md, auto memory, the plan of plan mode
+- An AGENTS.md of a parent folder read directly through the setting is also re-inserted. The built-in `agents-md` plugin
+  finds AGENTS.md on disk each time the engine builds the context and inserts it as `project` instructions, and this
+  recomputation also happens after compact and `/clear`. An AGENTS.md in a subfolder is attached when a file of that
+  folder is read again.
+- Up to 5 recently handled files are read again. A file over 5,000 tokens leaves only its path.
+- The output of a SessionStart hook with a `compact` matcher is added to the compacted context.
 
 **effort**
-- Opus 5.5, Sonnet 5.5, Haiku 5.5는 `low`~`max`를 지원하고 기본은 `medium`이다. Haiku 4.5는 effort를 지원하지 않는다.
-  지원하지 않는 단계를 고르면 그 아래에서 지원하는 가장 높은 단계를 쓴다(2026-11-01).
-- 별칭 `haiku`·`sonnet`·`opus`·`fable`은 Anthropic API에서 최신 버전으로, Bedrock·Google Cloud·Foundry에서는 이전
-  버전(예: `haiku` → Haiku 4.5)으로 해석된다. 메인과 같은 계열의 별칭은 메인의 정확한 모델로 실행된다(2026-11-01,
-  [model-config](https://code.claude.com/docs/en/model-config)).
-- 메인 세션에서 effort를 바꾸면 캐시가 무효화된다.
+- Opus 5.5, Sonnet 5.5 and Haiku 5.5 support `low` to `max`, and the default is `medium`. Haiku 4.5 does not support
+  effort. If an unsupported level is chosen, the highest supported level below it is used (2026-11-01).
+- The aliases `haiku`, `sonnet`, `opus` and `fable` resolve to the latest version on the Anthropic API and to an earlier
+  version on Bedrock, Google Cloud and Foundry (for example `haiku` -> Haiku 4.5). An alias of the same family as the
+  main model runs as the main's exact model (2026-11-01, [model-config](https://code.claude.com/docs/en/model-config)).
+- Changing effort in the main session invalidates the cache.
 
-**플러그인 eval** (v2.1.269+)
-- `claude plugin eval init`으로 케이스를 만들고 `claude plugin eval .`으로 돌린다.
-- 케이스마다 플러그인 있을 때와 없을 때 각 3회씩 실행한다. `tool_used: Skill` 판정 기준으로 트리거를 잰다.
-- 결과는 `evals/results/`에 저장되고, 사용량을 소모한다. 계정이 지원하면 HTML 리포트(점수, 프롬프트, 판정)를 기본으로
-  claude.ai에 게시하고, `--no-publish`를 주면 로컬에만 둔다(2.1.289 `--help`, 2026-10-05).
-- 각 실행은 격리된다. 대상 플러그인만 로드되고 사용자 설정, 훅, CLAUDE.md, 다른 플러그인, 메모리, 개인 스킬은 없다.
-  그래서 개인 스킬 사본을 끄지 않아도 그 사본이 없는 상태로 잰다. 하위 실행은 사용자의 인증으로 돌므로, 인증 변수가
-  지워지는 세션 안에서는 "Not logged in"으로 멈춘다(2026-10-01).
-- grader는 `regex`, `tool_used`, `tool_order`, `file_exists`, `llm`, `baseline`이다. `tool_used`의 `input_match`는 도구 입력의
-  JSON 문자열에 맞춘다. 관찰(2026-11-01, 2.1.316, 시험용 플러그인): `tool: Read`가 읽은 reference 경로를 판정했고, Windows
-  경로는 `"file_path":"D:\\...\\references\\target.md"`처럼 이스케이프되어 `[\\/]+` 패턴이 맞았다. 2-arm 실행에서 Skill
-  grader는 점수에서 빠지고, Read grader는 양쪽 arm에서 채점되어 플러그인 없는 arm에서 실패했다(`arm: with-only`로 지표만
-  남긴다). 실행 1회 비용은 sonnet 기준 약 0.05달러였다
+**Plugin eval** (v2.1.269+)
+- Create cases with `claude plugin eval init` and run with `claude plugin eval .`.
+- Each case runs 3 times with the plugin and 3 times without. The trigger is measured on the `tool_used: Skill` verdict.
+- Results are saved in `evals/results/`, and the run consumes usage. If the account supports it, an HTML report (scores,
+  prompts, verdicts) is published to claude.ai by default, and `--no-publish` keeps it local (2.1.289 `--help`,
+  2026-10-05).
+- Each run is isolated. Only the target plugin is loaded, with no user settings, hooks, CLAUDE.md, other plugins, memory
+  or personal skills. So even without turning off a personal copy of a skill, it is measured without that copy. Child
+  runs use the user's authentication, so inside a session where authentication variables are removed they stop with
+  "Not logged in" (2026-10-01).
+- The graders are `regex`, `tool_used`, `tool_order`, `file_exists`, `llm` and `baseline`. The `input_match` of
+  `tool_used` matches against the JSON string of the tool input. Observation (2026-11-01, 2.1.316, test plugin):
+  `tool: Read` graded the reference path that was read, and a Windows path was escaped like
+  `"file_path":"D:\\...\\references\\target.md"`, so the pattern `[\\/]+` matched. In a 2-arm run the Skill grader was
+  dropped from the score, and the Read grader was scored on both arms and failed on the arm without the plugin (use
+  `arm: with-only` to keep only the metric). One run cost about 0.05 dollars with sonnet
   ([plugin evals](https://code.claude.com/docs/en/plugin-evals)).
-- herdr 같은 터미널 다중화기에서 새로 연 pane은 인증을 물려받아 eval과 `claude -p`가 돈다(2026-11-01).
-- 관찰(2026-11-02, 2.1.316): `claude plugin eval .`이 대상 경로 아래 ignored 폴더(`.work/plugin-test/`)의 플러그인 사본까지
-  찾아 `--tag`에 맞는 그 사본들의 사례를 돌렸다. 결과 JSON의 `suite.plugins`와 사례 `dir`로 확인했다.
-- 실행이 실패해도 `min: 0`, `max: 0`인 `tool_used` 판정은 통과로 채점된다. 불리면 안 되는 케이스의 결과는 오류가 난
-  실행을 빼고 읽는다(2026-10-01).
-- 격리 실행에도 호스트 내장 스킬(`code-review`, `verify`, `debug` 등)은 있다. 대상 스킬이 안 불린 실행은 내장 스킬로
-  갔을 수 있으므로, 설명을 고치기 전에 실행 기록을 본다. 실행 기록은 `--keep-temp`를 줘야 남고(`out/trace.jsonl`),
-  `aggregate-result.json`에는 어떤 스킬이 불렸는지와 실행 모델이 남지 않는다(2026-10-01). Windows에서는 남긴 폴더를 권한으로
-  잠그지 못해 실행마다 경고가 나온다. `out/`과 `config/` 밖은 평가 대상이 쓴 것일 수 있으므로 그 안에서 git 같은 명령을
-  돌리지 않고, `out/`을 읽은 뒤 폴더를 지운다(2.1.289, 2026-10-05).
+- A new pane opened in a terminal multiplexer such as herdr inherits authentication, so eval and `claude -p` run
+  (2026-11-01).
+- Observation (2026-11-02, 2.1.316): `claude plugin eval .` also found plugin copies in an ignored folder
+  (`.work/plugin-test/`) under the target path and ran the cases of those copies that matched `--tag`. Confirmed from the
+  result JSON's `suite.plugins` and the case `dir`.
+- Even when a run fails, a `tool_used` verdict with `min: 0` and `max: 0` is scored as a pass. Read the result of a case
+  that must not be invoked with the errored runs excluded (2026-10-01).
+- Host built-in skills (`code-review`, `verify`, `debug` and so on) exist even in an isolated run. A run in which the
+  target skill was not invoked may have gone to a built-in skill, so look at the run record before changing the
+  description. The run record is kept only with `--keep-temp` (`out/trace.jsonl`), and `aggregate-result.json` does not
+  record which skill was invoked or the run model (2026-10-01). On Windows the kept folder cannot be locked by
+  permissions, so every run prints a warning. Anything outside `out/` and `config/` may have been written by the
+  evaluated target, so do not run commands such as git in that area, and delete the folder after reading `out/` (2.1.289,
+  2026-10-05).
 
-**훅**
+**Hooks**
 
-- PreToolUse 명령이 exit code 2로 끝나면 동작이 막히고 stderr가 Claude에게 전달된다. 다른 non-zero exit와 시간
-  초과(기본 600초)는 막지 않고 그대로 진행한다. devflow는 이 이벤트를 등록하지 않는다.
-- 맥락을 넣을 때는 `hookSpecificOutput.additionalContext`를 쓴다. SessionStart의 값은 문자열마다 10,000자까지이고,
-  넘으면 파일로 저장된 뒤 경로와 앞 2,000자만 들어간다.
-- Stop은 decision `block`과 reason(또는 exit 2)으로 종료를 막는다. 입력의 `stop_hook_active`로 반복을 막는다.
-  `decision`과 `reason`은 `hookSpecificOutput` 안이 아니라 최상위에 둔다. 입력에는 `stop_reason`과
-  `last_assistant_message`도 있고, 마지막 응답은 늦을 수 있는 트랜스크립트 대신 이 값으로 읽는다.
-- Windows에서 command 훅은 Git Bash가 있으면 Bash, 없으면 PowerShell로 돈다. `shell` 필드로 고를 수 있고, 두
-  플랫폼에서 같이 쓰는 훅은 `args`를 쓰는 exec form을 권한다.
-- SessionEnd는 세션이 끝날 때(`/clear`, `/resume` 포함) 돈다. 입력은 `session_id`, `cwd`, `reason`(clear, resume, logout,
-  prompt_input_exit, other)이다. 막을 수 없고, 모든 SessionEnd 훅이 합쳐 1.5초 안에 끝나야 한다(긴 timeout을 주면 60초까지
-  늘어난다). 플러그인 매니페스트의 `hooks`(파일 경로, 인라인, 배열)는 기본 `hooks/hooks.json`에 합쳐진다(2026-10-03 문서).
-- 세션 id(2026-10-03 실측): Bash의 `CLAUDE_CODE_SESSION_ID`는 그 세션 기록 파일 이름(= 훅의 `session_id`)과 같다. 문서에 없는
-  변수다. 서브에이전트의 셸도 부모와 같은 값을 갖는다(문서: 서브에이전트는 부모 session_id로 돌고 훅 입력에 `agent_id`가
-  붙는다). Bash와 훅에는 `CLAUDE_CODE_CHILD_SESSION=1`이 붙는다.
+- When a PreToolUse command ends with exit code 2, the action is blocked and stderr is passed to Claude. Other non-zero
+  exits and a timeout (default 600 seconds) do not block and proceed as is. devflow does not register this event.
+- To add context, use `hookSpecificOutput.additionalContext`. A SessionStart value is limited to 10,000 characters per
+  string; beyond that it is saved to a file and only the path and the first 2,000 characters are inserted.
+- Stop prevents ending with decision `block` and a reason (or exit 2). The input's `stop_hook_active` prevents loops.
+  `decision` and `reason` go at the top level, not inside `hookSpecificOutput`. The input also has `stop_reason` and
+  `last_assistant_message`, and the last response is read from this value instead of the transcript, which can be late.
+- On Windows, a command hook runs with Bash if Git Bash exists and with PowerShell otherwise. The `shell` field can
+  choose, and for a hook used on both platforms the exec form using `args` is recommended.
+- SessionEnd runs when a session ends (including `/clear` and `/resume`). The input is `session_id`, `cwd` and `reason`
+  (clear, resume, logout, prompt_input_exit, other). It cannot block, and all SessionEnd hooks together must finish
+  within 1.5 seconds (a long timeout extends this up to 60 seconds). The plugin manifest's `hooks` (file path, inline,
+  array) are merged into the default `hooks/hooks.json` (2026-10-03 documentation).
+- Session id (2026-10-03 measurement): Bash's `CLAUDE_CODE_SESSION_ID` equals the session record file name (= the hook's
+  `session_id`). It is a variable absent from the documentation. A subagent's shell has the same value as the parent
+  (documentation: a subagent runs with the parent's session_id and `agent_id` is added to the hook input). Bash and
+  hooks get `CLAUDE_CODE_CHILD_SESSION=1`.
 
-- 권한 문서는 Bash 규칙이 명령 텍스트를 맞출 뿐 프로그램 둘레의 보안 경계가 아니라고 한다(`bash -c`, 절대 경로는 지나감).
-  OS sandbox는 macOS, Linux, WSL2만 지원하고 네이티브 Windows는 지원하지 않는다.
-- Windows에서는 기본으로 Bash·PowerShell·훅 하위 프로세스 환경에서 `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
-  `ANTHROPIC_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`을 지운다(`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`). 그래서 세션 안에서
-  띄운 `claude -p`는 인증이 없다. 모델을 부르는 확인은 사용자 터미널에서 한다.
-- 세션 환경에 `CLAUDE_CODE_SESSION_ATTENDED`가 있지만 문서에 없다. 그래서 devflow는 무인 구간을 장부의 모드로만 판단한다.
+- The permissions documentation says a Bash rule matches command text and is not a security boundary around the program
+  (`bash -c` and absolute paths pass through). The OS sandbox supports only macOS, Linux and WSL2, and not native
+  Windows.
+- On Windows, by default the environment of Bash, PowerShell and hook subprocesses has `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_OAUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN` removed
+  (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`). So a `claude -p` started inside a session has no authentication. Run checks that
+  call the model in the user's terminal.
+- The session environment has `CLAUDE_CODE_SESSION_ATTENDED`, but it is not documented. So devflow judges an unattended
+  stretch only by the ledger's mode.
 
 **sandbox** (2026-10-02, [sandboxing](https://code.claude.com/docs/en/sandboxing))
-- macOS, Linux, WSL2에서 동작하고, 네이티브 Windows에서는 명령이 sandbox 없이 돈다.
-- 네트워크는 프록시의 `allowedDomains`(처음엔 비어 있음)로 허용한다. 하위 프로세스도 같은 제한을 받는다.
-- `excludedCommands`는 sandbox 밖에서 전체 권한으로 돈다. 명령 텍스트로 맞추고, 연결된 명령은 모두 맞아야 한다.
-  리다이렉트, `cd`, `$(...)`가 있으면 호출 전체가 sandbox 안에 남는다.
-- `credentials.files`와 `envVars`로 자격 증명 파일 읽기와 환경 변수를 막을 수 있다.
-- 훅은 부모 환경을 물려받는다(OTEL 변수 제외). SessionStart 훅은 `CLAUDE_ENV_FILE`로 이후 Bash 명령의 환경 변수를 정한다
-  ([hooks](https://code.claude.com/docs/en/hooks)). 훅과 sandbox의 관계는 문서에 없다.
+- It works on macOS, Linux and WSL2, and on native Windows commands run without a sandbox.
+- The network is allowed through the proxy's `allowedDomains` (empty at first). Subprocesses are under the same
+  restriction.
+- `excludedCommands` run outside the sandbox with full permissions. They match by command text, and all chained commands
+  must match. With a redirect, `cd` or `$(...)`, the whole call stays inside the sandbox.
+- `credentials.files` and `envVars` can block reading credential files and environment variables.
+- Hooks inherit the parent environment (except OTEL variables). A SessionStart hook sets the environment variables of
+  later Bash commands through `CLAUDE_ENV_FILE` ([hooks](https://code.claude.com/docs/en/hooks)). The documentation does
+  not cover the relation between hooks and the sandbox.
 
 ## Codex
 
 **AGENTS.md**
-- 전역(`~/.codex/AGENTS.override.md`가 있으면 그것, 없으면 `AGENTS.md`)을 먼저 읽는다.
-- 그다음 프로젝트 루트부터 작업 폴더까지 폴더마다 하나씩 이어 붙인다.
-- 합계 크기는 `project_doc_max_bytes`로 제한된다. 기본은 32KiB다.
+- The global one is read first (`~/.codex/AGENTS.override.md` if it exists, otherwise `AGENTS.md`).
+- Then one per folder is appended, from the project root down to the working folder.
+- The total size is limited by `project_doc_max_bytes`. The default is 32KiB.
 
-**스킬**
-- 위치: 작업 폴더부터 저장소 루트까지의 `.agents/skills`, `$HOME/.agents/skills`, `/etc/codex/skills`, 내장 스킬.
-  심볼릭 링크를 따라간다.
-- `name`과 `description`이 필수다. description이 맞으면 묵시적으로 호출한다.
-- 초기 목록은 컨텍스트의 2% 또는 8,000자까지다. 넘치면 description을 먼저 줄이고, 그래도 넘치면 스킬을 뺀다.
-- `agents/openai.yaml`: `interface`(표시용), `policy.allow_implicit_invocation`(기본 `true`), `dependencies`.
-- 끄려면 `config.toml`의 `[[skills.config]]`에 `enabled = false`를 둔다.
-- Claude 전용 frontmatter(`when_to_use`, `allowed-tools`, `model`, `effort`, `context`, `agent`, `hooks`, `paths` 등)가 있어도
-  오류 없이 목록에 `name`과 `description`으로 올라온다(2026-10-01).
+**Skills**
+- Locations: `.agents/skills` from the working folder up to the repository root, `$HOME/.agents/skills`,
+  `/etc/codex/skills`, and built-in skills. Symbolic links are followed.
+- `name` and `description` are required. If the description matches, the skill is invoked implicitly.
+- The initial listing is up to 2% of the context or 8,000 characters. When it overflows, descriptions are shortened
+  first, and if it still overflows, skills are dropped.
+- `agents/openai.yaml`: `interface` (for display), `policy.allow_implicit_invocation` (default `true`), `dependencies`.
+- To turn one off, put `enabled = false` under `[[skills.config]]` in `config.toml`.
+- Even with Claude-only frontmatter (`when_to_use`, `allowed-tools`, `model`, `effort`, `context`, `agent`, `hooks`,
+  `paths` and so on), the skill is listed with `name` and `description` without error (2026-10-01).
 
-**확인 도구와 셸**
-- `codex debug prompt-input`은 모델을 부르지 않고 모델이 받을 입력을 JSON으로 보여 준다. 스킬 목록과 지침 로드를 이것으로 확인한다.
-- `codex debug models`는 모델별 effort를 보여 준다. `gpt-6-luna`는 `low`~`max`(`xhigh` 포함)이고 기본은 `medium`이다(2026-10-01).
-- 관찰(2026-10-01, codex-cli 0.159.3, PowerShell 7.6.6): Windows 환경 맥락의 셸은 `powershell`로 표시됐고
-  명령은 PowerShell 7(`pwsh.exe -Command`)로 실행됐다. 이 관찰을 다른 버전·실행 경로의 자식 셸 보장으로 확대하지 않는다.
-- 관찰(2026-10-01, codex-cli 0.159.3): 기본 sandbox(`workspace-write`)의 명령 네트워크 제한으로
-  `gh`를 부르는 `devflow-state`가 실패했다.
-- 신뢰하지 않은 폴더에서 `codex exec`를 돌리면 전역 `config.toml`에 그 폴더의 `trust_level = "trusted"` 항목이 생길 수
-  있다(2026-10-01). 0.160.0 원본은 신뢰가 미정이고 실행이 작업 폴더에 쓸 수 있을 때만 기록한다
+**Inspection tools and shell**
+- `codex debug prompt-input` shows, as JSON and without calling the model, the input the model would receive. Use it to
+  check the skill listing and instruction loading.
+- `codex debug models` shows the effort per model. `gpt-6-luna` supports `low` to `max` (including `xhigh`) and its
+  default is `medium` (2026-10-01).
+- Observation (2026-10-01, codex-cli 0.159.3, PowerShell 7.6.6): the shell in the Windows environment context was shown
+  as `powershell`, and commands ran with PowerShell 7 (`pwsh.exe -Command`). Do not extend this observation to a
+  guarantee about the child shell in other versions or execution paths.
+- Observation (2026-10-01, codex-cli 0.159.3): because of the command network restriction of the default sandbox
+  (`workspace-write`), `devflow-state`, which calls `gh`, failed.
+- Running `codex exec` in an untrusted folder can add a `trust_level = "trusted"` entry for that folder to the global
+  `config.toml` (2026-10-01). The 0.160.0 source records it only when trust is undecided and the run can write to the
+  working folder
   ([thread_processor.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/app-server/src/request_processors/thread_processor.rs)).
-  `--sandbox read-only` 실행은 기록하지 않는다(0.160.0, 실행 전후 config.toml 해시로 확인). 작업 폴더 경로는
-  환경 맥락의 `<cwd>`로 모델에게 그대로 보인다(0.160.0, `debug prompt-input`).
-- Git Bash에서 `codex exec`는 stdin이 열려 있으면 시작하지 않고 기다릴 수 있다. `< /dev/null`로 닫는다.
-- 관찰(2026-10-01, codex-cli 0.159.3, PowerShell 7.6.6): 외부 명령의 출력을 변수나 파이프로 받을 때
-  콘솔 인코딩(`ks_c_5601-1987`)으로 읽어 UTF-8 한글이 깨졌고 직접 출력은 그대로였다. 받아야 하면 먼저
-  `[Console]::OutputEncoding = [Text.UTF8Encoding]::new()`를 둔다. 이 관찰을 모든 PowerShell 환경의 특성으로 일반화하지 않는다.
-- 관찰(2026-10-14, Codex 0.162.1 일반 TUI): `Get-Content`의 한글 링크 앵커 출력이 손상됐으며,
-  원문을 CP949로 인코딩한 뒤 UTF-8로 디코딩한 결과와 일치했다. 실제 자식 셸 버전과 인코딩을 선택한 프로세스는 포착하지 못했다.
-  명시적 PowerShell 7.6.6에서 비ASCII를 이스케이프한 JSON 문자열을 대조한 결과는 원문과 일치했다. 일반 TUI에서도
-  같은 `pwsh.exe`와 `login=false`를 명시한 진단에서 자식 셸 major 7과 원문 전체 일치를 확인했다.
-  절차는 [Windows 셸과 읽기 출력](../local-development.md#windows-셸과-읽기-출력)을 따른다. 환경 교정과 스킬 효율 개선을 구분한다.
+  A `--sandbox read-only` run does not record it (0.160.0, checked with the hash of config.toml before and after the
+  run). The working folder path is shown to the model as it is, as `<cwd>` in the environment context (0.160.0,
+  `debug prompt-input`).
+- In Git Bash, `codex exec` may wait without starting if stdin is open. Close it with `< /dev/null`.
+- Observation (2026-10-01, codex-cli 0.159.3, PowerShell 7.6.6): when the output of an external command was received
+  into a variable or a pipe, it was read in the console encoding (`ks_c_5601-1987`) and UTF-8 Korean was garbled, while
+  direct output was intact. If it must be received, first set `[Console]::OutputEncoding = [Text.UTF8Encoding]::new()`.
+  Do not generalize this observation to every PowerShell environment.
+- Observation (2026-10-14, Codex 0.162.1 normal TUI): the `Get-Content` output of a Korean link anchor was corrupted and
+  matched the result of encoding the original as CP949 and decoding it as UTF-8. The actual child shell version and the
+  process that chose the encoding were not captured. Comparing a JSON string with non-ASCII escaped in an explicit
+  PowerShell 7.6.6 matched the original. In a diagnostic that also specified the same `pwsh.exe` and `login=false` in the
+  normal TUI, child shell major 7 and a full match with the original were confirmed. Follow the procedure in
+  [Windows shell and read output](../local-development.md#windows-shell-and-read-output). Keep environment correction and skill
+  efficiency improvement separate.
 
-**플러그인**
-- `.codex-plugin/plugin.json`에 `skills`, `hooks`, `interface`를 둔다.
-- 마켓플레이스는 `.agents/plugins/marketplace.json`이다. 같은 저장소의 플러그인은
-  `source: {"source": "local", "path": "./..."}`로 가리키고, `policy`의 `installation`과 `authentication`이 필수다.
-- 설치하면 `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`으로 복사된다. `.git`과 ignore된 비공개 폴더까지
-  작업 트리 전체가 들어간다(2026-10-01, 임시 `CODEX_HOME`. 마켓플레이스 등록과 설치는 인증 없이 된다). `CODEX_HOME`이
-  원본 폴더 안에 있으면 복사가 자기 자신을 다시 복사해 끝나지 않는다.
-- 작업 폴더의 마켓플레이스는 자동으로 잡히지 않는다. `codex plugin marketplace list`에 나오려면
-  `codex plugin marketplace add <root>`로 등록해야 한다(2026-10-01).
-- 플러그인에 넣을 수 있는 것은 스킬, MCP 서버, 브라우저 확장, 훅이다. 문서에 에이전트 항목은 없다.
-- CLI에서는 `/plugins`로 설치하고 새 세션을 시작해야 반영된다. 셸에서는 `codex plugin add <plugin>@<marketplace>`로도
-  설치된다(0.159.3). 관찰(2026-10-03, 0.160.0, 다섯 번): 같은 플러그인을 다시 설치하면 캐시가 배포 worktree와 같아졌다.
-  worktree를 마켓플레이스로 등록하면 캐시의 `.git`은 그 worktree의 gitdir을 가리키는 파일이다.
-  현재 개발용 설치 명령은 [로컬 개발본 실행과 시험](../local-development.md#codex-설치와-실행)을 따른다.
-- 훅 신뢰는 `config.toml`의 `[hooks.state."<plugin>@<marketplace>:<훅 파일>:<이벤트>:<i>:<j>"]`에 `trusted_hash`로
-  남는다. 관찰(2026-10-01): `hooks.json` 항목은 그대로 두고 훅이 실행하는 스크립트만 바꿔 다시 설치하자, 다시 묻지
-  않고 새 스크립트가 실행됐다. 신뢰는 명령 줄에 묶이고 그 명령이 부르는 파일 내용에는 묶이지 않는다.
-- 관찰(2026-10-01, 설치본): 신뢰한 SessionStart 훅의 `additionalContext`는 세션 기록에 `developer` 메시지로 들어가고
-  화면에는 나오지 않는다. 훅이 받는 `CLAUDE_PLUGIN_ROOT`는 원본이 아니라 캐시 복사본이다.
-  `--dangerously-bypass-hook-trust`는 그 실행에서만 신뢰 없이 훅을 돌린다.
+**Plugins**
+- Put `skills`, `hooks` and `interface` in `.codex-plugin/plugin.json`.
+- The marketplace is `.agents/plugins/marketplace.json`. A plugin in the same repository is pointed at with
+  `source: {"source": "local", "path": "./..."}`, and `installation` and `authentication` under `policy` are required.
+- Installing copies to `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`. The whole work tree goes in,
+  including `.git` and ignored private folders (2026-10-01, temporary `CODEX_HOME`; marketplace registration and
+  installation work without authentication). If `CODEX_HOME` is inside the original folder, the copy copies itself again
+  and never finishes.
+- A marketplace in the working folder is not picked up automatically. To appear in `codex plugin marketplace list`, it
+  must be registered with `codex plugin marketplace add <root>` (2026-10-01).
+- What a plugin can contain is skills, MCP servers, browser extensions and hooks. The documentation has no agents item.
+- In the CLI, install with `/plugins` and start a new session for it to take effect. From the shell,
+  `codex plugin add <plugin>@<marketplace>` also installs (0.159.3). Observation (2026-10-03, 0.160.0, five times):
+  reinstalling the same plugin made the cache equal to the deployment worktree. If a worktree is registered as the
+  marketplace, the cache's `.git` is a file pointing to that worktree's gitdir. For the current development install
+  command, follow [Running and testing a local development build](../local-development.md#installing-and-running-codex).
+- Hook trust is recorded as `trusted_hash` in
+  `[hooks.state."<plugin>@<marketplace>:<hook file>:<event>:<i>:<j>"]` of `config.toml`. Observation (2026-10-01): when
+  the `hooks.json` entry was left as is and only the script the hook runs was changed and reinstalled, the new script
+  ran without asking again. Trust is bound to the command line and not to the contents of the files that command calls.
+- Observation (2026-10-01, installed copy): the `additionalContext` of a trusted SessionStart hook enters the session
+  record as a `developer` message and does not appear on screen. The `CLAUDE_PLUGIN_ROOT` the hook receives is the cache
+  copy, not the original. `--dangerously-bypass-hook-trust` runs hooks without trust for that run only.
 
-**훅**
-- 이 문서에서 다루는 훅은 SessionStart·Stop·SessionEnd다. 제품의 등록 이벤트와 범위는
-  [공통 hook 계약](../specs/hooks.md#등록-이벤트)이 정한다.
-- SessionEnd(2026-10-04, [hooks](https://learn.chatgpt.com/docs/hooks), 0.160.0 원본
-  [session_end.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/events/session_end.rs)): 입력의
-  `session_id`는 thread id이고 `reason`은 언제나 `other`다. 기본 1초, 최대 3초이며 `async`여도 동기로 돈다.
-  서브에이전트에서는 돌지 않고 막을 수 없다. 세션 런타임을 닫을 때(`shutdown_session_runtime`)만 돈다.
-  관찰(2026-10-04, 0.160.0, `codex exec`, 훅 신뢰 뒤): `devflow-state`로 Issue에 쓴 thread가 실행 종료 뒤 `sessions.json`에서 빠졌다.
-  관찰(2026-10-05, 0.160.0, 사용자 TUI): 연결 worktree에서 기록한 뒤 직접 `/clear`하면 이전 thread의 항목은 즉시 사라지지 않았고
-  다른 세션도 보존됐다. 원본의 `app/event_dispatch.rs` → `app/session_lifecycle.rs` →
-  [app/voice_owner.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/tui/src/app/voice_owner.rs)는 새 thread를
-  시작하고 이전 thread에 `thread_unsubscribe`를 보낸다. 구독 해제는 즉시 SessionEnd를 실행하는 종료가 아니다
-  ([훅 문서](https://learn.chatgpt.com/docs/hooks#sessionend)). 새 SessionStart 입력에는 이전 thread id가 없다.
-  관찰(2026-10-05, 0.160.0, 사용자 TUI): 자기 thread가 `note`와 `release`를 마친 뒤 `/clear`한 시험에서는
-  그 thread의 항목이 없어지고 별도로 작업 중인 세션은 남았다. 직접 `/clear` 시험과 구분한다.
-  0.144 이하에는 이 이벤트가 없고, 훅 파일의 모르는 이벤트 키는 무시된다(`HookEventsToml`에 `deny_unknown_fields`가 없다).
-- SessionStart 매처는 `startup|resume|clear|compact`다. 출력 맥락의 양은 `additionalContextLimit`로 제한한다.
+**Hooks**
+- The hooks covered in this document are SessionStart, Stop and SessionEnd. The product's registered events and scope are
+  set by the [common hook contract](../specs/hooks.md#registered-events).
+- SessionEnd (2026-10-04, [hooks](https://learn.chatgpt.com/docs/hooks), 0.160.0 source
+  [session_end.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/events/session_end.rs)): the
+  input's `session_id` is the thread id and `reason` is always `other`. The default is 1 second and the maximum 3
+  seconds, and it runs synchronously even if `async`. It does not run in subagents and cannot block. It runs only when
+  the session runtime is closed (`shutdown_session_runtime`). Observation (2026-10-04, 0.160.0, `codex exec`, after hook
+  trust): the thread that wrote to an Issue through `devflow-state` was gone from `sessions.json` after the run ended.
+  Observation (2026-10-05, 0.160.0, user TUI): after recording in a linked worktree and then running `/clear` directly,
+  the previous thread's entry did not disappear at once, and other sessions were also preserved. In the source,
+  `app/event_dispatch.rs` -> `app/session_lifecycle.rs` ->
+  [app/voice_owner.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/tui/src/app/voice_owner.rs) starts a
+  new thread and sends `thread_unsubscribe` to the previous thread. Unsubscribing is not a shutdown that runs
+  SessionEnd at once ([hooks documentation](https://learn.chatgpt.com/docs/hooks#sessionend)). The new SessionStart
+  input does not carry the previous thread id. Observation (2026-10-05, 0.160.0, user TUI): in a test where the thread
+  ran `/clear` after finishing its own `note` and `release`, that thread's entry was removed and a separately working
+  session remained. Keep this separate from the direct `/clear` test. This event does not exist in 0.144 and below, and
+  unknown event keys in the hook file are ignored (`HookEventsToml` has no `deny_unknown_fields`).
+- The SessionStart matcher is `startup|resume|clear|compact`. The amount of output context is limited by
+  `additionalContextLimit`.
 
-- Stop 출력은 Claude와 같이 최상위 `decision: "block"`과 `reason`(또는 exit 2와 stderr)이다. 다만 턴을 거부하는 것이
-  아니라 reason으로 새 이어가기 프롬프트를 만든다. 입력은 `turn_id`, `stop_hook_active`, `last_assistant_message`다.
-- 플러그인 훅의 경로 변수는 `PLUGIN_ROOT`, `PLUGIN_DATA`이고, 호환용으로 `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`도 준다.
-- 세션 id(2026-10-03 실측, `codex exec`): 셸에 `CODEX_THREAD_ID`와 `CODEX_SESSION_ID`가 같은 값으로 있다. Claude 안에서
-  띄우면 Claude의 변수도 물려받는다.
+- Stop output is, as in Claude, a top-level `decision: "block"` and `reason` (or exit 2 and stderr). But it does not
+  reject the turn; it builds a new continuation prompt from the reason. The input is `turn_id`, `stop_hook_active` and
+  `last_assistant_message`.
+- The path variables for plugin hooks are `PLUGIN_ROOT` and `PLUGIN_DATA`, and `CLAUDE_PLUGIN_ROOT` and
+  `CLAUDE_PLUGIN_DATA` are also given for compatibility.
+- Session id (2026-10-03 measurement, `codex exec`): the shell has `CODEX_THREAD_ID` and `CODEX_SESSION_ID` with the same
+  value. When started inside Claude, it also inherits Claude's variables.
 
-- 명령은 문자열만 받는다(Claude의 `args` exec form이 없다). `PLUGIN_ROOT`는 문자열 치환 없이 환경 변수로만 넘어온다.
-- Windows에서 훅 명령을 어떤 셸이 실행하는지는 문서에 없다. Windows 전용 명령은 `commandWindows`로 따로 줄 수 있다.
-  0.160.0 원본의 [build_hooks_config](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core/src/session/mod.rs)는
-  thread의 셸에서 훅 실행 인자를 얻는다. 그래서 devflow는 셸이 해석할 문법이 없는
-  `node -e "require(process.env.CLAUDE_PLUGIN_ROOT+'/...').main()"`을 두 호스트에 같이 쓴다. 이 명령은 cmd, pwsh 7,
-  Git Bash에서 같은 결과를 냈다(2026-10-01 관찰). 이 관찰이 각 셸의 현재 지원 범위 전체를 검증하지는 않는다.
-  PowerShell에서 따옴표로 감싼 절대 실행 경로를 호출할 때 `&`가 없으면 ParserError로 실패했다(2026-10-04 로컬 관찰).
-- `codex debug prompt-input`에는 SessionStart 훅의 출력이 나오지 않는다(신뢰하지 않은 플러그인 훅, 2026-10-01).
-- 플러그인 훅은 사용자가 검토하고 신뢰해야 실행된다. 문서는 도구 훅을 "완전한 경계가 아닌 가드레일"로 설명한다.
+- A command takes only a string (there is no `args` exec form as in Claude). `PLUGIN_ROOT` arrives only as an
+  environment variable, without string substitution.
+- Which shell runs a hook command on Windows is not documented. A Windows-only command can be given separately as
+  `commandWindows`. The 0.160.0 source's
+  [build_hooks_config](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core/src/session/mod.rs) gets the hook
+  execution arguments from the thread's shell. So devflow uses, on both hosts,
+  `node -e "require(process.env.CLAUDE_PLUGIN_ROOT+'/...').main()"`, which has no syntax a shell would interpret. This
+  command gave the same result in cmd, pwsh 7 and Git Bash (2026-10-01 observation). This observation does not verify
+  the whole current range of support of each shell. In PowerShell, calling a quoted absolute executable path without `&`
+  failed with a ParserError (2026-10-04 local observation).
+- `codex debug prompt-input` does not show the output of the SessionStart hook (untrusted plugin hook, 2026-10-01).
+- A plugin hook runs only after the user reviews and trusts it. The documentation describes tool hooks as guardrails
+  rather than a complete boundary.
 
-**서브에이전트**
-- 직접 요청하거나, AGENTS.md나 스킬 지시가 요청할 때 띄운다.
-- 내장 에이전트는 `default`, `worker`, `explorer`다.
-- 커스텀 에이전트는 `~/.codex/agents/*.toml` 또는 `.codex/agents/*.toml`에 둔다. 필수 항목은 `name`, `description`,
-  `developer_instructions`이고, `model`, `model_reasoning_effort`, `sandbox_mode`도 쓸 수 있다.
-- 서브에이전트는 부모의 sandbox를 물려받는다.
-- 띄울 때 지정한 값이 `agents.default_subagent_model`과 `agents.default_subagent_reasoning_effort`보다 우선한다.
-  다만 0.160.0의 `spawn_agent` 도구 설명은 서브에이전트가 기본으로 현재 모델을 물려받으며 "사용자가 명시적으로 다른 모델을
-  요청하지 않으면 `model`을 정하지 말라"고 한다(2026-10-04, 설치된 바이너리의 문자열). 관찰(2026-11-01, 0.166.0): 명시
-  요청한 4조합(gpt-6-luna `high`, gpt-6.1-terra `medium`·`high`, gpt-6.1-sol `high`)과, 모델 이름 없이 spec 역할 표만 읽게 한
-  실행 검증(gpt-6.1-terra `high`)이 서브에이전트 rollout의 `turn_context.model`·`effort`와 일치했다. 조합마다 한 번 확인했다.
-  동시 스레드 상한은 `agents.max_concurrent_threads_per_session`이다.
-- `spawn_agent`의 `fork_turns`는 기본 `"all"`로 부모 대화를 물려주고, `"none"`이면 부모 이력 없이 시작한다(Codex 세션의
-  도구 정의). 관찰(2026-11-01, 그 세션의 `collaboration.spawn_agent`, 조건마다 1회; 설치된 CLI는 0.166.0이나 도구 환경과의
-  대응은 미확인): 부모 대화에만 있던 표식을 `"all"` 자식은 답했고 `"none"` 자식은 찾지 못했다. `"none"` 자식은 이전 대화의
-  요약은 보인다고 답했으나 그 내용은 확인하지 않았다.
-- 관찰(2026-11-01, 0.166.0, 과거 devflow 작업 비교): 같은 지시서로 기계적 구현 3건은 gpt-6.1-terra `medium`과 gpt-6.1-sol
-  `high`가 모두 원래 PR의 회귀 테스트와 전체 테스트를 통과했다. 결함 4개를 심은 diff 3개의 리뷰(둘 다 `high`)는 3회
-  반복에서 둘 다 매번 4개를 찾았고, 거짓 지적은 terra 2(계획 요약의 모호한 문구에서 나온 같은 정밀도 지적)·sol 0이었다.
-  실패 기준이 하나씩 있는 실행 검증 2건은 3회 모두 둘 다 맞혔다(거짓 통과 0). terra의 비용은 역할별로 sol의 20~50%,
-  총 토큰은 53~154%(구현만 sol보다 많음), 시간은 45~78%였다(Standard 단가, cached 입력은 두 모델 모두 입력 단가의 5%).
-  구현은 한 번만 실행했다.
-- 관찰(같은 날, 결정 하나를 지운 구현 지시서 3건, terra `medium`·sol `high`): 지시서가 경우를 언급만 하고 동작을 정하지
-  않았을 때와 갈림길이 드러나지 않았을 때는 두 모델 모두 같은 쪽을 말없이 골라 `DONE`으로 끝냈다. 고칠 수 있는 파일
-  목록과 수용 기준이 어긋났을 때는 둘 다 목록 밖 파일을 고치지 않고 모순을 보고했다(terra `DONE_WITH_CONCERNS`, sol
+**Subagents**
+- They are spawned when asked for directly, or when AGENTS.md or a skill instruction asks.
+- The built-in agents are `default`, `worker` and `explorer`.
+- Custom agents are placed in `~/.codex/agents/*.toml` or `.codex/agents/*.toml`. The required entries are `name`,
+  `description` and `developer_instructions`, and `model`, `model_reasoning_effort` and `sandbox_mode` can also be used.
+- A subagent inherits the parent's sandbox.
+- A value given at spawn takes precedence over `agents.default_subagent_model` and
+  `agents.default_subagent_reasoning_effort`. However, the 0.160.0 `spawn_agent` tool description says a subagent
+  inherits the current model by default and "do not set `model` unless the user explicitly requests a different model"
+  (2026-10-04, strings in the installed binary). Observation (2026-11-01, 0.166.0): four explicitly requested
+  combinations (gpt-6-luna `high`, gpt-6.1-terra `medium` and `high`, gpt-6.1-sol `high`), and an execution check that
+  had the subagent read only the spec's role table without a model name (gpt-6.1-terra `high`), matched the subagent
+  rollout's `turn_context.model` and `effort`. Each combination was checked once. The concurrent thread cap is
+  `agents.max_concurrent_threads_per_session`.
+- `fork_turns` of `spawn_agent` defaults to `"all"` and passes on the parent conversation, and `"none"` starts without the
+  parent history (tool definition in a Codex session). Observation (2026-11-01, `collaboration.spawn_agent` of that
+  session, once per condition; the installed CLI is 0.166.0 but its correspondence with the tool environment is
+  unconfirmed): a `"all"` child answered a marker that existed only in the parent conversation, and a `"none"` child
+  could not find it. The `"none"` child said it could see a summary of the earlier conversation, but that content was not
+  checked.
+- Observation (2026-11-01, 0.166.0, comparison on past devflow tasks): for 3 mechanical implementations from the same
+  brief, gpt-6.1-terra `medium` and gpt-6.1-sol `high` both passed the original PR's regression tests and the full tests.
+  In the review of 3 diffs with 4 planted defects (both at `high`), both found all 4 every time over 3 repetitions, and
+  false findings were 2 for terra (the same precision finding from an ambiguous phrase in the plan summary) and 0 for
+  sol. In 2 execution checks with one failure criterion each, both were right in all 3 runs (0 false passes). Terra's
+  cost was 20-50% of sol's by role, total tokens 53-154% (only implementation was more than sol), and time 45-78%
+  (Standard pricing; cached input is 5% of the input price for both models). Implementation was run only once.
+- Observation (same day, 3 implementation briefs with one decision removed, terra `medium` and sol `high`): when the
+  brief only mentioned a case without deciding the behavior, and when the fork in the road was not visible, both models
+  silently chose the same side and finished with `DONE`. When the list of editable files and the acceptance criteria
+  disagreed, both reported the contradiction without editing files outside the list (terra `DONE_WITH_CONCERNS`, sol
   `NEEDS_DECISION`).
-- 모델 ID에는 최신 버전을 따르는 별칭이 없다. `gpt-6.1-terra`는 Codex CLI 0.159.0+가 필요하다(2026-11-01,
-  [models](https://learn.chatgpt.com/docs/models), 로컬 0.166.0).
-- 문서는 커스텀 에이전트를 이름으로 고를 수 있고, 내장 에이전트와 이름이 같으면 커스텀이 우선한다고 한다.
-- 실행 중인 서브에이전트를 조정, 중지, 닫을 수 있다.
-- 관찰(2026-10-01, 프로젝트 `.codex/agents/*.toml`): 커스텀 에이전트를 이름으로 고를 수 있고, 정의의 `model`과
-  `model_reasoning_effort`가 적용된다. `sandbox_mode = "read-only"`는 적용되지 않았다. 부모의 `workspace-write`를 그대로
-  물려받아 파일 쓰기가 성공했다. 끝난 에이전트에 후속 작업을 보내면 같은 에이전트가 이어서 받는다.
-- 실행 기록: rollout은 `~/.codex/sessions/YYYY/MM/DD/`와 `archived_sessions/`에 있다(2026-10-02 관찰).
-  `session_meta.source.subagent.thread_spawn`이 부모 스레드·깊이·`agent_role`을 담는다.
-  모델과 effort는 턴마다 `turn_context.model`과 `turn_context.effort`에 있다.
-- Windows에서 rollout 파일의 수정 시각은 생성 시각에 머문다(2026-10-03, 파일 5개, 마지막 레코드는 최대 1시간 40분 뒤).
-  원본은 새 파일을 열 때 수정 시각을 직접 설정한다. 수정 시각으로 기록이 새로 쓰였는지 판단할 수 없다.
+- Model IDs have no alias that follows the latest version. `gpt-6.1-terra` requires Codex CLI 0.159.0+ (2026-11-01,
+  [models](https://learn.chatgpt.com/docs/models), local 0.166.0).
+- The documentation says a custom agent can be chosen by name, and that a custom agent takes precedence when it has the
+  same name as a built-in agent.
+- A running subagent can be steered, stopped or closed.
+- Observation (2026-10-01, project `.codex/agents/*.toml`): a custom agent can be chosen by name, and the definition's
+  `model` and `model_reasoning_effort` apply. `sandbox_mode = "read-only"` did not apply. It inherited the parent's
+  `workspace-write` as it was and file writes succeeded. Sending follow-up work to a finished agent is received by the
+  same agent, which continues.
+- Run records: rollouts are in `~/.codex/sessions/YYYY/MM/DD/` and `archived_sessions/` (2026-10-02 observation).
+  `session_meta.source.subagent.thread_spawn` holds the parent thread, depth and `agent_role`. The model and effort are
+  in `turn_context.model` and `turn_context.effort` for each turn.
+- On Windows, a rollout file's modification time stays at its creation time (2026-10-03, 5 files, the last record up to
+  1 hour 40 minutes later). The source sets the modification time itself when opening a new file. The modification time
+  cannot show whether a record was newly written.
 
-**셸 환경과 sandbox** (2026-10-02, [config reference](https://learn.chatgpt.com/docs/config-file/config-reference))
-- `shell_environment_policy`: `inherit`(all, core, none), `set`, 필터. 기본적으로 이름에 KEY, SECRET, TOKEN이 든
-  변수를 뺀다.
-- `sandbox_mode`(read-only, workspace-write, danger-full-access), `sandbox_workspace_write.network_access`,
-  `windows.sandbox`(unelevated, elevated, mxc). 훅이 sandbox 안에서 도는지는 문서에 없다.
+**Shell environment and sandbox** (2026-10-02, [config reference](https://learn.chatgpt.com/docs/config-file/config-reference))
+- `shell_environment_policy`: `inherit` (all, core, none), `set`, filters. By default variables whose names contain KEY,
+  SECRET or TOKEN are removed.
+- `sandbox_mode` (read-only, workspace-write, danger-full-access), `sandbox_workspace_write.network_access`,
+  `windows.sandbox` (unelevated, elevated, mxc). Whether hooks run inside the sandbox is not documented.

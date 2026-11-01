@@ -1,106 +1,138 @@
-# 작업 장부 계약
+# Ledger contract
 
-작업 장부의 키, 무인 실행, 같은 Issue를 여러 세션이 쓸 때를 정한다. 장부를 두는 곳은
-[repository](repository.md#issue-폴더)가 정한다.
+Sets the ledger's keys, unattended runs, and what happens when several sessions write to the same Issue. Where the ledger
+lives is set by [repository](repository.md#issue-folder).
 
-## 작업 장부 키
+## Ledger keys
 
-`devflow-state ledger-update`와 키별 전용 명령으로 쓰고 재개 카드와 Stop 훅이 읽는다. `ledger-update`는 `stage`, `path`,
-`runMode`, `mode`, `task`의 값을 아래 정의대로 검사해 틀리면 거부한다. 장부는 1MiB 이하의 일반 파일일 때만 읽고, 그보다
-커지게 하는 쓰기는 거부해 장부를 그대로 둔다. 이 키들은 `null`이나 빈 값으로 지울 수 없다. 단계는 lifecycle의 10단계와 ship 뒤의 `done`이다.
+Written with `devflow-state ledger-update` and the per-key commands, and read by the resume card and the Stop hook.
+`ledger-update` checks the values of `stage`, `path`, `runMode`, `mode` and `task` against the definitions below and
+refuses wrong ones. The ledger is read only when it is a regular file of at most 1MiB, and a write that would make it
+larger is refused, leaving the ledger as it is. These keys cannot be cleared with `null` or an empty value. The stages are
+lifecycle's 10 stages and `done` after ship.
 
-| 키 | 담는 것 |
+| Key | Holds |
 |---|---|
-| `stage`, `path` | lifecycle의 단계와 경로(spike, bounded, architectural). 단계 기록은 [lifecycle](lifecycle.md#단계)의 ship 이후 예외와 [작업 루프](lifecycle.md#반복)를 따른다 |
-| `mode` | `interactive` 또는 `autonomous`. 무인 구간의 유일한 기준이다. 새 장부는 `ledger-update`로 정할 수 있고, 기존 장부의 전환은 `devflow-state mode <n> autonomous\|interactive < 이유`로만 한다([자율 실행](#자율-실행)) |
-| `modeChanged` | 마지막 mode 전환의 `{to, at, session}`. `mode` 명령(새 장부를 autonomous로 시작하는 `ledger-update` 포함)이 ISO 시각과 바꾼 세션의 id 해시를 기록하고, 재귀속은 `session`만 바꾼다([자율 실행](#자율-실행)). 재개 카드가 `Mode: <to> since <at>`로 보인다 |
-| `runMode` | M0~M3으로 시작한다(뒤에 설명을 붙여도 된다) |
-| `task` | `{current, total}`, 1 이상의 정수. 마지막 작업이 끝나면 current가 total을 넘을 수 있다 |
-| `base`, `lastCommit` | 위임 전 BASE, 장부가 기록한 마지막 커밋 |
-| `counts` | Stop 훅의 작업별 계속 횟수 `{continue}`. 옛 fix·promote 값은 읽거나 검증하지 않는다 |
-| `notes` | 수정·승격·경로 변경의 이유, 검증 증거, 자율 실행에서 게시하지 못한 내용, 한 줄씩(`note`로 덧붙인다) |
-| `decisions` | 열린 결정만. 내린 작업 결정은 체크포인트에, 오래 유지할 선택과 이유는 [현재 설계 결정](../design/current-decisions.md)에 둔다 |
-| `blocked` | 막힘이나 사람을 기다리는 사유(원격 쓰기 확인 포함). 비어 있지 않으면 자율 계속을 하지 않는다 |
-| `running` | 실행 중인 백그라운드 위임 이름 목록. `running <n> add <이름>`으로 넣고, 결과를 회수하고 종료를 확인하면 `done`으로 뺀다. 실패·timeout·중단은 자식 프로세스의 종료와 부분 효과까지 확인한다. 확인하지 못하면 기록을 남기고 독립 작업만 계속하며 다시 실행하지 않는다. 종료 확인 의무는 종료 권한이 아니다. 남은 항목은 Stop의 자율 계속을 막는다. `ledger-update`로 실행 중인 목록을 교체하지 않는다 |
-| `followups` | ship 때 제안할 후속 후보 |
+| `stage`, `path` | The lifecycle stage and path (spike, bounded, architectural). Stage records follow the post-ship exception in [lifecycle](lifecycle.md#stages) and the [task loop](lifecycle.md#loops) |
+| `mode` | `interactive` or `autonomous`. The only criterion for an unattended stretch. A new ledger may set it with `ledger-update`; an existing ledger switches only with `devflow-state mode <n> autonomous\|interactive < reason` ([unattended runs](#unattended-runs)) |
+| `modeChanged` | `{to, at, session}` of the last mode switch. The `mode` command (including a `ledger-update` that starts a new ledger as autonomous) records the ISO time and the id hash of the session that switched it, and reattribution changes only `session` ([unattended runs](#unattended-runs)). The resume card shows it as `Mode: <to> since <at>` |
+| `runMode` | Starts with M0 to M3 (a description may follow) |
+| `task` | `{current, total}`, integers of 1 or more. When the last task ends, current may exceed total |
+| `base`, `lastCommit` | The BASE before delegation, the last commit the ledger recorded |
+| `counts` | The Stop hook's per-task continue count `{continue}`. Old fix and promote values are neither read nor validated |
+| `notes` | Reasons for fixes, promotions and path changes, check evidence, and content not posted during unattended runs, one line each (appended with `note`) |
+| `decisions` | Open decisions only. Task decisions already made go in checkpoints; lasting choices and their reasons go in [current design decisions](../design/current-decisions.md) |
+| `blocked` | Blockers or reasons for waiting on a person (including confirming a remote write). When it is not empty, there is no unattended continuation |
+| `running` | Names of background delegations that are running. Added with `running <n> add <name>` and removed with `done` once the result is recovered and the exit confirmed. For failure, timeout or interruption, confirm the exit of child processes and partial effects too. If they cannot be confirmed, leave a record, continue only independent work and do not run it again. The duty to confirm the exit is not permission to terminate. Remaining entries block Stop's unattended continuation. `ledger-update` does not replace the running list |
+| `followups` | Follow-up candidates to propose at ship |
 
-같은 폴더의 `sessions.json`과 `ledger.lock`은 [동시 세션](#동시-세션)에 쓴다.
-옛 장부의 `testsLocked`, `testsFailing`, `pendingPosts`, `metrics`와 옛 집계 값은 무시하며 자동으로 지우거나 다시 쓰지 않는다.
-`ledger-update`도 `pendingPosts`를 바꾸지 않는다. 남은 게시 후보는 사용자가 읽고 승인한 것만 게시한다.
-작업 Issue의 장부를 읽을 수 없으면(링크나 파일인 Issue 폴더, 해석되지 않는 장부) 자율 모드일 수 있으므로 Issue에 쓰지 않는다.
-시험 잠금, 지표 명령, 게시 대기열·서명 키, 위임 결속, 차단 로그는 제공하지 않는다.
-`stage: ready`인 옛 장부는 읽지만 새 ledger-update에서 stage로 쓰면 plan에 통합되었다는 이유로 거부한다.
+`sessions.json` and `ledger.lock` in the same folder are used for [concurrent sessions](#concurrent-sessions).
+`testsLocked`, `testsFailing`, `pendingPosts`, `metrics` and old aggregate values in old ledgers are ignored, and are not
+automatically removed or rewritten.
+`ledger-update` does not change `pendingPosts` either. Of the remaining post candidates, only those the user read and
+approved are posted.
+When the working Issue's ledger cannot be read (an Issue folder that is a link or a file, a ledger that does not parse),
+it may be in autonomous mode, so nothing is written to the Issue.
+Test locks, metrics commands, a post queue or signing keys, delegation binding and block logs are not provided.
+An old ledger with `stage: ready` is read, but writing it as stage in a new ledger-update is refused with the reason that
+it was merged into plan.
 
-## 자율 실행
+## Unattended runs
 
-무인 구간은 장부의 `mode`가 `autonomous`일 때뿐이다(사용자 결정). 사용자가 자리를 비우거나 자율 실행을 지시할 때,
-또는 비대화형으로 띄우는 프롬프트가 그렇게 정할 때 라우터가 `devflow-state mode <n> autonomous < 이유`로 바꾼다.
-사람이 돌아오면 `devflow-state mode <n> interactive < 이유`로 되돌린 뒤 notes의 게시 후보를 사용자에게 보여 준다. 이유는 stdin의 첫 줄로
-필수이고, 명령은 잠금 안에서 mode를 바꾸며 `mode <값>: <이유>`를 notes에 덧붙이고 `modeChanged`에 값과 시각을 남긴다.
-같은 값으로의 전환은 거부한다. 다만 다른 세션이 이미 autonomous인 작업에 `mode <n> autonomous`를 하면 거부하지 않고
-`modeChanged.session`만 그 세션으로 바꾼다(재귀속, 이유는 notes에). 새 세션이 autonomous 작업을 이어받으면 사용자가
-있을 때 interactive로 바꾸고, 무인으로 이어 가면 먼저 재귀속한다. bypass(Claude)나 yolo(Codex) 같은 승인 설정은 사람이 있는지를 말하지 않으므로 기준으로
-쓰지 않는다. Stop 훅은 이때만 계속을 요청하고, 장부 잠금 아래에서 계속 횟수를 더한다.
+An unattended stretch exists only when the ledger's `mode` is `autonomous` (a user decision). When the user steps away or
+orders an unattended run, or when a prompt launched non-interactively says so, the router switches it with
+`devflow-state mode <n> autonomous < reason`.
+When the person returns, switch it back with `devflow-state mode <n> interactive < reason`, then show the user the post
+candidates in the notes. The reason is required as the first line of stdin, and the command changes the
+mode under the lock, appends `mode <value>: <reason>` to the notes and leaves the value and time in `modeChanged`.
+A switch to the same value is refused. But when `mode <n> autonomous` is run on a task another session already made
+autonomous, it is not refused and only `modeChanged.session` changes to this session (reattribution, with the reason in
+the notes). When a new session takes over an autonomous task, switch it to interactive if the user is present, and
+reattribute first if it continues unattended. Approval settings such as bypass (Claude) or yolo (Codex) do not say
+whether a person is present, so they are not used as the criterion. Only then does the Stop hook ask to continue, and it
+adds to the continue count under the ledger lock.
 
-- 조건: 단계가 build나 verify이고 열린 작업이 있으며, `blocked`, 열린 `decisions`, `running`이 비어 있다
-  ([작업 장부 키](#작업-장부-키)). 원격 쓰기 확인을 기다리는 것도 `blocked`에 적는다.
-- 같은 작업에 최대 2회(장부의 계속 횟수). 그 뒤로는 멈추고 검토를 받는다.
-- 작업 하나가 끝나면 검사, 커밋, 장부 갱신을 한다. `/clear`는 사용자만 실행할 수 있으므로, 무인 실행은 작업마다 구현
-  서브에이전트(M2)로 새 컨텍스트를 쓰고 메인은 장부와 커밋으로 이어 간다.
-- 무인 구간에서는 Issue에 게시하지 않고 push와 통합도 하지 않는다. 장부에 남겨 다음 대화형 턴에
-  한다([Issue 입출력](issues.md#issue-입출력)). 이는 devflow의 현행 무인 실행 정책이다.
-  `devflow-state`는 자율 모드의 모든 Issue 쓰기를 거부하며 사용자에게 보여 줄 내용을 장부 notes에 남기도록 안내한다.
-  대기 게시를 만들거나 자동으로 게시하지 않는다.
+- Condition: the stage is build or verify, there is an open task, and `blocked`, open `decisions` and `running` are empty
+  ([ledger keys](#ledger-keys)). Waiting to confirm a remote write is also recorded in `blocked`.
+- At most 2 times for the same task (the ledger's continue count). After that, stop and get a review.
+- When a task ends, check, commit and update the ledger. Only the user can run `/clear`, so an unattended run uses a fresh
+  context per task through an implementer (M2), and the main session carries on through the ledger and commits.
+- In an unattended stretch, nothing is posted to Issues and there is no push or integration. They are recorded in the
+  ledger and done in the next interactive turn ([Issue I/O](issues.md#issue-io)). This is devflow's current
+  unattended run policy.
+  `devflow-state` refuses every Issue write in autonomous mode and directs the caller to leave the content to show the
+  user in the ledger notes.
+  It does not create pending posts or post automatically.
 
-대화형 작업에서는 이 훅이 꺼져 있다.
+In interactive work this hook is off.
 
 ## task worktree
 
-worktree의 Issue는 그 worktree 브랜치의 Issue뿐이다. Issue 브랜치가 아닌 linked worktree는 독립이며 다른 Issue의 장부를 쓰지 않는다.
+A worktree's Issue is only the Issue of that worktree's branch. A linked worktree that is not on an Issue branch is
+independent and does not write another Issue's ledger.
 
-- Claude 격리 표지(`.claude/worktrees/agent-*` 폴더나 `worktree-agent-*` 브랜치)가 있으면 Issue에 결속하지 않는다.
-  `devflow-state`의 장부·Issue 쓰기·create·remark·release는 거부하고 메인 세션이 기록한다. 재개 카드는 메인 세션이
-  상태와 쓰기를 맡는다는 안내만 보인다. 옛 `delegates.json`은 읽거나 바꾸지 않는다.
-- 표지 없는 worktree는 자기 Issue 브랜치나 독립 worktree로 판단한다. 폴더와 브랜치 표지를 모두 바꾸면 격리 여부를
-  알 수 없는 한계는 그대로다. Stop은 자기 Issue 브랜치에서만 장부를 읽는다.
-- create: Issue 브랜치가 아닌 linked worktree에는 작업 Issue 장부가 없다. 주 작업 트리 브랜치의 Issue가 autonomous, 이 세션이
-  켰거나 이어받았거나(`modeChanged.session`) 30분 안에 쓴 autonomous 장부, 켠 세션을 모르는 autonomous 장부(세션 id를
-  모를 때 포함), 주 작업 트리가 detached HEAD(rebase 중일 수 있다)일 때의 autonomous 장부, 읽지 못한 Issue 폴더 목록·
-  Issue 폴더·장부·autonomous 장부의 `sessions.json`이 있으면 거부한다. reftable 저장소는 HEAD 파일이 stub이라 브랜치를
-  git에 묻고, 묻지 못하면 detached로 본다. 목록의 이름 그대로 보며 따라가지 않고, `i<n>` 이름의 링크·폴더가 아닌 항목,
-  `i<n>`과 대소문자만 다른데 같은 항목임을 file id로 보이지 못하는 것(id 0 포함), 다른 이름의 링크, 장부가 있거나 있는지
-  모르는 폴더, 목록의 이름으로 열리지 않거나 판정할 수 없는 항목, 두 번 나오는 이름, 같은 file id를 여는 두 이름, 안전한
-  정수 범위를 넘는 번호는 읽지 못한 것으로 본다. Windows short name은 다른 이름의 항목을 `i<n>`으로 열 수 있고, 짝 없는
-  surrogate 이름은 U+FFFD로 나와 다른 이름과 겹칠 수 있다. 장부는 판정한 그 목록의 Issue와, 목록과 별개로 `i<n>`으로 주 작업
-  트리 브랜치의 Issue를 읽고, `sessions.json`은 한 번만 읽는다. create는 같은 항목일 때만 Issue 폴더로 본다. 거부는 그 Issue나 항목을 알리되 항목 이름은 영문자·숫자·`_`·`.`·`-`로만
-  될 때만 보이고, 그 실행의 소유 세션이나 사용자에게 확인·복구를 맡기며, 다른 Issue의 mode 전환이나 이 검사가 없는 경로를
-  안내하지 않는다. detached HEAD의 create는 어디서든 거부한다. 작업 Issue가 없는 주 작업 트리의 create는 대화형으로
-  간주하는 한계가 그대로다([Issue 입출력](issues.md#issue-입출력)).
-- `release <n>`은 이 세션의 항목이 있을 때만 지우고, 없으면 폴더·잠금·파일을 만들지 않는다.
+- When a Claude isolation marker (a `.claude/worktrees/agent-*` folder or a `worktree-agent-*` branch) is present, the
+  worktree is not bound to an Issue.
+  `devflow-state` refuses ledger writes, Issue writes, create, remark and release, and the main session records them. The
+  resume card shows only a notice that the main session handles the state and writes. An old `delegates.json` is neither
+  read nor changed.
+- A worktree without a marker is judged as being on its own Issue branch or as an independent worktree. The limit that
+  isolation cannot be determined when both the folder and the branch markers are changed remains. Stop reads the ledger
+  only on its own Issue branch.
+- create: a linked worktree that is not on an Issue branch has no working Issue ledger. It refuses when the main work
+  tree branch's Issue is autonomous; when there is an autonomous ledger this session switched on or took over
+  (`modeChanged.session`) or wrote within 30 minutes; an autonomous ledger whose switching session is unknown (including
+  when the session id is unknown); an autonomous ledger while the main work tree is in a detached HEAD (it may be in the
+  middle of a rebase); or an unreadable Issue folder list, Issue folder, ledger, or `sessions.json` of an autonomous
+  ledger. In a reftable repository the HEAD file is a stub, so the branch is asked of git, and when that cannot be asked
+  it is treated as detached. Entries are taken by their exact name in the list and not followed; treated as unreadable
+  are: a link or non-folder entry named `i<n>`, an entry differing from `i<n>` only in case that cannot be shown by file id
+  to be the same entry (including id 0), a link with another name, a folder that has a ledger or may have one, an entry
+  that does not open by its listed name or cannot be judged, a name that appears twice, two names that open the same file
+  id, and a number beyond the safe integer range. A Windows short name can open an entry with another name as `i<n>`, and
+  an unpaired surrogate name comes out as U+FFFD and may collide with another name. The ledgers read are those of the
+  Issues in the list it judged and, separately from the list, the main work tree branch's Issue through `i<n>`, and
+  `sessions.json` is read only once. create treats it as an Issue folder only when it is the same entry. A refusal names
+  that Issue or entry, but shows an entry name only when it consists solely of letters, digits, `_`, `.` and `-`; it
+  leaves confirmation and recovery to the session that owns that run or to the user, and does not suggest switching the
+  mode of another Issue or a path without this check. create in a detached HEAD is refused anywhere. The limit that create
+  in the main work tree without a working Issue is treated as interactive remains ([Issue I/O](issues.md#issue-io)).
+- `release <n>` removes an entry only when this session has one; otherwise it creates no folder, lock or file.
 
-## 동시 세션
+## Concurrent sessions
 
-같은 기기의 두 세션(Claude와 Claude 또는 Codex)이 인계나 메시지로 한 Issue를 이어받을 때다.
+This is when two sessions on the same machine (Claude and Claude, or Codex) take over one Issue through a handoff or a
+message.
 
-- 장부 쓰기는 짧은 잠금(`ledger.lock`) 아래에서 읽고 고쳐 임시 파일로 바꿔 쓴다. 잠금 안에서는 네트워크를 쓰지 않으므로
-  10초 지난 잠금은 버리고, 2초 안에 잡지 못한 쓰기는 거부한다.
-- `ledger-update`는 보낸 최상위 키를 바꾸고, 덧붙이는 기록은 `note`로 한다(동시 기록 유실 방지).
-  둘은 Issue 브랜치에선 자기 장부만 쓰고, 다른 이름 브랜치(main 등)에선 번호의 장부를 쓰되 `note`는
-  장부가 있어야 한다. detached HEAD(rebase 중일 수 있음)와 Issue 브랜치가 아닌 linked worktree는 거부한다.
-- 쓰기(Issue와 장부)는 세션을 `sessions.json`에 남긴다(id 해시와 시각). 다른 세션이 30분 안에 쓰고 해제하지 않았으면
-  재개 카드와 쓰기 출력이 경고한다. 거부하지 않고, 읽기는 세지 않는다.
-- [현행 세션 id 전달](hooks.md#두-호스트의-공통-계약): CLI는 `CODEX_THREAD_ID` → `DEVFLOW_SESSION_ID` →
-  `CLAUDE_CODE_SESSION_ID` 중 비어 있지 않은 첫 값을 쓴다. 중첩 host도 이 순서다. 서브에이전트는 부모 id이며, id가 없으면 기록·경고하지 않는다.
-- 인계할 때는 검사·커밋·상태 기록과 위임 작업을 마친 뒤, 마지막 장부 동작으로 `release <n>`을 실행한다. `/clear`로
-  작업 단위를 넘길 때도 이 순서를 따른다. 그다음 사용자에게 다음 행동을 보고하고 `/clear`를 맡긴다. 해제 뒤 다시 쓰면
-  세션이 재등록되므로 추가 기록은 해제 전에 마친다. Codex의 직접 `/clear`는 이전 thread를 즉시 종료하지 않으며 이전
-  id도 새 훅에 주지 않아 자동 해제를 보장하지 않는다([관찰](../research/host-facts.md#codex)). 다른 세션을 추측해서
-  지우지 않는다. 세션이 끝나면 두 호스트의 SessionEnd 훅이 모든 Issue에서 뺀다(Claude는
-  `/clear` 포함). 훅이 돌지 않으면(신뢰하기 전의 Codex 훅, 비정상 종료) 30분 만료에 맡긴다. 그래서 다른 세션(다른
-  호스트, headless 실행)에 맡기는 지시서는 끝에 그 세션이 `release <n>`을 실행하게 한다. 빠뜨리고 훅도 돌지 않으면
-  끝난 세션에 대한 경고가 30분 동안 이어진다.
-- SessionEnd는 외부 `git` 없이 로컬 역방향 연결로 주 작업 트리를 확인해 조회 지연·실패로 해제를 놓치지 않는다.
-  미확인 연결로 다른 저장소를 해제하지 않는다. 읽은 JSON 객체에서 해당 id만 제거하고 다른 값·잠긴 장부는 보존한다.
-  명시 release의 잠금·읽기·재기록 실패는 해제 실패로 알리며 잠금 충돌로 단정하지 않는다.
-- Issue 쓰기는 잠그지 않는다. 다른 기기의 세션은 모르고, 한 호스트 안에서 띄운 다른 호스트(Codex 안의 Claude)는 바깥
-  세션으로 보인다.
+- Ledger writes read, modify and replace through a temporary file under a short lock (`ledger.lock`). No network is used
+  inside the lock, so a lock older than 10 seconds is discarded, and a write that cannot take the lock within 2 seconds is
+  refused.
+- `ledger-update` changes the top-level keys it is sent, and appended records use `note` (to prevent losing concurrent
+  records).
+  On an Issue branch both write only their own ledger; on a branch with another name (such as main) they write the
+  ledger of the number, but `note` needs the ledger to exist. A detached HEAD (it may be in the middle of a rebase) and a
+  linked worktree not on an Issue branch are refused.
+- Writes (to the Issue and the ledger) leave the session in `sessions.json` (id hash and time). When another session
+  wrote within 30 minutes and did not release, the resume card and the write output warn. This does not refuse, and reads
+  are not counted.
+- [Current session id passing](hooks.md#common-contract-of-both-hosts): the CLI uses the first non-empty value of
+  `CODEX_THREAD_ID` → `DEVFLOW_SESSION_ID` → `CLAUDE_CODE_SESSION_ID`. Nested hosts follow the same order. A subagent has
+  the parent's id; without an id, nothing is recorded or warned.
+- At a handoff, after finishing checks, commits, state records and delegated work, run `release <n>` as the last ledger
+  action. Follow this order when passing a unit of work on with `/clear` as well. Then report the next action to the user
+  and leave `/clear` to them. Writing again after the release registers the session again, so finish additional records
+  before releasing. A direct `/clear` in Codex does not end the previous thread right away and does not give the previous
+  id to the new hook, so automatic release is not guaranteed ([observation](../research/host-facts.md#codex)). Do not
+  remove another session by guessing. When a session ends, the SessionEnd hook of both hosts removes it from every Issue
+  (in Claude, including `/clear`). When the hook does not run (a Codex hook before it is trusted, an abnormal exit), it
+  is left to the 30-minute expiry. So a brief handed to another session (another host, a headless run) has that session
+  run `release <n>` at the end. If that is missed and the hook does not run either, warnings about the ended session
+  continue for 30 minutes.
+- SessionEnd confirms the main work tree through the local back link without an external `git`, so lookup delays or
+  failures do not make it miss the release.
+  It does not release another repository through an unconfirmed link. It removes only that id from the JSON object it
+  read and preserves other values and locked ledgers.
+  A lock, read or rewrite failure of an explicit release is reported as a release failure, not assumed to be a lock
+  conflict.
+- Issue writes are not locked. Sessions on other machines are unknown, and another host launched inside a host (Claude
+  inside Codex) appears as the outer session.

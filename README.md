@@ -19,7 +19,7 @@ verify, and leaves checking to review and CI rather than blocking hooks.
 
 Install `devflow@wotjr1649` from the publisher's shared
 [marketplace](https://github.com/wotjr1649/marketplace). Its two host catalogs point at the same release tag in this
-repository. Installation and updates are owner actions; see the [distribution contract](docs/specs/repository.md#배포).
+repository. Installation and updates are owner actions; see the [distribution contract](docs/specs/repository.md#distribution).
 
 Claude Code:
 
@@ -50,7 +50,7 @@ codex plugin add devflow@wotjr1649
 
 Start a new session after updating. A new tag or GitHub Release alone does not change the catalog; the publisher
 updates both catalog entries after the release passes validation. The plugin manifest version must also change for
-Claude Code to replace its cached copy. See [release and rollback](docs/specs/repository.md#릴리스와-롤백).
+Claude Code to replace its cached copy. See [release and rollback](docs/specs/repository.md#release-and-rollback).
 If Codex registers a local checkout of the shared catalog, use the
 [local catalog update procedure](https://github.com/wotjr1649/marketplace#codex에-로컬-catalog-checkout을-등록한-경우).
 
@@ -58,7 +58,7 @@ For local development, this repository's catalogs are named `devflow-local`, wit
 `devflow@devflow-local`. Codex installs from that catalog; Claude Code can load the same clean worktree directly
 with `--plugin-dir`, displayed as `devflow@inline`. See the [local development runbook](docs/local-development.md)
 for isolated profiles, startup, source and cache updates, and verification. This development path is not the
-release channel ([distribution contract](docs/specs/repository.md#배포)).
+release channel ([distribution contract](docs/specs/repository.md#distribution)).
 
 ## Verify a local checkout
 
@@ -111,10 +111,10 @@ profiles and what to verify for each kind of change. The resume card and session
   public text filter, and test changes are left to review. Keep credential scope and host permissions appropriate.
 - Codex uses its built-in agents; this plugin does not install Codex agent definitions. A report-only instruction
   does not restrict their tools. See [host facts](docs/research/host-facts.md#codex).
-- Before clearing a Codex session, complete the [handoff](docs/specs/ledger.md#동시-세션): release its record last,
+- Before clearing a Codex session, complete the [handoff](docs/specs/ledger.md#concurrent-sessions): release its record last,
   then use `/clear`. Clearing alone can leave the previous session's warning until expiry.
 
-Version changes happen only during an explicitly requested release; see [version policy](docs/specs/repository.md#버전).
+Version changes happen only during an explicitly requested release; see [version policy](docs/specs/repository.md#version).
 Installing, trusting hooks and updating a host remain owner actions.
 
 ## License

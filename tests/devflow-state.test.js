@@ -464,10 +464,10 @@ test('the ledger spec and unattended skill describe the mode command (#32)', () 
   const skill = fs.readFileSync(path.join(__dirname, '../skills/devflow/SKILL.md'), 'utf8')
   const row = spec.split('\n').find(line => line.startsWith('| `mode` |'))
   assert.match(row, /devflow-state mode/)
-  const autonomous = spec.split('## 자율 실행')[1].split('## 동시 세션')[0]
-  assert.match(autonomous, /devflow-state mode <n> autonomous < 이유/)
-  assert.match(autonomous, /devflow-state mode <n> interactive < 이유/)
-  assert.match(autonomous, /stdin의 첫 줄/)
+  const autonomous = spec.split('## Unattended runs')[1].split('## Concurrent sessions')[0]
+  assert.match(autonomous, /devflow-state mode <n> autonomous < reason/)
+  assert.match(autonomous, /devflow-state mode <n> interactive < reason/)
+  assert.match(autonomous, /first line of stdin/)
   // The router points to references/sessions.md for mode switches, which holds the commands (#74).
   assert.match(skill, /\[sessions\]\(\.\.\/\.\.\/references\/sessions\.md\)[^]*?switching unattended mode/)
   const sessions = fs.readFileSync(path.join(__dirname, '../references/sessions.md'), 'utf8')
@@ -527,7 +527,7 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
 // gh api --include prints a status line, headers, a blank line, then the body; real gh output uses CRLF.
 const withScopes = (scopes, eol = '\r\n') =>
   ['HTTP/2.0 200 OK', 'Content-Type: application/json', ...(scopes === null ? [] : [`X-Oauth-Scopes: ${scopes}`]), 'X-Github-Request-Id: ABCD'].join(eol) + eol + eol
-const WARNING = /^Warning: gh uses a broad OAuth or classic token \(scopes: (.*)\) that reaches every repository it can; use a fine-grained token limited to the repositories agents work on \(docs\/specs\/issues\.md, Issue 입출력\)\.$/m
+const WARNING = /^Warning: gh uses a broad OAuth or classic token \(scopes: (.*)\) that reaches every repository it can; use a fine-grained token limited to the repositories agents work on \(docs\/specs\/issues\.md, Issue I\/O\)\.$/m
 
 test('card warns right after the top line when gh uses a repo-wide token (CRLF headers)', () => {
   const out = state.card(env(repo(), { headers: withScopes('repo, read:org') }), '.')

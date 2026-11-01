@@ -1,56 +1,71 @@
-# 공통 hook 계약
+# Common hook contract
 
-두 호스트가 공유하는 SessionStart, Stop, SessionEnd와 입력 읽기·세션 해제를 정한다.
-Issue 입출력은 [issues](issues.md), 장부와 계속·해제 조건은 [ledger](ledger.md)가 정한다.
+Sets SessionStart, Stop and SessionEnd shared by both hosts, along with input reading and session release.
+Issue I/O is set by [issues](issues.md), and the ledger and the continue and release conditions by [ledger](ledger.md).
 
-## 두 호스트의 공통 계약
+## Common contract of both hosts
 
-아래는 제품이 충족해야 하는 계약이며, 현행 세션 전달은 아직 미충족이다.
-Claude Code와 Codex가 `hooks/hooks.json` 한 정의와 `hooks/devflow-hook.js` 한 진입점·정책을 함께 쓰도록 한다.
-호스트 전용 이벤트 등록, 카드·계속·해제 정책, 파일·설정·환경 쓰기를 두지 않는다. 같은 의미의 입력을 공통 검사로
-정규화하는 것은 허용하지만, 전용 효과를 다른 파일로 옮기는 것은 공통화가 아니다. 호스트별 packaging metadata는 별개다.
+The following is a contract the product must meet; current session passing does not meet it yet.
+Claude Code and Codex share one definition in `hooks/hooks.json` and one entry point and policy in
+`hooks/devflow-hook.js`.
+There are no host-specific event registrations, card, continue or release policies, or file, setting or environment
+writes. Normalizing inputs with the same meaning through common checks is allowed, but moving a host-specific effect into
+another file is not making it common. Per-host packaging metadata is separate.
 
-- 세션 귀속을 바꿀 때는 hook 입력과 CLI가 같은 세션을 가리키는지, 중첩 실행과 동시 writer에서 다른 세션에 쓰거나
-  그 기록을 해제하지 않는지 양쪽 실제 호스트에서 확인한다. 최근 writer·PID 차이·마지막 카드로 세션을 추정하지 않는다.
-- 이벤트를 받으면 그 입력의 세션만 처리한다. 호스트가 이벤트를 발생시키는 시점의 차이를 전용 가상 이벤트로 감추지
-  않는다. 두 호스트 모두 인계·clear 전에 [명시 release](ledger.md#동시-세션)를 마치며 SessionEnd 정리는 보조 경로다.
-- 증거는 후보 SHA·실제 로딩·호스트 버전·시나리오·관측 범위에 연결한다. 소스 시험, 설치 파일 대조, 실제 도구 호출의
-  카드 출력·계속 횟수·귀속·해제, workflow와 인도는 별도로 판정한다. 단일 파일 공유나 설치 목록은 실행 효과의 증거가 아니다.
-  미발화·오류는 실패로 남기고, 미지원·미실행·로딩 불일치와 구분한다.
+- When changing session attribution, confirm on both real hosts that the hook input and the CLI point to the same
+  session, and that nested runs and concurrent writers do not write to another session or release its records. Do not
+  infer the session from the most recent writer, a PID difference or the last card.
+- On receiving an event, handle only that input's session. Do not hide differences in when hosts fire events behind
+  host-specific virtual events. Both hosts finish an [explicit release](ledger.md#concurrent-sessions) before a handoff or clear,
+  and SessionEnd cleanup is a secondary path.
+- Tie evidence to the candidate SHA, actual loading, host version, scenario and scope of observation. Source tests,
+  comparison against installed files, the card output, continue counts, attribution and release of real tool calls, and
+  workflow and delivery are judged separately. Sharing a single file or an installation list is not evidence of runtime
+  effect.
+  Record a hook that did not fire or errored as a failure, and keep it distinct from unsupported, not run and loading
+  mismatch.
 
-확인된 편차: SessionStart의 `shareSessionId()`는 devflow 저장소에서 안전한 id를 받고 `CLAUDE_ENV_FILE`이 있으며
-`CODEX_THREAD_ID`가 없을 때만 환경 파일에 `DEVFLOW_SESSION_ID`를 쓴다. 이 전용 효과는 공통 계약을 충족하지 않는다.
-소비처는 CLI의 writer 기록·해제·위임 귀속이다([ledger](ledger.md#동시-세션)). 이 보호는 대체 전달의
-정상·오귀속·동시성·정리 검증 전에는 제거하지 않는다. 문서 채택만으로 실제 호스트의 전달·귀속이 검증되지는 않는다.
-상속된 `CODEX_THREAD_ID`가 남아 있으면 CLI는 그 값을 우선하므로 안쪽 세션의 hook 입력과 귀속이 어긋날 수 있다.
-이는 코드의 조건부 위험이며, 실제 상속·오귀속 여부는 대상 호스트의 중첩 시나리오에서 따로 검증한다.
+Confirmed deviation: SessionStart's `shareSessionId()` writes `DEVFLOW_SESSION_ID` to the environment file only when it
+receives a safe id in a devflow repository, `CLAUDE_ENV_FILE` exists and `CODEX_THREAD_ID` is absent. This
+host-specific effect does not meet the common contract.
+Its consumers are the CLI's writer records, releases and delegation attribution ([ledger](ledger.md#concurrent-sessions)). This
+protection is not removed before an alternative passing is verified for the normal case, misattribution, concurrency
+and cleanup. Adopting the document alone does not verify passing or attribution on real hosts.
+When an inherited `CODEX_THREAD_ID` remains, the CLI prefers it, so the inner session's hook input and attribution may
+diverge.
+This is a conditional risk in the code; whether inheritance and misattribution actually happen is verified separately in
+the target host's nested scenario.
 
-## 등록 이벤트
+## Registered events
 
-`hooks/hooks.json`에는 다음 세 이벤트만 등록한다.
+`hooks/hooks.json` registers only the following three events.
 
-| 이벤트 | 동작 |
+| Event | Action |
 |---|---|
-| SessionStart (`startup`, `resume`, `clear`, `compact`) | 재개 카드를 주입하고 세션 id를 공유한다. 카드 실패는 이유로 보이며 상태를 추정하지 않는다 |
-| Stop | 자기 Issue의 자율 작업이 열려 있고 기다리는 항목이 없으면 작업당 최대 2회 계속을 요청한다. 횟수는 장부 잠금 아래에서 더하며, 오류나 잠금 충돌이면 멈춘다 |
-| SessionEnd | 입력 세션만 모든 Issue의 세션 기록에서 해제한다. 잠금을 기다리지 않고 다른 세션 기록은 보존한다 |
+| SessionStart (`startup`, `resume`, `clear`, `compact`) | Injects the resume card and shares the session id. A card failure shows as a reason, and no state is inferred |
+| Stop | When its own Issue's unattended work is open and nothing is waiting, asks to continue at most 2 times per task. The count is added under the ledger lock, and it stops on an error or a lock conflict |
+| SessionEnd | Releases only the input session from the session records of every Issue. It does not wait for the lock and preserves other sessions' records |
 
-PreToolUse와 PostToolUse는 등록하지 않는다. 훅은 Issue 쓰기·시험 파일·프로필·장부 편집을 차단하지 않고,
-셸 명령·HTTP·GraphQL·MCP 입력을 분석하지 않으며, 차단 기록이나 편집 후 doctor 감사도 만들지 않는다.
-`devflow-state`를 거치는 Issue 공개 필터와 자율 모드의 쓰기 거부는 그 CLI의 동작이며 훅의 강제가 아니다.
+PreToolUse and PostToolUse are not registered. The hooks do not block Issue writes or edits to test files, profiles or
+the ledger, do not analyze shell commands or HTTP, GraphQL or MCP input, and create no block records or post-edit doctor
+audits.
+The Issue public filter and the refusal of writes in autonomous mode through `devflow-state` are that CLI's behavior, not
+enforcement by the hooks.
 
-## 입력과 안전한 파일 읽기
+## Input and safe file reads
 
-훅은 표준 입력을 이벤트 루프의 스트림으로 최대 3초 동안 읽는다. 입력이 끝나지 않거나 JSON을 읽을 수
-없으면 출력 없이 끝나며 도구 호출을 거부하지 않는다. 분석 자식 프로세스나 셸 분석 기한은 없다.
+The hook reads standard input as a stream on the event loop for at most 3 seconds. When the input does not end or the
+JSON cannot be read, it ends without output and does not deny the tool call. There is no analysis child process or
+shell-analysis deadline.
 
-SessionEnd는 git 프로세스 없이 로컬 메타데이터와 되돌림 링크로 주 작업 트리를 증명한다
-([repository](repository.md#issue-폴더)). 메타데이터는 최대 4 KiB인 일반 파일만 읽고 링크·특수 파일·큰 파일을
-읽지 않는다. 열기 전후의 파일 종류·동일 파일과 읽기 크기를 확인해 교체·성장도 제한한다. 공유 경로로 적힌
-파일은 열지 않으며, 폴더 링크는 그 링크의 글자로 검사한다. 링크 사슬은 8개까지 확인하고 넘으면 공유 경로로
-취급한다. Windows의 드라이브 문자 앞 긴 경로 접두사는 로컬로 본다. 공유에 연결한 드라이브나 junction 등
-로컬처럼 보이는 경로가 응답하지 않으면 호스트 제한 시간까지 지연될 수 있다.
+SessionEnd proves the main work tree through local metadata and back links without a git process
+([repository](repository.md#issue-folder)). It reads metadata only from regular files of at most 4 KiB and does not read
+links, special files or large files. It checks the file type, file identity and read size before and after opening to
+limit replacement and growth as well. It does not open a file given as a shared path, and checks a folder link by the
+text of that link. It follows link chains up to 8 links and treats a longer chain as a shared path. On Windows, a long
+path prefix before a drive letter is treated as local. When a path that looks local, such as a drive mapped to a share
+or a junction, does not respond, it may be delayed until the host's time limit.
 
-SessionEnd는 실제 `.work`·Issue 폴더만 다루고, 세션 기록의 읽기·해제는 `devflow-state`의 안전한 reader와
-잠금을 사용한다. 위조된 worktree 연결로 다른 저장소의 세션을 해제하지 않는다. 실제 호스트의 SessionEnd
-발화 여부와 전달된 세션 id는 별도 검증 대상이다.
+SessionEnd handles only real `.work` and Issue folders, and reads and releases session records with `devflow-state`'s
+safe reader and lock. It does not release another repository's sessions through a forged worktree link. Whether
+SessionEnd actually fires on real hosts, and the session id it is given, are verified separately.

@@ -24,7 +24,7 @@ ship leaves the Issue open.
    return to the Issue branch, reopen a prematurely closed Issue and restore its state: a failed check returns to
    build, anything else to ship.
    With `pr-ci`, a merge is not done until it is seen: in step 3 keep `단계: ship` with `남음: PR 병합 확인` and leave the
-   Issue open; merge by the project's rule ([devflow](../docs/specs/repository.md#통합과-ci)); confirm the merged SHA on
+   Issue open; merge by the project's rule ([devflow](../docs/specs/repository.md#integration-and-ci)); confirm the merged SHA on
    the target branch and the checks the project requires after merge; then, from the Issue branch, set `단계: done`
    and close the Issue only when every criterion is checked. A partial ship keeps the Issue open with its remaining
    scope in the state block. No closing keyword goes in the PR body or any commit message it merges, so GitHub does

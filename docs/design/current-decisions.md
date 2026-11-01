@@ -156,7 +156,7 @@ readable credentials remain.
 
 **Revisit when.** Review when a needed external effect or target goes beyond existing authority, when a host provides a
 means that actually isolates credentials and execution, or when the trust boundary of delegation attribution or posting
-targets changes. A review is not authority to skip protections or required checks.
+targets changes. Revisiting this decision is not authority to skip protections or required checks.
 
 ## Instructions and protections
 

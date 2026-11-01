@@ -199,7 +199,7 @@ Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이�
 
 | 장치 | Claude Code | Codex |
 |---|---|---|
-| 구현·리뷰 에이전트 | 플러그인 `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`) | 내장 explorer·worker, 띄울 때 모델·effort 지정 |
+| 구현·리뷰 에이전트 | 플러그인 `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`) | 내장 explorer·worker를 `fork_turns: "none"`으로 띄우고 모델·effort 지정. 기본 `"all"`은 부모 대화를 물려준다 |
 | 재개 카드·자율 계속·세션 해제 | [hooks](hooks.md#등록-이벤트) | 같은 파일 |
 
 Codex의 SessionEnd는 서브에이전트에서 돌지 않는다. 훅이 돌지 않고 끝난 세션은 30분 뒤 만료된다([동시 세션](ledger.md#동시-세션)).

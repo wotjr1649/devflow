@@ -324,8 +324,8 @@ original in [sources](sources.md) again and fix this document.
   the whole current range of support of each shell. In PowerShell, calling a quoted absolute executable path without `&`
   failed with a ParserError (2026-10-04 local observation).
 - `codex debug prompt-input` does not show the output of the SessionStart hook (untrusted plugin hook, 2026-10-01).
-- A plugin hook runs only after the user reviews and trusts it. The documentation describes tool hooks as "guardrails,
-  not a complete boundary".
+- A plugin hook runs only after the user reviews and trusts it. The documentation describes tool hooks as guardrails
+  rather than a complete boundary.
 
 **Subagents**
 - They are spawned when asked for directly, or when AGENTS.md or a skill instruction asks.

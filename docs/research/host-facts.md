@@ -126,6 +126,15 @@
 - 각 실행은 격리된다. 대상 플러그인만 로드되고 사용자 설정, 훅, CLAUDE.md, 다른 플러그인, 메모리, 개인 스킬은 없다.
   그래서 개인 스킬 사본을 끄지 않아도 그 사본이 없는 상태로 잰다. 하위 실행은 사용자의 인증으로 돌므로, 인증 변수가
   지워지는 세션 안에서는 "Not logged in"으로 멈춘다(2026-10-01).
+- grader는 `regex`, `tool_used`, `tool_order`, `file_exists`, `llm`, `baseline`이다. `tool_used`의 `input_match`는 도구 입력의
+  JSON 문자열에 맞춘다. 관찰(2026-11-01, 2.1.316, 시험용 플러그인): `tool: Read`가 읽은 reference 경로를 판정했고, Windows
+  경로는 `"file_path":"D:\\...\\references\\target.md"`처럼 이스케이프되어 `[\\/]+` 패턴이 맞았다. 2-arm 실행에서 Skill
+  grader는 점수에서 빠지고, Read grader는 양쪽 arm에서 채점되어 플러그인 없는 arm에서 실패했다(`arm: with-only`로 지표만
+  남긴다). 실행 1회 비용은 sonnet 기준 약 0.05달러였다
+  ([plugin evals](https://code.claude.com/docs/en/plugin-evals)).
+- herdr 같은 터미널 다중화기에서 새로 연 pane은 인증을 물려받아 eval과 `claude -p`가 돈다(2026-11-01).
+- 관찰(2026-11-02, 2.1.316): `claude plugin eval .`이 대상 경로 아래 ignored 폴더(`.work/plugin-test/`)의 플러그인 사본까지
+  찾아 `--tag`에 맞는 그 사본들의 사례를 돌렸다. 결과 JSON의 `suite.plugins`와 사례 `dir`로 확인했다.
 - 실행이 실패해도 `min: 0`, `max: 0`인 `tool_used` 판정은 통과로 채점된다. 불리면 안 되는 케이스의 결과는 오류가 난
   실행을 빼고 읽는다(2026-10-01).
 - 격리 실행에도 호스트 내장 스킬(`code-review`, `verify`, `debug` 등)은 있다. 대상 스킬이 안 불린 실행은 내장 스킬로

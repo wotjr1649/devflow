@@ -30,7 +30,7 @@ devflow가 아닌 것: 모든 작업에 스킬을 강제하는 체계, 팀 승�
 | 훅 | 재개와 세션 | `hooks/hooks.json` | `hooks/hooks.json` | 막지 않는다. 재개 카드, 자율 계속, 세션 해제만 |
 | 스크립트 | 장부·Issue 입출력·재개 카드 | `bin/devflow-state` | 스킬이 경로로 실행 | 공개 텍스트 필터. 거치지 않는 게시는 막지 않는다 |
 | git hook·CI | 최종 관문 | 공통 | 공통 | 결정적 |
-| eval | 스킬 호출의 회귀(선택) | `claude plugin eval`, skill-creator | 실행기 없음 | 측정 |
+| eval | 스킬 호출과 단계 행동의 회귀(선택) | `claude plugin eval`, skill-creator | 실행기 없음 | 측정 |
 
 ## 단계
 

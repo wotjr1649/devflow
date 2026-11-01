@@ -483,7 +483,7 @@ function privateFiles(root, n) {
   })
 }
 
-// The card's budget and display rules: docs/specs/issues.md (재개 카드, 예산과 의미 보존). Checks use the full values;
+// The card's budget and display rules: docs/specs/issues.md (Resume card, Budget and preserving meaning). Checks use the full values;
 // only what is shown is shortened, and every output is measured as assembled.
 const MAX_SHOWN = 100
 const PREVIEWS = [200, 120, 60]
@@ -558,7 +558,7 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
   if (got.error) return stop(got.error)
   if (got.broad) {
     seen.broad.push(`Warning: gh uses a broad OAuth or classic token (scopes: ${got.scopes}) that reaches every repository it can; ` +
-      'use a fine-grained token limited to the repositories agents work on (docs/specs/issues.md, Issue 입출력).')
+      'use a fine-grained token limited to the repositories agents work on (docs/specs/issues.md, Issue I/O).')
   }
   seen.checked.add('token scope')
   const { body, checkpoint } = filtered(got.issue)
@@ -1503,7 +1503,7 @@ function ledgerValueError(patch) {
     return `path is the lifecycle path (spike, bounded or architectural), not a branch; got ${JSON.stringify(patch.path)}`
   }
   if ('runMode' in patch && !(typeof patch.runMode === 'string' && /^M[0-3](?![0-9])/.test(patch.runMode))) {
-    return `runMode starts with M0 to M3 (docs/specs/orchestration.md, 실행 모드); got ${JSON.stringify(patch.runMode)}`
+    return `runMode starts with M0 to M3 (docs/specs/orchestration.md, Execution modes); got ${JSON.stringify(patch.runMode)}`
   }
   if ('task' in patch && !(patch.task && typeof patch.task === 'object' && count(patch.task.current) && count(patch.task.total))) {
     return 'task is {current, total}, two whole numbers from 1 (current may pass total once the last task is done)'

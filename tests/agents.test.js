@@ -1,5 +1,5 @@
 'use strict'
-// Pins the agent definitions to the role table in docs/specs/orchestration.md (모델과 effort). The live check reads a
+// Pins the agent definitions to the role table in docs/specs/orchestration.md (Models and effort). The live check reads a
 // subagent transcript instead: model, effort, prompt_snapshot.tools and instructions (docs/research/host-facts.md).
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -25,7 +25,7 @@ const list = v => (v ? v.split(',').map(s => s.trim()) : [])
 
 test('Codex subagents start without the parent conversation in both the spec and the router (#126)', () => {
   const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8')
-  const row = read('docs/specs/orchestration.md').split('\n').find(line => line.startsWith('| 구현·리뷰 에이전트 |'))
+  const row = read('docs/specs/orchestration.md').split('\n').find(line => line.startsWith('| Implementer and reviewer agents |'))
   assert.match(row, /fork_turns: "none"/)
   assert.match(read('skills/devflow/SKILL.md'), /Spawn each Codex subagent with `fork_turns: "none"`/)
 })

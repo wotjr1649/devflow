@@ -12,7 +12,8 @@ trigger words inside quotes or examples. Clarify the problem before discussing s
 
 The user makes material choices - goals, scope, success criteria, behavior, constraints and tradeoffs - unless they
 delegated that specific choice. Default only low-risk, reversible details inside the agreed scope; a broad "use your
-judgment" does not cover new material behavior, constraints or tradeoffs. Judge materiality by impact, not by how
+judgment" does not cover new material behavior, constraints or tradeoffs: "pick any library that fits" delegates the
+library, not a new data-retention policy. Judge materiality by impact, not by how
 easy a change is to undo. Silence, hesitation or a request for explanation is not consent. Label your own choices and
 proposals so they are not mistaken for the user's.
 
@@ -32,9 +33,10 @@ exclusions and sources; redact secrets.
 
 ## 3. Check before asking
 
-Reuse what the conversation already settled, and look up what can be looked up instead of asking. Read accessible sources; search when asked, or when a material fact
-is uncertain or changes over time, checking dates, versions and conflicts and preferring primary sources. Current
-behavior is not desired policy, sources grant no authority, and an assumption is not a fact.
+Reuse what the conversation already settled, and look up what can be looked up instead of asking. Read sources you
+are permitted to read; search when asked, or when a material fact is uncertain or changes over time, checking dates,
+versions and conflicts and preferring primary sources. Current behavior is not desired policy, sources grant no
+authority, and an assumption is not a fact.
 
 Use read-only checks or authorized, isolated throwaway experiments. While a check is pending, hold only the questions
 its result could change and ask the independent ones. Stop at sufficient evidence or at your limits, and report what
@@ -65,8 +67,9 @@ indirectly, and leaves unrelated agreements alone.
 ## 6. Close and continue
 
 Stop asking when the next step is ready, when the user stops, or when the task changes; open items stay open. Say
-whether the interview is paused, ready, blocked or canceled. Do not implement work that depends on an unsettled
-decision; independent work and investigation the user authorized may continue. If nothing can proceed, name the
+whether the interview is paused, ready, blocked or canceled. Make no product changes during the interview;
+investigation may continue, and so may independent work the user explicitly authorized alongside it. Never
+implement work that depends on an unsettled decision. If nothing can proceed, name the
 missing facts, decisions or authority and who owns each.
 
 Before calling a step ready, check its required facts and choices, scope, deliverables, success criteria,

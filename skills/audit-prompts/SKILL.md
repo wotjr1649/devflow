@@ -45,8 +45,8 @@ By default, a cycle for one target and an unchanged goal allows **two audits and
 review and rewriting cannot loop on taste. Carry the version, cycle, pass and revision count in every report, because
 the next pass may run in another turn or session. Wording, sessions or reviewers do not reset the counts; only an
 explicit user request for another cycle starts new counts. Start a new cycle at pass 1. If you are continuing a cycle
-whose history is unavailable, report `LIMITED` with your findings and stop. Never repeat an audit on unchanged
-material.
+whose history is unavailable, report `LIMITED` with your findings and stop. Never repeat an audit when neither
+the material nor the evidence has changed.
 
 - **Pass 1:** `REVISE` for confirmed material defects; otherwise `LIMITED` when evidence essential to the requested
   scope is missing, or `PASS`. Report evidence gaps even with `REVISE`, then end the audit.
@@ -55,7 +55,7 @@ material.
   automatic third audit.
 
 These limits are defaults. When the user explicitly asked to continue until stated completion criteria are met, a
-further pass is allowed while changes or new evidence justify it; report unresolved defects and stop at a real
+further pass is allowed, each one only after a change or new evidence; report unresolved defects and stop at a real
 blocker or when a pass makes no progress.
 
 ## Report

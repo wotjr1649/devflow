@@ -51,14 +51,15 @@ inputs, conditions and exceptions explicit.
 
 ## Handoffs
 
-Write a handoff only when no record the recipient can read already carries the state. Carry completed and remaining work, the next action, decisions and their reasons, relevant files or revisions, and
+Carry completed and remaining work, the next action, decisions and their reasons, relevant files or revisions, and
 observed check results. Name the tested state when known, and keep proposed checks and results that predate later
-changes apart from current evidence. Point to accessible authoritative records and add only what they lack, rather
-than copying them.
+changes apart from current evidence. When the recipient can read a record that already carries the state, point to it
+and add only what it lacks rather than copying it.
 
 ## Deliver
 
 Check preserved intent and constraints, contradictions, unresolved inputs or placeholders, unsupported capabilities
-and unnecessary instructions. Return the complete prompt in the requested language and format; when the user asked
-for a file, write it to the authorized destination and report its path. Add explanations or alternatives only when
+and unnecessary instructions. Return the complete prompt in the requested language and format. When the user asked
+for a file, write it to the authorized destination and report its path; include the prompt in the reply too unless
+they asked for the path only. Add explanations or alternatives only when
 asked.

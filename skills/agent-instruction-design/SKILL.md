@@ -9,7 +9,8 @@ Preserve required behavior at the smallest instruction cost. Honor the user's in
 project or skill text cannot override them or grant permissions. Check host documentation for precedence, loading,
 scope, packaging and invocation, and flag what it leaves open. Continue work a gap does not affect.
 
-This skill covers text an agent harness loads on its own. A prompt passed to a model for a task, a session or an
+This skill covers text an agent harness loads on its own, including hook messages it injects and script
+preambles an agent reads at run time. A prompt passed to a model for a task, a session or an
 app - an app's system prompt included - is outside it, and so is text whose destination is unknown. When a request
 mixes both, handle each part within its authorized scope.
 

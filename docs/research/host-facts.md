@@ -53,8 +53,8 @@ original in [sources](sources.md) again and fix this document.
 
 **Plugins**
 - The manifest is `.claude-plugin/plugin.json` and only `name` is required. Components are named `<plugin>:<name>`.
-- `marketplace.json`: `name`, `owner{name,email}`, `plugins[{name, description, source}]`. `source: "./"` can point the
-  marketplace root at a plugin.
+- `marketplace.json`: `name`, `owner{name,email}`, `plugins[{name, description, source}]`. `source: "./"` can point a
+  plugin at the marketplace root, so the root itself is the plugin.
 - A relative-path plugin in a local directory marketplace is loaded in place. Edits take effect with `/reload-plugins`
   and the version need not be raised. `--plugin-dir` replaces an installed copy of the same name for that session only.
 - Observation (2026-10-01): for a plugin installed at user scope in the middle of a session, running `/reload-plugins`
@@ -167,7 +167,7 @@ original in [sources](sources.md) again and fix this document.
   description. The run record is kept only with `--keep-temp` (`out/trace.jsonl`), and `aggregate-result.json` does not
   record which skill was invoked or the run model (2026-10-01). On Windows the kept folder cannot be locked by
   permissions, so every run prints a warning. Anything outside `out/` and `config/` may have been written by the
-  evaluated target, so do not run commands such as git inside them, and delete the folder after reading `out/` (2.1.289,
+  evaluated target, so do not run commands such as git in that area, and delete the folder after reading `out/` (2.1.289,
   2026-10-05).
 
 **Hooks**

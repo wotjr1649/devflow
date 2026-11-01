@@ -135,7 +135,7 @@ originals were checked on 2026-10-31.
   skill's name, description or instructions change, compare with 10-20 prompts and a few required checks. Adding it to
   CI is optional.
 - [Anthropic: Claude Code auto mode](https://www.anthropic.com/engineering/claude-code-auto-mode) (2026-03-25): users
-  accept 93% of manual approval requests. Because of approval fatigue, blocking requests protects little. A false-positive
+  accept 93% of manual approval requests. Because of approval fatigue, approval prompts that stop work protect little. A false-positive
   block is returned with its reason so that one retry ends it.
 - [Naresh Jain: Are Harnesses Worth the Cost?](https://martinfowler.com/articles/are-harnesses-worth-the-cost.html)
   (2026-10-13): the same service was built 10 times each way. The strong model scored 10/10 with or without the

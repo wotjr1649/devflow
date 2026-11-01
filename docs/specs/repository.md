@@ -1,45 +1,49 @@
-# 저장소 계약
+# Repository contract
 
-devflow가 프로젝트에 권장하는 구조, ignore·attributes 블록, AGENTS.md 형식, 기계용 프로필을 정한다. 이를 검사하는
-실행기는 없다([선택의 이유](../design/current-decisions.md#지침과-보호)).
+This spec sets the layout, ignore and attributes blocks, AGENTS.md format and machine profile devflow recommends for a
+project. No runner checks them ([why](../design/current-decisions.md#지침과-보호)).
 
-## 폴더
+## Folders
 
 ```
 <repo>/
-├── AGENTS.md          사실·명령·문서 지도·경계
-├── .devflow.json      기계용 프로필
-├── REVIEW.md          리뷰 패스 정의 (선택)
-├── .githooks/pre-push 공개 전 관문 (local-merge 저장소)
+├── AGENTS.md          facts, commands, document map, boundaries
+├── .devflow.json      machine profile
+├── REVIEW.md          review pass definitions (optional)
+├── .githooks/pre-push gate before publishing (local-merge repositories)
 ├── .github/ISSUE_TEMPLATE/intent.md
 ├── docs/
-│   ├── specs/                 제품 계약 (추적)
-│   ├── design/current-decisions.md  현재 설계 결정 (추적)
-│   ├── prompts/  plans/       비공개 (ignore)
-├── artifacts/                 근거·handoff (ignore)
-├── .work/                     임시·대용량 (ignore)
-└── _ref/                      읽기 전용 참조 (ignore)
+│   ├── specs/                 product contracts (tracked)
+│   ├── design/current-decisions.md  current design decisions (tracked)
+│   ├── prompts/  plans/       private (ignored)
+├── artifacts/                 evidence, handoff (ignored)
+├── .work/                     temporary, large (ignored)
+└── _ref/                      read-only references (ignored)
 ```
 
-### Issue 폴더
+### Issue folder
 
-Issue 폴더(`.work/devflow/i<issue>/`: 장부, 세션 기록, 잠금)는 주 작업 트리에 둔다. worktree를 지워도
-남고, 어느 worktree의 세션이든 같은 장부와 잠금을 쓰게 하기 위해서다.
+The Issue folder (`.work/devflow/i<issue>/`: ledger, session records, locks) lives in the main work tree. It survives
+when a worktree is removed, and sessions in any worktree use the same ledger and locks.
 
-- 주 작업 트리는 git 기록으로 정한다. 지금 작업 트리가 연결된 worktree이고, 그 gitdir이 저장소 `.git/worktrees/` 바로
-  아래에 있으며, 거기의 되돌림 링크(`gitdir` 파일)가 이 worktree의 `.git`을 가리키면 그 `.git`의 부모가 주 작업 트리다.
-  그 밖(주 작업 트리 자신, separate git dir나 bare 배치, 확인되지 않는 worktree)은 지금 작업 트리에 둔다.
-  `devflow-state`와 훅이 같은 판정을 쓴다. 압축 파일에 든 `.git` 파일은 남의 저장소 `worktrees` 폴더에
-  쓸 수 없으므로, 이 판정으로 남의 저장소를 가리킬 수 없다. 훅은 파일 시스템에 묻기 전에 경로 문자열부터 확인한다.
-- 훅은 git 메타데이터를 읽기 전에 로컬 경로인지 확인하고, 작은 일반 파일만 읽는다. 공유 경로·링크·위조된 되돌림 링크는
-  주 작업 트리의 근거로 쓰지 않는다. SessionEnd는 git 프로세스 없이 이 판정으로 세션을 해제한다([ledger](ledger.md#동시-세션)).
-- Issue 브랜치가 아닌 linked worktree는 주 작업 트리 브랜치의 Issue를 빌리지 않는다. M3의 task worktree는 장부와 Issue에
-  쓰지 않는다([ledger](ledger.md)).
-- worktree에만 옛 Issue 폴더가 있으면 재개 카드가 옮기라고 경고하고, 옮길 때까지 그 Issue의 장부와 Issue 쓰기를 거부한다.
+- The main work tree is determined from git records. If the current work tree is a linked worktree, its gitdir sits
+  directly under the repository's `.git/worktrees/`, and the back link there (the `gitdir` file) points to this
+  worktree's `.git`, then the parent of that `.git` is the main work tree.
+  In every other case (the main work tree itself, a separate git dir or bare layout, an unconfirmed worktree) the
+  folder lives in the current work tree. `devflow-state` and the hooks use the same rule. A `.git` file inside an
+  archive cannot write to another repository's `worktrees` folder, so this rule cannot point at another repository.
+  The hook checks the path string before asking the file system.
+- Before reading git metadata the hook checks that the path is local, and it reads only small regular files. Shared
+  paths, links and forged back links are not used as evidence of the main work tree. SessionEnd releases the session
+  with this rule and no git process ([ledger](ledger.md#동시-세션)).
+- A linked worktree that is not on an Issue branch does not borrow the Issue of the main work tree's branch. An M3 task
+  worktree does not write to the ledger or the Issue ([ledger](ledger.md)).
+- If an old Issue folder exists only in a worktree, the resume card warns to move it and refuses ledger and Issue writes
+  for that Issue until it is moved.
 
-## .gitignore 관리 블록
+## .gitignore managed block
 
-표시 사이가 devflow의 권장 내용이고, 블록 밖은 프로젝트 소유다.
+The content between the markers is devflow's recommendation; everything outside the block belongs to the project.
 
 ```gitignore
 # >>> devflow (managed)
@@ -54,9 +58,9 @@ CLAUDE.local.md
 # <<< devflow
 ```
 
-블록은 이미 추적되는 비공개 경로를 막지 못한다. `git ls-files`로 확인한다.
+The block cannot hide private paths that are already tracked. Check with `git ls-files`.
 
-## .gitattributes 기본값
+## .gitattributes defaults
 
 ```gitattributes
 * text=auto eol=lf
@@ -66,22 +70,22 @@ CLAUDE.local.md
 *.zip binary
 ```
 
-- Windows의 `core.autocrlf=true`가 있어도 저장소 안에서는 LF로 맞춘다. 훅 스크립트와 shebang이 이에 의존한다.
-- gitattributes는 `{a,b}` 확장을 지원하지 않는다. 확장자마다 한 줄씩 쓴다.
-- 생성물에는 `linguist-generated -diff`를 붙여 리뷰 화면에서 구분하고 에이전트의 diff를 줄인다.
-- 릴리스 아카이브에서 빼려면 `export-ignore`를 붙인다. 디렉터리는 `/dir/** export-ignore` 형식으로 쓴다.
+- Files in the repository use LF even with `core.autocrlf=true` on Windows. Hook scripts and shebangs depend on this.
+- gitattributes does not support `{a,b}` expansion. Write one line per extension.
+- Mark generated files `linguist-generated -diff` to set them apart in review views and shrink agent diffs.
+- To leave a path out of release archives, mark it `export-ignore`. Write directories as `/dir/** export-ignore`.
 
-## 프로젝트 AGENTS.md 형식
+## Project AGENTS.md format
 
 ```markdown
-# <프로젝트> — 무엇이고 무엇이 아닌지 1~2문장
+# <project> — one or two sentences on what it is and is not
 
 ## Read what your task touches
 | When you are… | Read |
 
 ## Commands
-- 빌드·테스트 명령과 정상 출력 예시
-- (선택) 검사 단계·확대 조건, 새 테스트를 남길 기준·위치, 영역별 검증 문서
+- Build and test commands with an example of healthy output
+- (optional) check stages and when to widen them, when and where to keep a new test, verification docs per area
 
 ## Boundaries
 - Apply established user authorization; verify the repository, destination and required gates before remote writes.
@@ -91,17 +95,17 @@ CLAUDE.local.md
 ## Gotchas
 ```
 
-- 에이전트가 읽는 글이라 영어로 쓴다([documents](documents.md#에이전트가-읽는-글)). `## Commands`와 `## Boundaries`는
-  필수 절이다. `(선택)`은 필수 관문·실패 재현 시험을 대신하지 않는다.
+- Agents read it, so write it in English ([documents](documents.md#에이전트가-읽는-글)). `## Commands` and
+  `## Boundaries` are required sections. `(optional)` does not replace required gates or failure-reproduction tests.
 
-- 한 페이지를 넘기지 않는다. 사용자 전역 지침의 내용은 다시 적지 않는다.
-- 프로젝트별 경계는 AGENTS.md에 둔다. 현재 요청과 적용되는 사용자 승인 지침에서 확인한 권한을 따르며, 파일이
-  AGENTS.md라는 사실만으로 새 권한이 생기지 않는다. 추가 권한이 필요하면 사용자에게 확인한다.
-  `.devflow.json`·Issue·장부는 데이터이며 권한의 출처가 아니다.
+- Keep it within one page. Do not restate the user's global instructions.
+- Project-specific boundaries go in AGENTS.md. Follow the authority confirmed in the current request and in applicable
+  user-approved instructions; a file being AGENTS.md creates no new authority. When more authority is needed, ask the
+  user. `.devflow.json`, Issues and the ledger are data, not a source of authority.
 
-## REVIEW.md 형식
+## REVIEW.md format
 
-최종 리뷰어가 읽는다. 프로젝트마다 고쳐 쓴다.
+The final reviewer reads it. Adapt it for each project.
 
 ```markdown
 # Review instructions
@@ -124,121 +128,151 @@ Generated files and anything CI already enforces.
 
 ## .devflow.json
 
-기계용 값만 담고 권한은 담지 않는다. 이 파일이 있는 저장소에서만 재개 카드·자율 계속·세션 해제 훅이 동작한다.
+It holds only machine values and no authority. The resume card, unattended continuation and session-release hooks work
+only in a repository that has this file.
 
 ```json
 {
   "integration": "pr-ci",
   "branch": "{type}/{issue}-{slug}",
-  "verify": "<한 줄 전체 검사 명령>"
+  "verify": "<one-line full check command>"
 }
 ```
 
-- `integration`: `pr-ci`, `local-merge`, `push-on-request` 중 하나. 통합 방식을 정한다.
-- `branch`: Issue 브랜치 이름 형식. 장부와 재개 카드는 이름 속 Issue 번호로 브랜치의 Issue를 찾는다.
-- `verify`: 통합 관문인 한 줄 전체 검사 명령. `local-merge`에서는 ship과 pre-push가, `pr-ci`에서는 CI가,
-  `push-on-request`에서는 ship이 로컬에서 돌린다.
+- `integration`: one of `pr-ci`, `local-merge`, `push-on-request`. It sets the integration method.
+- `branch`: the Issue branch name format. The ledger and resume card find a branch's Issue by the Issue number in its
+  name.
+- `verify`: the one-line full check command that is the integration gate. Ship and pre-push run it locally in
+  `local-merge`, CI runs it in `pr-ci`, and ship runs it locally in `push-on-request`.
 
-옛 프로필의 키(`tests`, `highRisk`, `checks`, `private`, `allowLocalPaths`, `specs`, `decisions`, `agentsMd`,
-`protected`)는 남아 있어도 오류 없이 무시한다. 시험 잠금은 없다. 시험 변경은 리뷰가 본다
-([선택의 이유](../design/current-decisions.md#지침과-보호)). 훅의 입력 읽기·세션 해제 경로 판정과 한계는
-[hooks](hooks.md)를 따른다.
+Keys from old profiles (`tests`, `highRisk`, `checks`, `private`, `allowLocalPaths`, `specs`, `decisions`, `agentsMd`,
+`protected`) are ignored without error if they remain. There is no test lock. Review looks at test changes
+([why](../design/current-decisions.md#지침과-보호)). How hooks read input, decide the session-release path and where
+they fall short follows [hooks](hooks.md).
 
-`local-merge` 저장소는 추적되는 `.githooks/pre-push`가 작업 트리가 깨끗하고 push하는 커밋이 HEAD일 때만 `verify`를
-돌리고, 실패하면 push를 막는다. ref 삭제만 하는 push에는 검사할 커밋이 없으므로 돌리지 않는다. 검사 자식에게는 Git이 넘긴 저장소 지정 환경을 제거해, 임시 저장소 검사가 실제 저장소를 바꾸지 않게 한다. 이 관문이 통합 때의 검사 기록을 대신한다. CI의 필수 여부는 프로젝트가 정한다. devflow 자체의 기준은 [통합과 CI](#통합과-ci)를 따른다. 훅을 켜는 `git config core.hooksPath .githooks`는
-클론마다 하고(호스트 설정이 아닌 저장소 설정이지만 훅을 켜는 일이라 소유자 지시로 한다), 훅이 꺼진 클론에서는 통합
-커밋에 검사 줄을 쓴다.
+In a `local-merge` repository the tracked `.githooks/pre-push` runs `verify` only when the work tree is clean and the
+pushed commit is HEAD, and blocks the push if it fails. A push that only deletes refs has no commit to check, so it does
+not run. The check's child process gets the repository-selecting environment Git passed with it removed, so a check in a
+temporary repository does not change the real one. This gate replaces the check record at integration. Whether CI is
+required is the project's choice. devflow's own standard follows [Integration and CI](#통합과-ci). The
+`git config core.hooksPath .githooks` that turns the hook on is done per clone (it is repository configuration, not
+host configuration, but it turns a hook on, so it happens on the owner's instruction); in a clone with the hook off,
+write a check line in the integration commit.
 
-`pr-ci` 저장소에서 통합 관문인 전체 `verify`의 근거는 같은 revision을 실제로 검사한 CI다. 브랜치 push는 HEAD, PR은 최신 병합
-결과에서 프로젝트의 `verify` step이 성공해야 하며, 확인 방법은 pr-review-workflow의 integration을 따른다. 로컬에서는
-변경과 그 영향을 받는 동작을 실행하는 검사(건드린 경로와 그 호출자의 테스트)만 돌린다. 범위를 좁힐 근거가 없으면(공유
-코드·설정·테스트 도구 변경) 그 자리에서 전체 `verify`를 로컬로 돌린다. CI가 `verify`를 돌리지 않거나 그 결과를 확인할 수 없으면 로컬에서
-전체 `verify`를 돌리고, 필수 CI는 따로 기다린다. CI 성공은 수용 기준별 실행 증거와 독립 리뷰를 대신하지 않는다.
+In a `pr-ci` repository the evidence for the full `verify` that is the integration gate is CI that actually checked the
+same revision. The project's `verify` step must succeed on HEAD for a branch push and on the latest merge result for a
+PR; how to confirm this follows the integration part of pr-review-workflow. Locally, run only checks that exercise the
+change and the behavior it affects (tests of the touched paths and their callers). When there is no basis for narrowing
+the scope (changes to shared code, configuration or test tooling), run the full `verify` locally then and there. When CI
+does not run `verify` or its result cannot be confirmed, run the full `verify` locally and wait for required CI
+separately. CI success does not replace per-criterion run evidence or independent review.
 
-## 통합과 CI
+## Integration and CI
 
-devflow 자체는 `pr-ci`다. CI는 push와 main 대상 PR마다 Linux·macOS·Windows, Node 22·24로 `verify`를 돌린다.
-브랜치 push는 브랜치 HEAD, PR은 현재 base와 head의 최신 병합 결과를 검사한다. 통합 조건은 이 두 CI의 전부 성공,
-merge commit, PR head가 독립 리뷰(M0 포함)를 받은 SHA이거나 그 뒤 main 병합만 더해 diff가 같은 SHA인 것이다.
-리뷰한 SHA와 main 병합만 더한 경우의 SHA를 PR에 기록한다. 누락·취소·건너뜀·다른 커밋·출처가 다른 같은 이름은 통과가 아니다.
-CI 성공은 수용 기준별 실행 증거와 독립 리뷰를 대신하지 않는다. 전체 `verify`의 근거와 로컬 검사 범위는
-[.devflow.json](#devflowjson)을 따른다.
+devflow itself is `pr-ci`. CI runs `verify` on Linux, macOS and Windows with Node 22 and 24 for every push and every PR
+targeting main. A branch push checks the branch HEAD; a PR checks the latest merge result of the current base and head.
+The integration conditions are: all of these two CI runs succeed, a merge commit, and the PR head is the SHA that got
+independent review (including M0) or a later SHA that adds only main merges and has the same diff.
+Record in the PR the reviewed SHA and, when only main merges were added, that SHA. A missing, cancelled or skipped run,
+a run on a different commit, or one with the same name from a different source is not a pass.
+CI success does not replace per-criterion run evidence or independent review. The evidence for the full `verify` and
+the scope of local checks follow [.devflow.json](#devflowjson).
 
-PR 본문은 공개 요약, 리뷰 근거와 리뷰한 SHA, `Refs #<n>`을 담는다. PR 본문·커밋·merge commit 메시지에는 Issue를 닫는
-키워드를 쓰지 않는다. Issue 종료는 `devflow-state`가 병합 확인 뒤에 한다. 문서만 바뀐 PR과 M0도 같은 통합 조건을 따른다.
-기존 제품 커밋과 검토한 SHA를 보존하도록 merge commit으로 통합하며 squash·rebase는 쓰지 않는다. 선형 이력 강제와 함께 쓰지 않는다.
-뒤처진 브랜치는 main을 병합해 갱신한다.
+The PR body holds a public summary, review evidence with the reviewed SHA, and `Refs #<n>`. PR bodies, commits and
+merge commit messages do not use keywords that close an Issue. `devflow-state` closes the Issue after confirming the
+merge. Docs-only PRs and M0 follow the same integration conditions.
+Integration uses merge commits to preserve existing product commits and reviewed SHAs; squash and rebase are not used.
+Do not combine this with enforced linear history.
+Update a branch that has fallen behind by merging main into it.
 
-### main의 서버 보호
+### Server protection of main
 
-main에 활성 ruleset 하나를 두고 우회 주체는 두지 않는다. 규칙은 다음과 같다.
+main has one active ruleset with no bypass actors. Its rules are:
 
-- 브랜치 삭제 금지와 강제 push 금지.
-- PR 경유: 필요한 승인 수는 0, 대화 해결 필수, 허용하는 병합 방식은 merge만.
-- 아래 네 필수 check의 strict 통과. 출처는 GitHub Actions 앱(integration id `15368`)의 `.github/workflows/test.yml`이다.
+- No branch deletion and no force push.
+- Through a PR: zero required approvals, conversation resolution required, merge as the only allowed merge method.
+- Strict passing of the four required checks below. Their source is `.github/workflows/test.yml` from the GitHub
+  Actions app (integration id `15368`).
 
-| 필수 check |
+| Required check |
 |---|
 | `test (ubuntu-latest, 22)` |
 | `test (ubuntu-latest, 24)` |
 | `test (macos-latest, 22)` |
 | `test (macos-latest, 24)` |
 
-Windows job은 ruleset의 필수 check가 아니지만 통합 조건의 CI 전부 성공에 포함된다. 필수 check로 바꾸는 일은 ruleset 변경이므로
-별도 사용자 지시로 한다. 혼자 운영하므로 자기 승인을 요구하지 않고, 다른 호스트의 독립 리뷰를 GitHub 승인으로 위장하지 않는다.
-서버 보호가 이 기준과 다르면 통합하지 않는다.
+The Windows jobs are not required checks in the ruleset, but they count toward "all CI succeeds" in the integration
+conditions. Making them required checks is a ruleset change, so it takes a separate user instruction. A solo operator
+does not require self-approval, and independent review from another host is not disguised as a GitHub approval.
+If the server protection differs from this standard, do not integrate.
 
-로컬 pre-push는 `local-merge`의 통합 관문이다. `pr-ci`에서는 훅을 켜지 않아도 되며, 켜 둔 클론에서만 브랜치 push 전 검사로 돈다.
-`pr-ci`의 통합 관문은 서버의 ruleset과 PR check다.
+The local pre-push is the integration gate for `local-merge`. In `pr-ci` the hook need not be on; only in clones where
+it is on does it run as a check before branch pushes. The integration gate for `pr-ci` is the server's ruleset and PR
+checks.
 
-[ship](lifecycle.md#단계)의 검사·기록 뒤, 통합 직전에 base·head·규칙·check를 다시 읽는다. 뒤처지면 main을 병합한다
-([리뷰](orchestration.md#리뷰)). 병합 뒤 실제 main SHA와 main CI를 확인한 후 완료·정리한다.
+After the checks and records of [ship](lifecycle.md#단계), just before integration, read base, head, rules and checks
+again. If the branch is behind, merge main ([review](orchestration.md#리뷰)). After the merge, confirm the actual main
+SHA and main CI before completing and cleaning up.
 
-### 자체 통합 정책의 되돌림
+### Reverting the self-integration policy
 
-서버 보호를 먼저 끄고 빠져나오지 않는다. ruleset이 PR을 요구하므로 되돌림도 현행 통합 관문을 거친 PR로 한다.
-바꾸는 설정의 이전 값과 실행 근거는 작업 기록에 남긴다.
+Do not turn server protection off first and step out. The ruleset requires PRs, so the revert also goes through a PR
+that passes the current integration gate. Keep the previous values of the settings being changed and the run evidence
+in the task records.
 
-1. 되돌림 PR은 devflow 저장소 고유의 통합 정책만 대상으로 한다. `.devflow.json`, AGENTS.md, 이 절, pr-review-workflow의
-   integration reference 중 devflow 전용 문구를 함께 맞춘다. 다른 `pr-ci` 프로젝트에도 적용되는 lifecycle·orchestration·ship의
-   통합 방식별 규칙은 유지한다. 현재 결정 요약의 해당 선택과 이유도 되돌림 대상에 맞춘다.
-2. 이 보호 기준과 `.github/workflows/test.yml`의 `pull_request` trigger는 유지한 채 PR을 병합한다. 되돌림 진행과
-   `되돌림 중: ruleset 해제 대기` 상태는 작업 Issue와 장부에 기록한다. 그 PR 병합 뒤부터 ruleset 해제까지는 통합하지 않는다.
-3. ruleset 해제는 별도 사용자 승인으로 실행한다. 해제를 확인한 뒤 작업 기록의 대기 상태를 해제하고, spec과 현재 결정 요약을
-   실제 적용된 정책에 맞춘다.
-4. `pull_request` trigger 제거는 그다음 증분에서 한다. 되돌림 PR과 서버 보호 해제 사이에 먼저 제거하지 않는다.
+1. The revert PR covers only the devflow repository's own integration policy. Align the devflow-specific wording in
+   `.devflow.json`, AGENTS.md, this section and pr-review-workflow's integration reference together. Keep the
+   per-integration-method rules in lifecycle, orchestration and ship that also apply to other `pr-ci` projects. Align
+   the matching choice and reason in the current decisions summary with the revert as well.
+2. Merge the PR while keeping this protection standard and the `pull_request` trigger in `.github/workflows/test.yml`.
+   Record the revert's progress and the `reverting: waiting for ruleset removal` state in the working Issue and the
+   ledger. From that PR's merge until the ruleset is removed, do not integrate.
+3. Remove the ruleset with separate user approval. After confirming the removal, clear the waiting state in the task
+   records and align the spec and the current decisions summary with the policy actually in effect.
+4. Remove the `pull_request` trigger in the following increment. Do not remove it first, between the revert PR and the
+   removal of server protection.
 
-## 버전
+## Version
 
-두 플러그인 매니페스트의 `version`은 같아야 하며 `tests/devflow-config.test.js`가 검사한다.
-사용자가 릴리스를 지시할 때만 `0.y.z`를 올린다. 기능·동작 변경은 minor, 수정은 patch이며 한 릴리스에 섞이면
-minor를 올린다. 일반 Issue 통합은 버전을 유지한다. 1.0 전환은 별도 결정이며 태그·릴리스 노트·배포는 릴리스에서만 한다.
-설치 경로와 실행기는 매니페스트의 버전을 읽어 사용한다.
+The `version` in the two plugin manifests must match; `tests/devflow-config.test.js` checks it.
+Bump `0.y.z` only when the user instructs a release. Feature or behavior changes are minor, fixes are patch, and a
+release that mixes them bumps minor. Ordinary Issue integration keeps the version. Moving to 1.0 is a separate decision,
+and tags, release notes and distribution happen only in a release.
+Install paths and runners read and use the manifest's version.
 
-## 배포
+## Distribution
 
-공통 공개 marketplace는 [wotjr1649/marketplace](https://github.com/wotjr1649/marketplace)이고 이름은 `wotjr1649`다.
-플러그인 이름은 `devflow`, 설치 식별자는 `devflow@wotjr1649`다. 플러그인 루트는 유지한다. Claude의 `.claude-plugin/marketplace.json`과 Codex의
-`.agents/plugins/marketplace.json`은 HTTPS `url` 소스로 `wotjr1649/devflow`의 같은 `v0.y.z` 태그를 가리킨다.
-다른 플러그인은 자신의 저장소와 태그를 가리키는 항목으로 추가한다.
+The shared public marketplace is [wotjr1649/marketplace](https://github.com/wotjr1649/marketplace), named `wotjr1649`.
+The plugin is named `devflow` and its install identifier is `devflow@wotjr1649`. The plugin root stays as it is.
+Claude's `.claude-plugin/marketplace.json` and Codex's `.agents/plugins/marketplace.json` point to the same `v0.y.z` tag
+of `wotjr1649/devflow` with an HTTPS `url` source.
+Other plugins are added as entries pointing to their own repositories and tags.
 
-devflow 저장소 안의 두 catalog는 `devflow-local`이라는 개발용 이름으로 유지한다. 배포는 공통 catalog를 원격 또는 local clone으로 등록한다.
-로컬 시험용 marketplace에는 비공개 파일이 없는 별도 worktree를 쓰고, 설치본은 태그나 시험 커밋의 추적 파일과
-대조한다. 옛 설치에서 옮길 때 새 설치와 Codex 훅 신뢰를 확인한 뒤 옛 플러그인을 비활성화한다. 다른 플러그인과 설정은 보존한다.
+The two catalogs inside the devflow repository keep the development name `devflow-local`. Distribution registers the
+shared catalog remotely or as a local clone.
+A local test marketplace uses a separate worktree with no private files, and the installed copy is compared with the
+tracked files of the tag or test commit. When moving from an old install, confirm the new install and Codex hook trust,
+then disable the old plugin. Keep other plugins and settings.
 
-## 릴리스와 롤백
+## Release and rollback
 
-사용자가 지시한 릴리스는 이 순서로 한다.
+A user-instructed release follows this order.
 
-1. 두 매니페스트 버전을 [버전 정책](#버전)에 따라 올리고 검사·리뷰·[통합 관문](#통합과-ci)을 통과해 main에 통합한다.
-2. 원격 main과 통합 커밋을 확인하고 그 커밋에 경량 `v0.y.z` 태그를 만들고 push한다. 같은 이름의 태그가 있으면 재작성하지 않는다.
-   pre-push는 태그도 HEAD와 같아야 허용하므로 경량 태그를 쓴다.
-3. 태그를 검증하고 해당 버전의 GitHub Release에 변경·검증·제약을 적는다. 버전·태그·릴리스 대상 커밋이 일치해야 한다.
-4. 공통 marketplace의 두 항목을 같은 새 태그로 바꾸고 manifest 검증 후 게시한다. catalog 자체의 main은 갱신하며,
-   플러그인 소스는 릴리스 태그로 고정한다.
-5. 두 호스트에서 marketplace를 갱신하고 플러그인을 설치·업데이트한다([명령](../../README.md#install)). 새 세션의
-   구성요소·훅 신뢰와 설치 파일을 태그에 대조한다. 자동 업데이트는 사용자가 호스트에서 별도로 설정한다.
+1. Bump both manifest versions per the [version policy](#버전), pass checks, review and the
+   [integration gate](#통합과-ci), and integrate into main.
+2. Confirm the remote main and the integration commit, create a lightweight `v0.y.z` tag on that commit and push it.
+   If a tag with the same name exists, do not rewrite it. pre-push allows a tag only if it equals HEAD, so use a
+   lightweight tag.
+3. Verify the tag and write changes, verification and limitations in that version's GitHub Release. The version, tag
+   and release target commit must match.
+4. Change both entries in the shared marketplace to the same new tag, validate the manifest and publish. The catalog's
+   own main is updated, and the plugin source is pinned to the release tag.
+5. On both hosts, update the marketplace and install or update the plugin ([commands](../../README.md#install)).
+   Compare a new session's components, hook trust and installed files with the tag. The user sets up automatic updates
+   separately on the host.
 
-문제가 있으면 두 catalog의 참조를 이전 검증 태그로 함께 되돌려 게시하고, 사용자는 marketplace와 플러그인을 다시 갱신한다.
-버전 비교로 이전 버전의 적용을 거부하는 호스트에서는 해당 플러그인만 제거·재설치한다. 다른 플러그인과 기존 태그는 유지한다.
-롤백도 공유 catalog·호스트를 바꾸는 작업이므로 그 대상과 효과를 포함한 사용자 지시로 실행한다.
+If there is a problem, revert both catalogs' references to the previous verified tag together and publish, and the user
+updates the marketplace and plugin again.
+On a host that refuses an older version by comparing versions, remove and reinstall only that plugin. Keep other
+plugins and existing tags.
+Rollback also changes the shared catalog and hosts, so it runs on a user instruction that names its targets and effects.

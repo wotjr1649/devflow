@@ -1,103 +1,120 @@
-# 문서 계약
+# Document contract
 
-devflow가 만들고 읽는 문서의 위치, 크기, 형식, 작성법을 정한다. Issue 본문·체크포인트·재개 카드는 [issues](issues.md),
-작업 장부는 [ledger](ledger.md)가 정한다. 다른 문서는 이 규칙을 다시 적지 않고 해당 spec을 가리킨다.
-예외로 에이전트가 실행 중에 읽는 지침(스킬, reference)은 실행에 필요한 만큼만 다시 적을 수 있고, 둘이 어긋나면 spec이 이긴다.
+This spec sets the location, size, format and writing rules of the documents devflow creates and reads. Issue bodies,
+checkpoints and resume cards are set by [issues](issues.md), and the ledger by [ledger](ledger.md). Other documents do
+not restate these rules; they point to the relevant spec.
+As an exception, instructions agents read during execution (skills, references) may restate as much as execution needs;
+when the two disagree, the spec wins.
 
-## 산출물마다 진실 원천 하나
+## One source of truth per artifact
 
-| 산출물 | 담는 것 | 위치 | 공개 | 수명 |
+| Artifact | Holds | Location | Public | Lifetime |
 |---|---|---|---|---|
-| intent | 문제, 원하는 결과, 영향받는 사용자·시스템, 제약, 열린 질문, 수용 기준 | Issue 본문 위쪽 | 공개 | 범위가 바뀔 때만, 사용자가 확인한 뒤 교체 |
-| 현재 상태 | 단계, 브랜치·PR, 완료·남음, 다음 행동, 막힘, 최신 체크포인트 | Issue 본문 아래쪽 블록 | 공개 | **덮어쓴다** |
-| 체크포인트 | 변경, 검증(실행함·실행 안 함), 결정, 다음 | Issue 댓글 | 공개 | **추가만** |
-| 작업 장부 | 단계, 작업 진행, 결정과 막힘, 자율 실행에서 게시하지 못한 내용([키](ledger.md#작업-장부-키)) | `.work/devflow/i<issue>/ledger.json`([주 작업 트리](repository.md#issue-폴더)) | 비공개 | Issue 종료까지 |
-| 제품 계약 | 오래 유지되는 동작 규칙 | `docs/specs/` | 공개 | 계약이 바뀔 때 |
-| 현재 설계 결정 | 현재 선택과 이유, 택하지 않은 대안, 다시 볼 조건 | `docs/design/current-decisions.md` | 공개 | 선택이 바뀔 때 제자리에서 갱신 |
-| 계획 | 파일, 순서, 위험, 증명, 작업별 interfaces | `docs/plans/` | 비공개 | Issue 종료까지 |
-| 계획 요약 | 파일·순서·위험·증명 네 줄 | PR 본문 또는 체크포인트 | 공개 | 영구 |
-| 프롬프트 | 새 지시와 결정 중 바뀐 부분만 | 채팅 또는 `docs/prompts/` | 비공개 | 일회성 |
-| handoff | 쓰지 않는다. 현재 상태와 체크포인트가 대신한다. 비공개 근거가 꼭 필요할 때만 | `artifacts/handoff/` | 비공개 | 필요 시 |
-| 근거 | 원시 로그, 측정값 | `artifacts/`, `.work/` | 비공개 | 보존 |
-| 교훈 | 성격에 따라 둘 곳이 다르다([회고와 기억](lifecycle.md#회고와-기억)) | — | — | 테스트로 확인되면 지침에서 삭제(안전 하한선은 남긴다) |
+| intent | problem, desired outcome, affected users and systems, constraints, open questions, acceptance criteria | top of the Issue body | public | replaced only when the scope changes, after the user confirms |
+| state block | stage, branch and PR, done and remaining, next action, blockers, latest checkpoint | block at the bottom of the Issue body | public | **overwritten** |
+| checkpoint | changes, verification (run and not run), decisions, next | Issue comment | public | **append only** |
+| ledger | stage, task progress, decisions and blockers, content an unattended run could not post ([keys](ledger.md#작업-장부-키)) | `.work/devflow/i<issue>/ledger.json` ([main work tree](repository.md#issue-폴더)) | private | until the Issue closes |
+| product contracts | lasting behavior rules | `docs/specs/` | public | when a contract changes |
+| current design decisions | current choices and reasons, alternatives not taken, conditions for revisiting | `docs/design/current-decisions.md` | public | updated in place when a choice changes |
+| plan | files, order, risks, proof, per-task interfaces | `docs/plans/` | private | until the Issue closes |
+| plan summary | four lines: files, order, risks, proof | PR body or checkpoint | public | permanent |
+| prompt | only new instructions and the changed part of decisions | chat or `docs/prompts/` | private | one-off |
+| handoff | not written; the state block and checkpoints replace it. Only when private evidence is truly needed | `artifacts/handoff/` | private | as needed |
+| evidence | raw logs, measurements | `artifacts/`, `.work/` | private | kept |
+| lessons | where they go depends on their kind ([learn and memory](lifecycle.md#회고와-기억)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
 
-한 사실은 한 곳에 둔다. 다른 곳은 링크만 건다. 실행 지침의 예외는 맨 위에 적었다.
+Keep each fact in one place. Other places only link to it. The exception for execution instructions is stated at the
+top.
 
-현재 설계 결정은 `docs/design/current-decisions.md` 하나에 주제별로 두고, 선택이 바뀌면 해당 절을 제자리에서 갱신한다.
-각 절은 현재 선택과 이유, 택하지 않은 대안, 다시 볼 조건만 담는다. 동작 규칙은 해당 spec이 소유하며 요약은 그 spec을 가리킨다.
-대체된 선택·변경 날짜·작업 경위는 현재 요약에 쌓지 않고 Issue와 git에 남긴다. 이력용 결정 파일이나 archive 폴더를 새로 만들지 않는다.
+Current design decisions live by topic in `docs/design/current-decisions.md` alone; when a choice changes, update its
+section in place. Each section holds only the current choice and reason, alternatives not taken, and conditions for
+revisiting. The relevant spec owns behavior rules, and the summary points to that spec.
+Superseded choices, change dates and work history do not pile up in the current summary; they stay in Issues and git.
+Do not create history decision files or archive folders.
 
-Issue는 단계 경계, 결정, 막힘에서만 쓰고, 작업 단위의 진행은 장부에 쓴다. 공개 편집을 줄이고, 자율 실행처럼 게시할 수
-없을 때 내용을 남길 곳이 필요하기 때문이다. 장부는 그 기기에만 있으므로 다른 기기에서는 Issue의 현재 상태까지만 이어진다.
+Write to the Issue only at stage boundaries, decisions and blockers; task-level progress goes to the ledger. This cuts
+public edits and gives content a place to stay when it cannot be posted, as in an unattended run. The ledger exists only
+on its machine, so another machine continues only from the Issue's state block.
 
-## 기억 도구
+## Memory tools
 
-claude-mem, Claude 자동 메모리, 사용자가 만든 기억 도구는 검색 계층이다. 진실 원천은 Issue, git, spec, [현재 설계 결정](../design/current-decisions.md),
-AGENTS.md이고, 기억 도구의 내용과 충돌하면 진실 원천이 이긴다. devflow는 기억 도구에 직접 쓰지 않는다. 기억 도구는
-훅으로 활동을 수집하거나 위 진실 원천을 색인하는 방식으로 devflow와 함께 쓴다. 세션을 시작할 때 기억 도구가 주입하는
-내용은 재개 카드와 컨텍스트를 나눠 쓰므로 그 양을 측정한다. Issue가 공개 저장소에 있으면 Issue에는 공개 가능한 요약만 쓰고,
-비공개 근거는 로컬 파일 경로나 해시로 가리킨다.
+claude-mem, Claude auto memory and memory tools the user builds are a search layer. The sources of truth are Issues,
+git, specs, [current design decisions](../design/current-decisions.md) and AGENTS.md; when a memory tool's content
+conflicts with them, the source of truth wins. devflow does not write to memory tools directly. Memory tools work
+alongside devflow by collecting activity through hooks or indexing the sources of truth above. What a memory tool
+injects at session start shares the context with the resume card, so measure its size. When the Issue is in a public
+repository, write only a publishable summary in the Issue and point to private evidence by local file path or hash.
 
-## 크기 예산
+## Size budgets
 
-| 문서 | 상한 | 넘으면 |
+| Document | Limit | When over |
 |---|---|---|
-| SKILL.md | 5,000토큰 미만, 지켜야 할 규칙은 맨 위 | 분기별 내용을 `references/`로 |
-| 스킬 reference | 5,000토큰 미만 | 더 나눈다 |
-| 스킬 description | 한두 문장, 트리거 단어를 앞에 | 범위를 좁힌다 |
-| 프로젝트 AGENTS.md | 한 페이지(약 1,000토큰) | 상황별 포인터로 옮긴다 |
-| spec 파일 | 5,000토큰 미만 | 주제별로 나눈다 |
-| 현재 상태 블록 | 15줄 | 오래된 내용은 체크포인트로 |
-| 체크포인트 | 10줄 | 근거는 경로로 |
-| 프롬프트 | 500토큰 | 바뀐 부분만 남긴다 |
-| 재개 카드 | 1,000토큰 미만 | [issues의 축소 순서](issues.md#예산과-의미-보존) |
+| SKILL.md | under 5,000 tokens, rules to keep at the top | move branch-specific content to `references/` |
+| skill reference | under 5,000 tokens | split further |
+| skill description | one or two sentences, trigger words first | narrow the scope |
+| project AGENTS.md | one page (about 1,000 tokens) | move to situational pointers |
+| spec file | under 5,000 tokens | split by topic |
+| state block | 15 lines | move old content to checkpoints |
+| checkpoint | 10 lines | point to evidence by path |
+| prompt | 500 tokens | keep only the changed part |
+| resume card | under 1,000 tokens | [reduction order in issues](issues.md#예산과-의미-보존) |
 
-이유: compact 뒤 다시 붙는 양에 한도가 있고([host-facts](../research/host-facts.md)), 늘 로드되는 글은 매 턴 비용이다.
+Why: the amount reattached after compaction is limited ([host-facts](../research/host-facts.md)), and text that is
+always loaded costs every turn.
 
-## 이름 규칙
+## Naming
 
-- 브랜치: `<type>/<issue>-<slug>` (예: `feat/12-resume-card`). 기본 브랜치에 직접 push하는 저장소도 작업 단위마다
-  이 이름의 로컬 브랜치에서 일하고, 끝나면 기본 브랜치로 fast-forward한 뒤 push한다. 재개 카드는 브랜치 이름으로
-  Issue를 찾기 때문이다.
-- 비공개 파일: `YYYY-MM-DD-i<issue>-<slug>-<kind>.md`, `kind`는 `prompt`, `plan`, `handoff`
-- 현재 설계 결정: `docs/design/current-decisions.md` 하나를 주제별로 갱신한다.
+- Branches: `<type>/<issue>-<slug>` (for example `feat/12-resume-card`). A repository that pushes straight to the
+  default branch still works on a local branch with this name for each unit of work, then fast-forwards the default
+  branch and pushes when done. The resume card finds the Issue by branch name.
+- Private files: `YYYY-MM-DD-i<issue>-<slug>-<kind>.md`, where `kind` is `prompt`, `plan` or `handoff`
+- Current design decisions: update the single `docs/design/current-decisions.md` by topic.
 
-## 읽기·쓰기·캐시
+## Reading, writing and caching
 
-- 이어서 작업할 때 Issue 본문, 쓰기 권한자가 쓴 최신 체크포인트 1개, 그 Issue의 장부와 비공개 계획·handoff(있으면)만
-  읽는다. 댓글 전체, 옛 프롬프트, 다른 Issue의 handoff는 읽지 않는다.
-- 큰 문서나 많은 파일은 서브에이전트가 읽고 요약만 돌려준다.
-- 프롬프트와 handoff에 Issue 내용을 다시 쓰지 않는다. 출력은 입력보다 비싸고, 다음 세션마다 다시 읽힌다.
-- 늘 로드되는 문서(AGENTS.md, 스킬, 훅 출력 형식)에는 날짜와 진행 상태를 넣지 않는다. 캐시가 깨지고 금방 낡는다.
-- 대화형 작업에서는 작업 단위가 끝나면 [인계 순서](ledger.md#동시-세션)를 마치고 `/clear` 후 재개 카드로 다시 시작한다. compact는 요약 비용이 들고 세부를
-  잃는다. `/clear`는 사용자만 실행할 수 있으므로 무인 실행은 [자율 실행](ledger.md#자율-실행)을 따른다.
+- When continuing work, read only the Issue body, the one latest checkpoint written by someone with write access, and
+  that Issue's ledger and private plan and handoff (if any). Do not read all comments, old prompts or other Issues'
+  handoffs.
+- Subagents read large documents or many files and return only a summary.
+- Do not rewrite Issue content into prompts and handoffs. Output costs more than input and is reread in every later
+  session.
+- Always-loaded documents (AGENTS.md, skills, hook output formats) carry no dates or progress. They break the cache and
+  go stale quickly.
+- In interactive work, when a unit of work ends, finish the [handover order](ledger.md#동시-세션), `/clear` and restart
+  from the resume card. Compaction costs a summary and loses detail. Only the user can run `/clear`, so unattended runs
+  follow [unattended run](ledger.md#자율-실행).
 
-## 에이전트가 읽는 글
+## Text agents read
 
-AGENTS.md, SKILL.md, 에이전트 프롬프트, 훅 메시지, 위임 지시서에 적용한다.
+Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation briefs.
 
-1. 지시에는 이유를 붙인다. 모델은 이유에서 일반화한다. 출력 형식은 "이렇게 하라"로 쓴다.
-2. MUST, CRITICAL, EXTREMELY 같은 강조를 쓰지 않는다. 최신 모델에서 과잉 트리거와 조기 종료를 부른다.
-   예외는 안전 하한선이다. 하한선은 금지문 그대로 둔다.
-   경계 문구(묻거나 멈출 조건)에는 막을 효과와 그 밖에서 계속해도 되는 범위를 함께 적는다. 강조어가 없어도 이전 모델을
-   막으려던 경계가 새 모델을 필요 이상 멈추게 할 수 있으므로, 모델 계열이나 버전을 바꿀 때 다시 검토한다. 이 검토로
-   하한선을 지우거나 권한을 넓히지 않는다.
-3. 모델이 기본으로 하는 일은 지시하지 않는다. 테스트 독려, "신중히 생각하라", "추론을 응답에 써라"(거절을 부른다).
-4. 문서를 가리킬 때는 상황을 붙인다. "X를 바꿀 때 Y를 읽는다." 항상 먼저 읽을 목록은 만들지 않는다.
-5. 완료 조건을 먼저 쓴다. 수용 기준, 검증 명령, 정상 출력 예시.
-6. 디렉터리 구조, 설정 파일, 스크립트 사용법처럼 직접 보면 아는 사실은 다시 적지 않는다.
-7. 두 모델 계열이 읽는다. 호스트 전용 기능은 표시해서 분리한다.
-8. 측정값과 변경 경위는 Issue 체크포인트와 git에 둔다. 지시 문서는 지금 유효한 규칙만 담는다.
-9. 커밋되는 글은 영어로 쓴다: 지침, 스킬, reference, spec, 설계, 연구, 계획, commit 메시지, 테스트 메시지, 훅 출력.
-   같은 내용에 입력 토큰이 덜 들고 두 호스트에서 같게 읽힌다. Issue, 체크포인트, PR 본문, 소유자에게 하는 보고는
-   한국어로 쓴다. Issue 프로토콜이 파싱하는 한국어 리터럴과 eval이 흉내 내는 사용자 발화는 그대로 둔다.
-10. devflow는 막는 장치를 두지 않는다. 테스트로 판정할 수 있는 효과는 테스트와 CI에 두고, 나머지는 지침과 리뷰가 맡는다
-    ([현재 선택의 이유](../design/current-decisions.md#지침과-보호)). 테스트로 옮긴 문장은 지우되([회고와 기억](lifecycle.md#회고와-기억)),
-    안전 하한선은 남긴다. 판단이 필요한 규칙은 문서와 리뷰에 남는다. 호스트별 수단은 7번대로 표시하고 지원 범위는 [host-facts](../research/host-facts.md)를 따른다.
+1. Give a reason with each instruction. Models generalize from reasons. Write output formats as "do this".
+2. Do not use emphasis such as MUST, CRITICAL or EXTREMELY. In recent models it causes overtriggering and early
+   stopping. The exception is the safety floor. The floor keeps its prohibition wording as is.
+   Boundary wording (conditions to ask or stop) states the effect it prevents and how far work may continue outside it.
+   Even without emphasis words, a boundary meant to restrain an older model can stop a newer one more than needed, so
+   review it when changing model family or version. This review does not remove the floor or widen authority.
+3. Do not instruct what models do by default: urging tests, "think carefully", "write your reasoning in the response"
+   (this causes refusals).
+4. When pointing to a document, attach the situation: "When changing X, read Y." Do not make always-read-first lists.
+5. Write the completion conditions first: acceptance criteria, verification command, an example of healthy output.
+6. Do not restate facts one can see directly, such as directory structure, configuration files or script usage.
+7. Two model families read it. Mark host-specific features and keep them apart.
+8. Measurements and change history go in Issue checkpoints and git. Instruction documents hold only rules in effect now.
+9. Committed text is written in English: instructions, skills, references, specs, design, research, plans, commit
+   messages, test messages, hook output. The same content takes fewer input tokens and reads the same on both hosts.
+   Issues, checkpoints, PR bodies and reports to the owner are written in Korean. Korean literals the Issue protocol
+   parses and user prompts the eval simulates stay as they are.
+10. devflow has no blocking mechanisms. Effects a test can decide go in tests and CI; the rest is left to instructions
+    and review ([why the current choice](../design/current-decisions.md#지침과-보호)). Sentences moved into tests are
+    deleted ([learn and memory](lifecycle.md#회고와-기억)), but the safety floor stays. Rules that need judgment stay in
+    documents and review. Host-specific means are marked as in rule 7, and their support follows
+    [host-facts](../research/host-facts.md).
 
-## 스킬 description
+## Skill descriptions
 
-- 언제 쓰는지만, 짧게, 트리거 단어를 앞에 둔다. 스킬이 많으면 호스트가 description을 자르거나 뺀다.
-- 상황으로 쓴다. "사용자가 요청할 때"로 묶으면 자동 호출되지 않는다.
-- 다른 스킬과 범위가 겹치지 않게 쓴다. 겹치면 엉뚱한 스킬이 불린다.
-- 바꾸면 불려야 할 프롬프트와 불리면 안 될 프롬프트로 트리거 eval을 돌릴 수 있다([eval](eval.md#eval)).
+- Say only when to use it, briefly, with trigger words first. With many skills, hosts truncate or drop descriptions.
+- Write it as situations. Grouping it as "when the user asks" prevents automatic invocation.
+- Keep its scope from overlapping other skills. Overlap calls the wrong skill.
+- After a change, you can run the trigger eval with prompts that should and should not invoke it
+  ([eval](eval.md#eval)).

@@ -91,6 +91,9 @@
 - `ultrathink`는 터미널에 직접 입력한 턴만 `xhigh`로 올린다(v2.1.311+, Bedrock 불가). 관찰(2026-11-01, v2.1.316,
   haiku): 서브에이전트 프롬프트에 넣으면 실행 기록의 `effort`·`perTurnEffort`가 정의의 `medium` 그대로였고 추가 지시도
   붙지 않았다.
+- 관찰(2026-11-01, v2.1.316): 호출 `model`·`effort` 6조합(explorer+haiku, explorer+haiku+`high`, explorer+sonnet,
+  explorer+`high`, implementer+opus+`high`, reviewer+sonnet)이 실행 기록의 `message.model`·`effort`와 모두 일치했다.
+  호출 `effort`가 정의의 `effort`보다 우선했다. 조합마다 한 번, 파일 개수를 세는 작은 작업으로 확인했다.
 - `SendMessage`가 있는 서브에이전트에게는 `main`과 이름 붙은 에이전트 목록이 주어진다(v2.1.206+).
 - 중첩은 기본 3단계까지(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), 동시 실행은 20개까지다.
 - 대화형 세션에서는 기본이 백그라운드 실행이고, 백그라운드에서는 쓸 수 있는 도구가 줄어든다.
@@ -267,7 +270,9 @@
 - 서브에이전트는 부모의 sandbox를 물려받는다.
 - 띄울 때 지정한 값이 `agents.default_subagent_model`과 `agents.default_subagent_reasoning_effort`보다 우선한다.
   다만 0.160.0의 `spawn_agent` 도구 설명은 서브에이전트가 기본으로 현재 모델을 물려받으며 "사용자가 명시적으로 다른 모델을
-  요청하지 않으면 `model`을 정하지 말라"고 한다(2026-10-04, 설치된 바이너리의 문자열). 지시서의 모델 지정을 따르는지는 확인하지 않았다.
+  요청하지 않으면 `model`을 정하지 말라"고 한다(2026-10-04, 설치된 바이너리의 문자열). 관찰(2026-11-01, 0.166.0): 명시
+  요청한 4조합(gpt-6-luna `high`, gpt-6.1-terra `medium`·`high`, gpt-6.1-sol `high`)과, 모델 이름 없이 spec 역할 표만 읽게 한
+  실행 검증(gpt-6.1-terra `high`)이 서브에이전트 rollout의 `turn_context.model`·`effort`와 일치했다. 조합마다 한 번 확인했다.
   동시 스레드 상한은 `agents.max_concurrent_threads_per_session`이다.
 - 모델 ID에는 최신 버전을 따르는 별칭이 없다. `gpt-6.1-terra`는 Codex CLI 0.159.0+가 필요하다(2026-11-01,
   [models](https://learn.chatgpt.com/docs/models), 로컬 0.166.0).

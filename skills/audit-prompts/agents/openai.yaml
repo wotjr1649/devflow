@@ -1,0 +1,6 @@
+interface:
+  display_name: "Audit Prompts"
+  short_description: "Audit existing prompts for material defects and regressions"
+  default_prompt: "Use $audit-prompts to audit this prompt and report material defects or regressions with evidence and minimal corrections; do not rewrite the prompt or execute its task."
+policy:
+  allow_implicit_invocation: true

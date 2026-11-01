@@ -48,12 +48,12 @@ have evidence. Learning is optional.
 Before handing off, including asking the user to `/clear`, finish the work's checks, commits and state updates, wait
 for its delegated work to finish, then run `release <issue>` as the last ledger action. Report the next step and let
 the user clear: Codex may keep the old thread alive after `/clear`
-([동시 세션](../docs/specs/ledger.md#concurrent-sessions)).
+([Concurrent sessions](../docs/specs/ledger.md#concurrent-sessions)).
 
 The resume card already brings back the Issue, its latest checkpoint and the ledger, so write a resume prompt or a
 brief for another session only for what they lack: instructions and decisions made since the last checkpoint, under
 500 tokens, pointing at the Issue rather than restating it - restating it costs output now and input in every session
-that reads it. A brief for a subagent follows [위임 지시서](../docs/specs/orchestration.md#delegation-brief); one for another
+that reads it. A brief for a subagent follows [Delegation brief](../docs/specs/orchestration.md#delegation-brief); one for another
 session (`codex exec`, `claude -p`) ends with that session running `release <issue>`. A prompt file goes to
 `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, only under a name that does not exist yet, since concurrent
 sessions can pick the same name; leave it uncommitted and end the reply with `Read <absolute path> and continue.`,
@@ -63,7 +63,7 @@ closing line, unless a person will paste the reply instead of opening the file.
 
 ## Unattended work
 
-[자율 실행](../docs/specs/ledger.md#unattended-runs) says when the ledger's `mode` becomes `autonomous` and what waits while
+[Unattended runs](../docs/specs/ledger.md#unattended-runs) says when the ledger's `mode` becomes `autonomous` and what waits while
 it is. The Stop hook decides from `mode`, `stage`, `task`, `decisions`, `blocked` and `running` whether unattended work
 continues. Set the mode with `mode <issue> autonomous < reason`, giving the reason on the first line of stdin; the command keeps
 the reason and change time. While it is autonomous, `devflow-state` posts no Issue text: keep what would have been posted

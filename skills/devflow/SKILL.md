@@ -34,7 +34,7 @@ recover truncated state from owners.
 
 State block's "단계" is stage; in build/verify the ledger's task locates the loop. The path
 (spike, bounded, architectural) is the ledger's `path`; when unset, classify by
-[경로별 단계](../../docs/specs/lifecycle.md#stages-by-path), take the heavier path when unsure, and record it.
+[Stages by path](../../docs/specs/lifecycle.md#stages-by-path), take the heavier path when unsure, and record it.
 
 Call the owner skill by name to enter its stage: start - `development-start`; review and ship - `pr-review-workflow`,
 which selects [review](../pr-review-workflow/references/review.md) or [ship](../../references/ship.md); cleanup - `workspace-cleanup`. Other stages read their reference on entry:
@@ -50,10 +50,10 @@ hands it this conversation, so its review or verification is no longer independe
 
 ## Moving
 
-A stage is done when its [단계](../../docs/specs/lifecycle.md#stages) condition holds. Before an Issue exists (discover
+A stage is done when its [Stages](../../docs/specs/lifecycle.md#stages) condition holds. Before an Issue exists (discover
 or spike), keep the draft and evidence in chat. For tracked work, update the ledger and the state block's "단계"
 together; build-verify loops, cleanup and the learn after ship change the ledger only. New information sends the
-work back by [되돌아가기](../../docs/specs/lifecycle.md#going-back), which also says when to ask the user.
+work back by [Going back](../../docs/specs/lifecycle.md#going-back), which also says when to ask the user.
 
 After compaction or `/clear`, call this skill again and reread the current stage's reference: called skills are
 restored after compaction, reference files are not.

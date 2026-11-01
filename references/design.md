@@ -12,7 +12,7 @@ bounded path, in a design note on the architectural one.
 - A design that moves a trust boundary - loosening a filter that guards public text, or taking paths, permissions or
   write targets from repository files, git metadata or tool output - gets that review on any path, with the reviewing agent
   trying to break it; check each bypass it claims with the real renderer or command
-  ([리뷰](../docs/specs/orchestration.md#review)).
+  ([Review](../docs/specs/orchestration.md#review)).
 - Ask the user, one short question at a time, about decisions only the user can make; keep what depends on them
   pending, and settle the rest yourself.
 - If the design turns out to touch one or two files with no interface change, move to the bounded path and add a `notes`

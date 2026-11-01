@@ -1,7 +1,7 @@
 # Plan
 
 Done when an engineer who never saw the conversation could build from the plan alone, as
-[계획](../docs/specs/orchestration.md#plan) describes, and its prerequisites ran: the stage-boundary checkpoint says go or
+[Plan](../docs/specs/orchestration.md#plan) describes, and its prerequisites ran: the stage-boundary checkpoint says go or
 no-go. This is the last point where a wrong plan costs a page instead of a build.
 
 - The plan is private: `docs/plans/YYYY-MM-DD-i<issue>-<slug>-plan.md`. Per task: the files, the order, the interfaces
@@ -12,7 +12,7 @@ no-go. This is the last point where a wrong plan costs a page instead of a build
 - Run the prerequisites rather than assuming them: declared dependencies install, the tools exist, the check commands
   start and fail or pass as expected, and every effect the plan needs is covered by standing permission or an
   instruction.
-- Pick the run mode by [실행 모드](../docs/specs/orchestration.md#execution-modes) and record `runMode`.
+- Pick the run mode by [Execution modes](../docs/specs/orchestration.md#execution-modes) and record `runMode`.
 - When the plan changes a trust boundary (authentication, permissions, secrets, hooks, handling outside input) or has
   five or more tasks, review it once with the design perspective from [perspectives](perspectives.md), using the
   host-specific design-review role in [roles](../docs/specs/orchestration.md#models-and-effort).

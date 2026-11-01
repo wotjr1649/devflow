@@ -45,13 +45,13 @@ commit there. The main session merges one result at a time into the Issue branch
 the checks the merged result affects after each merge. The worktrees and their branches stay until cleanup.
 
 The main session keeps decisions, Issue writes, integration and the ledger; a subagent gets one task through a brief
-in the shape of [위임 지시서](../docs/specs/orchestration.md#delegation-brief). Models and effort come from
-[모델과 effort](../docs/specs/orchestration.md#models-and-effort). A subagent that ends with `NEEDS_DECISION` is
-resumed after the main session decides, as in [서브에이전트의 질문](../docs/specs/orchestration.md#subagent-questions).
+in the shape of [Delegation brief](../docs/specs/orchestration.md#delegation-brief). Models and effort come from
+[Models and effort](../docs/specs/orchestration.md#models-and-effort). A subagent that ends with `NEEDS_DECISION` is
+resumed after the main session decides, as in [Subagent questions](../docs/specs/orchestration.md#subagent-questions).
 
 ## Failures
 
-Follow [수정 루프](../docs/specs/orchestration.md#fix-loop): an unclear cause goes to diagnosis first, the
+Follow [Fix loop](../docs/specs/orchestration.md#fix-loop): an unclear cause goes to diagnosis first, the
 implementer fixes a task at most twice, then one promotion, then the main session takes it or reports the blocker.
 Count them in the ledger's `counts` for the task and add a `notes` line with the reason. A plan that turns out wrong goes back to plan; a broken
 design assumption goes back to design.

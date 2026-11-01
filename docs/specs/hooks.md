@@ -16,7 +16,7 @@ another file is not making it common. Per-host packaging metadata is separate.
   session, and that nested runs and concurrent writers do not write to another session or release its records. Do not
   infer the session from the most recent writer, a PID difference or the last card.
 - On receiving an event, handle only that input's session. Do not hide differences in when hosts fire events behind
-  host-specific virtual events. Both hosts finish an [explicit release](ledger.md#동시-세션) before a handoff or clear,
+  host-specific virtual events. Both hosts finish an [explicit release](ledger.md#concurrent-sessions) before a handoff or clear,
   and SessionEnd cleanup is a secondary path.
 - Tie evidence to the candidate SHA, actual loading, host version, scenario and scope of observation. Source tests,
   comparison against installed files, the card output, continue counts, attribution and release of real tool calls, and
@@ -28,7 +28,7 @@ another file is not making it common. Per-host packaging metadata is separate.
 Confirmed deviation: SessionStart's `shareSessionId()` writes `DEVFLOW_SESSION_ID` to the environment file only when it
 receives a safe id in a devflow repository, `CLAUDE_ENV_FILE` exists and `CODEX_THREAD_ID` is absent. This
 host-specific effect does not meet the common contract.
-Its consumers are the CLI's writer records, releases and delegation attribution ([ledger](ledger.md#동시-세션)). This
+Its consumers are the CLI's writer records, releases and delegation attribution ([ledger](ledger.md#concurrent-sessions)). This
 protection is not removed before an alternative passing is verified for the normal case, misattribution, concurrency
 and cleanup. Adopting the document alone does not verify passing or attribution on real hosts.
 When an inherited `CODEX_THREAD_ID` remains, the CLI prefers it, so the inner session's hook input and attribution may
@@ -59,7 +59,7 @@ JSON cannot be read, it ends without output and does not deny the tool call. The
 shell-analysis deadline.
 
 SessionEnd proves the main work tree through local metadata and back links without a git process
-([repository](repository.md#issue-폴더)). It reads metadata only from regular files of at most 4 KiB and does not read
+([repository](repository.md#issue-folder)). It reads metadata only from regular files of at most 4 KiB and does not read
 links, special files or large files. It checks the file type, file identity and read size before and after opening to
 limit replacement and growth as well. It does not open a file given as a shared path, and checks a folder link by the
 text of that link. It follows link chains up to 8 links and treats a longer chain as a shared path. On Windows, a long

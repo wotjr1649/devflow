@@ -19,7 +19,7 @@ passing, and the ledger holds the last commit and the next task.
   reproduction test that fails, and the fix leaves that test as it is. A test never seen failing proves nothing.
 - Fix the code, not the test. Change a test only when the requirement changed or its expectation is wrong, and say which
   in the commit or the checkpoint: review reads test changes for this
-  ([implementation and verification](../docs/specs/orchestration.md#구현과-검증)).
+  ([implementation and verification](../docs/specs/orchestration.md#build-and-verification)).
 - Run the checks that execute the change and the behaviour it affects - the project's tests for the paths touched and
   their callers. When nothing justifies a narrower set (shared code, configuration, test tooling), run the full
   `verify` locally now. The integration gate's full `verify` follows the integration profile
@@ -32,10 +32,10 @@ passing, and the ledger holds the last commit and the next task.
 
 In interactive M2, the main agent may make a one- or two-line edit describable in one sentence and record it in the
 ledger; a new delegation costs more than the edit. Unattended work keeps a fresh context for every task
-([execution modes](../docs/specs/orchestration.md#실행-모드)).
+([execution modes](../docs/specs/orchestration.md#execution-modes)).
 
 In M2 and M3 each task gets a narrow review before the next starts: the host-specific task-review role from
-[roles](../docs/specs/orchestration.md#모델과-effort), given that task's BASE..HEAD. A mechanical change inside one file that touches no trust boundary skips it; the final review covers it.
+[roles](../docs/specs/orchestration.md#models-and-effort), given that task's BASE..HEAD. A mechanical change inside one file that touches no trust boundary skips it; the final review covers it.
 
 M3 (Claude only) launches the implementers in the background with the Agent tool's `isolation: "worktree"` on each call,
 never in the agent definition, which would put M2 in worktrees too. Record each launch with `running <n> add <label>` and
@@ -45,13 +45,13 @@ commit there. The main session merges one result at a time into the Issue branch
 the checks the merged result affects after each merge. The worktrees and their branches stay until cleanup.
 
 The main session keeps decisions, Issue writes, integration and the ledger; a subagent gets one task through a brief
-in the shape of [위임 지시서](../docs/specs/orchestration.md#위임-지시서). Models and effort come from
-[모델과 effort](../docs/specs/orchestration.md#모델과-effort). A subagent that ends with `NEEDS_DECISION` is
-resumed after the main session decides, as in [서브에이전트의 질문](../docs/specs/orchestration.md#서브에이전트의-질문).
+in the shape of [위임 지시서](../docs/specs/orchestration.md#delegation-brief). Models and effort come from
+[모델과 effort](../docs/specs/orchestration.md#models-and-effort). A subagent that ends with `NEEDS_DECISION` is
+resumed after the main session decides, as in [서브에이전트의 질문](../docs/specs/orchestration.md#subagent-questions).
 
 ## Failures
 
-Follow [수정 루프](../docs/specs/orchestration.md#수정-루프): an unclear cause goes to diagnosis first, the
+Follow [수정 루프](../docs/specs/orchestration.md#fix-loop): an unclear cause goes to diagnosis first, the
 implementer fixes a task at most twice, then one promotion, then the main session takes it or reports the blocker.
 Count them in the ledger's `counts` for the task and add a `notes` line with the reason. A plan that turns out wrong goes back to plan; a broken
 design assumption goes back to design.

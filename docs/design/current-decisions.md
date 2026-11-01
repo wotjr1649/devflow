@@ -8,8 +8,8 @@ them. The linked specs own the behavior rules and take precedence over this docu
 **Choice and reason.** The repository root is the single source of the plugin for both hosts, and project instructions
 live in one AGENTS.md. When copies and instruction loaders diverge, the same change lands on only one side. Skill and
 hook definitions, entry points, policies and effects are shared, while host-specific packaging metadata is kept apart.
-[repository](../specs/repository.md#배포) sets the layout, [host-facts](../research/host-facts.md) the observed scope of
-instruction loading, and [hooks](../specs/hooks.md#두-호스트의-공통-계약) the commonality, session attribution and
+[repository](../specs/repository.md#distribution) sets the layout, [host-facts](../research/host-facts.md) the observed scope of
+instruction loading, and [hooks](../specs/hooks.md#common-contract-of-both-hosts) the commonality, session attribution and
 verification conditions of hooks and what is currently unmet. Sharing files alone is not taken to mean that the two
 hosts have the same execution effects.
 
@@ -28,7 +28,7 @@ state conflicts. Memory tools are a search layer.
 The resume card protects the next action, blockers, warnings and recovery means, and a truncated display is not treated
 as complete state.
 Handoff is done explicitly while the session knows itself, and SessionEnd is a secondary path.
-[Concurrent sessions](../specs/ledger.md#동시-세션) sets the release order, and [hooks](../specs/hooks.md) sets the scope
+[Concurrent sessions](../specs/ledger.md#concurrent-sessions) sets the release order, and [hooks](../specs/hooks.md) sets the scope
 and limits of events, input reading and safe file reading.
 
 **Alternatives.** Local files alone cannot be continued on another machine, and writing all task progress to the Issue
@@ -45,7 +45,7 @@ guarantees the previous session's identifier and its end.
 and verification from a separate viewpoint.
 Implementation is delegated when there is a reason to protect the main session's context, such as workload or an
 unattended run, and parallel writes are used only when files do not overlap and interfaces are fixed. [Execution
-modes](../specs/orchestration.md#실행-모드) sets the conditions per mode. Models and effort are chosen to fit the role and
+modes](../specs/orchestration.md#execution-modes) sets the conditions per mode. Models and effort are chosen to fit the role and
 the evidence, but the user chooses the main model. Roles whose results the main session judges again, such as
 exploration and summarizing, go to the cheapest family (haiku, luna), and promotion within the same model is done
 through the call's effort. fable and astra are not used because their token cost is high. Codex mechanical
@@ -93,7 +93,7 @@ results, or when a host can no longer read the common references at the plugin r
 
 **Choice and reason.** Decision interviews, prompt writing and auditing, and agent instruction design are handled by
 independent skills shipped with the plugin
-(list in [overview](overview.md#구성)). Lifecycle references and specs do not invoke or point to these skills and state
+(list in [overview](overview.md#components)). Lifecycle references and specs do not invoke or point to these skills and state
 the needed actions directly, and the skill bodies do not mention devflow either. This keeps them usable as they are in
 repositories without `.devflow.json`, and changing one side does not change the other side's contract. Devflow-specific
 handoff rules are owned by [sessions](../../references/sessions.md).
@@ -115,11 +115,11 @@ router, or when the independent skills need to ship outside devflow.
 evidence.
 Even small changes are judged by meaning rather than file extension or line count. Review reports are short prose, and
 re-review is narrowed to fixes that changed behavior or permissions.
-[orchestration](../specs/orchestration.md#리뷰) owns the scope of checks and review.
+[orchestration](../specs/orchestration.md#review) owns the scope of checks and review.
 devflow itself links the reviewed SHA to CI and the integration record through PRs, server protection and merge commits.
 CI must be evidence that the revision the event requires was actually checked, and it does not replace per-criterion
 execution evidence or independent review.
-[repository](../specs/repository.md#통합과-ci) and [check evidence](../specs/repository.md#devflowjson) set the conditions
+[repository](../specs/repository.md#integration-and-ci) and [check evidence](../specs/repository.md#devflowjson) set the conditions
 for widening or substituting local checks, independent review including M0, CI on the branch HEAD and the latest merge
 result, the recheck right before integration, and the post-integration check.
 
@@ -141,11 +141,11 @@ The product's supported scope is separated from user authority, and comments, ch
 kept distinct to prevent state contamination.
 Being a linked worktree alone does not pass on another Issue's state or writes.
 In unattended stretches, Issue posting, push and integration are deferred ([unattended
-runs](../specs/ledger.md#자율-실행)), and `devflow-state` refuses Issue writes. This is the behavior of the CLI path, not
+runs](../specs/ledger.md#unattended-runs)), and `devflow-state` refuses Issue writes. This is the behavior of the CLI path, not
 a boundary that blocks direct posting.
-[issues](../specs/issues.md#issue-입출력) owns targets and filters, [credentials](../specs/credentials.md) the
+[issues](../specs/issues.md#issue-io) owns targets and filters, [credentials](../specs/credentials.md) the
 authentication and OS isolation premises, [ledger](../specs/ledger.md) unattended runs, worktrees, delegation shutdown
-and checking partial effects, and [lifecycle](../specs/lifecycle.md#되돌아가기) blocker handling. There is no credential
+and checking partial effects, and [lifecycle](../specs/lifecycle.md#going-back) blocker handling. There is no credential
 boundary between the same OS user's shell and child CLIs, and it is not called a boundary until the isolation premises
 are met.
 
@@ -163,12 +163,12 @@ targets changes. A review is not authority to skip protections or required check
 **Choice and reason.** Development judgment is handled by short instructions and review, and effects a test can decide
 are checked by tests and CI.
 Hooks handle resume, unattended continuation and session release. [hooks](../specs/hooks.md) sets the limits on input,
-session handling and real host evidence, and [ledger](../specs/ledger.md#자율-실행) the continuation conditions. The Issue
+session handling and real host evidence, and [ledger](../specs/ledger.md#unattended-runs) the continuation conditions. The Issue
 CLI's public filter and unattended write refusal are the behavior of that path.
 Direct posting is not read as a security boundary that hooks block. Review checks test changes, and the safety floor
 stays in the instructions.
-[documents](../specs/documents.md#에이전트가-읽는-글) owns document rules, and
-[lifecycle](../specs/lifecycle.md#회고와-기억) the placement of lessons. The trigger eval is an optional tool of
+[documents](../specs/documents.md#text-agents-read) owns document rules, and
+[lifecycle](../specs/lifecycle.md#learn-and-memory) the placement of lessons. The trigger eval is an optional tool of
 [eval](../specs/eval.md).
 
 **Alternatives.** Enforcing every action through shell command parsing, posting blocks and test file locks costs a lot in
@@ -185,7 +185,7 @@ Before adding a mechanism, confirm the cause of the failure and the effect to pr
 **Choice and reason.** The author's common marketplace points to each plugin's independent repository and release tags.
 Development testing is kept apart from distribution, and host installation, updates and releases are done on user
 instruction that includes those effects.
-[repository](../specs/repository.md#배포) owns distribution, versions and rollback.
+[repository](../specs/repository.md#distribution) owns distribution, versions and rollback.
 The repository is distributed under Apache-2.0, and third-party parts keep their original licenses and notices. Copied
 content and idea references are recorded separately in [SOURCES](../../SOURCES.md), and [LICENSE](../../LICENSE),
 [LICENSES](../../LICENSES/) and [NOTICE](../../NOTICE) are maintained.

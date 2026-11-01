@@ -35,7 +35,7 @@ script's public filter and its refusal of writes in autonomous mode.
   failure, comments and new Issues may have been posted, so read again to confirm, and treat what is there as posted. If
   it cannot be read, or gh was cut off by a timeout and the post is not yet visible, report "posting state unknown" (an
   authentication failure stays a failure). The hook does not inspect or block Issue posts outside this script
-  ([hooks](hooks.md#등록-이벤트)).
+  ([hooks](hooks.md#registered-events)).
 - Remark: `remark <n>` posts a plain comment on an existing Issue of the current GitHub origin repository from any
   branch. It refuses the checkpoint format (after the same normalization as read), so the resume card and `read` do not
   read it as state. It applies the public filter, the empty-body check and the 8000-character limit, looks up the target
@@ -48,7 +48,7 @@ script's public filter and its refusal of writes in autonomous mode.
   an Issue that has been moved to another repository. main without a working Issue is treated as interactive; this is a
   limit, since it cannot prove an unattended run. A lost response is confirmed by reading again, as with comments. Other
   repositories, and the branch-Issue restriction on state, body, checks, closing and checkpoints, stay unchanged. Being a
-  supported target is not permission to post. Reason: [authority and boundaries](../design/current-decisions.md#권한과-경계).
+  supported target is not permission to post. Reason: [authority and boundaries](../design/current-decisions.md#authority-and-boundaries).
 - New Issue: `create` is a start without a number, so it is an exception to the branch-Issue restriction; if the working
   Issue's ledger is autonomous, it refuses and directs the caller to leave the content in the ledger notes.
   It refuses in a detached HEAD and in an M3 task worktree, and the unattended judgment for a linked worktree follows
@@ -71,8 +71,8 @@ script's public filter and its refusal of writes in autonomous mode.
   and an incomplete list is never output as success. The list and completion are observations at lookup time.
   API sources: [GraphQL Issue](https://docs.github.com/en/graphql/reference/issues#issue),
   [REST sub-issues](https://docs.github.com/en/rest/issues/sub-issues). The reasons for the choice are in
-  [authority and boundaries](../design/current-decisions.md#권한과-경계).
-- In an unattended stretch (when the ledger's `mode` is `autonomous`, [unattended runs](ledger.md#자율-실행)) every Issue
+  [authority and boundaries](../design/current-decisions.md#authority-and-boundaries).
+- In an unattended stretch (when the ledger's `mode` is `autonomous`, [unattended runs](ledger.md#unattended-runs)) every Issue
   write is refused.
   The refusal message directs the caller to leave the content to show the user in the ledger notes. There is no queue or
   automatic posting.
@@ -154,7 +154,7 @@ bodies, but the hook knows where the plugin is. The card goes only into the loca
 ### Budget and preserving meaning
 
 The whole card is under 1,000 `estTokens`, judged on the output actually assembled on every path
-([reason for the choice](../design/current-decisions.md#상태와-재개)).
+([reason for the choice](../design/current-decisions.md#state-and-resume)).
 Judgments about the link, the author, the public filter and the Issue number use the intact original; only the display
 is shortened. The card does not change the Issue, the ledger or the session files.
 

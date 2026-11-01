@@ -31,7 +31,7 @@ record it in the next checkpoint. Plans are not committed to git.
 - Confirm once that a test for new behavior fails before the change, or with the change reverted. Whether to write the
   test first or later follows the project's rules. Either way, a test not seen failing does not prove the change.
 - A bug fix first writes a reproduction test and confirms it fails, then fixes the code. That test is not changed in the
-  process. There is no test lock; review looks at test changes ([rationale](../design/current-decisions.md#지침과-보호)).
+  process. There is no test lock; review looks at test changes ([rationale](../design/current-decisions.md#instructions-and-protections)).
 
 ## Execution modes
 
@@ -46,12 +46,12 @@ each one's actions collide. Subagents are used to protect context and to verify 
 | **M3** (Claude only) | Files do not overlap and interfaces are fixed in the plan | implementers, one per worktree, up to 2 to 3 at once | Per-task review, final review |
 
 Workflow is not an execution mode. The user runs it directly, outside devflow ([conditions to
-revisit](../design/current-decisions.md#실행과-위임)).
+revisit](../design/current-decisions.md#execution-and-delegation)).
 
 Even in interactive M2, a one- or two-line edit that one sentence explains is not delegated; the main session makes it
 and records it in the ledger. One delegation (brief, fresh context, report) costs more than the edit. Per-task review
 follows build's rule for mechanical changes. Unattended runs need a fresh context per task ([unattended
-runs](ledger.md#자율-실행)), so they have no such exception.
+runs](ledger.md#unattended-runs)), so they have no such exception.
 
 In M3, the main session starts implementers by passing `isolation: "worktree"` on each Claude Agent call. Putting it in
 the agent definition would move M2 delegation into worktrees too, so the definition does not carry it. The main session
@@ -63,16 +63,16 @@ evidence for the integration gate follows the integration method ([repository](r
 
 Choose by meaning rather than by extension or line count. Fixing typos, links or wording while keeping the contract is
 M0. The same holds for AGENTS.md and SKILL.md. Changing an instruction's execution flow, permissions, disclosure scope,
-trust boundary or check gates is M1 or above, and the [trust-boundary design review](#리뷰) also applies.
+trust boundary or check gates is M1 or above, and the [trust-boundary design review](#review) also applies.
 
 The main session checks BASE..HEAD and staged, unstaged and untracked changes against the acceptance criteria. Required
 ignored inputs are named by path. Design documents, review-package and reviewers are skipped. [Stages by
-path](lifecycle.md#경로별-단계) and the Issue and ledger stay, and integration follows [Integration and
-CI](repository.md#통합과-ci).
+path](lifecycle.md#stages-by-path) and the Issue and ledger stay, and integration follows [Integration and
+CI](repository.md#integration-and-ci).
 
 ## What the main session owns
 
-- Issue state, the plan, the [ledger](documents.md#산출물마다-진실-원천-하나)
+- Issue state, the plan, the [ledger](documents.md#one-source-of-truth-per-artifact)
 - Every decision outside the delegation brief's scope
 - Integrating results and final verification
 - Recording checkpoints
@@ -96,16 +96,16 @@ When the work in this brief is done and its checks pass, stop and report. Do not
 rounds of review or changes outside the listed files; mention anything worth doing at the end.
 ```
 
-A brief is text agents read, so it is written in English ([documents](documents.md#에이전트가-읽는-글) item 9).
+A brief is text agents read, so it is written in English ([documents](documents.md#text-agents-read) item 9).
 
 A delegation launched as another session (`codex exec`, `claude -p`), unlike a subagent, is recorded in the ledger as
-its own session, so the brief's last instruction is `release <issue>` ([concurrent sessions](ledger.md#동시-세션)).
+its own session, so the brief's last instruction is `release <issue>` ([concurrent sessions](ledger.md#concurrent-sessions)).
 
 Record BASE before delegating. Using `HEAD~1` instead drops the early part of a multi-commit task from the review.
 
 For plans, task specs, tests and outputs that git ignores, the brief gives the path and the part to read. Read the path
 directly even when Glob does not list it, and report a missing required input as a review limit. A background delegation
-goes into the ledger's `running` ([ledger keys](ledger.md#작업-장부-키)).
+goes into the ledger's `running` ([ledger keys](ledger.md#ledger-keys)).
 
 ## Subagent questions
 
@@ -117,7 +117,7 @@ that a subagent can keep running while it waits for an answer, so it **stops and
    file it may not change, it ends with `NEEDS_DECISION`, giving one question, the options, a recommendation and the
    reason.
 3. The main session decides what lies within existing permissions and the delegation scope. When to ask the user, and
-   independent work, follow [going back](lifecycle.md#되돌아가기).
+   independent work, follow [going back](lifecycle.md#going-back).
 4. The main session resumes the same agent. Claude resumes it with `SendMessage`, keeping the conversation history and
    model settings. Codex sends a follow-up task to the same agent.
 5. Messages during a run are notifications only. Do not proceed by guessing a decision.
@@ -130,7 +130,7 @@ The subagent cache runs with a default 5-minute TTL. If waiting for user answers
 1. If the cause of a check or CI failure is unclear, an explorer with the root-cause perspective first reports the cause
    and evidence, without changing files. Splitting analysis from fixing reduces fixes that only cover symptoms.
 2. Within one task, the implementer fixes at most twice. The ledger counts the attempts.
-3. If it still fails, go up one step of [promotion](#승격) and try once.
+3. If it still fails, go up one step of [promotion](#promotion) and try once.
 4. If it still fails, the main session takes it over or reports where it is blocked.
 
 ## Review
@@ -141,7 +141,7 @@ The subagent cache runs with a default 5-minute TTL. If waiting for user answers
 - In M2 and M3, add a narrowly scoped review per task. When the final review catches a defect that review missed, record
   it in the ledger together with the model.
 - Review looks at test changes separately. Weakening a test to make it pass, when the requirement did not change and the
-  expectation was not wrong, is a defect ([rationale](../design/current-decisions.md#지침과-보호)).
+  expectation was not wrong, is a defect ([rationale](../design/current-decisions.md#instructions-and-protections)).
 - Fixing review findings: only a fix that changed behavior or permissions (code, settings, tests; an instruction's flow,
   permissions, disclosure scope, trust boundary or gates) gets a fresh-context execution verification of the criteria it
   reaches and a narrowed re-review. The main session confirms wording and format fixes through CI. If findings recur at
@@ -182,7 +182,7 @@ fable and astra are not used. Values in parentheses are the definition's default
 There are three agent definitions, split by tools: `explorer`, which only reads and runs commands; `reviewer`, which
 only reads; and `implementer`, which edits files. The brief sets the difference between roles (perspectives such as
 exploration, summary, root-cause analysis, verification, design and security)
-([rationale](../design/current-decisions.md#실행과-위임)). Definitions do not set `omitClaudeMd`, because the agents need the
+([rationale](../design/current-decisions.md#execution-and-delegation)). Definitions do not set `omitClaudeMd`, because the agents need the
 project instructions and boundaries as they are.
 
 Claude implementers carry `disallowedTools: Agent` and `maxTurns`. The brief's last paragraph blocks extra review rounds
@@ -194,7 +194,7 @@ The main session decides it when delegating. Go up only one step per task, and r
 
 | Condition | Decided by | Result |
 |---|---|---|
-| Still failing after two fixes in the same task | count | One step to the promotion column ([fix loop](#수정-루프)) |
+| Still failing after two fixes in the same task | count | One step to the promotion column ([fix loop](#fix-loop)) |
 | The cause of a check or CI failure is unclear | main session | Root-cause analysis by explorer (`effort: high`). If it finds no cause, once more with `model: opus` |
 | The task spans the interfaces of several modules, or needs judgment during implementation (consistency across files, choice of algorithm) | plan | Classified as implementation needing judgment. The main session settles design decisions before delegating |
 | The brief is ambiguous | implementer | No promotion; end with `NEEDS_DECISION` |
@@ -202,7 +202,7 @@ The main session decides it when delegating. Go up only one step per task, and r
 | A mechanical change within one file that does not touch a trust boundary | diff | Skip per-task review; the final review checks it |
 
 Routes outside this table and promotion (hook enforcement, declarative routes) are on hold. The conditions to revisit
-them follow [revisiting routes and Workflow](../design/current-decisions.md#실행과-위임). In Codex, the model and effort
+them follow [revisiting routes and Workflow](../design/current-decisions.md#execution-and-delegation). In Codex, the model and effort
 given at spawn take precedence over the defaults. The host's current tool instructions may still limit what can be set,
 so follow them first. Confirm from run records that the table's values actually apply; if that cannot be confirmed,
 leave it as unconfirmed. In Codex, read-only roles are kept only by instruction. A custom agent's `sandbox_mode` cannot
@@ -213,7 +213,7 @@ narrow the parent sandbox ([host-facts](../research/host-facts.md#codex)).
 | Mechanism | Claude Code | Codex |
 |---|---|---|
 | Implementer and reviewer agents | plugin `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`) | built-in explorer and worker spawned with `fork_turns: "none"` and a set model and effort. The default `"all"` passes on the parent conversation |
-| Resume card, unattended continuation, session release | [hooks](hooks.md#등록-이벤트) | same file |
+| Resume card, unattended continuation, session release | [hooks](hooks.md#registered-events) | same file |
 
 Codex's SessionEnd does not run in subagents. A session that ended without the hook running expires after 30 minutes
-([concurrent sessions](ledger.md#동시-세션)).
+([concurrent sessions](ledger.md#concurrent-sessions)).

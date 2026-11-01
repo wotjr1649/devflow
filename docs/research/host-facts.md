@@ -256,7 +256,7 @@ original in [sources](sources.md) again and fix this document.
   process that chose the encoding were not captured. Comparing a JSON string with non-ASCII escaped in an explicit
   PowerShell 7.6.6 matched the original. In a diagnostic that also specified the same `pwsh.exe` and `login=false` in the
   normal TUI, child shell major 7 and a full match with the original were confirmed. Follow the procedure in
-  [Windows shell and read output](../local-development.md#windows-셸과-읽기-출력). Keep environment correction and skill
+  [Windows shell and read output](../local-development.md#windows-shell-and-read-output). Keep environment correction and skill
   efficiency improvement separate.
 
 **Plugins**
@@ -274,7 +274,7 @@ original in [sources](sources.md) again and fix this document.
   `codex plugin add <plugin>@<marketplace>` also installs (0.159.3). Observation (2026-10-03, 0.160.0, five times):
   reinstalling the same plugin made the cache equal to the deployment worktree. If a worktree is registered as the
   marketplace, the cache's `.git` is a file pointing to that worktree's gitdir. For the current development install
-  command, follow [Running and testing a local development build](../local-development.md#codex-설치와-실행).
+  command, follow [Running and testing a local development build](../local-development.md#installing-and-running-codex).
 - Hook trust is recorded as `trusted_hash` in
   `[hooks.state."<plugin>@<marketplace>:<hook file>:<event>:<i>:<j>"]` of `config.toml`. Observation (2026-10-01): when
   the `hooks.json` entry was left as is and only the script the hook runs was changed and reinstalled, the new script
@@ -285,7 +285,7 @@ original in [sources](sources.md) again and fix this document.
 
 **Hooks**
 - The hooks covered in this document are SessionStart, Stop and SessionEnd. The product's registered events and scope are
-  set by the [common hook contract](../specs/hooks.md#등록-이벤트).
+  set by the [common hook contract](../specs/hooks.md#registered-events).
 - SessionEnd (2026-10-04, [hooks](https://learn.chatgpt.com/docs/hooks), 0.160.0 source
   [session_end.rs](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/events/session_end.rs)): the
   input's `session_id` is the thread id and `reason` is always `other`. The default is 1 second and the maximum 3

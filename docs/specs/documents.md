@@ -13,7 +13,7 @@ when the two disagree, the spec wins.
 | intent | problem, desired outcome, affected users and systems, constraints, open questions, acceptance criteria | top of the Issue body | public | replaced only when the scope changes, after the user confirms |
 | state block | stage, branch and PR, done and remaining, next action, blockers, latest checkpoint | block at the bottom of the Issue body | public | **overwritten** |
 | checkpoint | changes, verification (run and not run), decisions, next | Issue comment | public | **append only** |
-| ledger | stage, task progress, decisions and blockers, content an unattended run could not post ([keys](ledger.md#작업-장부-키)) | `.work/devflow/i<issue>/ledger.json` ([main work tree](repository.md#issue-폴더)) | private | until the Issue closes |
+| ledger | stage, task progress, decisions and blockers, content an unattended run could not post ([keys](ledger.md#ledger-keys)) | `.work/devflow/i<issue>/ledger.json` ([main work tree](repository.md#issue-folder)) | private | until the Issue closes |
 | product contracts | lasting behavior rules | `docs/specs/` | public | when a contract changes |
 | current design decisions | current choices and reasons, alternatives not taken, conditions for revisiting | `docs/design/current-decisions.md` | public | updated in place when a choice changes |
 | plan | files, order, risks, proof, per-task interfaces | `docs/plans/` | private | until the Issue closes |
@@ -21,7 +21,7 @@ when the two disagree, the spec wins.
 | prompt | only new instructions and the changed part of decisions | chat or `docs/prompts/` | private | one-off |
 | handoff | not written; the state block and checkpoints replace it. Only when private evidence is truly needed | `artifacts/handoff/` | private | as needed |
 | evidence | raw logs, measurements | `artifacts/`, `.work/` | private | kept |
-| lessons | where they go depends on their kind ([learn and memory](lifecycle.md#회고와-기억)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
+| lessons | where they go depends on their kind ([learn and memory](lifecycle.md#learn-and-memory)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
 
 Keep each fact in one place. Other places only link to it. The exception for execution instructions is stated at the
 top.
@@ -57,7 +57,7 @@ repository, write only a publishable summary in the Issue and point to private e
 | state block | 15 lines | move old content to checkpoints |
 | checkpoint | 10 lines | point to evidence by path |
 | prompt | 500 tokens | keep only the changed part |
-| resume card | under 1,000 tokens | [reduction order in issues](issues.md#예산과-의미-보존) |
+| resume card | under 1,000 tokens | [reduction order in issues](issues.md#budget-and-preserving-meaning) |
 
 Why: the amount reattached after compaction is limited ([host-facts](../research/host-facts.md)), and text that is
 always loaded costs every turn.
@@ -80,9 +80,9 @@ always loaded costs every turn.
   session.
 - Always-loaded documents (AGENTS.md, skills, hook output formats) carry no dates or progress. They break the cache and
   go stale quickly.
-- In interactive work, when a unit of work ends, finish the [handover order](ledger.md#동시-세션), `/clear` and restart
+- In interactive work, when a unit of work ends, finish the [handover order](ledger.md#concurrent-sessions), `/clear` and restart
   from the resume card. Compaction costs a summary and loses detail. Only the user can run `/clear`, so unattended runs
-  follow [unattended run](ledger.md#자율-실행).
+  follow [unattended run](ledger.md#unattended-runs).
 
 ## Text agents read
 
@@ -106,8 +106,8 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
    Issues, checkpoints, PR bodies and reports to the owner are written in Korean. Korean literals the Issue protocol
    parses and user prompts the eval simulates stay as they are.
 10. devflow has no blocking mechanisms. Effects a test can decide go in tests and CI; the rest is left to instructions
-    and review ([why the current choice](../design/current-decisions.md#지침과-보호)). Sentences moved into tests are
-    deleted ([learn and memory](lifecycle.md#회고와-기억)), but the safety floor stays. Rules that need judgment stay in
+    and review ([why the current choice](../design/current-decisions.md#instructions-and-protections)). Sentences moved into tests are
+    deleted ([learn and memory](lifecycle.md#learn-and-memory)), but the safety floor stays. Rules that need judgment stay in
     documents and review. Host-specific means are marked as in rule 7, and their support follows
     [host-facts](../research/host-facts.md).
 

@@ -58,7 +58,7 @@ Keeping the same profile reuses the saved login and settings. Do not reset the l
 
 Follow this procedure when the owner has instructed the creation and installation of that test environment. If an
 environment already exists, do not recreate it; go on to the commit update in the next section. Why a worktree without
-private files is used, and the distribution path, follow the [distribution contract](specs/repository.md#배포).
+private files is used, and the distribution path, follow the [distribution contract](specs/repository.md#distribution).
 
 Set the following variables in PowerShell. Put in `devflowRef` the full SHA of a commit that passed the repository
 checks.
@@ -128,7 +128,7 @@ installation of the `devflow-local` marketplace. After that, reuse a local launc
 ## Testing the next development commit
 
 1. On the Issue working branch, run the checks that fit the change and commit the change to test. Integration gates
-   follow [Integration and CI](specs/repository.md#통합과-ci).
+   follow [Integration and CI](specs/repository.md#integration-and-ci).
 2. Set the variables above again and change `devflowRef` to this test commit. End the test sessions of both hosts.
 3. Check `source` for tracked changes, untracked files and ignored files. If there is extra work, preserve it and find
    the cause before updating.
@@ -242,13 +242,13 @@ Going through `devflow-state` is an instruction, and direct calls do not get the
 mode's write refusal.
 In a new test session in each of Claude Code and Codex, check the source of the invoked script. Record the CLI automated
 tests, real API writes and host execution paths separately, and do not let one replace another verification. The policy
-and the handling of unconfirmed results follow [Issue I/O](specs/issues.md#issue-입출력). Create, link and clean up real
+and the handling of unconfirmed results follow [Issue I/O](specs/issues.md#issue-io). Create, link and clean up real
 test targets only within the approved scope.
 
 ## Integration and distribution
 
-Integration into `main` after testing a development build follows [Integration and CI](specs/repository.md#통합과-ci).
-Ordinary Issue integration and version changes are distinguished in the [version policy](specs/repository.md#버전), and
+Integration into `main` after testing a development build follows [Integration and CI](specs/repository.md#integration-and-ci).
+Ordinary Issue integration and version changes are distinguished in the [version policy](specs/repository.md#version), and
 when distributing, follow the order of tags, Release, common catalog and everyday-install verification in [Release and
-rollback](specs/repository.md#릴리스와-롤백).
+rollback](specs/repository.md#release-and-rollback).
 Running a development build per this guide is not an update of the everyday channel.

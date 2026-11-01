@@ -1,7 +1,7 @@
 # Repository contract
 
 This spec sets the layout, ignore and attributes blocks, AGENTS.md format and machine profile devflow recommends for a
-project. No runner checks them ([why](../design/current-decisions.md#지침과-보호)).
+project. No runner checks them ([why](../design/current-decisions.md#instructions-and-protections)).
 
 ## Folders
 
@@ -35,7 +35,7 @@ when a worktree is removed, and sessions in any worktree use the same ledger and
   The hook checks the path string before asking the file system.
 - Before reading git metadata the hook checks that the path is local, and it reads only small regular files. Shared
   paths, links and forged back links are not used as evidence of the main work tree. SessionEnd releases the session
-  with this rule and no git process ([ledger](ledger.md#동시-세션)).
+  with this rule and no git process ([ledger](ledger.md#concurrent-sessions)).
 - A linked worktree that is not on an Issue branch does not borrow the Issue of the main work tree's branch. An M3 task
   worktree does not write to the ledger or the Issue ([ledger](ledger.md)).
 - If an old Issue folder exists only in a worktree, the resume card warns to move it and refuses ledger and Issue writes
@@ -95,7 +95,7 @@ The block cannot hide private paths that are already tracked. Check with `git ls
 ## Gotchas
 ```
 
-- Agents read it, so write it in English ([documents](documents.md#에이전트가-읽는-글)). `## Commands` and
+- Agents read it, so write it in English ([documents](documents.md#text-agents-read)). `## Commands` and
   `## Boundaries` are required sections. `(optional)` does not replace required gates or failure-reproduction tests.
 
 - Keep it within one page. Do not restate the user's global instructions.
@@ -147,14 +147,14 @@ only in a repository that has this file.
 
 Keys from old profiles (`tests`, `highRisk`, `checks`, `private`, `allowLocalPaths`, `specs`, `decisions`, `agentsMd`,
 `protected`) are ignored without error if they remain. There is no test lock. Review looks at test changes
-([why](../design/current-decisions.md#지침과-보호)). How hooks read input, decide the session-release path and where
+([why](../design/current-decisions.md#instructions-and-protections)). How hooks read input, decide the session-release path and where
 they fall short follows [hooks](hooks.md).
 
 In a `local-merge` repository the tracked `.githooks/pre-push` runs `verify` only when the work tree is clean and the
 pushed commit is HEAD, and blocks the push if it fails. A push that only deletes refs has no commit to check, so it does
 not run. The check's child process gets the repository-selecting environment Git passed with it removed, so a check in a
 temporary repository does not change the real one. This gate replaces the check record at integration. Whether CI is
-required is the project's choice. devflow's own standard follows [Integration and CI](#통합과-ci). The
+required is the project's choice. devflow's own standard follows [Integration and CI](#integration-and-ci). The
 `git config core.hooksPath .githooks` that turns the hook on is done per clone (it is repository configuration, not
 host configuration, but it turns a hook on, so it happens on the owner's instruction); in a clone with the hook off,
 write a check line in the integration commit.
@@ -210,8 +210,8 @@ The local pre-push is the integration gate for `local-merge`. In `pr-ci` the hoo
 it is on does it run as a check before branch pushes. The integration gate for `pr-ci` is the server's ruleset and PR
 checks.
 
-After the checks and records of [ship](lifecycle.md#단계), just before integration, read base, head, rules and checks
-again. If the branch is behind, merge main ([review](orchestration.md#리뷰)). After the merge, confirm the actual main
+After the checks and records of [ship](lifecycle.md#stages), just before integration, read base, head, rules and checks
+again. If the branch is behind, merge main ([review](orchestration.md#review)). After the merge, confirm the actual main
 SHA and main CI before completing and cleaning up.
 
 ### Reverting the self-integration policy
@@ -258,8 +258,8 @@ then disable the old plugin. Keep other plugins and settings.
 
 A user-instructed release follows this order.
 
-1. Bump both manifest versions per the [version policy](#버전), pass checks, review and the
-   [integration gate](#통합과-ci), and integrate into main.
+1. Bump both manifest versions per the [version policy](#version), pass checks, review and the
+   [integration gate](#integration-and-ci), and integrate into main.
 2. Confirm the remote main and the integration commit, create a lightweight `v0.y.z` tag on that commit and push it.
    If a tag with the same name exists, do not rewrite it. pre-push allows a tag only if it equals HEAD, so use a
    lightweight tag.

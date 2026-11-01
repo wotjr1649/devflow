@@ -3,7 +3,7 @@
 ## eval
 
 The eval is an optional tool run with `claude plugin eval`. It is not an acceptance criterion or a release condition
-([why](../design/current-decisions.md#지침과-보호)).
+([why](../design/current-decisions.md#instructions-and-protections)).
 Cases live in `evals/`, and results go in that change's checkpoint with the model, the Claude Code version and the cost.
 Pin models by full ID, not alias, in `--model` and `--judge-model`. An alias changes its target when a new model ships,
 which breaks before-and-after comparison.

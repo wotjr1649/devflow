@@ -1,7 +1,7 @@
 # Ledger contract
 
 Sets the ledger's keys, unattended runs, and what happens when several sessions write to the same Issue. Where the ledger
-lives is set by [repository](repository.md#issue-폴더).
+lives is set by [repository](repository.md#issue-folder).
 
 ## Ledger keys
 
@@ -13,9 +13,9 @@ lifecycle's 10 stages and `done` after ship.
 
 | Key | Holds |
 |---|---|
-| `stage`, `path` | The lifecycle stage and path (spike, bounded, architectural). Stage records follow the post-ship exception in [lifecycle](lifecycle.md#단계) and the [task loop](lifecycle.md#반복) |
-| `mode` | `interactive` or `autonomous`. The only criterion for an unattended stretch. A new ledger may set it with `ledger-update`; an existing ledger switches only with `devflow-state mode <n> autonomous\|interactive < reason` ([unattended runs](#자율-실행)) |
-| `modeChanged` | `{to, at, session}` of the last mode switch. The `mode` command (including a `ledger-update` that starts a new ledger as autonomous) records the ISO time and the id hash of the session that switched it, and reattribution changes only `session` ([unattended runs](#자율-실행)). The resume card shows it as `Mode: <to> since <at>` |
+| `stage`, `path` | The lifecycle stage and path (spike, bounded, architectural). Stage records follow the post-ship exception in [lifecycle](lifecycle.md#stages) and the [task loop](lifecycle.md#loops) |
+| `mode` | `interactive` or `autonomous`. The only criterion for an unattended stretch. A new ledger may set it with `ledger-update`; an existing ledger switches only with `devflow-state mode <n> autonomous\|interactive < reason` ([unattended runs](#unattended-runs)) |
+| `modeChanged` | `{to, at, session}` of the last mode switch. The `mode` command (including a `ledger-update` that starts a new ledger as autonomous) records the ISO time and the id hash of the session that switched it, and reattribution changes only `session` ([unattended runs](#unattended-runs)). The resume card shows it as `Mode: <to> since <at>` |
 | `runMode` | Starts with M0 to M3 (a description may follow) |
 | `task` | `{current, total}`, integers of 1 or more. When the last task ends, current may exceed total |
 | `base`, `lastCommit` | The BASE before delegation, the last commit the ledger recorded |
@@ -26,7 +26,7 @@ lifecycle's 10 stages and `done` after ship.
 | `running` | Names of background delegations that are running. Added with `running <n> add <name>` and removed with `done` once the result is recovered and the exit confirmed. For failure, timeout or interruption, confirm the exit of child processes and partial effects too. If they cannot be confirmed, leave a record, continue only independent work and do not run it again. The duty to confirm the exit is not permission to terminate. Remaining entries block Stop's unattended continuation. `ledger-update` does not replace the running list |
 | `followups` | Follow-up candidates to propose at ship |
 
-`sessions.json` and `ledger.lock` in the same folder are used for [concurrent sessions](#동시-세션).
+`sessions.json` and `ledger.lock` in the same folder are used for [concurrent sessions](#concurrent-sessions).
 `testsLocked`, `testsFailing`, `pendingPosts`, `metrics` and old aggregate values in old ledgers are ignored, and are not
 automatically removed or rewritten.
 `ledger-update` does not change `pendingPosts` either. Of the remaining post candidates, only those the user read and
@@ -53,12 +53,12 @@ whether a person is present, so they are not used as the criterion. Only then do
 adds to the continue count under the ledger lock.
 
 - Condition: the stage is build or verify, there is an open task, and `blocked`, open `decisions` and `running` are empty
-  ([ledger keys](#작업-장부-키)). Waiting to confirm a remote write is also recorded in `blocked`.
+  ([ledger keys](#ledger-keys)). Waiting to confirm a remote write is also recorded in `blocked`.
 - At most 2 times for the same task (the ledger's continue count). After that, stop and get a review.
 - When a task ends, check, commit and update the ledger. Only the user can run `/clear`, so an unattended run uses a fresh
   context per task through an implementer (M2), and the main session carries on through the ledger and commits.
 - In an unattended stretch, nothing is posted to Issues and there is no push or integration. They are recorded in the
-  ledger and done in the next interactive turn ([Issue I/O](issues.md#issue-입출력)). This is devflow's current
+  ledger and done in the next interactive turn ([Issue I/O](issues.md#issue-io)). This is devflow's current
   unattended run policy.
   `devflow-state` refuses every Issue write in autonomous mode and directs the caller to leave the content to show the
   user in the ledger notes.
@@ -96,7 +96,7 @@ independent and does not write another Issue's ledger.
   that Issue or entry, but shows an entry name only when it consists solely of letters, digits, `_`, `.` and `-`; it
   leaves confirmation and recovery to the session that owns that run or to the user, and does not suggest switching the
   mode of another Issue or a path without this check. create in a detached HEAD is refused anywhere. The limit that create
-  in the main work tree without a working Issue is treated as interactive remains ([Issue I/O](issues.md#issue-입출력)).
+  in the main work tree without a working Issue is treated as interactive remains ([Issue I/O](issues.md#issue-io)).
 - `release <n>` removes an entry only when this session has one; otherwise it creates no folder, lock or file.
 
 ## Concurrent sessions
@@ -115,7 +115,7 @@ message.
 - Writes (to the Issue and the ledger) leave the session in `sessions.json` (id hash and time). When another session
   wrote within 30 minutes and did not release, the resume card and the write output warn. This does not refuse, and reads
   are not counted.
-- [Current session id passing](hooks.md#두-호스트의-공통-계약): the CLI uses the first non-empty value of
+- [Current session id passing](hooks.md#common-contract-of-both-hosts): the CLI uses the first non-empty value of
   `CODEX_THREAD_ID` → `DEVFLOW_SESSION_ID` → `CLAUDE_CODE_SESSION_ID`. Nested hosts follow the same order. A subagent has
   the parent's id; without an id, nothing is recorded or warned.
 - At a handoff, after finishing checks, commits, state records and delegated work, run `release <n>` as the last ledger

@@ -11,7 +11,7 @@ host behavior looks doubtful, check the original here again. Host documentation 
   - Recipe-style instructions constrain newer models.
   - AGENTS.md holds situational pointers.
   - Permit safe work explicitly and recalibrate strong boundary wording. Boundaries meant to stop an older model can
-    stop a newer one more than needed, so review the [boundary wording](../specs/documents.md#에이전트가-읽는-글) when
+    stop a newer one more than needed, so review the [boundary wording](../specs/documents.md#text-agents-read) when
     the model that reads the instructions changes.
   - Define the completion condition first.
 - [Prompting Claude Opus 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
@@ -55,7 +55,7 @@ host behavior looks doubtful, check the original here again. Host documentation 
 - Claude Code
   - [Skills](https://code.claude.com/docs/en/skills): frontmatter, invocation control, listing budget, what is
     re-attached after compact, eval. External advice to move repeated rules into hooks is kept separate from devflow's
-    [current choice](../design/current-decisions.md#지침과-보호).
+    [current choice](../design/current-decisions.md#instructions-and-protections).
   - [Plugin reference](https://code.claude.com/docs/en/plugins-reference),
     [Plugin components](https://code.claude.com/docs/en/plugins/components),
     [Plugin loading](https://code.claude.com/docs/en/plugins/loading): namespaces, agent frontmatter limits,
@@ -125,7 +125,7 @@ host behavior looks doubtful, check the original here again. Host documentation 
 
 ## Scope of enforcement and measurement
 
-Sources consulted when choosing [instructions and protection](../design/current-decisions.md#지침과-보호). The
+Sources consulted when choosing [instructions and protection](../design/current-decisions.md#instructions-and-protections). The
 originals were checked on 2026-10-31.
 
 - [Anthropic: Demystifying evals for AI agents](https://www.anthropic.com/research/demystifying-evals-for-ai-agents)

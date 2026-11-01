@@ -2,7 +2,7 @@
 
 This spec sets `gh` authentication, the credential boundary within one OS user, and the prerequisites of the OS
 isolation needed to create that boundary.
-The public filter and unattended write refusal of [Issue I/O](issues.md#issue-입출력) are not this boundary.
+The public filter and unattended write refusal of [Issue I/O](issues.md#issue-io) are not this boundary.
 
 ## Authentication and the credential boundary
 
@@ -17,7 +17,7 @@ The public filter and unattended write refusal of [Issue I/O](issues.md#issue-�
   is also a child process of the agent's shell. So a write run directly reaches as far as every GitHub credential that
   user can read. Within the selected repositories that includes push, force push and branch deletion.
   The owner can set a ruleset that blocks force pushes to and deletion of the default branch. When a boundary is
-  needed, follow [Prerequisites for OS isolation](#os-격리의-전제).
+  needed, follow [Prerequisites for OS isolation](#prerequisites-for-os-isolation).
 
 ## Prerequisites for OS isolation
 
@@ -47,4 +47,4 @@ To use it as a boundary, settle the following outside the sandbox.
 
 Until these prerequisites are in place, do not call this execution path a credential boundary. Refusing all Issue
 writes in unattended mode and confirming the content in the next interactive turn stay as
-[Issue I/O](issues.md#issue-입출력) sets them, and content to post stays in the ledger notes.
+[Issue I/O](issues.md#issue-io) sets them, and content to post stays in the ledger notes.

@@ -8,9 +8,9 @@ work returns to when new information appears. How work runs inside each stage (m
 
 - The `devflow` skill uses the resume card (the Issue's current state, the ledger, `.devflow.json`) to judge the current
   stage and task number.
-- Even when a card exists, `development-start` takes a new work request and decides the [path](#경로별-단계). A spike, or
+- Even when a card exists, `development-start` takes a new work request and decides the [path](#stages-by-path). A spike, or
   work whose problem and acceptance criteria are not confirmed, goes to discover
-  ([rationale](../design/current-decisions.md#진입점과-단계)).
+  ([rationale](../design/current-decisions.md#entry-points-and-stages)).
 - A stage with an owning skill calls that skill by name; a stage without one reads the router's stage reference.
 - review and ship keep `pr-review-workflow` as the entry point. The shared
   [review](../../skills/pr-review-workflow/references/review.md) and [ship](../../references/ship.md) own the
@@ -59,7 +59,7 @@ the Git revision. Do not create milestone fields or a separate state document; c
 as unconfirmed, and hold dependent actions. Do not clear a conflict by the latest timestamp alone or turn an earlier
 FAIL into PASS. Use the existing boundary updates, and do not build a long progress table in every reply.
 
-Returns follow [going back](#되돌아가기) below exactly. A behavior failure returns to Increment, a plan error to
+Returns follow [going back](#going-back) below exactly. A behavior failure returns to Increment, a plan error to
 Preparation's plan, and a failed design assumption to Preparation's design. A change to intent or acceptance criteria
 goes through the existing user confirmation in Direction. Give the reason, the evidence to keep, the exits to meet again
 and the next action, and do not require a new interview for a fix in the same scope.
@@ -71,20 +71,20 @@ and the next action, and do not require a new interview for a fix in the same sc
 | 1 | discover | What to build and why: the problem, users, success criteria, exclusions. Separate observations, claims, estimates and unknowns; if what to build is open, compare concepts and minimal scopes | Draft intent, or findings and the reason for holding or stopping with the condition to resume | start once the user confirms the intent. A build request that already holds the problem and observable acceptance criteria is itself confirmed intent, so it goes to start without a new interview. A spike ends with a throwaway experiment and a report. Research, draft only, hold or stop before an Issue exists ends by reporting the result and creates no Issue, branch, ledger or product change | router reference |
 | 2 | start | Register and match the Issue, settle the acceptance criteria, working branch, baseline check | Issue body, branch | Issue link confirmed, baseline passes | development-start |
 | 3 | design | Organize requirements and design, compare alternatives, mark concerns. Contract changes go into specs, and current choices and their reasons into [current design decisions](../design/current-decisions.md) | Design notes, or `docs/specs/` and current design decisions | Decisions only the user can make are resolved | router reference, reviewer (design perspective) |
-| 4 | plan | Per-task files, order, interfaces, proof, risks. Check [plan quality](orchestration.md#계획), confirm prerequisites (dependencies, tools, permissions, check commands), choose the execution mode | Private plan, public summary and a go or no-go checkpoint | go | router reference. If the plan changes a trust boundary (authentication, permissions, secrets, hooks, external input handling) or has five or more tasks, a reviewer (design perspective) reviews it once |
+| 4 | plan | Per-task files, order, interfaces, proof, risks. Check [plan quality](orchestration.md#plan), confirm prerequisites (dependencies, tools, permissions, check commands), choose the execution mode | Private plan, public summary and a go or no-go checkpoint | go | router reference. If the plan changes a trust boundary (authentication, permissions, secrets, hooks, external input handling) or has five or more tasks, a reviewer (design perspective) reviews it once |
 | 5 | build | Run by mode, confirm failing tests, commit per task | Commits | The plan's tasks are done | router reference, implementer |
-| 6 | verify | Confirm the acceptance criteria by actually running them, check behavior per the [execution mode](orchestration.md#실행-모드) | Verification evidence | Each criterion has execution evidence | router reference, execution verification (explorer) per mode |
-| 7 | review | Final review per the [execution mode](orchestration.md#실행-모드), handle findings | Findings and their handling | No correctness or requirement defects | pr-review-workflow |
+| 6 | verify | Confirm the acceptance criteria by actually running them, check behavior per the [execution mode](orchestration.md#execution-modes) | Verification evidence | Each criterion has execution evidence | router reference, execution verification (explorer) per mode |
+| 7 | review | Final review per the [execution mode](orchestration.md#execution-modes), handle findings | Findings and their handling | No correctness or requirement defects | pr-review-workflow |
 | 8 | ship | push, PR, CI and merge per the integration method, Issue completion and follow-up Issues | Integrated default branch, closed Issue | Integration and closing confirmed | pr-review-workflow |
 | 9 | cleanup | Clean up branches and worktrees | Cleanup record | Cleanup done | workspace-cleanup |
-| 10 | learn | Put lessons in the right place | "Learn and memory" below | Only when there is a lesson | router reference; if the destination is a file agents read, [text agents read](documents.md#에이전트가-읽는-글) |
+| 10 | learn | Put lessons in the right place | "Learn and memory" below | Only when there is a lesson | router reference; if the destination is a file agents read, [text agents read](documents.md#text-agents-read) |
 
 ship writes the state block as done on the Issue branch and closes the Issue. `local-merge` does this before
 integration, `pr-ci` after confirming the merged result. A partial integration with scope left does not close the Issue
 and keeps the remaining scope in the state. After the branch is deleted, the Issue can no longer be written, so cleanup
 and any learn after it are recorded only in the ledger.
 
-Agent roles in the table follow [roles per host](orchestration.md#모델과-effort). Design and plan reviews are done by the
+Agent roles in the table follow [roles per host](orchestration.md#models-and-effort). Design and plan reviews are done by the
 reviewer in Claude and by the main session in Codex.
 
 ## Stages by path
@@ -103,8 +103,8 @@ changes the heavier process does not improve results and only adds cost ([source
 
 - **Task loop**: for each task in the plan, run build → verify, plus task review in M2 and M3. The next task starts
   again from build. Commit per task and update the ledger. When a fresh context is needed, in interactive work finish
-  the [handoff](ledger.md#동시-세션), `/clear` and resume from the resume card; in unattended runs continue as [unattended
-  runs](ledger.md#자율-실행) describes.
+  the [handoff](ledger.md#concurrent-sessions), `/clear` and resume from the resume card; in unattended runs continue as [unattended
+  runs](ledger.md#unattended-runs) describes.
 - **Wrap-up**: when all tasks are done, verify (all acceptance criteria) → review (final) → ship.
 - **Slice loop**: if ship is a partial integration, do not close the Issue; return to build for the remaining acceptance
   criteria. If the work was not in the plan, return to plan.
@@ -114,7 +114,7 @@ changes the heavier process does not improve results and only adds cost ([source
 | What happened | Stage to return to | Ask the user? |
 |---|---|---|
 | A bug in your own change, a failing check, verify not met | build | No |
-| Review findings | build → verify. A fix that changed behavior or permissions gets a narrowed re-review; a wording or format fix gets CI ([re-verification](orchestration.md#리뷰)) | No |
+| Review findings | build → verify. A fix that changed behavior or permissions gets a narrowed re-review; a wording or format fix gets CI ([re-verification](orchestration.md#review)) | No |
 | CI failure during integration | Reopen the Issue closed early and set its state back to build | No |
 | The plan is wrong (files, order, interface) but the design holds | plan; fix the private plan on the spot | No |
 | A design assumption breaks (new constraint, approach not possible) | design → plan; update [current design decisions](../design/current-decisions.md) for long-lived choices | Yes, if the decision is one only the user can make |
@@ -124,7 +124,7 @@ changes the heavier process does not improve results and only adds cost ([source
 | Blocked by an external factor | Write the blocker and the needed input in the current state and hold only dependent actions. Continue independent work within scope | Only when there is a decision only the user can make or an unapproved effect |
 | Hidden complexity (bounded → architectural) | design | Tell the user the path changed |
 
-Automatic fixes within a task follow the [fix loop](orchestration.md#수정-루프). After three failures toward the same goal,
+Automatic fixes within a task follow the [fix loop](orchestration.md#fix-loop). After three failures toward the same goal,
 change approach or stop and report.
 
 ## eval
@@ -137,7 +137,7 @@ learn runs only when there is a lesson. A lesson goes where its nature fits.
 
 | Lesson | Where it goes |
 |---|---|
-| Can be checked by a test | A test. Remove it from AGENTS.md after moving it. Safety floors stay ([documents](documents.md#에이전트가-읽는-글) item 10) |
+| Can be checked by a test | A test. Remove it from AGENTS.md after moving it. Safety floors stay ([documents](documents.md#text-agents-read) item 10) |
 | Applies only to one area | That area's spec or document, plus one row in the AGENTS.md document map |
 | Repository-wide, repeated twice, not checkable by a test | AGENTS.md Gotchas. Over budget, move less-used items into documents |
 | A procedure common to several repositories | A devflow skill. When the skill list changes, [eval](#eval) can optionally be run |
@@ -146,4 +146,4 @@ learn runs only when there is a lesson. A lesson goes where its nature fits.
 | Environment specific to that machine | A private handoff or the host's personal memory. Not in shared instructions |
 
 When editing AGENTS.md, also remove Gotchas that machinery now blocks (except safety floors). The relationship with
-memory tools is defined by [documents](documents.md#기억-도구).
+memory tools is defined by [documents](documents.md#memory-tools).

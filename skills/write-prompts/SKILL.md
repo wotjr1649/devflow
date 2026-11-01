@@ -5,7 +5,7 @@ description: Drafts or revises prompts passed to a model (chat, system, task, ha
 
 # Write Prompts
 
-Write prompt text without executing its task. Use a requested destination; if a file is requested without a name, pick one that does not exist yet. Preserve task paths.
+Write prompt text without executing its task. Use a requested destination; if a file is requested without a name, pick one that does not exist yet; never overwrite unrelated files. Preserve task paths.
 
 ## Resolve
 

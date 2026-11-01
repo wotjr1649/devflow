@@ -27,7 +27,7 @@ Set scope from the request. Read the prompt, recipient/harness, source requireme
 Per target and unchanged goal, each cycle allows **at most two audits and one consolidated revision**. This auditor never revises. Record version, cycle, pass, and revision count across turns. Wording, sessions, or reviewers do not reset counts; only an explicit user request for another cycle starts new counts. Start new cycles at pass 1; if continuing a cycle with unavailable history, report `LIMITED` with findings and stop. Audit again only after a change or new evidence. These limits are defaults: an explicit request to continue until stated criteria are met allows further audit and revision rounds, each after a change or new evidence, stopping at a blocker or no progress.
 
 - **Pass 1:** `REVISE` for confirmed material defects; otherwise `LIMITED` for missing evidence essential to the requested scope, or `PASS`. Report evidence gaps even with `REVISE`; end the audit.
-- **Pass 2:** check resolved findings, preserved requirements, and material regressions. Return `HOLD` for any remaining or newly found material defect; otherwise `LIMITED` for essential evidence gaps, or `PASS`. Always stop; no automatic third audit.
+- **Pass 2:** check resolved findings, preserved requirements, and material regressions. Return `HOLD` for any remaining or newly found material defect; otherwise `LIMITED` for essential evidence gaps, or `PASS`. Stop by default; no automatic third audit.
 
 ## Report
 

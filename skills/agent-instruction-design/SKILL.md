@@ -1,6 +1,6 @@
 ---
 name: agent-instruction-design
-description: Creates, audits, revises, or optimizes instruction files an agent harness loads itself (AGENTS.md, CLAUDE.md, SKILL.md, agent definitions, hook/script preambles); not prompts passed to a model, code changes, or task execution.
+description: Creates, audits, revises, or optimizes instructions an agent harness loads or injects itself (AGENTS.md, CLAUDE.md, SKILL.md, agent definitions, hook messages, hook/script preambles); not prompts passed to a model, code changes, or task execution.
 ---
 
 # Agent instruction design

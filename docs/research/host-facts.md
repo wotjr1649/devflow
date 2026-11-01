@@ -274,6 +274,11 @@
   요청한 4조합(gpt-6-luna `high`, gpt-6.1-terra `medium`·`high`, gpt-6.1-sol `high`)과, 모델 이름 없이 spec 역할 표만 읽게 한
   실행 검증(gpt-6.1-terra `high`)이 서브에이전트 rollout의 `turn_context.model`·`effort`와 일치했다. 조합마다 한 번 확인했다.
   동시 스레드 상한은 `agents.max_concurrent_threads_per_session`이다.
+- 관찰(2026-11-01, 0.166.0, 과거 devflow 작업 비교): 같은 지시서로 기계적 구현 3건은 gpt-6.1-terra `medium`과 gpt-6.1-sol
+  `high`가 모두 원래 PR의 회귀 테스트와 전체 테스트를 통과했다. 결함 4개를 심은 diff 3개의 리뷰(둘 다 `high`)는 둘 다
+  4개를 찾았고 거짓 지적은 terra 1·sol 0이었다. 실패 기준이 하나씩 있는 실행 검증 2건은 둘 다 맞혔다(거짓 통과 0).
+  terra의 추정 비용은 역할별 합계로 sol의 26~57%(건별 18~82%), 시간은 45~78%였다(cached 입력을 입력 단가의 10%로
+  가정). 조합마다 한 번 실행했다.
 - 모델 ID에는 최신 버전을 따르는 별칭이 없다. `gpt-6.1-terra`는 Codex CLI 0.159.0+가 필요하다(2026-11-01,
   [models](https://learn.chatgpt.com/docs/models), 로컬 0.166.0).
 - 문서는 커스텀 에이전트를 이름으로 고를 수 있고, 내장 에이전트와 이름이 같으면 커스텀이 우선한다고 한다.

@@ -1,79 +1,84 @@
-# 오케스트레이션 계약
+# Orchestration contract
 
-작업이 어떤 단계로 흐르고, 누가 코드를 쓰고, 언제 위임하며, 어떤 모델과 effort로 돌리는지 정한다.
+Defines which stages work flows through, who writes code, when to delegate, and which model and effort run it.
 
-## 단계와 경로
+## Stages and paths
 
-단계, 경로(spike, bounded, architectural), 반복, 되돌아가기는 [lifecycle](lifecycle.md)이 정한다. 이 문서는 그 안에서
-일이 어떻게 실행되는지 정한다. 경로별 실행 모드는 이렇다: spike는 버릴 시험만 하고, bounded는 M0 또는 M1,
-architectural은 M1~M3로 구현한다.
+[lifecycle](lifecycle.md) defines stages, paths (spike, bounded, architectural), loops and going back. This document
+defines how work runs within them. Execution modes by path: spike only runs a throwaway experiment, bounded builds in M0
+or M1, and architectural builds in M1 to M3.
 
-## 계획
+## Plan
 
-architectural 경로의 계획은 대화를 보지 못한 엔지니어가 계획만 읽고 구현할 수 있을 때 끝난다. 작업마다 바꿀 파일,
-순서, interfaces(consumes / produces), 그 작업을 증명할 검사를 적는다. 계획 전체에는 프로젝트 공통 제약(버전 하한,
-의존성 제한, 이름 규칙)과 테스트가 다루지 않는 입력 가운데 사용자가 겪을 가능성이 큰 것을 적는다.
+A plan on the architectural path is done when an engineer who has not seen the conversation can build from the plan
+alone. For each task it lists the files to change, the order, interfaces (consumes / produces) and the check that proves
+the task. For the plan as a whole it lists the project-wide constraints (minimum versions, dependency limits, naming
+rules) and the inputs the tests do not cover that users are likely to hit.
 
-확정하기 전에 세 가지를 묻는다. 무엇이 깨질 수 있는가, 가장 위험한 단계는 무엇인가, 택하지 않은 대안은 무엇이고 왜
-버렸는가. 이 중 사용자만 정할 수 있는 결정이 남으면 그 결정만 사용자에게 묻는다.
+Before confirming it, ask three questions: what can break, which step is riskiest, and which alternatives were not
+chosen and why they were dropped. If a decision only the user can make remains among these, ask the user only that.
 
-구현이 계획에서 벗어나면 그 작업을 끝내기 전에 비공개 계획을 고치고, 공개 요약이 바뀌면 다음 체크포인트에 남긴다.
-계획은 git에 넣지 않는다.
+If the build departs from the plan, fix the private plan before finishing that task, and if the public summary changes,
+record it in the next checkpoint. Plans are not committed to git.
 
-## 구현과 검증
+## Build and verification
 
-- 실행할 수 있는 코드를 바꾸면, 그 변경을 실제로 실행하는 검사(테스트, 타입 검사, 빌드, 바뀐 명령)를 돌린 뒤에 완료로
-  보고한다. 구문 검사나 시작하지 못한 검사는 검증으로 치지 않는다.
-- 빠진 것이 프로젝트에 선언된 의존성뿐이면 프로젝트의 패키지 매니저와 lockfile로 설치한다. sudo나 시스템 패키지
-  매니저는 쓰지 않는다.
-- 검사를 돌릴 수 없으면 어떤 검사를 왜 못 돌렸는지 보고한다.
-- 새 동작의 테스트는 수정 전에, 또는 수정을 되돌린 상태에서 실패하는 것을 한 번 확인한다. 테스트를 먼저 쓸지 나중에
-  쓸지는 프로젝트 규칙을 따른다. 어느 쪽이든 실패를 확인하지 않은 테스트는 그 수정을 증명하지 못한다.
-- 버그 수정은 재현 테스트를 먼저 만들어 실패를 확인한 뒤 코드를 고친다. 이때 그 테스트는 고치지 않는다. 시험 잠금은 없고 리뷰가
-  시험 변경을 본다([선택의 이유](../design/current-decisions.md#지침과-보호)).
+- When you change executable code, report it done only after running a check that actually executes the change (tests,
+  type check, build, the changed command). A syntax check or a check that did not start does not count as verification.
+- If the only thing missing is a dependency the project declares, install it with the project's package manager and
+  lockfile. Do not use sudo or a system package manager.
+- If a check cannot run, report which check did not run and why.
+- Confirm once that a test for new behavior fails before the change, or with the change reverted. Whether to write the
+  test first or later follows the project's rules. Either way, a test not seen failing does not prove the change.
+- A bug fix first writes a reproduction test and confirms it fails, then fixes the code. That test is not changed in the
+  process. There is no test lock; review looks at test changes ([rationale](../design/current-decisions.md#지침과-보호)).
 
-## 실행 모드
+## Execution modes
 
-결정과 쓰기는 메인 한 곳에서 한다. 여러 에이전트가 동시에 쓰면 각자의 행동에 담긴 드러나지 않은 결정이 충돌한다.
-서브에이전트는 맥락을 보호하고 새 시각으로 검증하는 데 쓴다.
+Decisions and writes happen in one place, the main session. When several agents write at once, the unstated decisions in
+each one's actions collide. Subagents are used to protect context and to verify with fresh eyes.
 
-| 모드 | 언제 | 누가 쓰나 | 서브에이전트 |
+| Mode | When | Who writes | Subagents |
 |---|---|---|---|
-| **M0** | 한 문장으로 설명 가능하고 신뢰 경계(인증·권한·비밀·훅·외부 입력 처리)를 건드리지 않으며 아래 의미 기준을 만족한다 | 메인 | 없음. verify는 메인의 검사, review는 메인의 diff 재검토로 대신한다 |
-| **M1** (기본) | 그 밖의 일반 작업 | 메인 | 탐색, 테스트·로그 요약, 원인 분석, 실행 검증, 최종 리뷰 (보고 역할; 도구 제한은 아래 정의 참조) |
-| **M2** | 독립적으로 테스트할 수 있는 작업이 3개 이상이거나, 읽을 양이 메인 컨텍스트의 절반을 넘을 것으로 보이거나, 자율 장시간 실행 | 구현 서브에이전트가 한 번에 하나씩 | 작업별 리뷰, 최종 리뷰 |
-| **M3** (Claude 전용) | 파일이 겹치지 않고 인터페이스가 계획에 고정되어 있다 | worktree별 구현 에이전트, 동시에 2~3개까지 | 작업별 리뷰, 최종 리뷰 |
+| **M0** | Explainable in one sentence, does not touch a trust boundary (authentication, permissions, secrets, hooks, external input handling) and meets the meaning criteria below | main session | None. The main session's checks stand in for verify, and its own re-reading of the diff for review |
+| **M1** (default) | Other ordinary work | main session | Exploration, test and log summaries, root-cause analysis, execution verification, final review (reporting roles; tool limits are in the definitions below) |
+| **M2** | Three or more independently testable tasks, reading expected to exceed half the main context, or a long unattended run | implementer subagents, one at a time | Per-task review, final review |
+| **M3** (Claude only) | Files do not overlap and interfaces are fixed in the plan | implementers, one per worktree, up to 2 to 3 at once | Per-task review, final review |
 
-Workflow는 실행 모드가 아니다. 사용자가 devflow 밖에서 직접 실행한다([재검토 조건](../design/current-decisions.md#실행과-위임)).
+Workflow is not an execution mode. The user runs it directly, outside devflow ([conditions to
+revisit](../design/current-decisions.md#실행과-위임)).
 
-대화형 M2에서도 한 문장으로 설명되는 한두 줄 편집은 위임하지 않고 메인이 하고 장부에 적는다. 위임 한 번(지시서, 새
-컨텍스트, 보고)이 편집보다 비싸기 때문이다. 작업별 리뷰는 build의 기계적 변경 규칙을 따른다. 무인 실행은 작업마다
-새 컨텍스트가 필요하므로([자율 실행](ledger.md#자율-실행)) 이 예외가 없다.
+Even in interactive M2, a one- or two-line edit that one sentence explains is not delegated; the main session makes it
+and records it in the ledger. One delegation (brief, fresh context, report) costs more than the edit. Per-task review
+follows build's rule for mechanical changes. Unattended runs need a fresh context per task ([unattended
+runs](ledger.md#자율-실행)), so they have no such exception.
 
-M3에서는 Claude의 Agent 호출마다 `isolation: "worktree"`를 주어 구현 에이전트를 띄운다. 에이전트 정의에 넣으면 M2 위임까지
-worktree로 바뀌므로 정의에는 넣지 않는다. 메인이 결과를 하나씩 머지하고, 머지할 때마다 머지한 결과가 영향을 주는 검사를 돌린다. 범위를 좁힐 근거가 없으면
-그 자리에서 전체 `verify`를 로컬로 돌린다(절차는 build reference). 통합 관문의 전체 `verify` 근거는 통합 방식을
-따른다([repository](repository.md#devflowjson)).
+In M3, the main session starts implementers by passing `isolation: "worktree"` on each Claude Agent call. Putting it in
+the agent definition would move M2 delegation into worktrees too, so the definition does not carry it. The main session
+merges results one at a time, and after each merge runs the checks the merged result affects. Without grounds to narrow
+the scope, it runs the full `verify` locally at that point (procedure in the build reference). The full `verify`
+evidence for the integration gate follows the integration method ([repository](repository.md#devflowjson)).
 
-### M0의 적용과 마무리
+### Applying and finishing M0
 
-확장자·줄 수보다 의미로 고른다. 계약을 유지하는 오탈자·링크·문구 정리는 M0다. AGENTS.md·SKILL.md도 같다.
-지침의 실행 흐름·권한·공개 범위·신뢰 경계·검사 관문을 바꾸면 M1 이상이며 [신뢰 경계 설계 리뷰](#리뷰)도 적용한다.
+Choose by meaning rather than by extension or line count. Fixing typos, links or wording while keeping the contract is
+M0. The same holds for AGENTS.md and SKILL.md. Changing an instruction's execution flow, permissions, disclosure scope,
+trust boundary or check gates is M1 or above, and the [trust-boundary design review](#리뷰) also applies.
 
-메인이 BASE..HEAD와 staged·unstaged·untracked 변경을 수용 기준과 대조한다. 필요한 ignored 입력은 경로로 지정한다.
-설계 문서·review-package·리뷰어는 생략한다.
-[경로별 단계](lifecycle.md#경로별-단계), Issue·장부는 유지하고,
-통합은 [통합과 CI](repository.md#통합과-ci)를 따른다.
+The main session checks BASE..HEAD and staged, unstaged and untracked changes against the acceptance criteria. Required
+ignored inputs are named by path. Design documents, review-package and reviewers are skipped. [Stages by
+path](lifecycle.md#경로별-단계) and the Issue and ledger stay, and integration follows [Integration and
+CI](repository.md#통합과-ci).
 
-## 메인이 맡는 일
+## What the main session owns
 
-- Issue 상태, 계획, [작업 장부](documents.md#산출물마다-진실-원천-하나)
-- 위임 지시서 범위 밖의 모든 결정
-- 결과 통합과 최종 검증
-- 체크포인트 기록
-- 사용자 권한·대상 확인과 소통
+- Issue state, the plan, the [ledger](documents.md#산출물마다-진실-원천-하나)
+- Every decision outside the delegation brief's scope
+- Integrating results and final verification
+- Recording checkpoints
+- Confirming user permissions and targets, and communicating with the user
 
-## 위임 지시서
+## Delegation brief
 
 ```
 TASK k/N · Issue #i · BASE <sha>
@@ -91,115 +96,124 @@ When the work in this brief is done and its checks pass, stop and report. Do not
 rounds of review or changes outside the listed files; mention anything worth doing at the end.
 ```
 
-지시서는 에이전트가 읽는 글이라 영어로 쓴다([documents](documents.md#에이전트가-읽는-글) 9번).
+A brief is text agents read, so it is written in English ([documents](documents.md#에이전트가-읽는-글) item 9).
 
-다른 세션으로 띄우는 위임(`codex exec`, `claude -p`)은 서브에이전트와 달리 자기 세션으로 장부에 기록되므로, 지시서
-마지막 지시를 `release <issue>`로 한다([동시 세션](ledger.md#동시-세션)).
+A delegation launched as another session (`codex exec`, `claude -p`), unlike a subagent, is recorded in the ledger as
+its own session, so the brief's last instruction is `release <issue>` ([concurrent sessions](ledger.md#동시-세션)).
 
-BASE는 위임하기 전에 기록한다. `HEAD~1`로 대신하면 커밋이 여러 개인 작업의 앞부분이 리뷰에서 빠진다.
+Record BASE before delegating. Using `HEAD~1` instead drops the early part of a multi-commit task from the review.
 
-git이 무시하는 계획·작업 spec·시험·출력은 지시서에 경로와 읽을 부분을 적는다.
-Glob에 없더라도 경로를 직접 읽고, 필수 누락은 검토 한계로 보고한다.
-백그라운드 위임은 장부의 `running`에
-올린다([작업 장부 키](ledger.md#작업-장부-키)).
+For plans, task specs, tests and outputs that git ignores, the brief gives the path and the part to read. Read the path
+directly even when Glob does not list it, and report a missing required input as a review limit. A background delegation
+goes into the ledger's `running` ([ledger keys](ledger.md#작업-장부-키)).
 
-## 서브에이전트의 질문
+## Subagent questions
 
-서브에이전트는 사용자에게 직접 묻지 않는다(Claude Code는 서브에이전트에서 `AskUserQuestion`을 제거한다).
-실행을 계속하면서 답을 기다리는 동작은 두 호스트 모두 문서로 보장되지 않으므로 **멈추고 재개**한다.
+Subagents do not ask the user directly (Claude Code removes `AskUserQuestion` from subagents). Neither host documents
+that a subagent can keep running while it waits for an answer, so it **stops and resumes**.
 
-1. 지시서 범위 안의 구현 세부는 스스로 정한다.
-2. 범위 변경, 인터페이스 변경, 새 의존성, 테스트 삭제·완화, 허용되지 않은 파일 수정이 필요하면
-   `NEEDS_DECISION`으로 종료한다. 질문 하나, 선택지, 추천, 근거를 함께 낸다.
-3. 기존 권한과 위임 범위 안은 메인이 결정한다. 사용자에게 묻는 조건과 독립 작업은 [되돌아가기](lifecycle.md#되돌아가기)를 따른다.
-4. 메인이 같은 에이전트를 재개한다. Claude는 `SendMessage`로 재개하고 대화 기록과 모델 설정이 유지된다.
-   Codex는 같은 에이전트에 후속 작업을 보낸다.
-5. 실행 중 메시지는 알림으로만 쓴다. 결정을 짐작해서 진행하지 않는다.
+1. It decides implementation details inside the brief's scope itself.
+2. If it needs a scope change, an interface change, a new dependency, deleting or loosening a test, or a change to a
+   file it may not change, it ends with `NEEDS_DECISION`, giving one question, the options, a recommendation and the
+   reason.
+3. The main session decides what lies within existing permissions and the delegation scope. When to ask the user, and
+   independent work, follow [going back](lifecycle.md#되돌아가기).
+4. The main session resumes the same agent. Claude resumes it with `SendMessage`, keeping the conversation history and
+   model settings. Codex sends a follow-up task to the same agent.
+5. Messages during a run are notifications only. Do not proceed by guessing a decision.
 
-서브에이전트 캐시는 기본 5분 TTL로 동작한다. 사용자 답을 기다리는 일이 잦으면 `subagentPromptCacheTtl`을
-`1h`로 올리는 것을 검토한다.
+The subagent cache runs with a default 5-minute TTL. If waiting for user answers is frequent, consider raising
+`subagentPromptCacheTtl` to `1h`.
 
-## 수정 루프
+## Fix loop
 
-1. 검사나 CI 실패의 원인이 분명하지 않으면 explorer가 원인 분석 관점으로 먼저 원인과 증거를 보고한다. 이때 파일은
-   고치지 않는다. 분석과 수정을 나눠 증상만 덮는 수정을 줄이기 위해서다.
-2. 같은 작업에서 구현 에이전트가 최대 2회 고친다. 횟수는 장부에 센다.
-3. 그래도 실패하면 [승격](#승격)을 한 칸 올려 한 번 시도한다.
-4. 그래도 실패하면 메인이 직접 맡거나 막힌 지점을 보고한다.
+1. If the cause of a check or CI failure is unclear, an explorer with the root-cause perspective first reports the cause
+   and evidence, without changing files. Splitting analysis from fixing reduces fixes that only cover symptoms.
+2. Within one task, the implementer fixes at most twice. The ledger counts the attempts.
+3. If it still fails, go up one step of [promotion](#승격) and try once.
+4. If it still fails, the main session takes it over or reports where it is blocked.
 
-## 리뷰
+## Review
 
-- M1 이상에서 최종 리뷰는 새 컨텍스트에서 한다. 리뷰어에게는 BASE..HEAD diff 파일(`review-package`), 수용 기준,
-  계획 요약, REVIEW.md를 넘기고 판정은 넘기지 않는다.
-- 정확성과 요구사항에 영향을 주는 결함만 보고하게 한다.
-- M2와 M3에서는 작업마다 범위가 좁은 리뷰를 추가한다. 그 리뷰가 놓친 결함을 최종 리뷰가 잡으면 모델과 함께 장부에
-  남긴다.
-- 시험 변경은 리뷰가 따로 본다. 요구가 바뀌었거나 기대값이 틀린 경우가 아닌데 시험을 약하게 고쳐 통과시켰으면 결함이다
-  ([선택의 이유](../design/current-decisions.md#지침과-보호)).
-- 리뷰 지적 수정: 동작이나 권한을 바꾼
-  수정(코드·설정·시험, 지침의 흐름·권한·공개 범위·신뢰 경계·관문)만 새 컨텍스트의 실행 검증이 닿는 기준을 확인하고 좁혀
-  다시 리뷰한다. 문구·형식 수정은 메인이 CI로 확인한다. 같은 지점의 지적이 되풀이되면 덧대지 말고 설계를 다시 본다.
-- 신뢰 경계를 옮기는 설계는 경로와 상관없이 계획 전에 설계 관점 리뷰어에게 깨 보라고 맡긴다. 공개 글을 지키는 필터를
-  느슨하게 하는 일, 저장소 파일·git 메타데이터·도구 출력으로 경로나 권한이나 쓰기 대상을 정하는 일이 그렇다. 리뷰어가
-  주장한 우회는 논증으로 받아들이거나 버리지 않고, 실제 렌더러나 명령으로 확인한다.
-- 코드를 직접 고치는 단순화 에이전트는 리뷰에 쓰지 않는다. 리뷰어는 보고만 하고, 고치는 일은 구현 쪽이 한다.
-- 다른 플러그인이 서브에이전트에 규칙을 주입하면 devflow 에이전트는 그 대상에서 빼기를 권한다. 보고 형식은
-  지시서가 정한다.
+- In M1 and above, the final review runs in a fresh context. The reviewer gets the BASE..HEAD diff file
+  (`review-package`), the acceptance criteria, the plan summary and REVIEW.md, but not the verdict.
+- Have it report only defects that affect correctness and requirements.
+- In M2 and M3, add a narrowly scoped review per task. When the final review catches a defect that review missed, record
+  it in the ledger together with the model.
+- Review looks at test changes separately. Weakening a test to make it pass, when the requirement did not change and the
+  expectation was not wrong, is a defect ([rationale](../design/current-decisions.md#지침과-보호)).
+- Fixing review findings: only a fix that changed behavior or permissions (code, settings, tests; an instruction's flow,
+  permissions, disclosure scope, trust boundary or gates) gets a fresh-context execution verification of the criteria it
+  reaches and a narrowed re-review. The main session confirms wording and format fixes through CI. If findings recur at
+  the same spot, revisit the design instead of patching on top.
+- A design that moves a trust boundary goes, regardless of path, to a reviewer with the design perspective to try to
+  break before planning. Examples are loosening a filter that guards public text, and deciding paths, permissions or
+  write targets from repository files, git metadata or tool output. A bypass the reviewer claims is neither accepted nor
+  dismissed by argument; confirm it with the real renderer or command.
+- Do not use a simplification agent that edits code directly for review. Reviewers only report; the implementation side
+  does the fixing.
+- If another plugin injects rules into subagents, recommend excluding devflow agents from it. The brief sets the report
+  format.
 
-## 모델과 effort
+## Models and effort
 
-메인 컨트롤러의 모델과 effort는 사용자가 고른다. devflow는 메인에서 실행되는 스킬에 `effort`를 지정하지 않는다.
-메인의 effort 변경은 프롬프트 캐시를 무효화한다. effort 차이는 캐시를 따로 쓰는 서브에이전트에만 둔다.
+The user picks the main controller's model and effort. devflow does not set `effort` on skills that run in the main
+session. Changing the main session's effort invalidates the prompt cache. Effort differences belong only on subagents,
+which use their own cache.
 
-Claude Code는 호출할 때의 `model`(별칭만)과 `effort`가 에이전트 정의보다 우선한다. 같은 모델 승격은 호출 `effort`로 하고
-`ultrathink`는 쓰지 않는다([host-facts](../research/host-facts.md)). Claude 열은 계열 별칭이고, 별칭이 없는 Codex 열은
-새 버전이 나오면 고친다. fable과 astra는 쓰지 않는다. 괄호는 정의의 기본값이다.
+In Claude Code, the `model` (aliases only) and `effort` given at call time take precedence over the agent definition.
+Promotion within the same model uses the call's `effort`, not `ultrathink` ([host-facts](../research/host-facts.md)).
+The Claude columns are family aliases; the Codex column, which has no aliases, is updated when a new version ships.
+fable and astra are not used. Values in parentheses are the definition's defaults.
 
-| 역할 | Claude 기본 | Claude 승격 | Codex |
+| Role | Claude default | Claude promotion | Codex |
 |---|---|---|---|
-| 탐색 | `explorer` + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (부족하면 `xhigh`) |
-| 테스트·로그 요약 | `explorer` + 요약 관점 + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (부족하면 `xhigh`) |
-| 실패 원인 분석 | `explorer` + 원인 분석 관점 + `effort: high` (`sonnet`) | `model: opus` | gpt-6.1-sol `high`, worker에 보고만 하도록 지시 |
-| 기계적 구현 | `implementer` (`sonnet` `medium`) | `model: opus` | gpt-6.1-terra `medium` (승격: gpt-6.1-sol `high`) |
-| 판단이 필요한 구현 | `implementer` + `model: opus` (`medium`) | `effort: high` | gpt-6.1-sol `high` |
-| 설계 대안, 계획 검증 | `reviewer` + 설계 관점 (`opus` `high`) | — | 메인이 수행 |
-| 실행 검증 | `explorer` + 검증 관점 (`sonnet` `medium`) | — | gpt-6.1-terra `high`, worker에 보고만 하도록 지시 |
-| 작업별 리뷰 | `reviewer` + `model: sonnet` (`high`) | — | gpt-6.1-terra `high` |
-| 최종 리뷰 | `reviewer` (`opus` `high`) | — | gpt-6.1-sol `high` |
-| 보안·고위험 리뷰 | `reviewer` + 보안 관점 (`opus` `high`) | — | gpt-6.1-sol `high` |
+| Exploration | `explorer` + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (`xhigh` if not enough) |
+| Test and log summary | `explorer` + summary perspective + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (`xhigh` if not enough) |
+| Failure root-cause analysis | `explorer` + root-cause perspective + `effort: high` (`sonnet`) | `model: opus` | gpt-6.1-sol `high`, worker told to report only |
+| Mechanical implementation | `implementer` (`sonnet` `medium`) | `model: opus` | gpt-6.1-terra `medium` (promotion: gpt-6.1-sol `high`) |
+| Implementation needing judgment | `implementer` + `model: opus` (`medium`) | `effort: high` | gpt-6.1-sol `high` |
+| Design alternatives, plan validation | `reviewer` + design perspective (`opus` `high`) | — | done by the main session |
+| Execution verification | `explorer` + verification perspective (`sonnet` `medium`) | — | gpt-6.1-terra `high`, worker told to report only |
+| Per-task review | `reviewer` + `model: sonnet` (`high`) | — | gpt-6.1-terra `high` |
+| Final review | `reviewer` (`opus` `high`) | — | gpt-6.1-sol `high` |
+| Security and high-risk review | `reviewer` + security perspective (`opus` `high`) | — | gpt-6.1-sol `high` |
 
-에이전트 정의는 도구로 나눈 3개다. 읽기와 명령 실행만 하는 `explorer`, 읽기만 하는 `reviewer`, 파일을 고치는
-`implementer`. 역할의 차이(탐색, 요약, 원인 분석, 검증, 설계, 보안 같은 관점)는 지시서가 정한다
-([선택의 이유](../design/current-decisions.md#실행과-위임)). 정의에 `omitClaudeMd`를 두지 않는다. 프로젝트 지침과 경계를
-그대로 받아야 하기 때문이다.
+There are three agent definitions, split by tools: `explorer`, which only reads and runs commands; `reviewer`, which
+only reads; and `implementer`, which edits files. The brief sets the difference between roles (perspectives such as
+exploration, summary, root-cause analysis, verification, design and security)
+([rationale](../design/current-decisions.md#실행과-위임)). Definitions do not set `omitClaudeMd`, because the agents need the
+project instructions and boundaries as they are.
 
-Claude 구현 에이전트에는 `disallowedTools: Agent`와 `maxTurns`를 둔다. 지시서 마지막 문단으로 추가 리뷰를 막고, 끝까지 진행하라는 줄을 둔다.
+Claude implementers carry `disallowedTools: Agent` and `maxTurns`. The brief's last paragraph blocks extra review rounds
+and includes a line telling the agent to keep going to the end.
 
-### 승격
+### Promotion
 
-메인이 위임할 때 정한다. 한 작업에서 한 칸만 올리고, 올린 이유를 장부에 한 줄 남긴다.
+The main session decides it when delegating. Go up only one step per task, and record the reason in one ledger line.
 
-| 조건 | 판정 | 결과 |
+| Condition | Decided by | Result |
 |---|---|---|
-| 같은 작업에서 2회 고쳐도 실패 | 횟수 | 승격 열로 한 칸 ([수정 루프](#수정-루프)) |
-| 검사·CI 실패의 원인이 분명하지 않음 | 메인 | explorer의 원인 분석(`effort: high`). 원인을 찾지 못하면 `model: opus`로 한 번 더 |
-| 작업이 여러 모듈의 interface에 걸치거나, 구현 중 판단(여러 파일의 일관성, 알고리즘 선택)이 필요함 | 계획 | 판단이 필요한 구현으로 분류. 설계 판단은 위임 전에 메인이 정한다 |
-| 지시서가 모호함 | 구현 에이전트 | 승격하지 않고 `NEEDS_DECISION`으로 종료 |
-| 신뢰 경계(인증·권한·비밀·훅·외부 입력 처리)를 바꿈 | diff | 보안 관점 리뷰를 따로 한 번 |
-| 한 파일 안의 기계적 변경이고 신뢰 경계를 건드리지 않음 | diff | 작업별 리뷰를 생략. 최종 리뷰가 확인한다 |
+| Still failing after two fixes in the same task | count | One step to the promotion column ([fix loop](#수정-루프)) |
+| The cause of a check or CI failure is unclear | main session | Root-cause analysis by explorer (`effort: high`). If it finds no cause, once more with `model: opus` |
+| The task spans the interfaces of several modules, or needs judgment during implementation (consistency across files, choice of algorithm) | plan | Classified as implementation needing judgment. The main session settles design decisions before delegating |
+| The brief is ambiguous | implementer | No promotion; end with `NEEDS_DECISION` |
+| Changes a trust boundary (authentication, permissions, secrets, hooks, external input handling) | diff | One separate security-perspective review |
+| A mechanical change within one file that does not touch a trust boundary | diff | Skip per-task review; the final review checks it |
 
-이 표와 승격 밖의 route(훅 강제, 선언형 route)는 보류다. 다시 볼 조건은
-[route와 Workflow의 재검토](../design/current-decisions.md#실행과-위임)를 따른다. Codex는 띄울 때 지정한 모델과 effort가 기본값보다 우선한다.
-다만 호스트의 현재 도구 지침이 지정 권한을 제한할 수 있으므로 그 지침을 먼저 따른다. 표의 값이 실제로 적용되는지는
-실행 기록으로 확인하고, 확인하지 못하면 미확인으로 남긴다.
-Codex에서 읽기 전용 역할은 지시로만 지켜진다. 커스텀 에이전트의 `sandbox_mode`는 부모 sandbox를 좁히지 못한다
-([host-facts](../research/host-facts.md#codex)).
+Routes outside this table and promotion (hook enforcement, declarative routes) are on hold. The conditions to revisit
+them follow [revisiting routes and Workflow](../design/current-decisions.md#실행과-위임). In Codex, the model and effort
+given at spawn take precedence over the defaults. The host's current tool instructions may still limit what can be set,
+so follow them first. Confirm from run records that the table's values actually apply; if that cannot be confirmed,
+leave it as unconfirmed. In Codex, read-only roles are kept only by instruction. A custom agent's `sandbox_mode` cannot
+narrow the parent sandbox ([host-facts](../research/host-facts.md#codex)).
 
-## 두 호스트
+## The two hosts
 
-| 장치 | Claude Code | Codex |
+| Mechanism | Claude Code | Codex |
 |---|---|---|
-| 구현·리뷰 에이전트 | 플러그인 `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`) | 내장 explorer·worker를 `fork_turns: "none"`으로 띄우고 모델·effort 지정. 기본 `"all"`은 부모 대화를 물려준다 |
-| 재개 카드·자율 계속·세션 해제 | [hooks](hooks.md#등록-이벤트) | 같은 파일 |
+| Implementer and reviewer agents | plugin `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`) | built-in explorer and worker spawned with `fork_turns: "none"` and a set model and effort. The default `"all"` passes on the parent conversation |
+| Resume card, unattended continuation, session release | [hooks](hooks.md#등록-이벤트) | same file |
 
-Codex의 SessionEnd는 서브에이전트에서 돌지 않는다. 훅이 돌지 않고 끝난 세션은 30분 뒤 만료된다([동시 세션](ledger.md#동시-세션)).
+Codex's SessionEnd does not run in subagents. A session that ended without the hook running expires after 30 minutes
+([concurrent sessions](ledger.md#동시-세션)).

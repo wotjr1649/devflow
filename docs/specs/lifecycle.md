@@ -1,137 +1,149 @@
-# 생명주기 계약
+# Lifecycle contract
 
-devflow 라우터가 작업을 어느 단계로 보내는지, 단계마다 무엇을 책임지고 언제 넘어가는지, 새 정보가 생기면 어디로
-돌아가는지 정한다. 각 단계 안에서 일이 어떻게 실행되는지(모드, 위임, 모델)는 [orchestration](orchestration.md)이
-정한다.
+Defines which stage the devflow router sends work to, what each stage is responsible for and when it moves on, and where
+work returns to when new information appears. How work runs inside each stage (modes, delegation, models) is defined by
+[orchestration](orchestration.md).
 
-## 라우터
+## Router
 
-- `devflow` 스킬이 재개 카드(Issue 현재 상태, 작업 장부, `.devflow.json`)로 지금 단계와 작업 번호를 판단한다.
-- 카드가 있어도 새 작업 요청은 `development-start`가 받고 [경로](#경로별-단계)를 가른다. spike나 문제와 수용 기준이
-  확인되지 않은 일은 discover로 보낸다([선택의 이유](../design/current-decisions.md#진입점과-단계)).
-- 담당 스킬이 있는 단계는 그 스킬을 이름으로 부르고, 없는 단계는 라우터의 단계 reference를 읽는다.
-- review·ship은 `pr-review-workflow`를 진입점으로 유지한다. devflow 전용 순서는 공통
-  [review](../../skills/pr-review-workflow/references/review.md)와 [ship](../../references/ship.md)이 소유한다.
-  일반 PR 관문은 담당 스킬의 references를 적용하며, review-only는 ship·cleanup으로 확대하지 않는다.
-- 단계를 옮길 때 장부와 Issue 현재 상태의 "단계"를 바꾼다. 작업 루프 안에서 build와 verify를 오가는 것은 장부에만
-  적는다.
-- compact 뒤에는 라우터를 다시 부르고 지금 단계의 reference를 다시 읽는다. 호출한 스킬 본문은 compact 뒤에 다시
-  붙지만, reference 파일은 다시 붙지 않기 때문이다.
+- The `devflow` skill uses the resume card (the Issue's current state, the ledger, `.devflow.json`) to judge the current
+  stage and task number.
+- Even when a card exists, `development-start` takes a new work request and decides the [path](#경로별-단계). A spike, or
+  work whose problem and acceptance criteria are not confirmed, goes to discover
+  ([rationale](../design/current-decisions.md#진입점과-단계)).
+- A stage with an owning skill calls that skill by name; a stage without one reads the router's stage reference.
+- review and ship keep `pr-review-workflow` as the entry point. The shared
+  [review](../../skills/pr-review-workflow/references/review.md) and [ship](../../references/ship.md) own the
+  devflow-specific order. General PR gates apply the owning skill's references, and review-only does not expand into
+  ship or cleanup.
+- When moving between stages, change the stage in the ledger and `단계` in the Issue's state block. Moving between build
+  and verify inside the task loop is recorded only in the ledger.
+- After compaction, call the router again and reread the current stage's reference. The body of an invoked skill is
+  reattached after compaction, but reference files are not.
 
-## 사용자 탐색
+## User navigation
 
-생명주기 스킬 진입점 4개와 내부 단계 10개 및 done은 유지한다. 사용자에게는 아래 다섯 milestone으로 현재 위치를 설명한다.
-이름은 중립적으로 쓰고 상태(진행 중·충족·막힘·미확인)를 따로 표시한다. 단계에 들어왔다는 이유로 충족으로 표시하지
-않는다. 충족은 해당 범위의 exit 증거가 있을 때만 쓰며, 막힘은 의존 행동에만 적용한다.
+The four lifecycle skill entry points, the ten internal stages and done stay. To the user, the current position is
+explained with the five milestones below. Names are neutral, and the status (in progress, met, blocked, unconfirmed) is
+shown separately. Do not mark a milestone met because its stage was entered. Use met only when exit evidence for that
+scope exists; blocked applies only to dependent actions.
 
-| Milestone | 내부 단계 | 나가는 데 필요한 증거 |
+| Milestone | Internal stages | Evidence needed to exit |
 |---|---|---|
-| 방향 (Direction) | discover, start | 확인된 intent·수용 기준, Issue 연결, 작업 브랜치와 기준선 |
-| 준비 (Preparation) | design, plan | 해결된 주요 결정, 작업별 계획·증명, 필요한 전제와 go. bounded는 design에서 정한 한 변경·검사, 전제 확인과 `runMode` |
-| 증분 (Increment) | 작업별 build ↔ verify | 현재 작업의 사용자 결과와 적용 revision에서의 검증 |
-| 수용 (Acceptance) | 마지막 작업 뒤 전체 verify, review | 범위 전체 수용 기준의 실행 증거와 필수 리뷰·발견 사항 처리 |
-| 전달 (Delivery) | ship, cleanup, 필요할 때 learn; done은 Issue 종료 상태 | 실제 통합 범위와 Issue 종료, 남은 로컬 정리 확인 |
+| Direction | discover, start | Confirmed intent and acceptance criteria, linked Issue, working branch and baseline |
+| Preparation | design, plan | Major decisions resolved, per-task plan and proof, needed prerequisites and go. For bounded: the one change and check settled in design, the prerequisite check and `runMode` |
+| Increment | per-task build ↔ verify | The current task's user outcome and its verification at the applied revision |
+| Acceptance | full verify after the last task, review | Execution evidence for all acceptance criteria in scope, and required reviews and findings handled |
+| Delivery | ship, cleanup, learn when needed; done is the Issue's closed state | The actual integrated scope, the Issue closed, and the remaining local cleanup confirmed |
 
-bounded는 plan 단계와 go 체크포인트 없이 전제 확인을 design 안에서 처리하므로, 계획 파일이나 go가 없다는 이유로 준비를
-미확인으로 두지 않는다. 작업 검증과 전체 수용 검증은 scope로 구별한다.
-부분 통합은 전달된 부분만 설명하며 상위 범위의 충족을 뜻하지 않는다. Issue done과 로컬 closeout은 구별하고, learn은
-교훈이 있을 때만 한다. milestone은 새 저장 상태·승인 관문·Issue 게시 주기가 아니다.
+Because bounded handles the prerequisite check inside design, without a plan stage or go checkpoint, do not leave
+Preparation unconfirmed because there is no plan file or go. Task verification and full acceptance verification are told
+apart by scope. A partial integration describes only the delivered part and does not mean the larger scope is met. Keep
+Issue done apart from local closeout, and run learn only when there is a lesson. Milestones are not a new stored state,
+approval gate or Issue posting cycle.
 
-이 표시는 `devflow`가 연결을 확인한 기존 Issue의 재개(`/clear`·compact 뒤 포함), 단계 종료, 되돌림에 적용한다.
-신규 pre-Issue 진입, 다른 스킬의 직접 진입·반환, 카드 renderer와 축약 방식은 이 계약의 구현 범위에 포함하지 않는다.
-카드가 없거나 연결이 미확인이라면 기존 라우팅 제한을 유지한다. 축약된 카드는 완전한 상태가 아니므로 원 소유자의
-읽기 경로로 복구한다. 이는 카드 축약 자체의 수정이 아니다.
+This display applies to resuming an existing Issue whose link `devflow` has confirmed (including after `/clear` or
+compaction), to stage exits and to going back. New pre-Issue entry, direct entry into and return from other skills, and
+the card renderer and its abbreviation are outside this contract's implementation scope. If there is no card or the link
+is unconfirmed, the existing routing limits stay. An abbreviated card is not a complete state, so recover through the
+original owner's read path. This is not a change to card abbreviation itself.
 
-의미 있는 경계(재개, 단계 종료, 증분 완료, milestone 전환, 되돌림, 범위 변경, 막힘)에서 목표·현재 증분의 사용자 결과·현재 위치와
-상태·완료 증거·남은 exit·다음 행동·막힘/미결 결정·적용 revision을 짧게 설명한다. 작업 k/N은 개수이며 완료율이 아니다.
-Issue의 confirmed intent·큰 단계와 체크포인트의 검증 기록, 장부의 작업 루프·막힘·검증 증거 notes, 계획의 작업/증명
-연결(bounded는 design의 결정), 그것들이 가리키는 원시 근거([문서](documents.md)의 근거)와 Git revision이 각 사실을
-소유한다. milestone용 필드나 별도 상태 문서를 만들지 않고 [sessions](../../references/sessions.md#progress-and-returns)로
-대조한다. 누락·오래된 증거·진짜 충돌은 미확인으로 표시하고 의존 행동을 보류한다. 최신 timestamp만으로 충돌을 지우거나
-이전 FAIL을 PASS로 바꾸지 않는다. 기존 경계 업데이트를 쓰고 매 응답마다 긴 진행표를 만들지 않는다.
+At meaningful boundaries (resume, stage exit, increment done, milestone change, going back, scope change, blocked),
+briefly explain the goal, the current increment's user outcome, the current position and status, the evidence of
+completion, the remaining exits, the next action, blockers or open decisions, and the applied revision. Task k/N is a
+count, not a completion rate. Each fact is owned by the Issue's confirmed intent and major stages and the checkpoints'
+verification records, the ledger's task loop, blocker and verification-evidence notes, the plan's task-to-proof links
+(for bounded, the design's decisions), the raw evidence they point to (the evidence in [documents](documents.md)) and
+the Git revision. Do not create milestone fields or a separate state document; cross-check with
+[sessions](../../references/sessions.md#progress-and-returns). Mark missing evidence, stale evidence and real conflicts
+as unconfirmed, and hold dependent actions. Do not clear a conflict by the latest timestamp alone or turn an earlier
+FAIL into PASS. Use the existing boundary updates, and do not build a long progress table in every reply.
 
-복귀는 아래 [되돌아가기](#되돌아가기)를 그대로 따른다. 동작 실패는 증분, 계획 오류는 준비의 plan, 설계 가정
-실패는 준비의 design으로 돌아간다. intent·수용 기준 변경은 방향에서 기존 사용자 확인을 거친다. 이유·보존할 증거·다시
-충족할 exit·다음 행동을 알리고, 같은 범위의 수정에 새 인터뷰를 요구하지 않는다.
+Returns follow [going back](#되돌아가기) below exactly. A behavior failure returns to Increment, a plan error to
+Preparation's plan, and a failed design assumption to Preparation's design. A change to intent or acceptance criteria
+goes through the existing user confirmation in Direction. Give the reason, the evidence to keep, the exits to meet again
+and the next action, and do not require a new interview for a fix in the same scope.
 
-## 단계
+## Stages
 
-| # | 단계 | 책임 | 산출물 | 넘어가는 조건 | 담당 |
+| # | Stage | Responsibility | Output | Condition to move on | Owner |
 |---|---|---|---|---|---|
-| 1 | discover 구상 | 무엇을 왜 만들지: 문제, 사용자, 성공 기준, 제외 범위. 관측·주장·추정·미확인을 나누고, 무엇을 만들지 열려 있으면 컨셉과 최소 범위를 비교 | intent 초안, 또는 조사 결과·보류/중단 이유와 재개 조건 | 사용자가 intent를 확인하면 start. 문제와 관측 가능한 수용 기준을 이미 담은 구현 요청은 그 자체가 확인된 intent라 재인터뷰 없이 start. spike는 버릴 시험과 보고로 끝남. Issue가 생기기 전의 조사·초안만·보류·중단은 결과를 보고하고 끝나며 Issue·브랜치·장부·제품 변경을 만들지 않음 | 라우터 reference |
-| 2 | start 착수 | Issue 등록과 대조, 수용 기준 확정, 작업 브랜치, 기준선 검사 | Issue 본문, 브랜치 | Issue 연결 확인, 기준선 통과 | development-start |
-| 3 | design 설계 | 요구사항과 설계 정리, 대안 비교, 우려 지점 표시. 계약 변경은 spec에, 현재 선택과 이유는 [현재 설계 결정](../design/current-decisions.md)에 반영 | 설계 노트 또는 `docs/specs/`와 현재 설계 결정 | 사용자만 정할 결정이 해결됨 | 라우터 reference, reviewer(설계 관점) |
-| 4 | plan 계획 | 작업별 파일, 순서, interfaces, 증명, 위험. [계획 품질](orchestration.md#계획) 점검, 전제(의존성, 도구, 권한, 검사 명령) 확인, 실행 모드 선택 | 비공개 계획, 공개 요약과 go 또는 no-go 체크포인트 | go | 라우터 reference. 계획이 신뢰 경계(인증·권한·비밀·훅·외부 입력 처리)를 바꾸거나 작업이 5개 이상이면 reviewer(설계 관점)가 한 번 검토 |
-| 5 | build 구현 | 모드별 실행, 실패 테스트 확인, 작업 단위 커밋 | 커밋 | 계획의 작업이 끝남 | 라우터 reference, 구현 에이전트 |
-| 6 | verify 검증 | 수용 기준을 실제로 실행해 확인, [실행 모드](orchestration.md#실행-모드)에 따른 동작 확인 | 검증 증거 | 기준마다 실행 증거가 있음 | 라우터 reference, 모드에 따른 실행 검증(explorer) |
-| 7 | review 리뷰 | [실행 모드](orchestration.md#실행-모드)에 따른 최종 검토, 발견 사항 처리 | 발견 사항과 처리 | 정확성·요구사항 결함이 없음 | pr-review-workflow |
-| 8 | ship 통합 | 통합 방식에 따른 push·PR·CI·머지, Issue 완료와 후속 Issue | 통합된 기본 브랜치, 종료된 Issue | 통합과 종료를 확인함 | pr-review-workflow |
-| 9 | cleanup 정리 | 브랜치와 worktree 정리 | 정리 기록 | 정리 완료 | workspace-cleanup |
-| 10 | learn 회고 | 교훈을 알맞은 곳에 둠 | 아래 "회고와 기억" | 교훈이 있을 때만 | 라우터 reference, 둘 곳이 에이전트가 읽는 파일이면 [에이전트가 읽는 글](documents.md#에이전트가-읽는-글) |
+| 1 | discover | What to build and why: the problem, users, success criteria, exclusions. Separate observations, claims, estimates and unknowns; if what to build is open, compare concepts and minimal scopes | Draft intent, or findings and the reason for holding or stopping with the condition to resume | start once the user confirms the intent. A build request that already holds the problem and observable acceptance criteria is itself confirmed intent, so it goes to start without a new interview. A spike ends with a throwaway experiment and a report. Research, draft only, hold or stop before an Issue exists ends by reporting the result and creates no Issue, branch, ledger or product change | router reference |
+| 2 | start | Register and match the Issue, settle the acceptance criteria, working branch, baseline check | Issue body, branch | Issue link confirmed, baseline passes | development-start |
+| 3 | design | Organize requirements and design, compare alternatives, mark concerns. Contract changes go into specs, and current choices and their reasons into [current design decisions](../design/current-decisions.md) | Design notes, or `docs/specs/` and current design decisions | Decisions only the user can make are resolved | router reference, reviewer (design perspective) |
+| 4 | plan | Per-task files, order, interfaces, proof, risks. Check [plan quality](orchestration.md#계획), confirm prerequisites (dependencies, tools, permissions, check commands), choose the execution mode | Private plan, public summary and a go or no-go checkpoint | go | router reference. If the plan changes a trust boundary (authentication, permissions, secrets, hooks, external input handling) or has five or more tasks, a reviewer (design perspective) reviews it once |
+| 5 | build | Run by mode, confirm failing tests, commit per task | Commits | The plan's tasks are done | router reference, implementer |
+| 6 | verify | Confirm the acceptance criteria by actually running them, check behavior per the [execution mode](orchestration.md#실행-모드) | Verification evidence | Each criterion has execution evidence | router reference, execution verification (explorer) per mode |
+| 7 | review | Final review per the [execution mode](orchestration.md#실행-모드), handle findings | Findings and their handling | No correctness or requirement defects | pr-review-workflow |
+| 8 | ship | push, PR, CI and merge per the integration method, Issue completion and follow-up Issues | Integrated default branch, closed Issue | Integration and closing confirmed | pr-review-workflow |
+| 9 | cleanup | Clean up branches and worktrees | Cleanup record | Cleanup done | workspace-cleanup |
+| 10 | learn | Put lessons in the right place | "Learn and memory" below | Only when there is a lesson | router reference; if the destination is a file agents read, [text agents read](documents.md#에이전트가-읽는-글) |
 
-ship은 Issue 브랜치에서 상태 블록을 done으로 쓰고 Issue를 닫는다. `local-merge`는 통합 전에, `pr-ci`는 병합 결과를 확인한
-뒤에 한다. 범위가 남은 부분 통합은 닫지 않고 남은 범위를 상태에 둔다. 브랜치를 지운 뒤에는 그 Issue에
-쓸 수 없으므로, cleanup과 그 뒤의 learn은 장부에만 남긴다.
+ship writes the state block as done on the Issue branch and closes the Issue. `local-merge` does this before
+integration, `pr-ci` after confirming the merged result. A partial integration with scope left does not close the Issue
+and keeps the remaining scope in the state. After the branch is deleted, the Issue can no longer be written, so cleanup
+and any learn after it are recorded only in the ledger.
 
-표의 에이전트 역할은 [호스트별 역할](orchestration.md#모델과-effort)을 따른다. 설계·계획 검토는 Claude의 reviewer,
-Codex의 메인이 맡는다.
+Agent roles in the table follow [roles per host](orchestration.md#모델과-effort). Design and plan reviews are done by the
+reviewer in Claude and by the main session in Codex.
 
-## 경로별 단계
+## Stages by path
 
-| 경로 | 도는 단계 |
+| Path | Stages run |
 |---|---|
-| spike: 가능한지만 확인 | discover → build(버릴 시험) → 보고 |
-| bounded: 이미 있는 흐름 수정 | start → design(채팅으로 짧게, 전제 확인 포함) → build → verify → review → ship → cleanup |
-| architectural: 새 하위 시스템, 의존되는 인터페이스 변경 | 1~9, 교훈이 있으면 10 |
+| spike: only check feasibility | discover → build (throwaway experiment) → report |
+| bounded: change an existing flow | start → design (short, in chat, including the prerequisite check) → build → verify → review → ship → cleanup |
+| architectural: a new subsystem, a change to a depended-on interface | 1 to 9, and 10 if there is a lesson |
 
-애매하면 무거운 쪽으로 분류하고, 숨은 복잡도가 드러나면 올린다. 설계해 보니 바꿀 파일이 1~2개이고 interface가 바뀌지
-않으면 bounded로 내리고 이유를 장부에 남긴다. 작은 변경에서는 무거운 절차가 결과를 낫게 하지 않고 비용만 늘린다는
-측정이 있다([sources](../research/sources.md)).
+When unsure, classify as the heavier path, and move up when hidden complexity appears. If design shows only 1 or 2 files
+change and no interface changes, move down to bounded and record why in the ledger. Measurements show that on small
+changes the heavier process does not improve results and only adds cost ([sources](../research/sources.md)).
 
-## 반복
+## Loops
 
-- **작업 루프**: 계획의 작업마다 build → verify, M2·M3에서는 작업 리뷰까지 돈다. 다음 작업은 build부터 다시 시작한다.
-  작업마다 커밋하고 장부를 갱신한다. 새 컨텍스트가 필요하면 대화형에서는 [인계](ledger.md#동시-세션)를 마치고 `/clear` 후 재개 카드로, 무인 실행에서는
-  [자율 실행](ledger.md#자율-실행)대로 이어 간다.
-- **마무리**: 모든 작업이 끝나면 verify(수용 기준 전체) → review(최종) → ship.
-- **슬라이스 루프**: ship이 부분 통합이면 Issue를 닫지 않고, 남은 수용 기준을 위해 build로 돌아간다. 계획에 없던 일이면
-  plan으로 돌아간다.
+- **Task loop**: for each task in the plan, run build → verify, plus task review in M2 and M3. The next task starts
+  again from build. Commit per task and update the ledger. When a fresh context is needed, in interactive work finish
+  the [handoff](ledger.md#동시-세션), `/clear` and resume from the resume card; in unattended runs continue as [unattended
+  runs](ledger.md#자율-실행) describes.
+- **Wrap-up**: when all tasks are done, verify (all acceptance criteria) → review (final) → ship.
+- **Slice loop**: if ship is a partial integration, do not close the Issue; return to build for the remaining acceptance
+  criteria. If the work was not in the plan, return to plan.
 
-## 되돌아가기
+## Going back
 
-| 생긴 일 | 돌아갈 단계 | 사용자에게 묻나 |
+| What happened | Stage to return to | Ask the user? |
 |---|---|---|
-| 자기 변경의 버그, 검사 실패, verify 미달 | build | 아니요 |
-| 리뷰 발견 사항 | build → verify. 동작이나 권한을 바꾼 수정이면 범위를 좁힌 재리뷰, 문구·형식 수정이면 CI([재검증](orchestration.md#리뷰)) | 아니요 |
-| 통합 중 CI 실패 | 조기 종료한 Issue를 다시 열고 상태를 build로 되돌림 | 아니요 |
-| 계획이 틀림(파일, 순서, interface), 설계는 유효 | plan, 비공개 계획을 그 자리에서 고침 | 아니요 |
-| 설계 가정이 깨짐(새 제약, 접근 방식 불가) | design → plan, 오래 유지할 선택은 [현재 설계 결정](../design/current-decisions.md)을 갱신 | 사용자만 정할 결정이면 예 |
-| 요구사항이나 수용 기준이 바뀜(원래 기준과 결과는 체크포인트에) | discover 또는 start, 사용자가 확인한 intent를 `devflow-state intent`로 교체 | 예 |
-| 범위 밖의 새 문제 | 재현된 결함과 사용자가 미루기로 정한 것은 바로 후속 Issue로, 그 밖은 장부에 남겨 ship 때 한 번에 제안 | 제안하는 것만 예 |
-| ship에서 push가 거부됨 | Issue 브랜치에서 Issue를 다시 열고 상태를 되돌림. 검사 실패면 build, 그 밖은 ship | 아니요 |
-| 외부 요인으로 막힘 | 현재 상태에 막힘과 필요한 입력을 적고 의존 행동만 보류. 범위 안의 독립 작업은 계속 | 사용자만 정할 결정이나 미승인 효과가 있을 때만 |
-| 숨은 복잡도(bounded → architectural) | design | 경로가 바뀐 것을 알림 |
+| A bug in your own change, a failing check, verify not met | build | No |
+| Review findings | build → verify. A fix that changed behavior or permissions gets a narrowed re-review; a wording or format fix gets CI ([re-verification](orchestration.md#리뷰)) | No |
+| CI failure during integration | Reopen the Issue closed early and set its state back to build | No |
+| The plan is wrong (files, order, interface) but the design holds | plan; fix the private plan on the spot | No |
+| A design assumption breaks (new constraint, approach not possible) | design → plan; update [current design decisions](../design/current-decisions.md) for long-lived choices | Yes, if the decision is one only the user can make |
+| Requirements or acceptance criteria change (the original criteria and results go in a checkpoint) | discover or start; replace the intent with the user-confirmed one through `devflow-state intent` | Yes |
+| A new problem outside scope | Reproduced defects and what the user decided to defer go straight to follow-up Issues; the rest goes in the ledger and is proposed all at once at ship | Yes, only for what is proposed |
+| push rejected at ship | Reopen the Issue on the Issue branch and set the state back: build for a failing check, ship otherwise | No |
+| Blocked by an external factor | Write the blocker and the needed input in the current state and hold only dependent actions. Continue independent work within scope | Only when there is a decision only the user can make or an unapproved effect |
+| Hidden complexity (bounded → architectural) | design | Tell the user the path changed |
 
-같은 작업의 자동 수정은 [수정 루프](orchestration.md#수정-루프)를 따른다. 같은 목표로 세 번 실패하면 방법을 바꾸거나
-멈추고 보고한다.
+Automatic fixes within a task follow the [fix loop](orchestration.md#수정-루프). After three failures toward the same goal,
+change approach or stop and report.
 
 ## eval
 
-트리거·행동 eval은 선택이며, 실행 조건과 방법은 [eval](eval.md)이 정한다.
+Trigger and behavior evals are optional; [eval](eval.md) defines when and how to run them.
 
-## 회고와 기억
+## Learn and memory
 
-learn은 교훈이 있을 때만 돈다. 교훈은 성격에 따라 둔다.
+learn runs only when there is a lesson. A lesson goes where its nature fits.
 
-| 교훈 | 둘 곳 |
+| Lesson | Where it goes |
 |---|---|
-| 테스트로 확인할 수 있음 | 테스트. 옮긴 뒤 AGENTS.md에서 지운다. 안전 하한선은 남긴다([documents](documents.md#에이전트가-읽는-글) 10번) |
-| 특정 영역에만 해당 | 그 영역의 spec이나 문서, 그리고 AGENTS.md 문서 지도의 한 행 |
-| 저장소 전체, 두 번 반복, 테스트로 확인할 수 없음 | AGENTS.md Gotchas. 예산을 넘으면 덜 쓰이는 항목을 문서로 옮긴다 |
-| 여러 저장소에 공통인 절차 | devflow 스킬. 스킬 목록을 바꾸면 [eval](#eval)을 선택해 돌릴 수 있다 |
-| 개인 선호, 모든 저장소 공통 규칙 | 사용자 전역 지침. devflow는 제안만 한다 |
-| 경위와 결정 이력 | Issue 체크포인트와 git |
-| 그 컴퓨터에만 해당하는 환경 | 비공개 handoff나 호스트의 개인 메모리. 공용 지침에는 넣지 않는다 |
+| Can be checked by a test | A test. Remove it from AGENTS.md after moving it. Safety floors stay ([documents](documents.md#에이전트가-읽는-글) item 10) |
+| Applies only to one area | That area's spec or document, plus one row in the AGENTS.md document map |
+| Repository-wide, repeated twice, not checkable by a test | AGENTS.md Gotchas. Over budget, move less-used items into documents |
+| A procedure common to several repositories | A devflow skill. When the skill list changes, [eval](#eval) can optionally be run |
+| Personal preference, a rule common to all repositories | The user's global instructions. devflow only proposes |
+| History and decision record | Issue checkpoints and git |
+| Environment specific to that machine | A private handoff or the host's personal memory. Not in shared instructions |
 
-AGENTS.md를 고칠 때는 이제 기계로 막히는 Gotcha를 함께 지운다(안전 하한선 제외). 기억 도구와의 관계는
-[documents](documents.md#기억-도구)가 정한다.
+When editing AGENTS.md, also remove Gotchas that machinery now blocks (except safety floors). The relationship with
+memory tools is defined by [documents](documents.md#기억-도구).

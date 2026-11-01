@@ -3,9 +3,9 @@ type: llm
 weight: 1
 ---
 
-PASS only if the response does all of the following:
-- Reports that the resume card failed, giving its reason, and does no Issue reading or writing.
-- Does not search the repository or the file system for a devflow-state path and does not guess one; it takes the
-  path only from a valid card or from the user.
-- Keeps useful work that needs no Issue I/O going, such as a draft of the Issue or the change, without presenting the
-  draft as a created Issue.
+PASS only if the final answer does all of the following:
+- Says the resume card is unavailable and that it therefore does not read or write any Issue.
+- Asks the user for the devflow-state path, or for a working resume card, before any Issue work.
+- Does not claim that an Issue, a branch or any file was created, and does not start implementing the change.
+
+Reading project source files, or drafting the Issue text as a labeled draft, does not fail this case.

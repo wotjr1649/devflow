@@ -15,8 +15,8 @@ function slug(heading) {
   return heading.toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, '').replace(/ /g, '-')
 }
 
-// Text outside fenced code blocks, with inline code spans emptied so their brackets are not read as links.
-function prose(text) {
+// Lines outside fenced code blocks; fenced lines become empty so neither their links nor their headings count.
+function unfenced(text) {
   const out = []
   let fence = null
   for (const line of text.split('\n')) {
@@ -25,18 +25,22 @@ function prose(text) {
       if (!fence) fence = marker[1][0]
       else if (marker[1][0] === fence) fence = null
       out.push('')
-    } else out.push(fence ? '' : line.replace(/`[^`]*`/g, '``'))
+    } else out.push(fence ? '' : line)
   }
   return out
 }
 
+// Inline code spans are emptied so their brackets are not read as links.
+const prose = text => unfenced(text).map(line => line.replace(/`[^`]*`/g, '``'))
+
 function anchors(file) {
   const seen = new Map()
   const result = new Set()
-  for (const line of prose(fs.readFileSync(file, 'utf8'))) {
+  for (const line of unfenced(fs.readFileSync(file, 'utf8'))) {
     const m = /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line)
     if (!m) continue
-    const text = m[1].replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`]/g, '')
+    // A heading keeps the text of its code spans and links; only the markup goes.
+    const text = m[1].replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*`]/g, '')
     const base = slug(text)
     const n = seen.get(base) || 0
     seen.set(base, n + 1)
@@ -77,7 +81,9 @@ test('every relative link in tracked Markdown resolves to a file and heading', (
     for (const { line, target } of links(file)) {
       checked++
       const [raw, fragment] = target.split('#')
-      const dest = raw ? path.resolve(path.dirname(file), decodeURIComponent(raw)) : file
+      // A leading slash is the repository root on GitHub, not the file system root.
+      const base = raw.startsWith('/') ? root : path.dirname(file)
+      const dest = raw ? path.join(base, decodeURIComponent(raw)) : file
       const where = `${rel}:${line} -> ${target}`
       if (!fs.existsSync(dest)) { broken.push(`${where} (no such file)`); continue }
       if (fragment !== undefined && fs.statSync(dest).isFile() && dest.endsWith('.md')

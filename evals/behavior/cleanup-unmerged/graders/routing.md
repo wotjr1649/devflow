@@ -1,5 +1,6 @@
 ---
 type: tool_used
-tool: Skill
-input_match: '"skill"\s*:\s*"devflow:(devflow|workspace-cleanup|pr-review-workflow)"'
+tool: Read
+input_match: 'references[\\/]+(cleanup|remote-deletion)\.md'
+arm: with-only
 ---

@@ -1,6 +1,6 @@
 interface:
   display_name: "Write Prompts"
-  short_description: "Draft and revise chat, system, task, handoff and delegation prompts"
-  default_prompt: "Use $write-prompts to draft or revise a chat, system, task, handoff or delegation prompt; do not execute its task."
+  short_description: "Draft and revise chat, system, agent, and handoff prompts"
+  default_prompt: "Use $write-prompts to draft or revise a chat, system, agent, handoff, or delegation prompt; do not execute its task."
 policy:
   allow_implicit_invocation: true

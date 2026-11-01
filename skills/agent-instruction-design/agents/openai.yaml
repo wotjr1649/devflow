@@ -1,6 +1,4 @@
 interface:
   display_name: "Agent Instruction Design"
-  short_description: "Create, audit, revise or trim AGENTS.md, CLAUDE.md, SKILL.md and other host-loaded instructions"
-  default_prompt: "Use $agent-instruction-design to create, audit, revise or trim agent instruction files while preserving required behavior and reporting verification evidence and limits."
-policy:
-  allow_implicit_invocation: true
+  short_description: "Create, audit, revise, or optimize agent instructions"
+  default_prompt: "Use $agent-instruction-design to create, audit, revise, or optimize agent instructions while preserving required behavior and reporting verification evidence and limits."

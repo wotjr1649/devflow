@@ -497,9 +497,11 @@ const STAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)
 const COMMIT_HASH = /^[0-9a-f]{4,40}$/
 const SHOWN_NAME = /^[\w.-]+$/
 const WARNING_CHECKS = ['legacy ledger', 'other sessions', 'token scope']
+// What a card without a Tool line allows; the hook's terminal failure line ends with it too.
+const NO_ISSUE_RULE = 'Changes need an Issue, so do not implement or offer to implement without one; make no Issue reads or ' +
+  'writes and infer no stage until a valid card or the user gives the devflow-state path; never search the repository for it.'
 const UNAVAILABLE = '[devflow] resume card unavailable: even the minimal card exceeds the 1,000-token budget; no Issue state or ' +
-  'Tool shown. Route nothing and make no Issue reads or writes until a valid card or the user gives the devflow-state path; ' +
-  'never search the repository for it.'
+  `Tool shown. ${NO_ISSUE_RULE}`
 // One line per shown value, so no value can add a line a reader would take for the Tool line.
 const oneLine = s => s.replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
 const fits = text => estTokens(text) < MAX_CARD_TOKENS
@@ -520,7 +522,7 @@ function card(env, cwd, { sessionId: hookSession } = {}) {
   const seen = { top: null, legacy: [], broad: [], sessions: [], checked: new Set() }
   const warnings = () => [...seen.legacy, ...seen.broad, ...seen.sessions]
   // The minimal card: no state, the warnings found so far and the exact Tool line; without room for the Tool line, the
-  // terminal error, which routes nothing (docs/specs/issues.md#budget-and-preserving-meaning).
+  // terminal error, which allows no Issue work (docs/specs/issues.md#budget-and-preserving-meaning).
   const minimal = (reason, failed) => {
     const unchecked = WARNING_CHECKS.filter(c => !seen.checked.has(c))
     const lead = [...(seen.top ? [seen.top] : []), ...warnings(),
@@ -1668,4 +1670,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, NO_ISSUE_RULE, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

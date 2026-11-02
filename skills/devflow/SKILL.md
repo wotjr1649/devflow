@@ -58,7 +58,10 @@ Hold only what a condition below blocks and continue independent work in scope.
   revision, then the merge.
 - Delete only targets proven integrated into the intended base, with non-forcing commands; a refusal keeps the target,
   because forcing loses unique history. Uncommitted files vanish with their worktree, so keep it until the user decides
-  to commit, preserve or discard them, and name that step.
+  to commit, preserve or discard them, and name that step. Never run or offer a forced deletion (`git branch -D`,
+  `git worktree remove --force`, `git push --force`), even after the user agrees to discard the work: an unintegrated
+  branch or a worktree with uncommitted files stays until it is integrated or preserved, or the user deletes it
+  themselves; name that step.
 
 ## After compaction or `/clear`
 

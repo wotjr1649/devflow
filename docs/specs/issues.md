@@ -188,3 +188,6 @@ is shortened. The card does not change the Issue, the ledger or the session file
 - The `Tool:` line, when present, is always the last line. A card whose last line is not a `Tool:` line
   (`resume card failed`, `unavailable`) is not used for Issue reads, writes or routing. The path is taken only from a
   valid card or from the user, never found by searching the repository.
+  The unavailable card and the hook's own failure line say they show no Issue state or Tool and end with this rule:
+  changes need an Issue, so do not implement or offer to implement without one, make no Issue reads or writes and
+  infer no stage until a valid card or the user gives the path, and never search the repository for it.

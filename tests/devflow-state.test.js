@@ -1307,6 +1307,7 @@ test('N2 A10: when even the minimal card cannot fit, the terminal error keeps th
   assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
   assert.match(out, /resume card unavailable: even the minimal card exceeds the 1,000-token budget/)
   assert.match(out, /never search the repository for it/)
+  assert.match(out, /do not implement or offer to implement without one/)
   assert.match(out, WARNING)
   assert.equal(toolLines(out).length, 0)
   assert.doesNotMatch(out, /State \(data/)
@@ -1354,6 +1355,8 @@ test('N2 A12d: an exception with a Tool too long for the minimal error ends in t
   e.tool = `plugin/${'가'.repeat(990)}`
   const out = state.card(e, '.')
   assert.match(out, /resume card unavailable/)
+  assert.match(out, /do not implement or offer to implement without one/)
+  assert.match(out, /never search the repository for it\.$/)
   assert.match(out, WARNING)
   assert.equal(toolLines(out).length, 0)
   assert.ok(state.estTokens(out) < 1000)

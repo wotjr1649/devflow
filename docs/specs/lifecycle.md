@@ -52,7 +52,7 @@ Issue done apart from local closeout, and run learn only when there is a lesson.
 approval gate or Issue posting cycle.
 
 This display applies to resuming an existing Issue whose link `devflow` has confirmed (including after `/clear` or
-compaction), to stage exits and to going back. New pre-Issue entry, direct entry into and return from other skills, and
+compaction), to stage exits and to going back. New pre-Issue entry and
 the card renderer and its abbreviation are outside this contract's implementation scope. If there is no card or the link
 is unconfirmed, the existing routing limits stay. An abbreviated card is not a complete state, so recover through the
 original owner's read path. This is not a change to card abbreviation itself.
@@ -149,7 +149,7 @@ learn runs only when there is a lesson. A lesson goes where its nature fits.
 | Can be checked by a test | A test. Remove it from AGENTS.md after moving it. Safety floors stay ([documents](documents.md#text-agents-read) item 10) |
 | Applies only to one area | That area's spec or document, plus one row in the AGENTS.md document map |
 | Repository-wide, repeated twice, not checkable by a test | AGENTS.md Gotchas. Over budget, move less-used items into documents |
-| A procedure common to several repositories | A devflow skill. When the skill list changes, [eval](#eval) can optionally be run |
+| A procedure common to several repositories | A devflow skill or reference. When the skill list changes, [eval](#eval) can optionally be run |
 | Personal preference, a rule common to all repositories | The user's global instructions. devflow only proposes |
 | History and decision record | Issue checkpoints and git |
 | Environment specific to that machine | A private handoff or the host's personal memory. Not in shared instructions |

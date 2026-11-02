@@ -51,7 +51,7 @@ repository, write only a publishable summary in the Issue and point to private e
 |---|---|---|
 | SKILL.md | under 5,000 tokens, rules to keep at the top | move branch-specific content to `references/` |
 | skill reference | under 5,000 tokens | split further |
-| skill description | one or two sentences, trigger words first | narrow the scope |
+| skill description | at most two sentences: what it does, then when | narrow the scope |
 | project AGENTS.md | one page (about 1,000 tokens) | move to situational pointers |
 | spec file | under 5,000 tokens | split by topic |
 | state block | 15 lines | move old content to checkpoints |

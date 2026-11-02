@@ -6,7 +6,7 @@ truth and budget of each document are set by [documents](documents.md).
 ## Issue I/O
 
 Issue text in a public repository is a prompt-injection path, and an Issue write is a public post. So Issues are read
-and written only through one script (`devflow-state`). The resume card hook, the router, the lifecycle skills and the
+and written only through one script (`devflow-state`). The resume card hook, the router, its references and the
 commands in the project AGENTS.md share this script.
 This is a working instruction. The hook does not block Issue writes. Calling gh, HTTP or MCP directly bypasses this
 script's public filter and its refusal of writes in autonomous mode.

@@ -191,8 +191,9 @@ and includes a line telling the agent to keep going to the end.
 
 ### Perspectives
 
-An agent definition holds the text of its perspectives: `reviewer` has design and security, `explorer` has summary,
-diagnosis (root cause) and verification. A brief names one perspective, because a reviewer given two does neither well,
+An agent definition holds the text of its perspectives. `reviewer` reviews for correctness unless the brief names design
+or security; `explorer` searches unless the brief names summary, root cause or verification. A brief names at most one
+perspective, because a reviewer given two does neither well,
 and keeping the text in the agent body means no stage reads a separate perspectives file. A Codex subagent gets the same
 role body and perspective text in its brief and is spawned with `fork_turns: "none"`, so both hosts apply one text.
 

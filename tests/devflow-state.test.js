@@ -124,6 +124,7 @@ test('card refuses a branch without an Issue number', () => {
   const out = state.card(env(repo(), { branch: 'main' }), '.')
   assert.match(out, /Branch name has no Issue number/)
   assert.match(out, /\nTool: node ".+\/bin\/devflow-state"$/, 'start needs the command before an Issue branch exists')
+  assert.equal(linesOf(out).at(-2), state.SKILL_HINT, 'the skill hint precedes the Tool line')
 })
 
 test('card lists commits made after the ledger', () => {
@@ -1112,7 +1113,9 @@ const hookModule = require('../hooks/devflow-hook')
 const stateBody = rows => `## 문제\n본문\n\n${['## 현재 상태', ...rows].join('\n')}\n`
 const linesOf = s => s.split('\n')
 const toolLines = s => linesOf(s).filter(l => l.startsWith('Tool:'))
-const TOOL_LAST = /\nTool: node ".+\/bin\/devflow-state"$/
+const escapeRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// Every card with a Tool line ends with the skill hint and then the Tool line (#135).
+const TOOL_LAST = new RegExp(`\\n${escapeRe(state.SKILL_HINT)}\\nTool: node ".+/bin/devflow-state"$`)
 const NOPRIM = { toString: null, valueOf: null }
 const sessionsAt = (root, entries) => {
   const d = path.join(root, '.work', 'devflow', 'i1')
@@ -1380,6 +1383,32 @@ test('NO_ISSUE_RULE: it holds every clause, the hook terminal failure line ends 
   const prompt = fs.readFileSync(path.join(__dirname, '../evals/behavior/start-card-failed/prompt.md'), 'utf8')
   const cardLine = prompt.split(/\r?\n/).find(l => l.startsWith('[devflow] resume card unavailable'))
   assert.equal(cardLine, state.UNAVAILABLE, 'the eval prompt shows the card the code prints')
+})
+
+test('card command: an exception outside the card builder prints the terminal failure line, not a bare reason', () => {
+  const e = env(repo())
+  e.tool = { toString() { throw new Error('boom') } }
+  const out = state.main(['card'], () => '', e, '.').out
+  assert.equal(out.split('\n').length, 1, 'one terminal failure line')
+  assert.match(out, /^\[devflow\] resume card failed: boom; no Issue state or Tool shown\. /)
+  assert.ok(out.endsWith(` ${state.NO_ISSUE_RULE}`), out)
+})
+
+test('eval cards show the skill hint the code prints, right before their Tool line', () => {
+  const walk = d => fs.readdirSync(d, { withFileTypes: true })
+    .flatMap(x => (x.isDirectory() ? walk(path.join(d, x.name)) : [path.join(d, x.name)]))
+  const prompts = ['behavior', 'trigger'].flatMap(d => walk(path.join(__dirname, '../evals', d)))
+    .filter(f => f.endsWith('prompt.md'))
+  let cards = 0
+  for (const f of prompts) {
+    const lines = fs.readFileSync(f, 'utf8').split(/\r?\n/)
+    lines.forEach((l, i) => {
+      if (!l.startsWith('Tool: node ')) return
+      cards++
+      assert.equal(lines[i - 1], state.SKILL_HINT, f)
+    })
+  }
+  assert.ok(cards > 0, 'no eval card found')
 })
 
 test('N2 A13: a private file name cannot add a Tool line', { skip: process.platform === 'win32' && 'Windows file names cannot hold a newline' }, () => {

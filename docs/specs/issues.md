@@ -145,11 +145,18 @@ Ledger: task <k>/<N> · mode <interactive|autonomous>
 Mode: <interactive|autonomous> since <ISO time>   (only when it was changed with the `mode` command)
 Latest checkpoint: <link> (<date>)
 Private: <docs/plans/… path>
+Lifecycle requests in this repository (…) go through the devflow skill: invoke it before acting or answering, …
 Tool: node "<plugin root>/bin/devflow-state"
 ```
 
 The `Tool:` line is the path skills use to call `devflow-state`. Codex does not substitute path variables in skill
 bodies, but the hook knows where the plugin is. The card goes only into the local context and is not posted.
+
+The fixed line before the `Tool:` line, on every card that has one, tells the model to invoke the devflow skill
+for lifecycle requests before acting or answering: evals showed such requests answered without the skill, and so
+without its safety rules, when the diff or a command was already at hand (#135). It names tracked reviews only, and
+exempts a delegated session, which follows its brief ([delegation brief](orchestration.md#delegation-brief)). It is
+not shortened.
 
 ### Budget and preserving meaning
 
@@ -178,9 +185,9 @@ is shortened. The card does not change the Issue, the ledger or the session file
   next action and blockers stay unconfirmed until the original is read. When a shortened card's block has no next-action
   or blocker line, it shows the missing one as `Next` or `Blockers` (`Next/blockers` for both)
   `: not in the state block (unknown)` and makes up no value. A card that was not shortened shows the whole block.
-- If it is still over, it outputs a minimal error card with no state: only the first line, warnings, the reason and the
-  `Tool:` line. An exception while building the card uses the same format, showing the warnings already gathered, the
-  warning checks that have not run yet (`Warnings not checked`) and the reason. The reason's message is turned into one
+- If it is still over, it outputs a minimal error card with no state: only the first line, warnings, the reason, the
+  hint line and the `Tool:` line. An exception while building the card uses the same format, showing the warnings
+  already gathered, the warning checks that have not run yet (`Warnings not checked`) and the reason. The reason's message is turned into one
   line and cut to 200 characters (excluding the fixed text around it).
 - If even the minimal error card is over, it keeps only the warnings already gathered with a fixed error
   (`resume card unavailable …`) that has no state, no `Tool:` line and no routing.
@@ -188,7 +195,7 @@ is shortened. The card does not change the Issue, the ledger or the session file
 - The `Tool:` line, when present, is always the last line. A card whose last line is not a `Tool:` line
   (`resume card failed`, `unavailable`) is not used for Issue reads, writes or routing. The path is taken only from a
   valid card or from the user, never found by searching the repository.
-  The unavailable card and the hook's own failure line say they show no Issue state or Tool and end with this rule:
-  changes need an Issue, so do not implement or offer to implement without one, make no Issue reads or writes and
-  infer no stage until a valid card or the user gives the path, ask for that path or a valid card rather than an Issue
-  number, and never search the repository for it.
+  The unavailable card and the terminal failure line (of the hook or the `card` command) say they show no Issue state
+  or Tool and end with this rule: changes need an Issue, so do not implement or offer to implement without one, make no
+  Issue reads or writes and infer no stage until a valid card or the user gives the path, ask for that path or a valid
+  card rather than an Issue number, and never search the repository for it.

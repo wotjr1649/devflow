@@ -4,7 +4,7 @@ Done when the work has a verified Issue whose scope matches the request, a prepa
 Issue's state block and the ledger, a passing baseline, and a start record a later session can use without the
 transcript ([Stages](../../../docs/specs/lifecycle.md#stages)).
 
-Contents: Checklist · 1. Path · 2. Issue · 3. Sub-issue · 4. Branch or worktree · 5. Association · 6. Start record
+Contents: Checklist · 1. Path · 2. Issue · 3. Branch or worktree · 4. Association · 5. Sub-issue · 6. Start record
 
 Start applies at task, scope and branch transitions. Analysis or review alone creates no Issue or branch: it returns its
 findings, without tracking or workspace state made to fill a record.
@@ -17,9 +17,9 @@ requirement:
 ```text
 - [ ] 1 path classified (spike or unconfirmed intent -> discover)
 - [ ] 2 Issue resolved or created, number, URL and scope verified, request reconciled
-- [ ] 3 sub-issue relationship added and listed (only when authorized)
-- [ ] 4 branch or worktree prepared, rechecked, baseline run
-- [ ] 5 state block `브랜치/PR` and ledger `stage`, `path` written
+- [ ] 3 branch or worktree prepared, rechecked, baseline run
+- [ ] 4 state block `브랜치/PR` and ledger `stage`, `path` written
+- [ ] 5 sub-issue relationship added and listed (only when authorized)
 - [ ] 6 start record returned
 ```
 
@@ -55,14 +55,7 @@ repository files could run code the user did not choose.
   analysis. When only an Issue update is pending, continue authorized local work within the verified scope and mark the
   unmatched requirements pending.
 
-## 3. Sub-issue
-
-For an authorized sub-issue relationship, run `sub-issue add <parent> <child>` and inspect it with
-`sub-issue list <parent>`. The command and the branch are not permission: confirm the authority for that relationship
-separately. It adds one same-repository relationship, never replaces a parent, and counts as done only when the
-read-back shows the intended parent ([Issue I/O](../../../docs/specs/issues.md#issue-io)).
-
-## 4. Branch or worktree
+## 3. Branch or worktree
 
 Repository changes, docs included, require a dedicated branch, so each unit of work has its own diff and review.
 
@@ -82,13 +75,22 @@ Repository changes, docs included, require a dedicated branch, so each unit of w
   tracking branch SHA does not identify external artifact bytes. Do not invent a repository diff or PR for local-only
   global artifacts.
 
-## 5. Association
+## 4. Association
 
 An Issue number in a branch name is not a verified tracker link. On GitHub, `gh issue develop` creates a remote branch;
 verify the platform and installed flags before using it. Record the Issue, branch and PR association explicitly: on
 the Issue branch, write the state block with `state`, its `브랜치/PR` line starting with the branch name, because the
 resume card shows the state only when that line matches the current branch. Then start the ledger with `stage` and
-`path`. Use non-closing references for partial work, and check the platform's closing semantics at PR preparation.
+`path`. PR text and commits carry no closing keyword, partial work or not (repository.md "Integration and CI"); check the
+platform's closing semantics at PR preparation.
+
+## 5. Sub-issue
+
+For an authorized sub-issue relationship, run `sub-issue add <parent> <child>` from the Issue branch (it is refused
+elsewhere) and inspect it with
+`sub-issue list <parent>`. The command and the branch are not permission: confirm the authority for that relationship
+separately. It adds one same-repository relationship, never replaces a parent, and counts as done only when the
+read-back shows the intended parent ([Issue I/O](../../../docs/specs/issues.md#issue-io)).
 
 ## 6. Start record
 

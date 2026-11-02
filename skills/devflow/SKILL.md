@@ -43,8 +43,8 @@ and `mode` records when and by whom it switched.
 
 Hold only what a condition below blocks and continue independent work in scope.
 
-- A decision only the user can make: ask one short question and settle the rest yourself, since each question costs
-  the user a turn.
+- A decision only the user can make: ask one short question, keep what depends on it pending and settle the rest
+  yourself, since each question costs the user a turn.
 - An effect outside the grant (shared systems, publication, deletion, private data): prepare it and name what is
   missing, because acting would be an unapproved effect.
 - A missing prerequisite holds only the action that depends on it; the rest does not need it.

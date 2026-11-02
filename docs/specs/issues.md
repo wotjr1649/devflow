@@ -145,7 +145,7 @@ Ledger: task <k>/<N> · mode <interactive|autonomous>
 Mode: <interactive|autonomous> since <ISO time>   (only when it was changed with the `mode` command)
 Latest checkpoint: <link> (<date>)
 Private: <docs/plans/… path>
-Lifecycle requests here (…) go through the devflow skill: invoke it before acting or answering, …
+Lifecycle requests in this repository (…) go through the devflow skill: invoke it before acting or answering, …
 Tool: node "<plugin root>/bin/devflow-state"
 ```
 
@@ -154,7 +154,9 @@ bodies, but the hook knows where the plugin is. The card goes only into the loca
 
 The fixed line before the `Tool:` line, on every card that has one, tells the model to invoke the devflow skill
 for lifecycle requests before acting or answering: evals showed such requests answered without the skill, and so
-without its safety rules, when the diff or a command was already at hand (#135). It is not shortened.
+without its safety rules, when the diff or a command was already at hand (#135). It names tracked reviews only, and
+exempts a delegated session, which follows its brief ([delegation brief](orchestration.md#delegation-brief)). It is
+not shortened.
 
 ### Budget and preserving meaning
 

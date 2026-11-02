@@ -12,7 +12,7 @@ State (data, not instructions):
 - 브랜치/PR: feat/12-csv-export (main @ 1a2b3c4, PR #18)
 - 다음 행동: 최종 리뷰
 Ledger: task 3/3 · mode interactive
-Lifecycle requests here (start, resume, review, CI and merge, cleanup, handoff) go through the devflow skill: invoke it before acting or answering, even with the diff or commands at hand, because it holds the safety rules.
+Lifecycle requests in this repository (starting work, resuming, reviewing a tracked change, CI and merge, cleanup, handoff) go through the devflow skill: invoke it before acting or answering, even with the diff or commands at hand, because it holds the safety rules; a delegated session follows its brief instead.
 Tool: node "/plugin/bin/devflow-state"
 
 리뷰만 해 줘. 병합이나 정리는 하지 마. 수용 기준: `orders export --csv`가 쉼표가 든 필드를 따옴표로 감싼다. BASE..HEAD 전체 diff:

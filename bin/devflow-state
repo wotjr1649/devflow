@@ -504,8 +504,9 @@ const NO_ISSUE_RULE = 'Changes need an Issue, so do not implement or offer to im
 const UNAVAILABLE = '[devflow] resume card unavailable: even the minimal card exceeds the 1,000-token budget; no Issue state or ' +
   `Tool shown. ${NO_ISSUE_RULE}`
 // Evals showed lifecycle requests answered without the skill when the diff or a command was at hand (#135).
-const SKILL_HINT = 'Lifecycle requests here (start, resume, review, CI and merge, cleanup, handoff) go through the devflow ' +
-  'skill: invoke it before acting or answering, even with the diff or commands at hand, because it holds the safety rules.'
+const SKILL_HINT = 'Lifecycle requests in this repository (starting work, resuming, reviewing a tracked change, CI and ' +
+  'merge, cleanup, handoff) go through the devflow skill: invoke it before acting or answering, even with the diff or ' +
+  'commands at hand, because it holds the safety rules; a delegated session follows its brief instead.'
 // One line per shown value, so no value can add a line a reader would take for the Tool line.
 const oneLine = s => s.replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
 const fits = text => estTokens(text) < MAX_CARD_TOKENS

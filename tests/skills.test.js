@@ -133,7 +133,8 @@ test('devflow-state: every command a reference or SKILL.md names appears in the 
   const run = spawnSync('node', [path.join(root, 'bin/devflow-state')], { encoding: 'utf8', env: { PATH: process.env.PATH } })
   const usage = run.stdout + run.stderr
   assert.match(usage, /usage: devflow-state/, 'usage text not printed')
-  const inUsage = c => new RegExp(`(^|[^\\w-])${c.replace(/ /g, '\\s+')}([^\\w-]|$)`).test(usage)
+  // A command starts a usage line (two spaces) or follows "| "; prose such as "never read as state" does not count.
+  const inUsage = c => new RegExp(`(^ {2}|\\| )${c.replace(/ /g, '\\s+')}([^\\w-]|$)`, 'm').test(usage)
   const named = new Map()
   for (const rel of skillFiles())
     for (const [, span] of read(rel).matchAll(/`([^`\n]+)`/g)) {
@@ -145,4 +146,5 @@ test('devflow-state: every command a reference or SKILL.md names appears in the 
     assert.ok(named.has(c), `expected the skill text to name ${c} with an Issue argument or devflow-state`)
   for (const [c, rel] of named) assert.ok(inUsage(c), `${rel} names "${c}", which the usage text lacks`)
   assert.ok(!inUsage('frobnicate'), 'counterexample')
+  assert.ok(!inUsage('never'), 'a prose word is not a command')
 })

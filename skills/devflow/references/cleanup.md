@@ -1,9 +1,4 @@
----
-name: workspace-cleanup
-description: Use when assessing or performing authorized Git branch/worktree cleanup, with or without a PR. Excludes tracker closure and releases.
----
-
-# Workspace cleanup
+# Cleanup
 
 Resolve repository/root/remotes, changes, project cleanup/validation rules and intended integration base. Accept a PR handoff, but refresh mutable facts. Missing rules require proportionate checks and stated uncertainty, not invented gates. Assess only the requested scope; a verified merge puts its task branches and worktrees in that scope. Missing required post-merge evidence permits assessment, not dependent removal. Review-only does not initiate cleanup. Tracker closure, tags, releases and publication are separate.
 
@@ -22,3 +17,15 @@ Record inventory/size/hash/needed metadata, original root/revision, preserved re
 Immediately recheck source/tips/active use. Delete a local branch before its remote branch, while the remote ref still shows it merged; local removal uses non-forcing Git, and a refusal retains the target even after equivalence. No force/clean/reset/manual-delete bypass. Verified residual files need exact-file authority and fresh preservation before removal. For remote deletion, read [remote deletion](references/remote-deletion.md).
 
 Report removed/retained targets, reasons, archive path/size, observed/unrun checks, remaining prerequisites and revisit date. Count/age/disk pressure triggers review, not deletion. Prune removes stale administrative records, not workspaces. Do not archive whole reproducible checkouts or retain completed worktrees solely for unique evidence.
+
+## Remote deletion
+
+Apply [shared cleanup rules](#cleanup), including integration, preservation and active-use checks.
+
+Immediately before deleting, read the remote tip with `git ls-remote <remote> <full-ref>` and delete with `git push <remote> --delete <branch>` only while it still equals the reviewed SHA; each deletion needs its own nonempty reviewed SHA. Verify the push destination. No --force, lease, +refspec, mirror, ref overwrite or hook/protection bypass. A moved tip or a refusal holds the target; no fallback or unreviewed-tip retry.
+
+## Readiness without deletion
+
+A readiness assessment checks verified root/base/head/merge, post-merge evidence and scope per target and names missing evidence. In every conclusion keep each target's evidence readiness separate from deletion authority: missing authority blocks deletion, not readiness. It does not call `workspace-cleanup`. For requested tracking readiness, also read [completion](ship.md#completion); independent tracking continues.
+
+For authorized cleanup, call `workspace-cleanup` with verified root/base/head/merge, post-merge evidence, scope/authority. Await/record results. If unavailable retain targets/report it; no installation/improvised removal.

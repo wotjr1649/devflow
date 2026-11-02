@@ -13,7 +13,7 @@ work returns to when new information appears. How work runs inside each stage (m
   ([rationale](../design/current-decisions.md#entry-points-and-stages)).
 - A stage with an owning skill calls that skill by name; a stage without one reads the router's stage reference.
 - review and ship keep `pr-review-workflow` as the entry point. The shared
-  [review](../../skills/pr-review-workflow/references/review.md) and [ship](../../references/ship.md) own the
+  [review](../../skills/devflow/references/review.md) and [ship](../../skills/devflow/references/ship.md) own the
   devflow-specific order. General PR gates apply the owning skill's references, and review-only does not expand into
   ship or cleanup.
 - When moving between stages, change the stage in the ledger and `단계` in the Issue's state block. Moving between build
@@ -55,7 +55,7 @@ count, not a completion rate. Each fact is owned by the Issue's confirmed intent
 verification records, the ledger's task loop, blocker and verification-evidence notes, the plan's task-to-proof links
 (for bounded, the design's decisions), the raw evidence they point to (the evidence in [documents](documents.md)) and
 the Git revision. Do not create milestone fields or a separate state document; cross-check with
-[sessions](../../references/sessions.md#progress-and-returns). Mark missing evidence, stale evidence and real conflicts
+[sessions](../../skills/devflow/references/sessions.md#progress-and-returns). Mark missing evidence, stale evidence and real conflicts
 as unconfirmed, and hold dependent actions. Do not clear a conflict by the latest timestamp alone or turn an earlier
 FAIL into PASS. Use the existing boundary updates, and do not build a long progress table in every reply.
 

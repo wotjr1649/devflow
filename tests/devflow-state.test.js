@@ -468,9 +468,9 @@ test('the ledger spec and unattended skill describe the mode command (#32)', () 
   assert.match(autonomous, /devflow-state mode <n> autonomous < reason/)
   assert.match(autonomous, /devflow-state mode <n> interactive < reason/)
   assert.match(autonomous, /first line of stdin/)
-  // The router points to references/sessions.md for mode switches, which holds the commands (#74).
-  assert.match(skill, /\[sessions\]\(\.\.\/\.\.\/references\/sessions\.md\)[^]*?switching unattended mode/)
-  const sessions = fs.readFileSync(path.join(__dirname, '../references/sessions.md'), 'utf8')
+  // The router points to skills/devflow/references/sessions.md for mode switches, which holds the commands (#74).
+  assert.match(skill, /\[sessions\]\(references\/sessions\.md\)[^]*?switching unattended mode/)
+  const sessions = fs.readFileSync(path.join(__dirname, '../skills/devflow/references/sessions.md'), 'utf8')
   const unattended = sessions.split('## Unattended work')[1].split('## Changed requirements')[0]
   assert.match(unattended, /mode <issue> autonomous < reason/)
   assert.match(unattended, /mode <issue> interactive < reason/)
@@ -1371,7 +1371,7 @@ test('N2 A13: a private file name cannot add a Tool line', { skip: process.platf
 })
 
 test('N2 A14: the router and the tracking reference say what a card without a Tool line allows', () => {
-  for (const file of ['../skills/devflow/SKILL.md', '../skills/development-start/references/tracking.md']) {
+  for (const file of ['../skills/devflow/SKILL.md', '../skills/devflow/references/start.md']) {
     const text = fs.readFileSync(path.join(__dirname, file), 'utf8')
     assert.match(text, /last line is not a `Tool:` line/, file)
     assert.match(text, /never search the repository for it/, file)

@@ -50,7 +50,7 @@ Document format and budgets: [documents](../specs/documents.md).
 ## Components
 
 - **8 skills**
-  - `devflow`: the router. Stages without a dedicated skill live in [`references/`](../../references/) at the plugin root. Why several skills read them together is in [Entry points and stages](current-decisions.md#entry-points-and-stages).
+  - `devflow`: the router. Stages without a dedicated skill live in [`references/`](../../skills/devflow/references/) at the plugin root. Why several skills read them together is in [Entry points and stages](current-decisions.md#entry-points-and-stages).
   - Lifecycle skills: `development-start`, `pr-review-workflow`, `workspace-cleanup`
   - Independent skills: `decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`. The lifecycle does not invoke them, and they are used on their own in any repository. Reason: [Independent skills](current-decisions.md#independent-skills).
   - Choice and reason: [Entry points and stages](current-decisions.md#entry-points-and-stages).

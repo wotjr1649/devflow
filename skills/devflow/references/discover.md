@@ -19,12 +19,12 @@ with no Issue and no feature decision.
   be checked at verify.
 - Ask the user, one short question at a time, about a choice only the user can make; keep what depends on it pending
   and settle the rest from the code and the docs.
-- Shape the draft as the Issue body in [Issue template](../docs/specs/issues.md#issue-template): the problem, who or what
+- Shape the draft as the Issue body in [Issue template](../../../docs/specs/issues.md#issue-template): the problem, who or what
   it affects, the outcome, acceptance, what is out of scope and the open questions, marking proposed against
   confirmed. Keep private evidence, local paths and raw logs out of it.
 - Report the disposition and its reason. Start hands the confirmed intent and decisions to `development-start`, which
   registers it. Before an Issue exists, a draft, an investigation, a deferral, a stop or a spike creates no Issue,
   branch, ledger or product change; when tracking is unavailable, keep the draft, say that tracking failed and do not
-  claim the start happened. On a tracked Issue sent back here, follow [Going back](../docs/specs/lifecycle.md#going-back):
+  claim the start happened. On a tracked Issue sent back here, follow [Going back](../../../docs/specs/lifecycle.md#going-back):
   a part of the scope the user defers becomes a follow-up Issue, deferring or stopping the whole Issue goes into its
   state block, and a changed intent goes through `devflow-state intent` after the user approves the text.

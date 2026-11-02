@@ -26,7 +26,7 @@ Write the Issue at stage boundaries, decisions and blockers: the state block (15
 [keys](../../docs/specs/ledger.md#ledger-keys); keep them current, change `running` only with
 `running <issue> add|done <label>`, and add notes only with `note`.
 
-Read [sessions](../../references/sessions.md) for progress/returns, and before handing off or `/clear` or writing a resume prompt or a brief for another session, switching unattended mode, intent updates or closed-branch
+Read [sessions](references/sessions.md) for progress/returns, and before handing off or `/clear` or writing a resume prompt or a brief for another session, switching unattended mode, intent updates or closed-branch
 writes. Use five milestones with separate status; keep routing stages and
 recover truncated state from owners.
 
@@ -36,11 +36,11 @@ State block's "단계" is stage; in build/verify the ledger's task locates the l
 (spike, bounded, architectural) is the ledger's `path`; when unset, classify by
 [Stages by path](../../docs/specs/lifecycle.md#stages-by-path), take the heavier path when unsure, and record it.
 
-Call the owner skill by name to enter its stage: start - `development-start`; review and ship - `pr-review-workflow`,
-which selects [review](../pr-review-workflow/references/review.md) or [ship](../../references/ship.md); cleanup - `workspace-cleanup`. Other stages read their reference on entry:
-[discover](../../references/discover.md), [design](../../references/design.md), [plan](../../references/plan.md),
-[build](../../references/build.md), [verify](../../references/verify.md), [learn](../../references/learn.md); briefs
-take summary, diagnosis, verification, design or security views from [perspectives](../../references/perspectives.md).
+Read the reference to enter its stage: start - [start](references/start.md); review and ship - the
+[review](references/review.md) or [ship](references/ship.md) reference; cleanup - [cleanup](references/cleanup.md). Other stages read their reference on entry:
+[discover](references/discover.md), [design](references/design.md), [plan](references/plan.md),
+[build](references/build.md), [verify](references/verify.md), [learn](references/learn.md); briefs
+take summary, diagnosis, verification, design or security views from [perspectives](../../agents/reviewer.md#perspectives).
 
 ## Codex subagents
 
@@ -57,3 +57,16 @@ work back by [Going back](../../docs/specs/lifecycle.md#going-back), which also 
 
 After compaction or `/clear`, call this skill again and reread the current stage's reference: called skills are
 restored after compaction, reference files are not.
+
+## Review, ship and cleanup
+
+Requested phase only; exclusions also bound readiness advice. Review-only ends with findings: no edits, posting, tracking completion or cleanup. Apply prerequisites only to the actions they gate.
+
+Resolve root/changes/base/head/remote/project contracts; preserve unrelated work. Map PR/MR to platform. Use project checks/severity. Absent rules: proportionate checks, no invented gates.
+
+Reconcile fresh state before each mutation and uncertainty before retries; without authority, prepare a reviewed draft naming the missing effect. Publish no raw or private evidence. Read back state/links, recording partial success without repeating it.
+
+Per phase, report identity, findings, artifacts, next/pending steps and each check on one line, every supplied state, not configured too; your own work is a check only in review:
+`<check>: kind …; method …; environment …; revision …; result … (<provenance>)`
+Every fact, opening and tracker state included, is observed by me (method), supplied (file/field) or unknown. In `method`, name what you read by path or group, not by a number, unless a count is requested. Preserve supplied values, including recorded commands and their operands and revisions; distinguish summaries and proposals from recorded execution, and verify derived facts. Judge criteria by supplied check results, conflicts kept.
+Missing input is "not supplied", a failed read "unreadable", your unrun check "not run by me"; none proves absence or another actor's history, or erases a recorded result. Bound each absence to what you read ("the diff adds no tests", not "no tests cover it"). Say "not configured" only when supplied evidence states it for that component. Attribute only stated requirements, quoting exact source spans; a supplied status is evidence, not a requirement, and gates an action only where such a span requires it.

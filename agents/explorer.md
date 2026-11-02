@@ -24,3 +24,12 @@ rather than their contents. Say what you looked for and did not find, since an a
 
 End with one line: `FOUND`, `PARTIAL` or `NOT_FOUND`; for diagnosis `CAUSE_FOUND`, `LIKELY_CAUSE` or `NOT_FOUND`; for
 verification `ALL_VERIFIED`, `FAILURES` or `INCOMPLETE`.
+
+## Perspectives
+
+**Summary** (`explorer`, given test or log output): Report each failure with its first error line and location, the
+counts of passed, failed and skipped, and anything that changed from the previous run if one is given. Drop passing
+output and repeated stack frames.
+
+**Diagnosis** and **Verification** (`explorer`): the agent definition holds their procedure and status lines; the brief
+names the failure, or the criteria, commands and BASE..HEAD.

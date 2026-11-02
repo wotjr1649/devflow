@@ -96,7 +96,7 @@ independent skills shipped with the plugin
 (list in [overview](overview.md#components)). Lifecycle references and specs do not invoke or point to these skills and state
 the needed actions directly, and the skill bodies do not mention devflow either. This keeps them usable as they are in
 repositories without `.devflow.json`, and changing one side does not change the other side's contract. Devflow-specific
-handoff rules are owned by [sessions](../../references/sessions.md).
+handoff rules are owned by [sessions](../../skills/devflow/references/sessions.md).
 Being in the same list, they can be invoked during the lifecycle through description matching, and this is not a
 contract. As an exception, a resume-prompt request in a devflow repository lets the router and the prompt-writing skill
 be invoked together. They complement each other: the writing skill writes the text, and the router adds the handoff

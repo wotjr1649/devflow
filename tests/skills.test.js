@@ -30,8 +30,7 @@ test('independent skills ship as SKILL.md and agents/openai.yaml without mention
 })
 
 test('the lifecycle references and specs do not name the independent skills', () => {
-  const lifecycle = [...files('references'), ...files('docs/specs'), ...files('skills/devflow'),
-    ...files('skills/development-start'), ...files('skills/pr-review-workflow'), ...files('skills/workspace-cleanup')]
+  const lifecycle = [...files('docs/specs'), ...files('skills/devflow')]
   for (const rel of lifecycle)
     for (const name of INDEPENDENT) assert.ok(!read(rel).includes(name), `${rel} names ${name}`)
 })

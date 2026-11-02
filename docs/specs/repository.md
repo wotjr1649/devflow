@@ -161,7 +161,7 @@ write a check line in the integration commit.
 
 In a `pr-ci` repository the evidence for the full `verify` that is the integration gate is CI that actually checked the
 same revision. The project's `verify` step must succeed on HEAD for a branch push and on the latest merge result for a
-PR; how to confirm this follows the integration part of pr-review-workflow. Locally, run only checks that exercise the
+PR; how to confirm this follows the [integration](../../skills/devflow/references/ship.md#integration) part of the devflow ship reference. Locally, run only checks that exercise the
 change and the behavior it affects (tests of the touched paths and their callers). When there is no basis for narrowing
 the scope (changes to shared code, configuration or test tooling), run the full `verify` locally then and there. When CI
 does not run `verify` or its result cannot be confirmed, run the full `verify` locally and wait for required CI
@@ -211,7 +211,8 @@ it is on does it run as a check before branch pushes. The integration gate for `
 checks.
 
 After the checks and records of [ship](lifecycle.md#stages), just before integration, read base, head, rules and checks
-again. If the branch is behind, merge main ([review](orchestration.md#review)). After the merge, confirm the actual main
+again, and merge with the reviewed head as the expected head (`gh pr merge --match-head-commit <sha>`), so a push
+after the checks cannot slip in. If the branch is behind, merge main ([review](orchestration.md#review)). After the merge, confirm the actual main
 SHA and main CI before completing and cleaning up.
 
 ### Reverting the self-integration policy
@@ -221,7 +222,7 @@ that passes the current integration gate. Keep the previous values of the settin
 in the task records.
 
 1. The revert PR covers only the devflow repository's own integration policy. Align the devflow-specific wording in
-   `.devflow.json`, AGENTS.md, this section and pr-review-workflow's integration reference together. Keep the
+   `.devflow.json`, AGENTS.md, this section and the integration section of the devflow ship reference together. Keep the
    per-integration-method rules in lifecycle, orchestration and ship that also apply to other `pr-ci` projects. Align
    the matching choice and reason in the current decisions summary with the revert as well.
 2. Merge the PR while keeping this protection standard and the `pull_request` trigger in `.github/workflows/test.yml`.

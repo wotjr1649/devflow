@@ -204,7 +204,7 @@ function handle(raw, env = state.realEnv) {
     try {
       card = state.card(env, cwd, { sessionId: input.session_id || null })
     } catch (e) {
-      card = state.cardFailure(e)
+      card = `${state.cardFailure(e)}; no Issue state or Tool shown. ${state.NO_ISSUE_RULE}`
     }
     return card ? JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: card } }) : ''
   }

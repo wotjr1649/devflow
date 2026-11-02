@@ -6,7 +6,7 @@ truth and budget of each document are set by [documents](documents.md).
 ## Issue I/O
 
 Issue text in a public repository is a prompt-injection path, and an Issue write is a public post. So Issues are read
-and written only through one script (`devflow-state`). The resume card hook, the router, the lifecycle skills and the
+and written only through one script (`devflow-state`). The resume card hook, the router, its references and the
 commands in the project AGENTS.md share this script.
 This is a working instruction. The hook does not block Issue writes. Calling gh, HTTP or MCP directly bypasses this
 script's public filter and its refusal of writes in autonomous mode.
@@ -188,3 +188,7 @@ is shortened. The card does not change the Issue, the ledger or the session file
 - The `Tool:` line, when present, is always the last line. A card whose last line is not a `Tool:` line
   (`resume card failed`, `unavailable`) is not used for Issue reads, writes or routing. The path is taken only from a
   valid card or from the user, never found by searching the repository.
+  The unavailable card and the hook's own failure line say they show no Issue state or Tool and end with this rule:
+  changes need an Issue, so do not implement or offer to implement without one, make no Issue reads or writes and
+  infer no stage until a valid card or the user gives the path, ask for that path or a valid card rather than an Issue
+  number, and never search the repository for it.

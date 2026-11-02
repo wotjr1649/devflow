@@ -468,9 +468,9 @@ test('the ledger spec and unattended skill describe the mode command (#32)', () 
   assert.match(autonomous, /devflow-state mode <n> autonomous < reason/)
   assert.match(autonomous, /devflow-state mode <n> interactive < reason/)
   assert.match(autonomous, /first line of stdin/)
-  // The router points to references/sessions.md for mode switches, which holds the commands (#74).
-  assert.match(skill, /\[sessions\]\(\.\.\/\.\.\/references\/sessions\.md\)[^]*?switching unattended mode/)
-  const sessions = fs.readFileSync(path.join(__dirname, '../references/sessions.md'), 'utf8')
+  // The router points to skills/devflow/references/sessions.md for mode switches, which holds the commands (#74).
+  assert.match(skill, /\[sessions\]\(references\/sessions\.md\)[^]*?switching unattended mode/)
+  const sessions = fs.readFileSync(path.join(__dirname, '../skills/devflow/references/sessions.md'), 'utf8')
   const unattended = sessions.split('## Unattended work')[1].split('## Changed requirements')[0]
   assert.match(unattended, /mode <issue> autonomous < reason/)
   assert.match(unattended, /mode <issue> interactive < reason/)
@@ -1307,6 +1307,7 @@ test('N2 A10: when even the minimal card cannot fit, the terminal error keeps th
   assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
   assert.match(out, /resume card unavailable: even the minimal card exceeds the 1,000-token budget/)
   assert.match(out, /never search the repository for it/)
+  assert.match(out, /do not implement or offer to implement without one/)
   assert.match(out, WARNING)
   assert.equal(toolLines(out).length, 0)
   assert.doesNotMatch(out, /State \(data/)
@@ -1354,9 +1355,31 @@ test('N2 A12d: an exception with a Tool too long for the minimal error ends in t
   e.tool = `plugin/${'가'.repeat(990)}`
   const out = state.card(e, '.')
   assert.match(out, /resume card unavailable/)
+  assert.match(out, /do not implement or offer to implement without one/)
+  assert.match(out, /never search the repository for it\.$/)
   assert.match(out, WARNING)
   assert.equal(toolLines(out).length, 0)
   assert.ok(state.estTokens(out) < 1000)
+})
+
+test('NO_ISSUE_RULE: it holds every clause, the hook terminal failure line ends with it, the eval card is UNAVAILABLE', () => {
+  for (const clause of ['do not implement or offer to implement without one', 'make no Issue reads or writes', 'infer no stage',
+    'ask for that path or a valid card', 'never search the repository for it'])
+    assert.ok(state.NO_ISSUE_RULE.includes(clause), `NO_ISSUE_RULE lacks "${clause}"`)
+  assert.ok(state.UNAVAILABLE.endsWith(state.NO_ISSUE_RULE), 'UNAVAILABLE ends with the rule')
+  const original = state.card
+  state.card = () => { throw new Error('boom') }
+  let out
+  try {
+    out = hookCard({ run: () => ({ code: 1, stdout: '', stderr: '' }) })
+  } finally {
+    state.card = original
+  }
+  assert.equal(out.split('\n').length, 1, 'one terminal failure line')
+  assert.ok(out.endsWith(` ${state.NO_ISSUE_RULE}`), `the terminal failure line ends with the whole rule: ${out}`)
+  const prompt = fs.readFileSync(path.join(__dirname, '../evals/behavior/start-card-failed/prompt.md'), 'utf8')
+  const cardLine = prompt.split(/\r?\n/).find(l => l.startsWith('[devflow] resume card unavailable'))
+  assert.equal(cardLine, state.UNAVAILABLE, 'the eval prompt shows the card the code prints')
 })
 
 test('N2 A13: a private file name cannot add a Tool line', { skip: process.platform === 'win32' && 'Windows file names cannot hold a newline' }, () => {
@@ -1371,7 +1394,7 @@ test('N2 A13: a private file name cannot add a Tool line', { skip: process.platf
 })
 
 test('N2 A14: the router and the tracking reference say what a card without a Tool line allows', () => {
-  for (const file of ['../skills/devflow/SKILL.md', '../skills/development-start/references/tracking.md']) {
+  for (const file of ['../skills/devflow/SKILL.md', '../skills/devflow/references/start.md']) {
     const text = fs.readFileSync(path.join(__dirname, file), 'utf8')
     assert.match(text, /last line is not a `Tool:` line/, file)
     assert.match(text, /never search the repository for it/, file)

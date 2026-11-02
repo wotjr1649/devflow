@@ -1,7 +1,7 @@
 {
   "name": "devflow",
   "version": "0.4.0",
-  "description": "An Issue-driven development loop for Claude Code and Codex: resume from Issues, delegate reads and checks, leave checking to review and CI. Also ships four independent skills the loop does not call: decision-interview, write-prompts, audit-prompts and agent-instruction-design.",
+  "description": "An Issue-driven development loop for Claude Code and Codex: one lifecycle skill, devflow, resumes from Issues, delegates reads and checks, and leaves checking to review and CI in repositories with a .devflow.json. Also ships four independent skills the loop does not call: decision-interview, write-prompts, audit-prompts and agent-instruction-design.",
   "author": {
     "name": "wotjr1649",
     "url": "https://github.com/wotjr1649"

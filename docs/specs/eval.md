@@ -2,8 +2,10 @@
 
 ## eval
 
-The eval is an optional tool run with `claude plugin eval`. It is not an acceptance criterion or a release condition
-([why](../design/current-decisions.md#instructions-and-protections)).
+The eval is an optional tool run with `claude plugin eval`. A score alone is never an acceptance criterion or a release condition
+([why](../design/current-decisions.md#instructions-and-protections)). An Issue may name behavior runs as the evidence
+for its behavior criteria; each run is then judged by its final answer, tool calls and tool grader results, kept
+with `--keep-temp` (`out/trace.jsonl`), and a run that errored or lacks those records does not pass.
 Cases live in `evals/`, and results go in that change's checkpoint with the model, the Claude Code version and the cost.
 Pin models by full ID, not alias, in `--model` and `--judge-model`. An alias changes its target when a new model ships,
 which breaks before-and-after comparison.

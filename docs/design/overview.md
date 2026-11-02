@@ -49,20 +49,26 @@ Document format and budgets: [documents](../specs/documents.md).
 
 ## Components
 
-- **8 skills**
-  - `devflow`: the router. Stages without a dedicated skill live in [`references/`](../../references/) at the plugin root. Why several skills read them together is in [Entry points and stages](current-decisions.md#entry-points-and-stages).
-  - Lifecycle skills: `development-start`, `pr-review-workflow`, `workspace-cleanup`
+- **5 skills**
+  - `devflow`: the one lifecycle skill. Its SKILL.md holds scope, Issue I/O, the stop conditions and a situation ->
+    reference table, and links eleven references in [`skills/devflow/references/`](../../skills/devflow/references/):
+    discover, start, design, plan, build, verify, review, ship, cleanup, learn and sessions. Each reference finishes its
+    procedure without reading another. It serves only repositories with `.devflow.json`. Choice and reason: [Entry
+    points and stages](current-decisions.md#entry-points-and-stages).
   - Independent skills: `decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`. The lifecycle does not invoke them, and they are used on their own in any repository. Reason: [Independent skills](current-decisions.md#independent-skills).
-  - Choice and reason: [Entry points and stages](current-decisions.md#entry-points-and-stages).
-- **Claude agents**: 3 definitions split by tools (explorer, reviewer, implementer). The brief sets the role's
-  perspective (exploration, summarizing, root-cause analysis, verification, design, security). Models, effort,
-  promotion: [orchestration](../specs/orchestration.md#models-and-effort)
+  - Compatibility: the former `development-start`, `pr-review-workflow` and `workspace-cleanup` skills are gone, with
+    their `/` commands. Their requests go to `devflow` in a devflow repository, and repositories without
+    `.devflow.json` no longer get them.
+- **Claude agents**: 3 definitions split by tools, each holding the text of its perspectives; the brief names at most
+  one. `explorer` (reads and runs commands): search by default, summary, root cause, verification. `reviewer` (reads
+  only): correctness by default, design, security. `implementer` (edits). Codex gets the same role body in the brief.
+  Models, effort, promotion: [orchestration](../specs/orchestration.md#models-and-effort)
 - **Claude Workflows**: devflow does not ship them and does not keep them as an execution mode. The user runs them
   directly outside devflow ([execution modes](../specs/orchestration.md#execution-modes))
 - **Hooks**: resume card (SessionStart), continuation in unattended mode only (Stop), release when the session ends
   (SessionEnd; if it does not run, expiry after 30 minutes).
   Pre-integration verification follows the integration method in [repository](../specs/repository.md#integration-and-ci).
-- **Scripts**: `devflow-state` handles the ledger, Issue I/O and the resume card. The BASE..HEAD diff file passed to review (`review-package`) is made with `git diff` by pr-review-workflow's review reference.
+- **Scripts**: `devflow-state` handles the ledger, Issue I/O and the resume card. The BASE..HEAD diff file passed to review (`review-package`) is made with `git diff` by the devflow review reference.
 - **Templates and eval**: Issue intent, REVIEW.md, AGENTS.md, ignore and attributes blocks, trigger eval
 
 Reason for the layout and the single source: [Single source](current-decisions.md#single-source).

@@ -285,6 +285,7 @@ test('N2 A12c: a card failure that escapes the card is one bounded line with no 
   const text = out.hookSpecificOutput.additionalContext
   assert.equal(text.split('\n').length, 1)
   assert.match(text, /^\[devflow\] resume card failed: y+/)
+  assert.match(text, /do not implement or offer to implement without one; .*never search the repository for it\.$/)
   assert.doesNotMatch(text, /evil/)
   assert.ok(state.estTokens(text) < 1000)
 })

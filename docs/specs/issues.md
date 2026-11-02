@@ -190,4 +190,5 @@ is shortened. The card does not change the Issue, the ledger or the session file
   valid card or from the user, never found by searching the repository.
   The unavailable card and the hook's own failure line say they show no Issue state or Tool and end with this rule:
   changes need an Issue, so do not implement or offer to implement without one, make no Issue reads or writes and
-  infer no stage until a valid card or the user gives the path, and never search the repository for it.
+  infer no stage until a valid card or the user gives the path, ask for that path or a valid card rather than an Issue
+  number, and never search the repository for it.

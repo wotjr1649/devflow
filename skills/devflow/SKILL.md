@@ -85,7 +85,7 @@ change: only the start of an invoked skill body is reattached after compaction, 
 | PR, CI, merge readiness, merge, Issue completion | ship | [ship](references/ship.md) |
 | Branch and worktree cleanup, merged task branches included | cleanup | [cleanup](references/cleanup.md); with tracking readiness also [completion](references/ship.md#completion) |
 | A lesson to put in its place | learn | [learn](references/learn.md) |
-| Handoff, `/clear`, a resume prompt or brief for another session, switching unattended mode, an intent change, explaining progress | unchanged | [sessions](references/sessions.md) |
+| Handoff, `/clear`, a resume prompt or brief for another session, switching unattended mode, an intent change, explaining progress, a ledger note after the Issue branch is gone | unchanged | [sessions](references/sessions.md) |
 
 ## Review, ship and cleanup
 

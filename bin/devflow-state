@@ -499,7 +499,8 @@ const SHOWN_NAME = /^[\w.-]+$/
 const WARNING_CHECKS = ['legacy ledger', 'other sessions', 'token scope']
 // What a card without a Tool line allows; the hook's terminal failure line ends with it too.
 const NO_ISSUE_RULE = 'Changes need an Issue, so do not implement or offer to implement without one; make no Issue reads or ' +
-  'writes and infer no stage until a valid card or the user gives the devflow-state path; never search the repository for it.'
+  'writes and infer no stage until a valid card arrives or the user gives the devflow-state path; ask for that path or a ' +
+  'valid card, not an Issue number, and never search the repository for it.'
 const UNAVAILABLE = '[devflow] resume card unavailable: even the minimal card exceeds the 1,000-token budget; no Issue state or ' +
   `Tool shown. ${NO_ISSUE_RULE}`
 // One line per shown value, so no value can add a line a reader would take for the Tool line.

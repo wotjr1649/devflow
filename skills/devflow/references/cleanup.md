@@ -44,7 +44,8 @@ Copy this into the reply and tick each line, because a skipped step loses unique
 
 - Unrelated or unowned material stays in place and blocks removal of its worktree. Preserve every nonreproducible item;
   omit only verified-reproducible items and caches you have authority to dispose of. Uncommitted files vanish with their
-  worktree, so keep it until the user decides to commit, preserve or discard them.
+  worktree, so keep it until the user decides to commit, preserve or discard them. Removal needs both conditions:
+  the branch integrated and those files settled; a merge alone does not make the worktree removable.
 - Never run or offer a forced deletion (`git branch -D`, `git worktree remove --force`, `git push --force`), even after
   the user agrees to discard the work, because devflow cannot verify what is lost. An unintegrated branch or a worktree
   with uncommitted files stays until it is integrated or preserved, or the user deletes it themselves; name that step

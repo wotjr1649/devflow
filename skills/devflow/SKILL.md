@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: Runs the Issue-tracked development lifecycle in repositories with a `.devflow.json`, whose sessions open with a [devflow] resume card - starting new work, resuming an Issue and moving it between stages, review, PR and merge, branch cleanup, and handing the Issue to another session. Use it for these requests there; not in other repositories, for reviews of code outside a tracked Issue, or for writing or auditing prompts and instructions or running decision interviews.
+description: Runs the Issue-tracked development lifecycle in repositories with a `.devflow.json`, whose sessions open with a [devflow] resume card - starting new work, resuming an Issue and moving it between stages, review, a PR's CI and merge readiness, merging, branch cleanup, and handing the Issue to another session. Use it for these requests there; not in other repositories, for reviews of code outside a tracked Issue, or for writing or auditing prompts and instructions or running decision interviews.
 ---
 
 # devflow

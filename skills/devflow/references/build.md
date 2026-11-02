@@ -1,60 +1,83 @@
 # Build
 
-On an Issue-free spike, finish with the throwaway experiment and its evidence in chat; the Issue, ledger,
-commit and mode steps below apply only to tracked work.
-
 Done when every task in the plan (on the bounded path, the one change) is committed with the checks that execute it
-passing, and the ledger holds the last commit and the next task.
+passing, and the ledger holds the last commit and the next task. On an Issue-free spike, done is the throwaway
+experiment and its evidence in chat; the Issue, ledger, commit and mode steps below apply only to tracked work.
 
 ## Before the first change of a task
 
-- Work in the ledger's `runMode`, which plan picked (design, on the bounded path). Needing another mode goes back to
-  where it was picked: plan, or design on the bounded path.
-- Record `base` (`git rev-parse HEAD`) in the ledger. Reviews read BASE..HEAD; `HEAD~1` drops the first commits of a
-  multi-commit task.
+- Work in the ledger's `runMode`. Needing another mode goes back to where it was picked: plan, or design on the
+  bounded path.
+- Record `base` (`git rev-parse HEAD`) in the ledger before the change or the delegation. Reviews read BASE..HEAD;
+  `HEAD~1` drops the first commits of a multi-commit task.
 
 ## The change
 
-- New behaviour: see its test fail before the change, or with the change reverted. A bug fix starts from a
-  reproduction test that fails, and the fix leaves that test as it is. A test never seen failing proves nothing.
-- Fix the code, not the test. Change a test only when the requirement changed or its expectation is wrong, and say which
-  in the commit or the checkpoint: review reads test changes for this
-  ([implementation and verification](../../../docs/specs/orchestration.md#build-and-verification)).
-- Run the checks that execute the change and the behaviour it affects - the project's tests for the paths touched and
+- New behaviour: see its test fail before the change, or with the change reverted. A bug fix starts from a reproduction
+  test that fails, and the fix leaves that test as it is. A test never seen failing proves nothing
+  ([Build and verification](../../../docs/specs/orchestration.md#build-and-verification)).
+- Fix the code, not the test. Change a test only when the requirement changed or its expectation is wrong, and say
+  which in the commit or the checkpoint, because review reads test changes for this.
+- Run the checks that execute the change and the behaviour it affects: the project's tests for the paths touched and
   their callers. When nothing justifies a narrower set (shared code, configuration, test tooling), run the full
-  `verify` locally now. The integration gate's full `verify` follows the integration profile
-  ([.devflow.json](../../../docs/specs/repository.md#devflowjson)): under `pr-ci`, ship takes CI's success on the pushed
-  revision as its evidence; otherwise run it before the work leaves build.
-  Syntax checks and checks that never started are not verification; name any check that could not run and why.
-- A missing dependency the project already declares is installed with the project's package manager and lockfile.
+  `verify` locally now.
+- The full `verify` that gates integration follows the integration profile
+  ([.devflow.json](../../../docs/specs/repository.md#devflowjson)). Under `pr-ci`, ship takes CI's `verify` success on
+  the pushed revision as the evidence; when CI does not run `verify` or its result cannot be verified, run `verify`
+  locally and still wait for required CI. Under `local-merge` and `push-on-request`, ship runs it locally.
+- Syntax checks and checks that never started are not verification; name any check that could not run and why.
+- A missing dependency the project already declares is installed with the project's package manager and lockfile, not
+  with sudo or a system package manager.
 
 ## Delegating (M2, M3)
 
-In interactive M2, the main agent may make a one- or two-line edit describable in one sentence and record it in the
-ledger; a new delegation costs more than the edit. Unattended work keeps a fresh context for every task
-([execution modes](../../../docs/specs/orchestration.md#execution-modes)).
+- The main session keeps decisions, Issue writes, integration and the ledger, so unstated choices of several writers do
+  not collide. A subagent gets one task through a brief in the shape of
+  [Delegation brief](../../../docs/specs/orchestration.md#delegation-brief): `TASK k/N`, Issue, BASE, goal, acceptance,
+  files it may change, interfaces, constraints, check with healthy output, out of scope, end status, report.
+- Delegate to `implementer`. Model and effort come from the role table in
+  [Models and effort](../../../docs/specs/orchestration.md#models-and-effort): mechanical work runs on the definition's
+  default, work that needs judgment across files on a stronger model; settle design decisions before delegating it.
+- In interactive M2, the main session may make a one- or two-line edit describable in one sentence and record it in the
+  ledger; a delegation costs more than the edit. Unattended work keeps a fresh context for every task, so it has no such
+  exception.
+- In M2 and M3 each task gets a narrow review before the next starts: `reviewer` (Claude Code, with `model: sonnet`;
+  Codex, the per-task review worker of the role table), given that task's BASE..HEAD. A mechanical change inside one
+  file that touches no trust boundary skips it; the final review covers it. A change to a trust boundary gets one
+  separate review with the security perspective.
+- A subagent that ends with `NEEDS_DECISION` is resumed after the main session decides what lies within existing
+  permissions and the brief (Claude Code: `SendMessage` to the same agent; Codex: a follow-up task to the same agent).
+  Messages during its run are notifications; do not act on a guessed decision.
 
-In M2 and M3 each task gets a narrow review before the next starts: the host-specific task-review role from
-[roles](../../../docs/specs/orchestration.md#models-and-effort), given that task's BASE..HEAD. A mechanical change inside one file that touches no trust boundary skips it; the final review covers it.
+M3 (Claude Code only; files do not overlap and interfaces are fixed in the plan, two or three at once):
 
-M3 (Claude only) launches the implementers in the background with the Agent tool's `isolation: "worktree"` on each call,
-never in the agent definition, which would put M2 in worktrees too. Record each launch with `running <n> add <label>` and
-its end with `running <n> done <label>`; a task worktree writes no ledger and posts no Issue text. Those worktrees start from the remote default branch,
-so a brief whose BASE is not on it begins with `git merge --ff-only <BASE>` in its worktree, and every brief asks for a
-commit there. The main session merges one result at a time into the Issue branch (fast-forward, then cherry-pick), runs
-the checks the merged result affects after each merge. The worktrees and their branches stay until cleanup.
-
-The main session keeps decisions, Issue writes, integration and the ledger; a subagent gets one task through a brief
-in the shape of [Delegation brief](../../../docs/specs/orchestration.md#delegation-brief). Models and effort come from
-[Models and effort](../../../docs/specs/orchestration.md#models-and-effort). A subagent that ends with `NEEDS_DECISION` is
-resumed after the main session decides, as in [Subagent questions](../../../docs/specs/orchestration.md#subagent-questions).
+- Launch implementers in the background with the Agent tool's `isolation: "worktree"` on each call, never in the agent
+  definition, which would put M2 in worktrees too.
+- Record each launch with `running <n> add <label>`. Run `running <n> done <label>` only once the result is recovered and
+  the exit confirmed; after a failure, timeout or interruption, confirm child processes and partial effects too, and if
+  you cannot, leave the entry, continue only independent work and do not launch it again.
+- A task worktree writes no ledger and posts no Issue text. Task worktrees start from the remote default branch, so a
+  brief whose BASE is not on it begins with `git merge --ff-only <BASE>` in its worktree, and every M3 brief asks for a
+  commit there.
+- Merge one result at a time into the Issue branch (fast-forward, then cherry-pick) and run the checks the merged result
+  affects after each merge. The task worktrees and their branches stay until cleanup.
 
 ## Failures
 
-Follow [Fix loop](../../../docs/specs/orchestration.md#fix-loop): an unclear cause goes to diagnosis first, the
-implementer fixes a task at most twice, then one promotion, then the main session takes it or reports the blocker.
-Count them in the ledger's `counts` for the task and add a `notes` line with the reason. A plan that turns out wrong goes back to plan; a broken
-design assumption goes back to design.
+The fix loop ([Fix loop](../../../docs/specs/orchestration.md#fix-loop)) separates finding a cause from fixing it, so
+fixes do not cover symptoms:
+
+1. A check or CI failure with an unclear cause goes first to `explorer` with the root-cause perspective, which reports
+   the cause and evidence without changing files. If it finds none, run it once more on a stronger model (Claude Code:
+   `model: opus`).
+2. The implementer fixes a task at most twice.
+3. Then one promotion, one step up the role table, tried once.
+4. Then the main session takes the task over or reports where it is blocked.
+
+Record each fix attempt and each promotion as one ledger `notes` line with its reason; `counts` holds only the Stop
+hook's `{continue}` ([Ledger keys](../../../docs/specs/ledger.md#ledger-keys)). After three failures toward the same goal,
+change the approach or stop and report. A plan that turns out wrong goes back to plan, fixed on the spot; a broken design
+assumption goes back to design.
 
 ## After the task
 

@@ -72,7 +72,10 @@ test('lifecycle trigger cases use exactly the lifecycle pattern', () => {
 })
 
 test('independent and none trigger cases carry a lifecycle-quiet grader', () => {
-  const cases = trigger.filter(c => /^(agent-instruction-design|audit-prompts|decision-interview|write-prompts|none)--/.test(c.name))
+  // A request that also asks to start lifecycle work may fire devflow after the independent skill.
+  const mixed = 'decision-interview--card-grill-then-start'
+  const cases = trigger.filter(c => c.name !== mixed &&
+    /^(agent-instruction-design|audit-prompts|decision-interview|write-prompts|none)--/.test(c.name))
   for (const c of cases) {
     const g = c.graders.find(x => x.file === 'devflow-quiet.md')
     assert.ok(g, `${c.name} lacks devflow-quiet.md`)

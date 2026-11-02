@@ -165,9 +165,10 @@ Pick the mode by this table, from [Execution modes](../../docs/specs/orchestrati
 | M3 (Claude Code only) | files do not overlap and interfaces are fixed in the plan | implementers, one per worktree, two or three at once | per-task review, final review |
 
 Choose by meaning, not extension or line count: typo, link or wording fixes that keep the contract are M0; a change to
-an instruction's flow, permissions, disclosure scope, trust boundary or check gates is M1 or above. M0 checks BASE..HEAD
-and staged, unstaged and untracked changes against the criteria and skips design documents, the review package and
-reviewers; the path's stages, the Issue, the ledger and integration stay.
+an instruction's flow, permissions, disclosure scope, trust boundary or check gates is M1 or above and also gets the
+trust-boundary design review. M0 checks BASE..HEAD and staged, unstaged and untracked changes against the criteria,
+names required git-ignored inputs by path, and skips design documents, the review package and reviewers; the path's
+stages, the Issue, the ledger and integration stay.
 
 ### Roles
 

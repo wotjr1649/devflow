@@ -1,5 +1,5 @@
 ---
 type: tool_used
 tool: Skill
-input_match: '"skill"\s*:\s*"devflow:devflow"'
+input_match: '"skill"\s*:\s*"devflow:(devflow|development-start|pr-review-workflow|workspace-cleanup)"'
 ---

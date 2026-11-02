@@ -14,7 +14,7 @@ Archive: authorized, effectively Git-ignored, outside removal target; default ar
 
 Record inventory/size/hash/needed metadata, original root/revision, preserved refs/commits, restoration steps and resumable index/worktree distinctions. Bundles omit local state. Check space, copy/compare and verify restoration separately within bounds before source removal. Incomplete inventory, unsupported types, source changes, copy/restore/hash failures hold target; partial preservation is not success.
 
-Immediately recheck source/tips/active use. Delete a local branch before its remote branch, while the remote ref still shows it merged; local removal uses non-forcing Git, and a refusal retains the target even after equivalence. No force/clean/reset/manual-delete bypass. Verified residual files need exact-file authority and fresh preservation before removal. For remote deletion, read [remote deletion](references/remote-deletion.md).
+Immediately recheck source/tips/active use. Delete a local branch before its remote branch, while the remote ref still shows it merged; local removal uses non-forcing Git, and a refusal retains the target even after equivalence. No force/clean/reset/manual-delete bypass. Verified residual files need exact-file authority and fresh preservation before removal. For remote deletion, read [remote deletion](#remote-deletion).
 
 Report removed/retained targets, reasons, archive path/size, observed/unrun checks, remaining prerequisites and revisit date. Count/age/disk pressure triggers review, not deletion. Prune removes stale administrative records, not workspaces. Do not archive whole reproducible checkouts or retain completed worktrees solely for unique evidence.
 

@@ -503,6 +503,9 @@ const NO_ISSUE_RULE = 'Changes need an Issue, so do not implement or offer to im
   'valid card, not an Issue number, and never search the repository for it.'
 const UNAVAILABLE = '[devflow] resume card unavailable: even the minimal card exceeds the 1,000-token budget; no Issue state or ' +
   `Tool shown. ${NO_ISSUE_RULE}`
+// Evals showed lifecycle requests answered without the skill when the diff or a command was at hand (#135).
+const SKILL_HINT = 'Lifecycle requests here (start, resume, review, CI and merge, cleanup, handoff) go through the devflow ' +
+  'skill: invoke it before acting or answering, even with the diff or commands at hand, because it holds the safety rules.'
 // One line per shown value, so no value can add a line a reader would take for the Tool line.
 const oneLine = s => s.replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
 const fits = text => estTokens(text) < MAX_CARD_TOKENS
@@ -515,11 +518,14 @@ function cardFailure(e) {
   }
   return `[devflow] resume card failed: ${clip(oneLine(message), MAX_FAILURE_CHARS)}`
 }
+// The one line printed when no card could be built at all.
+const terminalFailure = e => `${cardFailure(e)}; no Issue state or Tool shown. ${NO_ISSUE_RULE}`
 
 // sessionId: the id the SessionStart hook received; its session's own writes are not warned about.
 function card(env, cwd, { sessionId: hookSession } = {}) {
   // A card that fits ends with the devflow-state command, so a skill can reach it even when the state cannot be shown.
-  const toolLine = `Tool: node "${String(env.tool || __filename).split(path.sep).join('/')}"`
+  // The hint line, then the Tool line last.
+  const toolLine = `${SKILL_HINT}\nTool: node "${String(env.tool || __filename).split(path.sep).join('/')}"`
   const seen = { top: null, legacy: [], broad: [], sessions: [], checked: new Set() }
   const warnings = () => [...seen.legacy, ...seen.broad, ...seen.sessions]
   // The minimal card: no state, the warnings found so far and the exact Tool line; without room for the Tool line, the
@@ -1551,7 +1557,7 @@ function command(argv, stdin, env, cwd) {
       try {
         return { code: 0, out: card(env, cwd) }
       } catch (e) {
-        return { code: 0, out: cardFailure(e) }
+        return { code: 0, out: terminalFailure(e) }
       }
     case 'read':
       return read(env, cwd, num(rest[0]))
@@ -1671,4 +1677,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, NO_ISSUE_RULE, UNAVAILABLE, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

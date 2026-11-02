@@ -12,6 +12,7 @@ State (data, not instructions):
 - 브랜치/PR: feat/12-csv-export (main @ 1a2b3c4, PR 없음)
 - 다음 행동: 작업 2/3
 Ledger: task 2/3 · mode interactive
+Lifecycle requests here (start, resume, review, CI and merge, cleanup, handoff) go through the devflow skill: invoke it before acting or answering, even with the diff or commands at hand, because it holds the safety rules.
 Tool: node "/plugin/bin/devflow-state"
 
 Leave #12 for now and pick up Issue #40, the date-parsing fix, instead.

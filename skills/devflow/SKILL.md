@@ -61,9 +61,9 @@ Hold only what a condition below blocks and continue independent work in scope.
   because forcing loses unique history. Uncommitted files vanish with their worktree, so keep it until the user decides
   to commit, preserve or discard them, and name that step; a merged branch does not make such a worktree removable, so
   offer its removal only when both hold. Never run or offer a forced deletion (`git branch -D`,
-  `git worktree remove --force`, `git push --force`), even after the user agrees to discard the work: an unintegrated
-  branch or a worktree with uncommitted files stays until it is integrated or preserved, or the user deletes it
-  themselves; name that step.
+  `git worktree remove --force`, `git push --force`), even after the user agrees to discard the work, and do not steer
+  the user toward one: an unintegrated branch or a worktree with uncommitted files stays until it is integrated or its
+  files are preserved; name the step that makes it removable.
 
 ## After compaction or `/clear`
 

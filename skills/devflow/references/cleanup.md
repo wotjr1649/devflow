@@ -47,9 +47,10 @@ Copy this into the reply and tick each line, because a skipped step loses unique
   worktree, so keep it until the user decides to commit, preserve or discard them. Removal needs both conditions:
   the branch integrated and those files settled; a merge alone does not make the worktree removable.
 - Never run or offer a forced deletion (`git branch -D`, `git worktree remove --force`, `git push --force`), even after
-  the user agrees to discard the work, because devflow cannot verify what is lost. An unintegrated branch or a worktree
-  with uncommitted files stays until it is integrated or preserved, or the user deletes it themselves; name that step
-  (for example: merge its PR, push it to a kept branch, or run the deletion yourself).
+  the user agrees to discard the work, because devflow cannot verify what is lost, and do not steer the user toward one.
+  An unintegrated branch or a worktree with uncommitted files stays until it is integrated or its files are preserved;
+  name the step that makes it removable (for example: merge its PR, commit or stash the files, push it to a kept
+  branch).
 - Archive only where authorized, effectively Git-ignored and outside the removal target; the default is
   `artifacts/worktree-archive/` in the primary long-lived checkout, unique per task and revision. Resolve real paths and
   reject link or reparse redirects. No guessed destination, overwrite, or automatic copy of secrets or private settings.

@@ -9,8 +9,8 @@ bounded path, in a design note on the architectural one ([Stages](../../../docs/
   in the project's `docs/design/current-decisions.md`. Change history stays in the Issue checkpoint and git.
 - On the architectural path, review the design before plan with the design perspective. Claude Code: delegate it to
   `reviewer` with the design perspective named in the brief; the agent holds the perspective text. Codex: the main
-  session performs the design review itself
-  ([Models and effort](../../../docs/specs/orchestration.md#models-and-effort)).
+  session performs the design review itself, as the router's Roles table says (source:
+  [Models and effort](../../../docs/specs/orchestration.md#models-and-effort)).
 - A design that moves a trust boundary - loosening a filter that guards public text, or taking paths, permissions or
   write targets from repository files, git metadata or tool output - gets that review on any path, before plan or
   build, with the reviewer trying to break it. Confirm or refute each bypass the review claims with the real renderer
@@ -20,5 +20,5 @@ bounded path, in a design note on the architectural one ([Stages](../../../docs/
   `notes` line with the reason. Hidden complexity moves the work the other way, and the user is told the path changed.
 - On the bounded path there is no plan stage, so run its prerequisite checks here before build: declared dependencies
   install, the tools exist, the check commands start and fail or pass as expected, and every needed effect is covered by
-  standing permission or an instruction. Then pick the run mode by
-  [Execution modes](../../../docs/specs/orchestration.md#execution-modes) and record `runMode`.
+  standing permission or an instruction. Then pick the run mode by the
+  router's Execution modes table and record `runMode` (source: [Execution modes](../../../docs/specs/orchestration.md#execution-modes)).

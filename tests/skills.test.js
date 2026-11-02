@@ -116,6 +116,9 @@ test('lifecycle: every reference its Stages table names as Owner exists', () => 
   for (const o of owners) assert.ok(refNames().includes(`${o}.md`), `${REFS}/${o}.md is missing`)
 })
 
+// A quoted label: Korean words, optionally ending in an ASCII part after a slash (`브랜치/PR`).
+const LABEL = /[가-힣][가-힣/ ]*(?:[가-힣]|\/[A-Za-z]+):|[가-힣]:/g
+
 test('issues spec: the state-block and checkpoint labels are the ones the references quote', () => {
   const issues = read('docs/specs/issues.md')
   const template = ['단계', '브랜치/PR', '완료', '다음 행동', '막힘', '최신 체크포인트', '변경', '검증', '결정', '다음']
@@ -123,10 +126,13 @@ test('issues spec: the state-block and checkpoint labels are the ones the refere
   assert.ok(issues.includes('남음:'), 'issues.md lacks 남음:')
   const allowed = new Set([...template, '남음'])
   const quoted = skillFiles().flatMap(rel =>
-    [...read(rel).matchAll(/[가-힣][가-힣/ ]*[가-힣]:|[가-힣]:/g)].map(m => [rel, m[0].slice(0, -1)]))
+    [...read(rel).matchAll(LABEL)].map(m => [rel, m[0].slice(0, -1)]))
   assert.ok(quoted.length >= 5, 'expected the references to quote labels')
   for (const [rel, l] of quoted) assert.ok(allowed.has(l), `${rel} quotes "${l}:" which issues.md does not define`)
   assert.ok(!allowed.has('상태'), 'counterexample')
+  const labelsIn = text => [...text.matchAll(LABEL)].map(m => m[0].slice(0, -1))
+  assert.deepEqual(labelsIn('- 브랜치/PR: main'), ['브랜치/PR'], 'the branch label is matched whole')
+  assert.ok(!allowed.has(labelsIn('- 브랜치/MR: main')[0]), 'counterexample: a wrong branch label')
 })
 
 test('devflow-state: every command a reference or SKILL.md names appears in the usage text', () => {
@@ -147,4 +153,32 @@ test('devflow-state: every command a reference or SKILL.md names appears in the 
   for (const [c, rel] of named) assert.ok(inUsage(c), `${rel} names "${c}", which the usage text lacks`)
   assert.ok(!inUsage('frobnicate'), 'counterexample')
   assert.ok(!inUsage('never'), 'a prose word is not a command')
+})
+
+// The router restates the orchestration spec's mode and role tables, so references need no spec to finish a step.
+const tableRows = (text, heading) => {
+  const ls = lines(text)
+  const i = ls.findIndex(l => l === heading)
+  assert.ok(i >= 0, `missing heading ${heading}`)
+  const start = ls.findIndex((l, j) => j > i && l.startsWith('|'))
+  const end = ls.findIndex((l, j) => j > start && !l.startsWith('|'))
+  return ls.slice(start + 2, end).map(l => l.split('|').slice(1, -1).map(c => c.trim()))
+}
+const ROLES = ['Exploration', 'Test and log summary', 'Failure root-cause analysis', 'Mechanical implementation',
+  'Implementation needing judgment', 'Design alternatives, plan validation', 'Execution verification', 'Per-task review',
+  'Final review', 'Security and high-risk review']
+
+test('router tables: Roles matches Models and effort, Execution modes names the spec modes', () => {
+  const spec = read('docs/specs/orchestration.md')
+  const router = read(`${SKILL}/SKILL.md`)
+  const specRoles = new Map(tableRows(spec, '## Models and effort').map(r => [r[0], r]))
+  const roles = tableRows(router, '### Roles')
+  assert.deepEqual(roles.map(r => r[0]), ROLES, 'the router lists the roles the references use')
+  for (const row of roles) assert.deepEqual(row, specRoles.get(row[0]), `router Roles row ${row[0]}`)
+  const modes = rows => rows.map(r => (r[0].match(/^\**(M\d)\b/) || [, r[0]])[1])
+  assert.deepEqual(modes(tableRows(router, '### Execution modes')), ['M0', 'M1', 'M2', 'M3'])
+  assert.deepEqual(modes(tableRows(spec, '## Execution modes')), ['M0', 'M1', 'M2', 'M3'])
+  const wrong = [...roles[0]]
+  wrong[3] = 'gpt-0 `low`'
+  assert.notDeepEqual(wrong, specRoles.get(wrong[0]), 'counterexample: a changed Codex cell')
 })

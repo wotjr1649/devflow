@@ -49,8 +49,9 @@ Hold only what a condition below blocks and continue independent work in scope.
   missing, because acting would be an unapproved effect.
 - A missing prerequisite holds only the action that depends on it; the rest does not need it.
 - A review-only request ends at findings, with no edits, posting, tracking completion or cleanup, because merging and
-  deletion need their own request. A review concludes only from the change it read; with no diff or review package
-  supplied, ask for it and give no verdict, because a verdict on unseen code misleads the owner.
+  deletion need their own request. A review concludes only from the change it read: build the review package from
+  BASE..HEAD when the session can run git, otherwise ask for the diff or package; never give a verdict on unseen code,
+  because it misleads the owner.
 - A merge needs each required check to have succeeded at the revision that check must test for the current head (the
   head itself on a branch push, the merge of current base and head on a pull request run); report any other state as
   NOT_VERIFIED. Without that success, do not merge, call it ready, or offer to merge or to accept the gap, because a
@@ -145,6 +146,43 @@ each definition's tools fit its role. A brief names at most one perspective, who
 summary, root cause or verification for explorer, design or security for reviewer; a reviewer given two does neither
 well. Write briefs by [Delegation brief](../../docs/specs/orchestration.md#delegation-brief).
 
-Spawn each Codex subagent with `fork_turns: "none"` and give it the same role body and perspective text in its brief.
-The default, `"all"`, hands it this conversation, so its review or verification is no longer independent
+Codex loads no plugin agents, so its brief carries the role text itself. The definitions are the plugin's
+agents/explorer.md, agents/reviewer.md and agents/implementer.md, in the agents folder two folders above this skill's
+folder. A Codex brief carries the body of the role's file (below its frontmatter) plus the named perspective's
+paragraph from that file's Perspectives section. Spawn each Codex subagent with `fork_turns: "none"`; the default,
+`"all"`, hands it this conversation, so its review or verification is no longer independent
 ([host-facts](../../docs/research/host-facts.md#codex)).
+
+### Execution modes
+
+Pick the mode by this table, from [Execution modes](../../docs/specs/orchestration.md#execution-modes).
+
+| Mode | When | Who writes | Subagents |
+|---|---|---|---|
+| M0 | One sentence explains it, it touches no trust boundary (authentication, permissions, secrets, hooks, outside input) and it keeps the contract | main session | none: its checks stand in for verify, its re-read of the diff for review |
+| M1 (default) | other ordinary work | main session | exploration, summaries, root cause, execution verification, final review |
+| M2 | three or more independently testable tasks, reading over half the main context, or a long unattended run | implementers, one at a time | per-task review, final review |
+| M3 (Claude Code only) | files do not overlap and interfaces are fixed in the plan | implementers, one per worktree, two or three at once | per-task review, final review |
+
+Choose by meaning, not extension or line count: typo, link or wording fixes that keep the contract are M0; a change to
+an instruction's flow, permissions, disclosure scope, trust boundary or check gates is M1 or above. M0 checks BASE..HEAD
+and staged, unstaged and untracked changes against the criteria and skips design documents, the review package and
+reviewers; the path's stages, the Issue, the ledger and integration stay.
+
+### Roles
+
+From [Models and effort](../../docs/specs/orchestration.md#models-and-effort); values in parentheses are the
+definition's defaults, and promotion goes one step to the promotion column.
+
+| Role | Claude default | Claude promotion | Codex |
+|---|---|---|---|
+| Exploration | `explorer` + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (`xhigh` if not enough) |
+| Test and log summary | `explorer` + summary perspective + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (`xhigh` if not enough) |
+| Failure root-cause analysis | `explorer` + root-cause perspective + `effort: high` (`sonnet`) | `model: opus` | gpt-6.1-sol `high`, worker told to report only |
+| Mechanical implementation | `implementer` (`sonnet` `medium`) | `model: opus` | gpt-6.1-terra `medium` (promotion: gpt-6.1-sol `high`) |
+| Implementation needing judgment | `implementer` + `model: opus` (`medium`) | `effort: high` | gpt-6.1-sol `high` |
+| Design alternatives, plan validation | `reviewer` + design perspective (`opus` `high`) | — | done by the main session |
+| Execution verification | `explorer` + verification perspective (`sonnet` `medium`) | — | gpt-6.1-terra `high`, worker told to report only |
+| Per-task review | `reviewer` + `model: sonnet` (`high`) | — | gpt-6.1-terra `high` |
+| Final review | `reviewer` (`opus` `high`) | — | gpt-6.1-sol `high` |
+| Security and high-risk review | `reviewer` + security perspective (`opus` `high`) | — | gpt-6.1-sol `high` |

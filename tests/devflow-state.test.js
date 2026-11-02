@@ -1362,6 +1362,26 @@ test('N2 A12d: an exception with a Tool too long for the minimal error ends in t
   assert.ok(state.estTokens(out) < 1000)
 })
 
+test('NO_ISSUE_RULE: it holds every clause, the hook terminal failure line ends with it, the eval card is UNAVAILABLE', () => {
+  for (const clause of ['do not implement or offer to implement without one', 'make no Issue reads or writes', 'infer no stage',
+    'ask for that path or a valid card', 'never search the repository for it'])
+    assert.ok(state.NO_ISSUE_RULE.includes(clause), `NO_ISSUE_RULE lacks "${clause}"`)
+  assert.ok(state.UNAVAILABLE.endsWith(state.NO_ISSUE_RULE), 'UNAVAILABLE ends with the rule')
+  const original = state.card
+  state.card = () => { throw new Error('boom') }
+  let out
+  try {
+    out = hookCard({ run: () => ({ code: 1, stdout: '', stderr: '' }) })
+  } finally {
+    state.card = original
+  }
+  assert.equal(out.split('\n').length, 1, 'one terminal failure line')
+  assert.ok(out.endsWith(` ${state.NO_ISSUE_RULE}`), `the terminal failure line ends with the whole rule: ${out}`)
+  const prompt = fs.readFileSync(path.join(__dirname, '../evals/behavior/start-card-failed/prompt.md'), 'utf8')
+  const cardLine = prompt.split(/\r?\n/).find(l => l.startsWith('[devflow] resume card unavailable'))
+  assert.equal(cardLine, state.UNAVAILABLE, 'the eval prompt shows the card the code prints')
+})
+
 test('N2 A13: a private file name cannot add a Tool line', { skip: process.platform === 'win32' && 'Windows file names cannot hold a newline' }, () => {
   const root = repo()
   const priv = path.join(root, 'docs/plans')

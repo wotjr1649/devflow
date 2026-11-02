@@ -6,7 +6,8 @@ after the last task, every acceptance criterion in the Issue.
 
 - Run each criterion against the built result. Reading the code is review, not verification.
 - From M1 up, a fresh context runs the behaviour: Claude Code, `explorer` with the verification perspective; Codex, a
-  worker told to report only, given the same role body and perspective text. Give it the criteria, the commands and
+  worker told to report only, given the explorer body and its verification perspective (the router's Delegation
+  section says where that text is), on the model of the router's Roles table. Give it the criteria, the commands and
   BASE..HEAD, never the verdict you expect, because a verifier told the answer confirms it. In M0 the main session runs
   the checks itself.
 - Report each criterion's evidence strength: a behaviour run (the feature or command used as a user would), a targeted

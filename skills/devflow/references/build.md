@@ -35,15 +35,15 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
   not collide. A subagent gets one task through a brief in the shape of
   [Delegation brief](../../../docs/specs/orchestration.md#delegation-brief): `TASK k/N`, Issue, BASE, goal, acceptance,
   files it may change, interfaces, constraints, check with healthy output, out of scope, end status, report.
-- Delegate to `implementer`. Model and effort come from the role table in
-  [Models and effort](../../../docs/specs/orchestration.md#models-and-effort): mechanical work runs on the definition's
+- Delegate to `implementer`. Model and effort come from the router's Roles table (source:
+  [Models and effort](../../../docs/specs/orchestration.md#models-and-effort)): mechanical work runs on the definition's
   default, work that needs judgment across files on a stronger model; settle design decisions before delegating it.
 - In interactive M2, the main session may make a one- or two-line edit describable in one sentence and record it in the
   ledger; a delegation costs more than the edit. Unattended work keeps a fresh context for every task, so it has no such
   exception.
 - In M2 and M3 each task gets a narrow review before the next starts: `reviewer` (Claude Code, with `model: sonnet`;
-  Codex, the per-task review worker of the role table), given that task's BASE..HEAD. A mechanical change inside one
-  file that touches no trust boundary skips it; the final review covers it. A change to a trust boundary gets one
+  Codex, the per-task review worker of the router's Roles table), given that task's BASE..HEAD. A mechanical change
+  inside one file that touches no trust boundary skips it; the final review covers it. A change to a trust boundary gets one
   separate review with the security perspective.
 - A subagent that ends with `NEEDS_DECISION` is resumed after the main session decides what lies within existing
   permissions and the brief (Claude Code: `SendMessage` to the same agent; Codex: a follow-up task to the same agent).
@@ -71,7 +71,7 @@ fixes do not cover symptoms:
    the cause and evidence without changing files. If it finds none, run it once more on a stronger model (Claude Code:
    `model: opus`).
 2. The implementer fixes a task at most twice.
-3. Then one promotion, one step up the role table, tried once.
+3. Then one promotion, one step to the promotion column of the router's Roles table, tried once.
 4. Then the main session takes the task over or reports where it is blocked.
 
 Record each fix attempt and each promotion as one ledger `notes` line with its reason; `counts` holds only the Stop

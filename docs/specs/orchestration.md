@@ -196,6 +196,7 @@ or security; `explorer` searches unless the brief names summary, root cause or v
 perspective, because a reviewer given two does neither well,
 and keeping the text in the agent body means no stage reads a separate perspectives file. A Codex subagent gets the same
 role body and perspective text in its brief and is spawned with `fork_turns: "none"`, so both hosts apply one text.
+Codex loads no plugin agents, so the main session copies that text from the plugin's `agents/<role>.md`.
 
 ### Promotion
 

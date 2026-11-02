@@ -113,8 +113,27 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
 
 ## Skill descriptions
 
-- Say only when to use it, briefly, with trigger words first. With many skills, hosts truncate or drop descriptions.
-- Write it as situations. Grouping it as "when the user asks" prevents automatic invocation.
+- Say what the skill does and when to use it, in the third person, in at most two sentences, naming the trigger
+  situations concretely. The host picks a skill from its description alone, and with many skills it truncates or drops
+  long ones.
+- Name no other skill, so changing one skill does not change another's contract
+  ([independent skills](../design/current-decisions.md#independent-skills)).
 - Keep its scope from overlapping other skills. Overlap calls the wrong skill.
 - After a change, you can run the trigger eval with prompts that should and should not invoke it
   ([eval](eval.md#eval)).
+
+## Skill references
+
+- Each reference sits one level below its skill and is linked from SKILL.md with the situation that calls for it. A
+  file linked from SKILL.md is read whole; a file reached through another file is often read only in part, and its
+  rules are lost.
+- A reference links no other reference, and a procedure never needs a second reference. When a request spans two
+  procedures, SKILL.md names both, so every read stays one level deep.
+- A reference may link specs and research as the source of a rule it states; the spec wins on conflict. The rule is
+  stated in the reference, so the link is for checking, not for finishing the procedure.
+- It starts with its done condition, so a partial read still knows when to stop. One over 100 lines starts with a
+  contents list, so a partial read still sees every section.
+- In-response checklists appear only in start, ship, cleanup, and plan when it has five or more tasks; these long
+  stages lose steps without one. Quality-critical steps keep their check -> fix -> recheck loop either way.
+- Rules that must survive compaction go at the start of SKILL.md, because compaction reattaches only the start of an
+  invoked skill body and no reference.

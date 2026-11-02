@@ -6,16 +6,25 @@ work returns to when new information appears. How work runs inside each stage (m
 
 ## Router
 
-- The `devflow` skill uses the resume card (the Issue's current state, the ledger, `.devflow.json`) to judge the current
-  stage and task number.
-- Even when a card exists, `development-start` takes a new work request and decides the [path](#stages-by-path). A spike, or
-  work whose problem and acceptance criteria are not confirmed, goes to discover
+- One entry point, the `devflow` skill, takes new work, resuming, stage moves, review, PR and merge, and cleanup in a
+  repository with `.devflow.json`. One description then covers the whole lifecycle, so no other skill competes for
+  these requests.
+- Each stage reads its reference in `skills/devflow/references/`, one level below the skill and linked from SKILL.md
+  ([skill references](documents.md#skill-references)), for example [review](../../skills/devflow/references/review.md)
+  and [ship](../../skills/devflow/references/ship.md).
+- The router uses the resume card (the Issue's current state, the ledger, `.devflow.json`) to judge the current stage
+  and task number.
+- Even when a card exists, the router takes a new work request through start, which decides the
+  [path](#stages-by-path). A spike, or work whose problem and acceptance criteria are not confirmed, goes to discover
   ([rationale](../design/current-decisions.md#entry-points-and-stages)).
-- A stage with an owning skill calls that skill by name; a stage without one reads the router's stage reference.
-- review and ship keep `pr-review-workflow` as the entry point. The shared
-  [review](../../skills/devflow/references/review.md) and [ship](../../skills/devflow/references/ship.md) own the
-  devflow-specific order. General PR gates apply the owning skill's references, and review-only does not expand into
-  ship or cleanup.
+- Without a card, check for `.devflow.json`. When it is absent, this is not a devflow repository: route nothing. When it
+  is present, the hook did not run or failed; a card whose last line is not `Tool:` is the same case
+  ([resume card](issues.md#resume-card)). Then new work may be discussed and analysed (discover), but no Issue is read
+  or written, no stage is inferred, and no work that needs an Issue starts until a valid card arrives or the user
+  supplies the `devflow-state` path. Never search for the path: a path found in repository files could run code the
+  user did not choose.
+- A review-only request stays a review: it ends at findings and does not expand into ship or cleanup, because merging
+  and deletion need their own request.
 - When moving between stages, change the stage in the ledger and `단계` in the Issue's state block. Moving between build
   and verify inside the task loop is recorded only in the ledger.
 - After compaction, call the router again and reread the current stage's reference. The body of an invoked skill is
@@ -23,7 +32,7 @@ work returns to when new information appears. How work runs inside each stage (m
 
 ## User navigation
 
-The four lifecycle skill entry points, the ten internal stages and done stay. To the user, the current position is
+The one entry point, the ten internal stages and done stay. To the user, the current position is
 explained with the five milestones below. Names are neutral, and the status (in progress, met, blocked, unconfirmed) is
 shown separately. Do not mark a milestone met because its stage was entered. Use met only when exit evidence for that
 scope exists; blocked applies only to dependent actions.
@@ -69,14 +78,14 @@ and the next action, and do not require a new interview for a fix in the same sc
 | # | Stage | Responsibility | Output | Condition to move on | Owner |
 |---|---|---|---|---|---|
 | 1 | discover | What to build and why: the problem, users, success criteria, exclusions. Separate observations, claims, estimates and unknowns; if what to build is open, compare concepts and minimal scopes | Draft intent, or findings and the reason for holding or stopping with the condition to resume | start once the user confirms the intent. A build request that already holds the problem and observable acceptance criteria is itself confirmed intent, so it goes to start without a new interview. A spike ends with a throwaway experiment and a report. Research, draft only, hold or stop before an Issue exists ends by reporting the result and creates no Issue, branch, ledger or product change | router reference |
-| 2 | start | Register and match the Issue, settle the acceptance criteria, working branch, baseline check | Issue body, branch | Issue link confirmed, baseline passes | development-start |
+| 2 | start | Register and match the Issue, settle the acceptance criteria, working branch, baseline check | Issue body, branch | Issue link confirmed, baseline passes | `start` reference |
 | 3 | design | Organize requirements and design, compare alternatives, mark concerns. Contract changes go into specs, and current choices and their reasons into [current design decisions](../design/current-decisions.md) | Design notes, or `docs/specs/` and current design decisions | Decisions only the user can make are resolved | router reference, reviewer (design perspective) |
 | 4 | plan | Per-task files, order, interfaces, proof, risks. Check [plan quality](orchestration.md#plan), confirm prerequisites (dependencies, tools, permissions, check commands), choose the execution mode | Private plan, public summary and a go or no-go checkpoint | go | router reference. If the plan changes a trust boundary (authentication, permissions, secrets, hooks, external input handling) or has five or more tasks, a reviewer (design perspective) reviews it once |
 | 5 | build | Run by mode, confirm failing tests, commit per task | Commits | The plan's tasks are done | router reference, implementer |
 | 6 | verify | Confirm the acceptance criteria by actually running them, check behavior per the [execution mode](orchestration.md#execution-modes) | Verification evidence | Each criterion has execution evidence | router reference, execution verification (explorer) per mode |
-| 7 | review | Final review per the [execution mode](orchestration.md#execution-modes), handle findings | Findings and their handling | No correctness or requirement defects | pr-review-workflow |
-| 8 | ship | push, PR, CI and merge per the integration method, Issue completion and follow-up Issues | Integrated default branch, closed Issue | Integration and closing confirmed | pr-review-workflow |
-| 9 | cleanup | Clean up branches and worktrees | Cleanup record | Cleanup done | workspace-cleanup |
+| 7 | review | Final review per the [execution mode](orchestration.md#execution-modes), handle findings | Findings and their handling | No correctness or requirement defects | `review` reference |
+| 8 | ship | push, PR, CI and merge per the integration method, Issue completion and follow-up Issues | Integrated default branch, closed Issue | Integration and closing confirmed | `ship` reference |
+| 9 | cleanup | Clean up branches and worktrees | Cleanup record | Cleanup done | `cleanup` reference |
 | 10 | learn | Put lessons in the right place | "Learn and memory" below | Only when there is a lesson | router reference; if the destination is a file agents read, [text agents read](documents.md#text-agents-read) |
 
 ship writes the state block as done on the Issue branch and closes the Issue. `local-merge` does this before

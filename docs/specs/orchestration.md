@@ -129,7 +129,9 @@ The subagent cache runs with a default 5-minute TTL. If waiting for user answers
 
 1. If the cause of a check or CI failure is unclear, an explorer with the root-cause perspective first reports the cause
    and evidence, without changing files. Splitting analysis from fixing reduces fixes that only cover symptoms.
-2. Within one task, the implementer fixes at most twice. The ledger counts the attempts.
+2. Within one task, the implementer fixes at most twice. The ledger counts the attempts: each fix attempt and each
+   promotion is one ledger `notes` line with its reason, not a `counts` value, which holds only the Stop hook's
+   `{continue}` ([ledger keys](ledger.md#ledger-keys)).
 3. If it still fails, go up one step of [promotion](#promotion) and try once.
 4. If it still fails, the main session takes it over or reports where it is blocked.
 
@@ -180,13 +182,19 @@ fable and astra are not used. Values in parentheses are the definition's default
 | Security and high-risk review | `reviewer` + security perspective (`opus` `high`) | — | gpt-6.1-sol `high` |
 
 There are three agent definitions, split by tools: `explorer`, which only reads and runs commands; `reviewer`, which
-only reads; and `implementer`, which edits files. The brief sets the difference between roles (perspectives such as
-exploration, summary, root-cause analysis, verification, design and security)
+only reads; and `implementer`, which edits files
 ([rationale](../design/current-decisions.md#execution-and-delegation)). Definitions do not set `omitClaudeMd`, because the agents need the
 project instructions and boundaries as they are.
 
 Claude implementers carry `disallowedTools: Agent` and `maxTurns`. The brief's last paragraph blocks extra review rounds
 and includes a line telling the agent to keep going to the end.
+
+### Perspectives
+
+An agent definition holds the text of its perspectives: `reviewer` has design and security, `explorer` has summary,
+diagnosis (root cause) and verification. A brief names one perspective, because a reviewer given two does neither well,
+and keeping the text in the agent body means no stage reads a separate perspectives file. A Codex subagent gets the same
+role body and perspective text in its brief and is spawned with `fork_turns: "none"`, so both hosts apply one text.
 
 ### Promotion
 

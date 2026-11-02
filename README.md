@@ -15,6 +15,21 @@ verify, and leaves checking to review and CI rather than blocking hooks.
   [lifecycle](docs/specs/lifecycle.md), [orchestration](docs/specs/orchestration.md),
   [repository](docs/specs/repository.md), [eval](docs/specs/eval.md)
 
+## Use
+
+devflow works in repositories that have a `.devflow.json` ([repository contract](docs/specs/repository.md)). Open a
+session there and the SessionStart hook prints a `[devflow]` resume card with the Issue state, the ledger and the
+`Tool:` path for Issue I/O. Then ask in plain words (start new work, continue the Issue, review it, open or merge the
+PR, clean up merged branches, hand off to another session) or invoke the `devflow` skill. One skill, `devflow`, runs
+the whole lifecycle and reads the reference for the current stage.
+
+The four independent skills (`decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`)
+work in any repository, devflow or not.
+
+**Compatibility:** `/development-start`, `/pr-review-workflow` and `/workspace-cleanup` are gone. In a devflow
+repository their requests go to `devflow`; repositories without `.devflow.json` no longer get starting, PR review or
+cleanup from this plugin.
+
 ## Install
 
 Install `devflow@wotjr1649` from the publisher's shared

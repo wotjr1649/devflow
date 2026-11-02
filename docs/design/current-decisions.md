@@ -74,20 +74,27 @@ and their results need to be recorded in the ledger.
 
 ## Entry points and stages
 
-**Choice and reason.** development-start takes new work, and devflow handles continuation and stage transitions.
-Existing stage skills keep their own responsibilities, and lifecycle references read by several skills live at the
-plugin root.
-Narrowing the entry points' roles reduces skill contention and exposes the user decisions and outputs that differ per
-stage.
+**Choice and reason.** One lifecycle skill, `devflow`, is the only entry point. It takes new work, continuation, stage
+transitions, review, PR and merge, cleanup and handoff in repositories with `.devflow.json`, and its SKILL.md links
+each of the eleven stage references in `skills/devflow/references/` directly. Repositories without `.devflow.json`
+get no lifecycle skill at all; that compatibility loss is accepted.
+One description decides invocation, so no two lifecycle descriptions compete for the same request. Each reference is
+one level from SKILL.md and finishes its procedure without reading another, so no step depends on a second hop. After
+compaction a host reattaches only the start of an invoked skill body, so the router puts scope, Issue I/O and the stop
+conditions first, and those survive while reference files do not.
 [lifecycle](../specs/lifecycle.md) sets routing, stages per path and going back, and
 [documents](../specs/documents.md) sets document size and progressive reading.
 
-**Alternatives.** Folding all existing skills into one router would mean rewriting proven procedures.
-Sending new work through the resume router first overlaps with the start role, and applying the same stages to every
-path raises the cost of small changes.
+**Alternatives.** Keeping the start, review and cleanup skills as thin wrappers around the router keeps their
+descriptions overlapping. Nested references break the one-level rule. Separate integration and completion references
+linked from SKILL.md are not taken because ship needs both every time. Inlining the design and security perspective
+text in each stage reference duplicates it across references, while the agent that applies a perspective reads its own
+body anyway.
+Applying the same stages to every path raises the cost of small changes.
 
-**Revisit when.** Review when new work is repeatedly misclassified or skill invocations overlap, when stage cost exceeds
-results, or when a host can no longer read the common references at the plugin root.
+**Revisit when.** Review when requests are repeatedly routed to the wrong stage or reference, when the router outgrows
+its size budget or the stop conditions no longer fit its start, when stage cost exceeds results, or when a host's skill
+loading or compaction behavior changes.
 
 ## Independent skills
 

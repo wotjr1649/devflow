@@ -35,8 +35,8 @@ node --test --test-timeout=120000 tests/*.test.js
 ```
 
 Fix failing tests without weakening valid ones; change a test only when the requirement or its expectation changed.
-For setup and integration gates, follow `docs/specs/repository.md`; for branch and worktree cleanup, the
-workspace-cleanup skill.
+For setup and integration gates, follow `docs/specs/repository.md`; for branch and worktree cleanup,
+`skills/devflow/references/cleanup.md`.
 Hook setup requires explicit instruction.
 
 ## Language

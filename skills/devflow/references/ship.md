@@ -70,8 +70,8 @@ Required checks. A merge needs each required check to have succeeded at the revi
 current head: the head itself on a branch push, the merge of the current base and head on a pull request run. Report
 each required check's supplied or observed state and revision, and mark it NOT_VERIFIED otherwise:
 
-- A green run on an older head does not count. Example: head def5678, the only green run on abc1234: NOT_VERIFIED; the
-  next step is a successful run at the revision it must test for def5678, then the merge.
+- A green run on an older head does not count. Example: head 7e1f0a2, the only green run on 3b9c4d8: NOT_VERIFIED; the
+  next step is a successful run at the revision it must test for 7e1f0a2, then the merge.
 - A missing, cancelled or skipped run, a run on another commit, or one with the same name from another source is not a
   pass. Assess supplied CI against the project's required checks; an unrequired check identifier stays unknown, not a
   new gate.

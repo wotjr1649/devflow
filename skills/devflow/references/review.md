@@ -55,7 +55,7 @@ untracked bytes; HEAD alone omits dirty work.
    verdict, because a reviewer told the answer confirms it. Name each required git-ignored plan, spec, test or output
    path and its purpose; open it before declaring it absent. Report unreadable required inputs; missing evidence never
    passes.
-3. Reviewer. Claude Code: a fresh `reviewer`. Codex: a report-only worker given the same role body. Record the reviewer
+3. Reviewer (M1 and up; M0 has none). Claude Code: a fresh `reviewer`. Codex: a report-only worker given the same role body. Record the reviewer
    and the revision reviewed. When package writes or dispatch are outside your scope, report the proposed package path
    and range and the required input paths and purposes; preparing them does not complete the review.
 4. Background work. Track each background agent with `running <issue> add|done <label>`. Run `done` only once its

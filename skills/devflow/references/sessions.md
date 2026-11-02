@@ -1,7 +1,8 @@
 # Sessions
 
 Done when the session operation at hand - a note, a progress report or return, a handoff, a mode switch or an intent
-change - is complete and recorded through the card's `Tool:` command, with nothing guessed.
+change - is complete, with every ledger or Issue write (`note`, `mode`, `intent`, `release`) made through the card's `Tool:`
+command and nothing guessed.
 
 ## Notes and closed branches
 

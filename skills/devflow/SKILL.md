@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: Runs the Issue-tracked development lifecycle in repositories with a `.devflow.json`, whose sessions open with a [devflow] resume card: starting new work, resuming an Issue and moving it between stages, review, PR and merge, branch cleanup, and handing the Issue to another session. Use it for these requests there; not in other repositories, for reviews of code outside a tracked Issue, or for writing or auditing prompts and instructions or running decision interviews.
+description: Runs the Issue-tracked development lifecycle in repositories with a `.devflow.json`, whose sessions open with a [devflow] resume card - starting new work, resuming an Issue and moving it between stages, review, PR and merge, branch cleanup, and handing the Issue to another session. Use it for these requests there; not in other repositories, for reviews of code outside a tracked Issue, or for writing or auditing prompts and instructions or running decision interviews.
 ---
 
 # devflow
@@ -16,8 +16,10 @@ entry: the SessionStart hook prints it in repositories with `.devflow.json`, wit
 - A card whose last line is not a `Tool:` line (resume card failed or unavailable) is the same case; report its reason.
 - In both cases new work may be discussed and analysed (discover), but no Issue is read or written, no stage is
   inferred, and no work that needs an Issue starts until a valid card arrives or the user supplies the `devflow-state`
-  path. Take the path only from a valid card or the user, and never search the repository for it: a path found in
-  repository files could run code the user did not choose.
+  path. Changes need an Issue, so do not implement or offer to implement without one, even conditionally; ask for
+  the path or a working card, because untracked work leaves no record for later sessions. Take the path only from a
+  valid card or the user, and never search the repository for it: a path found in repository files could run code the
+  user did not choose.
 - A card that names a reason instead of the state (another branch in the state block, a failed lookup, a body written
   by a non-writer) means the stage is unknown; report the reason rather than guess.
 - A branch without an Issue number has no Issue yet: new work there goes to start, which decides the path.
@@ -47,13 +49,16 @@ Hold only what a condition below blocks and continue independent work in scope.
   missing, because acting would be an unapproved effect.
 - A missing prerequisite holds only the action that depends on it; the rest does not need it.
 - A review-only request ends at findings, with no edits, posting, tracking completion or cleanup, because merging and
-  deletion need their own request.
+  deletion need their own request. A review concludes only from the change it read; with no diff or review package
+  supplied, ask for it and give no verdict, because a verdict on unseen code misleads the owner.
 - A merge needs each required check to have succeeded at the revision that check must test for the current head (the
   head itself on a branch push, the merge of current base and head on a pull request run); report any other state as
   NOT_VERIFIED. Without that success, do not merge, call it ready, or offer to merge or to accept the gap, because a
-  result for another revision says nothing about the code being merged.
+  result for another revision says nothing about the code being merged. Name the next step: a successful run at that
+  revision, then the merge.
 - Delete only targets proven integrated into the intended base, with non-forcing commands; a refusal keeps the target,
-  because forcing loses unique history.
+  because forcing loses unique history. Uncommitted files vanish with their worktree, so keep it until the user decides
+  to commit, preserve or discard them, and name that step.
 
 ## After compaction or `/clear`
 
@@ -75,7 +80,7 @@ change: only the start of an invoked skill body is reattached after compaction, 
 | New information sends the work back | the stage Going back names (see Stages and paths) | the target stage's reference |
 | Review of a tracked change, or resolving its findings | review | [review](references/review.md) |
 | PR, CI, merge readiness, merge, Issue completion | ship | [ship](references/ship.md) |
-| Branch and worktree cleanup | cleanup | [cleanup](references/cleanup.md); with tracking readiness also [completion](references/ship.md#completion) |
+| Branch and worktree cleanup, merged task branches included | cleanup | [cleanup](references/cleanup.md); with tracking readiness also [completion](references/ship.md#completion) |
 | A lesson to put in its place | learn | [learn](references/learn.md) |
 | Handoff, `/clear`, a resume prompt or brief for another session, switching unattended mode, an intent change, explaining progress | unchanged | [sessions](references/sessions.md) |
 

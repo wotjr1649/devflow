@@ -211,7 +211,8 @@ it is on does it run as a check before branch pushes. The integration gate for `
 checks.
 
 After the checks and records of [ship](lifecycle.md#stages), just before integration, read base, head, rules and checks
-again. If the branch is behind, merge main ([review](orchestration.md#review)). After the merge, confirm the actual main
+again, and merge with the reviewed head as the expected head (`gh pr merge --match-head-commit <sha>`), so a push
+after the checks cannot slip in. If the branch is behind, merge main ([review](orchestration.md#review)). After the merge, confirm the actual main
 SHA and main CI before completing and cleaning up.
 
 ### Reverting the self-integration policy

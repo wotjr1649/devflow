@@ -88,8 +88,8 @@ and the next action, and do not require a new interview for a fix in the same sc
 | 9 | cleanup | Clean up branches and worktrees | Cleanup record | Cleanup done | `cleanup` reference |
 | 10 | learn | Put lessons in the right place | "Learn and memory" below | Only when there is a lesson | router reference; if the destination is a file agents read, [text agents read](documents.md#text-agents-read) |
 
-ship writes the state block as done on the Issue branch and closes the Issue. `local-merge` does this before
-integration, `pr-ci` after confirming the merged result. A partial integration with scope left does not close the Issue
+ship writes the state block as done on the Issue branch and closes the Issue. `local-merge` and `push-on-request` do this
+before integration, `pr-ci` after confirming the merged result. A partial integration with scope left does not close the Issue
 and keeps the remaining scope in the state. After the branch is deleted, the Issue can no longer be written, so cleanup
 and any learn after it are recorded only in the ledger.
 

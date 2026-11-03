@@ -8,7 +8,8 @@ after the last task, every acceptance criterion in the Issue.
 - From M1 up, a fresh context runs the behaviour: Claude Code, `explorer` with the verification perspective; Codex, a
   worker told to report only, given the explorer body and its verification perspective (the router's Delegation
   section says where that text is), on the model of the router's Roles table. Give it the criteria, the commands and
-  BASE..HEAD, never the verdict you expect, because a verifier told the answer confirms it. In M0 the main session runs
+  BASE..HEAD, never the verdict you expect, because a verifier told the answer confirms it. Report the model and
+  effort it ran with from its run record, or unconfirmed. In M0 the main session runs
   the checks itself.
 - Report each criterion's evidence strength: a behaviour run (the feature or command used as a user would), a targeted
   test, or build or static only. Only a behaviour run or a targeted test that exercises the criterion verifies it; a

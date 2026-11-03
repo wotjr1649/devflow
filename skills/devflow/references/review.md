@@ -21,7 +21,8 @@ untracked bytes; HEAD alone omits dirty work.
 - Give each finding its location, trigger, impact, evidence and how to validate it. With no findings, name the file
   scope you reviewed.
 - Mark each defect as introduced by the change or present before it (already at BASE): the first belongs to this
-  change's fix; the second is a new problem outside scope, reported apart so it does not block or widen this change.
+  change's fix; the second is a new problem outside scope, reported apart so it does not block or widen this change;
+  once reproduced, it becomes a follow-up Issue at once rather than waiting for ship.
 - Report changes outside the request: files or behaviour the diff changes that no criterion or plan task asks for,
   since they widen what has to be reviewed and shipped.
 - A test weakened, skipped or deleted without a changed requirement or a wrong expectation is a defect, because it

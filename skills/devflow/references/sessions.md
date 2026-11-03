@@ -25,7 +25,7 @@ the stage was entered; blocked only for dependent actions. Report the goal, the 
 status, observed evidence, remaining exits, the next action, blockers or open decisions, and the applicable revision;
 task k/N is a count, not a percentage. Refresh at resume, stage or increment completion, milestone changes, rollback,
 scope changes or blockers, not in every message. Pre-Issue entry and other skills' direct returns are outside this
-procedure; a missing card does not authorize routing.
+procedure.
 
 Where each fact comes from:
 - Confirmed intent and coarse state: the card's Tool `read <issue>`. Task progress and blockers of the same Issue:
@@ -33,8 +33,7 @@ Where each fact comes from:
 - Verification evidence: the ledger's notes and the Issue's checkpoints; open the raw evidence they point to as needed.
 - Task and proof scope: the linked plan (bounded: the one change and checks set in design). Revision applicability: Git.
   When HEAD differs from `lastCommit`, check the changed commits; a successful log alone proves no applicability.
-- Use the existing boundary updates; create no milestone fields, duplicate status record or routine public posts. Keep
-  private paths and logs local.
+- Create no milestone fields, duplicate status records or routine public posts; keep private paths and logs local.
 
 Reconciling:
 - Issue `build` with ledger task `verify` is the normal loop; Issue `done` with cleanup or learn is normal closeout.
@@ -68,10 +67,11 @@ another session carries only what they lack: instructions and decisions made sin
 tokens, pointing at the Issue rather than restating it - restating costs output now and input in every session that
 reads it.
 
-- A subagent brief names the task, BASE, files it may change and the check; puts push, Issue writes, spawning subagents,
-  deleting or weakening tests and new dependencies out of scope; asks for one end status (`DONE`, `DONE_WITH_CONCERNS`,
-  `NEEDS_DECISION`, `BLOCKED`); and ends with stop and report once done and checked. One for another session (`codex
-  exec`, `claude -p`) ends with that session running `release <issue>`.
+- A subagent brief, in English, names the task, BASE, files it may change and the check; puts push, Issue writes,
+  spawning subagents, deleting or weakening tests and new dependencies out of scope; asks for one end status (`DONE`,
+  `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run; and ends with stop and report
+  once checked, with no extra rounds. One for another session (`codex exec`, `claude -p`) ends with that
+  session running `release <issue>`.
 - A prompt file goes to `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, never under a name that already exists,
   since concurrent sessions can pick the same name. Leave it uncommitted, and end the reply with `Read <absolute path>
   and continue.`, because a relative path resolves only from where it was written.

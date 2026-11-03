@@ -30,18 +30,17 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
 ## Delegating (M2, M3)
 
 - The main session keeps decisions, Issue writes, integration and the ledger, so unstated choices of several writers do
-  not collide. A subagent gets one task through a brief that starts `TASK k/N · Issue #i · BASE <sha>` and gives the
-  goal, acceptance, files it may change, interfaces, constraints and the check with healthy output. It puts push, Issue
-  writes, spawning subagents, deleting or weakening tests and adding dependencies out of scope, asks for one end status
-  (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not run and why, and
-  ends: keep working until the brief is done, stopping early only with `NEEDS_DECISION` or `BLOCKED`; when the work
-  is done and its checks pass, stop and report.
+  not collide. A subagent gets one task through a brief, in English, that starts `TASK k/N · Issue #i · BASE <sha>` and
+  gives the goal, acceptance, files it may change, interfaces, constraints and the check with healthy output. It puts
+  push, Issue writes, spawning subagents, deleting or weakening tests and adding dependencies out of scope, asks for one
+  end status (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not, and
+  ends: keep working until done, stopping early only with `NEEDS_DECISION` or `BLOCKED`; once the checks pass, stop and
+  report, with no extra rounds or changes outside the listed files.
 - Delegate to `implementer`. Model and effort come from the router's Roles table: mechanical work runs on the
   definition's default, work that needs judgment across files on a stronger model; settle design decisions before
-  delegating it. Take the model and effort a run used from its records, or report them unconfirmed.
+  delegating it. Report the model and effort a run used from its records, or unconfirmed.
 - In interactive M2, the main session may make a one- or two-line edit describable in one sentence and record it in the
-  ledger; a delegation costs more than the edit. Unattended work keeps a fresh context for every task, so it has no such
-  exception.
+  ledger; a delegation costs more. Unattended work keeps a fresh context per task, so it has no such exception.
 - In M2 and M3 each task gets a narrow review before the next starts: `reviewer` (Claude Code, with `model: sonnet`;
   Codex, the per-task review worker of the router's Roles table), given that task's BASE..HEAD. A mechanical change
   inside one file that touches no trust boundary skips it; the final review covers it. A change to a trust boundary gets one

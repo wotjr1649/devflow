@@ -116,9 +116,10 @@ message.
   linked worktree not on an Issue branch are refused.
 - Writes (to the Issue and the ledger) leave the session in `sessions.json` (id hash and time). When another session
   wrote within 30 minutes and did not release, the resume card and the write output warn. This does not refuse, and reads
-  are not counted. The warnings end with one line for the warned session: hold the Issue's state and ledger writes until
-  the owner or that session confirms a handoff, since a state write replaces the whole block and a re-read only shows
-  what the other session has written so far; hold other writes their work may touch until a re-read rules that out;
+  are not counted. The warnings end with one line for the warned session: hold the Issue's state and ledger key writes
+  (`ledger-update`, `mode`, `running`) until the owner or that session confirms a handoff, since each replaces what the
+  other session may still write and a re-read only shows what it has written so far, while `note` appends under the
+  lock and may go on; hold other writes their work may touch until a re-read rules that out;
   after a write, re-read the current state; keep independent work; and never release or end another session by
   guessing, because the record is a recent unreleased write, not proof that the other session is running or has ended.
 - [Current session id passing](hooks.md#common-contract-of-both-hosts): the CLI uses the first non-empty value of

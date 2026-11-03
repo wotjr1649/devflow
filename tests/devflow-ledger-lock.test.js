@@ -228,7 +228,7 @@ test('a write by another session in the last 30 minutes is warned about; the sam
 })
 
 // #141: the warnings end with one line saying what to do, in the card and in a write's output alike.
-const ACTION = /^Warning: hold this Issue's state and ledger writes until the owner or that session confirms a handoff, and other writes their work may touch until a re-read rules that out; a re-read does not show they stopped\. After a write, re-read the current state to check what you wrote\. Keep independent work; never release or end another session by guessing\.$/m
+const ACTION = /^Warning: hold this Issue's state and ledger key writes \(note appends may go on\) until the owner or that session confirms a handoff, and other writes their work may touch until a re-read rules that out; a re-read does not show they stopped\. After a write, re-read the current state to check what you wrote\. Keep independent work; never release or end another session by guessing\.$/m
 
 test('the session warnings end with one action line, in the card and in write output, and only when warning', () => {
   const root = repo({ stage: 'build' })

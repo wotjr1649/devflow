@@ -255,9 +255,18 @@ test('leaks catch prefixed credentials, bearer headers and paths after any separ
     ['OPENAI_API_' + 'KEY=abcdefgh12345678', /credential/], ['Authorization: ' + 'Bearer abcdefgh12345678xyz', /bearer/],
     ['root=' + homePath(), /local absolute path/], ['[' + p('Users', 'me', 'x') + ']', /local absolute path/],
     ['path:' + p('tmp', 'x'), /local absolute path/], ['<code>' + p('root', 'work'), /local absolute path/],
+    // #149: shapes the first rules missed.
+    ['{"pass' + 'word": "hunter2hunter2"}', /credential/], ["{'to" + "ken': 'abcdefgh12345678'}", /credential/],
+    ['https://user:' + 'secret123@host.example/x', /URL credentials/],
+    ['sk_' + 'live_abcdefghijklmnop1234', /API key/], ['rk_' + 'test_abcdefghijklmnop1234', /API key/],
+    ['glpat-' + 'abcdefghijklmnop1234', /API key/], ['npm_' + 'abcdefghijklmnopqrstuvwxyz0123456789', /API key/],
+    ...['var', 'private', 'opt', 'etc', 'srv', 'Volumes'].map(top => ['see ' + p(top, 'x', 'y'), /local absolute path/]),
+    ['share //' + 'fileserver/team', /local absolute path/],
   ]
   for (const [text, rule] of caught) assert.ok(state.leaks(text).some(l => rule.test(l)), text)
-  for (const text of ['https://github.com/o/r/issues/1', 'skills/devflow/references/build.md', 'max_tokens: 1000', 'and/or'])
+  for (const text of ['https://github.com/o/r/issues/1', 'skills/devflow/references/build.md', 'max_tokens: 1000', 'and/or',
+    '"max_tokens": 4096', 'git@github.com:o/r.git', 'see //cdn.example.com/lib.js', 'a // comment/with slash',
+    'https://example.com:8080/path', 'src/var/x and docs/etc/y', 'task_live_value', 'macOS temp is /var → /private/var)', 'see /etc/hosts'])
     assert.deepEqual(state.leaks(text), [], text)
 })
 

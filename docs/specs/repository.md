@@ -210,7 +210,7 @@ The local pre-push is the integration gate for `local-merge`. In `pr-ci` the hoo
 it is on does it run as a check before branch pushes. The integration gate for `pr-ci` is the server's ruleset and PR
 checks.
 
-After the checks and records of [ship](lifecycle.md#stages), just before integration, read base, head, rules and checks
+After the checks and records of [ship](../../skills/devflow/references/ship.md), just before integration, read base, head, rules and checks
 again, and merge with the reviewed head as the expected head (`gh pr merge --match-head-commit <sha>`), so a push
 after the checks cannot slip in. If the branch is behind, merge main ([review](orchestration.md#review)). After the merge, confirm the actual main
 SHA and main CI before completing and cleaning up.

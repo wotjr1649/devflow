@@ -44,7 +44,8 @@ discover → start → design → plan → build → verify → review → ship 
 - build, verify and review repeat for each task in the plan.
 - When new information appears, work goes back to a set stage.
 
-Stages, repetition, going back: [lifecycle](../specs/lifecycle.md). Execution: [orchestration](../specs/orchestration.md).
+Stages, repetition, going back: the devflow skill ([why](../specs/lifecycle.md)). Execution: the devflow skill
+([why](../specs/orchestration.md)).
 Document format and budgets: [documents](../specs/documents.md).
 
 ## Components
@@ -62,7 +63,7 @@ Document format and budgets: [documents](../specs/documents.md).
 - **Claude agents**: 3 definitions split by tools, each holding the text of its perspectives; the brief names at most
   one. `explorer` (reads and runs commands): search by default, summary, root cause, verification. `reviewer` (reads
   only): correctness by default, design, security. `implementer` (edits). Codex gets the same role body in the brief.
-  Models, effort, promotion: [orchestration](../specs/orchestration.md#models-and-effort)
+  Models, effort, promotion: the devflow skill's Roles table ([why](../specs/orchestration.md#models-and-effort))
 - **Claude Workflows**: devflow does not ship them and does not keep them as an execution mode. The user runs them
   directly outside devflow ([execution modes](../specs/orchestration.md#execution-modes))
 - **Hooks**: resume card (SessionStart), continuation in unattended mode only (Stop), release when the session ends

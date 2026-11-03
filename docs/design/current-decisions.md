@@ -1,7 +1,8 @@
 # Current design decisions
 
 This document holds the current choices and their reasons, the alternatives not taken, and the conditions for revisiting
-them. The linked specs own the behavior rules and take precedence over this document.
+them. The linked specs and the devflow skill own the rules, split as
+[documents](../specs/documents.md) sets, and take precedence over this document.
 
 ## Single source
 
@@ -44,8 +45,8 @@ guarantees the previous session's identifier and its end.
 **Choice and reason.** Decisions and writes are gathered in the main session, and subagents serve context protection
 and verification from a separate viewpoint.
 Implementation is delegated when there is a reason to protect the main session's context, such as workload or an
-unattended run, and parallel writes are used only when files do not overlap and interfaces are fixed. [Execution
-modes](../specs/orchestration.md#execution-modes) sets the conditions per mode. Models and effort are chosen to fit the role and
+unattended run, and parallel writes are used only when files do not overlap and interfaces are fixed. The devflow
+skill's Execution modes set the conditions per mode ([why](../specs/orchestration.md#execution-modes)). Models and effort are chosen to fit the role and
 the evidence, but the user chooses the main model. Roles whose results the main session judges again, such as
 exploration and summarizing, go to the cheapest family (haiku, luna), and promotion within the same model is done
 through the call's effort. fable and astra are not used because their token cost is high. Codex mechanical
@@ -57,8 +58,8 @@ With briefs missing decisions, both models silently filled unstated gaps, so tha
 promotion but by the main session settling the behavior in the brief.
 Definitions are split by tool differences, and perspectives are passed through the brief. Out-of-scope decisions are
 gathered in the main session through stop and resume.
-[orchestration](../specs/orchestration.md) sets execution modes, per-host support, authority to choose models,
-promotion, the question procedure and the isolation limits of reporting roles. Workflows are run directly outside
+The devflow skill sets execution modes, roles, promotion and the question procedure; [orchestration](../specs/orchestration.md)
+keeps their reasons, per-host support, authority to choose models and the isolation limits of reporting roles. Workflows are run directly outside
 devflow.
 
 **Alternatives.** Always delegating raises the cost of new contexts and reports, and the main session always doing the
@@ -82,7 +83,7 @@ One description decides invocation, so no two lifecycle descriptions compete for
 one level from SKILL.md and finishes its procedure without reading another, so no step depends on a second hop. After
 compaction a host reattaches only the start of an invoked skill body, so the router puts scope, Issue I/O and the stop
 conditions first, and those survive while reference files do not.
-[lifecycle](../specs/lifecycle.md) sets routing, stages per path and going back, and
+The devflow skill sets routing, stages per path and going back ([why](../specs/lifecycle.md)), and
 [documents](../specs/documents.md) sets document size and progressive reading.
 
 **Alternatives.** Keeping the start, review and cleanup skills as thin wrappers around the router keeps their
@@ -122,7 +123,7 @@ router, or when the independent skills need to ship outside devflow.
 evidence.
 Even small changes are judged by meaning rather than file extension or line count. Review reports are short prose, and
 re-review is narrowed to fixes that changed behavior or permissions.
-[orchestration](../specs/orchestration.md#review) owns the scope of checks and review.
+The devflow skill's review reference owns the scope of checks and review ([why](../specs/orchestration.md#review)).
 devflow itself links the reviewed SHA to CI and the integration record through PRs, server protection and merge commits.
 CI must be evidence that the revision the event requires was actually checked, and it does not replace per-criterion
 execution evidence or independent review.
@@ -152,7 +153,7 @@ runs](../specs/ledger.md#unattended-runs)), and `devflow-state` refuses Issue wr
 a boundary that blocks direct posting.
 [issues](../specs/issues.md#issue-io) owns targets and filters, [credentials](../specs/credentials.md) the
 authentication and OS isolation premises, [ledger](../specs/ledger.md) unattended runs, worktrees, delegation shutdown
-and checking partial effects, and [lifecycle](../specs/lifecycle.md#going-back) blocker handling. There is no credential
+and checking partial effects, and the devflow skill blocker handling ([why](../specs/lifecycle.md#going-back)). There is no credential
 boundary between the same OS user's shell and child CLIs, and it is not called a boundary until the isolation premises
 are met.
 
@@ -175,7 +176,7 @@ CLI's public filter and unattended write refusal are the behavior of that path.
 Direct posting is not read as a security boundary that hooks block. Review checks test changes, and the safety floor
 stays in the instructions.
 [documents](../specs/documents.md#text-agents-read) owns document rules, and
-[lifecycle](../specs/lifecycle.md#learn-and-memory) the placement of lessons. The trigger eval is an optional tool of
+the devflow skill's learn reference the placement of lessons ([why](../specs/lifecycle.md#learn-and-memory)). The trigger eval is an optional tool of
 [eval](../specs/eval.md).
 
 **Alternatives.** Enforcing every action through shell command parsing, posting blocks and test file locks costs a lot in

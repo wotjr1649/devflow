@@ -64,7 +64,9 @@ adds to the continue count under the ledger lock.
   user in the ledger notes.
   It does not create pending posts or post automatically.
 
-In interactive work this hook is off.
+The executor's rules for unattended work are in the
+[sessions reference](../../skills/devflow/references/sessions.md#unattended-work) and, for integration, the
+[ship reference](../../skills/devflow/references/ship.md). In interactive work this hook is off.
 
 ## task worktree
 

@@ -2,7 +2,7 @@
 
 Done when the work has a verified Issue whose scope matches the request, a prepared branch or worktree recorded in the
 Issue's state block and the ledger, a passing baseline, and a start record a later session can use without the
-transcript ([Stages](../../../docs/specs/lifecycle.md#stages)).
+transcript.
 
 Contents: Checklist · 1. Path · 2. Issue · 3. Branch or worktree · 4. Association · 5. Sub-issue · 6. Start record
 
@@ -25,7 +25,7 @@ requirement:
 
 ## 1. Path
 
-Classify the path first ([Stages by path](../../../docs/specs/lifecycle.md#stages-by-path)): a spike, or work whose
+Classify the path first by the router's Stages and paths: a spike, or work whose
 problem and acceptance the user has not confirmed, goes to the discover stage before any Issue; the rest starts here.
 When unsure, take the heavier path. Read the project contracts this task touches, and use the project's base, branch
 naming and checks.
@@ -81,7 +81,7 @@ An Issue number in a branch name is not a verified tracker link. On GitHub, `gh 
 verify the platform and installed flags before using it. Record the Issue, branch and PR association explicitly: on
 the Issue branch, write the state block with `state`, its `브랜치/PR` line starting with the branch name, because the
 resume card shows the state only when that line matches the current branch. Then start the ledger with `stage` and
-`path`. PR text and commits carry no closing keyword, partial work or not (repository.md "Integration and CI"); check the
+`path`. PR text and commits carry no closing keyword, partial work or not; check the
 platform's closing semantics at PR preparation.
 
 ## 5. Sub-issue
@@ -90,7 +90,7 @@ For an authorized sub-issue relationship, run `sub-issue add <parent> <child>` f
 elsewhere) and inspect it with
 `sub-issue list <parent>`. The command and the branch are not permission: confirm the authority for that relationship
 separately. It adds one same-repository relationship, never replaces a parent, and counts as done only when the
-read-back shows the intended parent ([Issue I/O](../../../docs/specs/issues.md#issue-io)).
+read-back shows the intended parent.
 
 ## 6. Start record
 

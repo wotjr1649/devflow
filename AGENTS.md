@@ -1,7 +1,8 @@
 # devflow
 
-devflow is a Claude Code and Codex plugin. Specs define behavior, code implements it,
-current design decisions explain why, and GitHub Issues track work.
+devflow is a Claude Code and Codex plugin. The devflow skill defines what a session does,
+specs define the contracts code and tests rely on, code implements them, current design decisions explain why, and
+GitHub Issues track work.
 
 ## Read what your task touches
 
@@ -15,14 +16,15 @@ current design decisions explain why, and GitHub Issues track work.
 | changing the ledger, unattended work or concurrent sessions | `docs/specs/ledger.md` |
 | changing layout, installation or hooks | `docs/specs/repository.md`, `docs/specs/hooks.md` |
 | preparing or testing a development plugin | `docs/local-development.md` |
-| clarifying intent or changing stage transitions | `docs/specs/lifecycle.md` |
-| changing execution modes, delegation or models | `docs/specs/orchestration.md` |
+| clarifying intent or changing stage transitions | `skills/devflow/SKILL.md`, then `docs/specs/lifecycle.md` for why |
+| changing execution modes, delegation or models | `skills/devflow/SKILL.md` and its build reference, then `docs/specs/orchestration.md` for why |
 | changing the trigger eval | `docs/specs/eval.md` |
 | revisiting a design choice | `docs/design/current-decisions.md` |
 | relying on host behavior | `docs/research/host-facts.md`; if local behavior differs, `docs/research/sources.md` |
 | adapting material from another project | `SOURCES.md` |
 
-Specs own product rules and win over other files; fix a wrong spec rather than working around it.
+Each contract has one owner, set in `docs/specs/documents.md`: the devflow skill for what a session does, specs for what
+code and tests rely on. The owner wins over other files; fix a wrong owner rather than working around it.
 Specs and task records do not independently grant authority for external, host or security changes.
 
 ## Commands

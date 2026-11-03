@@ -78,7 +78,42 @@ test('devflow: a reference links no other reference and no agents/ file', () => 
   for (const n of refNames())
     assert.deepEqual(linkTargets(read(`${REFS}/${n}`)).filter(isReferenceOrAgentsLink), [], `${n} links a reference or agents/`)
   assert.ok(['other.md', 'references/x.md', '../agents/a.yaml', 'b.md#c'].every(isReferenceOrAgentsLink), 'counterexample')
-  assert.ok(!['#anchor', '../../../docs/specs/lifecycle.md#stages'].some(isReferenceOrAgentsLink), 'allowed targets')
+  assert.ok(!['#anchor', 'https://example.com/a.md'].some(isReferenceOrAgentsLink), 'allowed targets')
+})
+
+// The skill works from its own folder (#138): every local link resolves inside skills/devflow, and no sentence cites a
+// plugin spec by file name. The user's own docs/design/current-decisions.md is a project path, not a plugin file. The
+// card's bin/devflow-state and the agents/*.md bodies Codex briefs carry are runtime parts named in prose, not links.
+const SPEC_NAME = /\b(lifecycle|orchestration|ledger|issues|repository|documents|eval|hooks|credentials|host-facts|sources|overview)\.md\b/
+const localTargets = text => [
+  ...[...text.matchAll(/\]\(\s*<([^>]*)>/g)].map(m => m[1]),
+  ...linkTargets(text).filter(t => !t.startsWith('<')),
+  ...[...text.matchAll(/^\s*\[[^\]]+\]:\s*<?([^\s>]+)/gm)].map(m => m[1]),
+// A URL scheme has two or more letters; a drive letter (C:) or file: is a local path and is checked.
+].filter(t => !(/^[a-z][a-z+.-]+:/i.test(t) && !/^file:/i.test(t)) && !t.startsWith('#'))
+const escapes = (rel, target) => {
+  let t
+  try { t = decodeURIComponent(target.split('#')[0]) } catch { return true }
+  if (t.includes('\\')) return true
+  const abs = path.resolve(path.dirname(path.join(root, rel)), t)
+  return !abs.startsWith(path.join(root, SKILL) + path.sep) || !fs.existsSync(abs)
+}
+
+test('devflow: every local link stays inside skills/devflow and no text cites a plugin spec by name', () => {
+  for (const rel of skillFiles()) {
+    const text = read(rel)
+    for (const t of localTargets(text)) assert.ok(!escapes(rel, t), `${rel} links ${t} outside the skill or to nothing`)
+    assert.doesNotMatch(text, SPEC_NAME, `${rel} cites a plugin spec`)
+  }
+  const from = `${SKILL}/SKILL.md`
+  const bad = ['../../docs/specs/lifecycle.md', 'references\\start.md', 'references/gone.md', '%2E%2E/%2E%2E/README.md',
+    'C:\\repo\\agents\\reviewer.md', 'C:/repo/agents/reviewer.md', 'file:///repo/agents/reviewer.md']
+  assert.deepEqual(localTargets('[w](C:/x.md) [f](file:///x.md) [u](https://e.org)'), ['C:/x.md', 'file:///x.md'])
+  for (const t of bad) assert.ok(escapes(from, t), `counterexample: ${t}`)
+  assert.deepEqual(localTargets('[a](<../x.md>) [c](https://e.org/z.md) [d](#e)\n[b]: ../y.md'), ['../x.md', '../y.md'])
+  assert.ok(!escapes(from, 'references/start.md#checklist'), 'a reference with an anchor is inside')
+  assert.match('see lifecycle.md', SPEC_NAME, 'counterexample: prose citation')
+  assert.doesNotMatch("the project's docs/design/current-decisions.md", SPEC_NAME, 'a project path is allowed')
 })
 
 test('devflow: a reference opens with "Done when" and a long one has Contents in its first 12 lines', () => {
@@ -109,11 +144,10 @@ test('skill descriptions: devflow has at most two sentences and names no indepen
   assert.ok(!plainColon('Does `x: y` well.'), 'a colon inside backticks is fine')
 })
 
-test('lifecycle: every reference its Stages table names as Owner exists', () => {
-  const rows = read('docs/specs/lifecycle.md').split('\n').filter(l => /^\| \d+ \|/.test(l))
-  const owners = rows.flatMap(r => [...r.split('|')[6].matchAll(/`([\w-]+)` reference/g)].map(m => m[1]))
-  assert.ok(owners.length >= 4, `expected start, review, ship and cleanup in the Owner column, found ${owners}`)
-  for (const o of owners) assert.ok(refNames().includes(`${o}.md`), `${REFS}/${o}.md is missing`)
+test('devflow: the stage and session references are the expected eleven', () => {
+  const expected = ['build', 'cleanup', 'design', 'discover', 'learn', 'plan', 'review', 'sessions', 'ship', 'start', 'verify']
+  assert.deepEqual(refNames().map(n => n.replace(/\.md$/, '')).sort(), expected)
+  assert.notDeepEqual(expected.slice(1), expected, 'counterexample: a missing reference')
 })
 
 // A quoted label: Korean words, optionally ending in an ASCII part after a slash (`브랜치/PR`).
@@ -128,6 +162,8 @@ test('issues spec: the state-block and checkpoint labels are the ones the refere
   const quoted = skillFiles().flatMap(rel =>
     [...read(rel).matchAll(LABEL)].map(m => [rel, m[0].slice(0, -1)]))
   assert.ok(quoted.length >= 5, 'expected the references to quote labels')
+  const router = read(`${SKILL}/SKILL.md`)
+  for (const l of template) assert.ok(router.includes(`- ${l}:`), `SKILL.md lacks "- ${l}:"`)
   for (const [rel, l] of quoted) assert.ok(allowed.has(l), `${rel} quotes "${l}:" which issues.md does not define`)
   assert.ok(!allowed.has('상태'), 'counterexample')
   const labelsIn = text => [...text.matchAll(LABEL)].map(m => m[0].slice(0, -1))
@@ -155,7 +191,8 @@ test('devflow-state: every command a reference or SKILL.md names appears in the 
   assert.ok(!inUsage('never'), 'a prose word is not a command')
 })
 
-// The router restates the orchestration spec's mode and role tables, so references need no spec to finish a step.
+// SKILL.md owns the mode and role tables (#138). A Claude cell names its agent and shows that agent's own model or
+// effort in parentheses, which must match the agent definition's frontmatter.
 const tableRows = (text, heading) => {
   const ls = lines(text)
   const i = ls.findIndex(l => l === heading)
@@ -168,17 +205,24 @@ const ROLES = ['Exploration', 'Test and log summary', 'Failure root-cause analys
   'Implementation needing judgment', 'Design alternatives, plan validation', 'Execution verification', 'Per-task review',
   'Final review', 'Security and high-risk review']
 
-test('router tables: Roles matches Models and effort, Execution modes names the spec modes', () => {
-  const spec = read('docs/specs/orchestration.md')
+const frontmatter = name => {
+  const block = read(`agents/${name}.md`).split('---')[1]
+  return Object.fromEntries([...block.matchAll(/^(model|effort):\s*(\S+)$/gm)].map(m => [m[1], m[2]]))
+}
+const defaultsMismatch = cell => {
+  const agent = (cell.match(/`(explorer|reviewer|implementer)`/) || [])[1]
+  const shown = [...((cell.match(/\(([^)]*)\)\s*$/) || [])[1] || '').matchAll(/`([\w.-]+)`/g)].map(m => m[1])
+  if (!agent || !shown.length) return `no agent or defaults in "${cell}"`
+  const own = Object.values(frontmatter(agent))
+  return shown.filter(v => !own.includes(v)).map(v => `${agent} default ${v}`).join(', ')
+}
+
+test("router tables: Roles lists the roles with their agents' defaults, Execution modes names M0 to M3", () => {
   const router = read(`${SKILL}/SKILL.md`)
-  const specRoles = new Map(tableRows(spec, '## Models and effort').map(r => [r[0], r]))
   const roles = tableRows(router, '### Roles')
   assert.deepEqual(roles.map(r => r[0]), ROLES, 'the router lists the roles the references use')
-  for (const row of roles) assert.deepEqual(row, specRoles.get(row[0]), `router Roles row ${row[0]}`)
+  for (const row of roles) assert.equal(defaultsMismatch(row[1]), '', `router Roles row ${row[0]}`)
   const modes = rows => rows.map(r => (r[0].match(/^\**(M\d)\b/) || [, r[0]])[1])
   assert.deepEqual(modes(tableRows(router, '### Execution modes')), ['M0', 'M1', 'M2', 'M3'])
-  assert.deepEqual(modes(tableRows(spec, '## Execution modes')), ['M0', 'M1', 'M2', 'M3'])
-  const wrong = [...roles[0]]
-  wrong[3] = 'gpt-0 `low`'
-  assert.notDeepEqual(wrong, specRoles.get(wrong[0]), 'counterexample: a changed Codex cell')
+  assert.notEqual(defaultsMismatch('`explorer` + `model: haiku` (`low`)'), '', 'counterexample: a wrong default')
 })

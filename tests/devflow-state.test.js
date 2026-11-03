@@ -511,7 +511,7 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
   assert.match(branch.out, /path is the lifecycle path \(spike, bounded or architectural\), not a branch/)
   assert.match(up({ stage: 'coding' }).out, /stage is one of discover, start/)
   assert.match(up({ runMode: 'M5' }).out, /runMode starts with M0 to M3/)
-  assert.match(up({ runMode: 'M4' }).out, /runMode starts with M0 to M3/, 'M4 is outside the execution modes; see docs/specs/orchestration.md')
+  assert.match(up({ runMode: 'M4' }).out, /runMode starts with M0 to M3/, 'M4 is outside the execution modes in skills/devflow/SKILL.md')
   assert.match(up({ task: { current: 1 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: -1, total: 2 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: 0, total: 0 } }).out, /task is \{current, total\}/, 'the Stop hook would read 0/0 as an open task')
@@ -528,7 +528,7 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
 // gh api --include prints a status line, headers, a blank line, then the body; real gh output uses CRLF.
 const withScopes = (scopes, eol = '\r\n') =>
   ['HTTP/2.0 200 OK', 'Content-Type: application/json', ...(scopes === null ? [] : [`X-Oauth-Scopes: ${scopes}`]), 'X-Github-Request-Id: ABCD'].join(eol) + eol + eol
-const WARNING = /^Warning: gh uses a broad OAuth or classic token \(scopes: (.*)\) that reaches every repository it can; use a fine-grained token limited to the repositories agents work on \(docs\/specs\/issues\.md, Issue I\/O\)\.$/m
+const WARNING = /^Warning: gh uses a broad OAuth or classic token \(scopes: (.*)\) that reaches every repository it can; use a fine-grained token limited to the repositories agents work on\.$/m
 
 test('card warns right after the top line when gh uses a repo-wide token (CRLF headers)', () => {
   const out = state.card(env(repo(), { headers: withScopes('repo, read:org') }), '.')

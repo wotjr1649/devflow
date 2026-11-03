@@ -1,8 +1,7 @@
 # Review
 
 Done when each supplied acceptance criterion has a result with evidence, every finding is reported with its evidence,
-and - when fixing is in scope - no correctness or requirement defect remains and each finding's disposition is recorded
-([Review](../../../docs/specs/orchestration.md#review)).
+and - when fixing is in scope - no correctness or requirement defect remains and each finding's disposition is recorded.
 
 ## Boundary
 
@@ -22,8 +21,8 @@ untracked bytes; HEAD alone omits dirty work.
 - Give each finding its location, trigger, impact, evidence and how to validate it. With no findings, name the file
   scope you reviewed.
 - Mark each defect as introduced by the change or present before it (already at BASE): the first belongs to this
-  change's fix; the second is a new problem outside scope, reported apart so it does not block or widen this change
-  ([Going back](../../../docs/specs/lifecycle.md#going-back)).
+  change's fix; the second is a new problem outside scope, reported apart so it does not block or widen this change;
+  once reproduced, it becomes a follow-up Issue at once rather than waiting for ship.
 - Report changes outside the request: files or behaviour the diff changes that no criterion or plan task asks for,
   since they widen what has to be reviewed and shipped.
 - A test weakened, skipped or deleted without a changed requirement or a wrong expectation is a defect, because it
@@ -46,7 +45,7 @@ untracked bytes; HEAD alone omits dirty work.
 ## Tracked review (with `.devflow.json`)
 
 1. Mode. Pick it by the router's Execution modes table and the M0 lines below it, judged from the current BASE..HEAD
-   and the intended dirty bytes (source: [Applying and finishing M0](../../../docs/specs/orchestration.md#applying-and-finishing-m0)).
+   and the intended dirty bytes.
 2. Package (M1 and up). When the session can run git, write the ledger's BASE..HEAD diff, with the intended dirty
    bytes, to `.work/devflow/i<issue>/review-package.diff`; otherwise ask for the diff or package, and give no verdict
    on code you have not read. Give the reviewer the package, scope, acceptance criteria, contracts, base, head, the
@@ -56,13 +55,15 @@ untracked bytes; HEAD alone omits dirty work.
    passes.
 3. Reviewer (M1 and up; M0 has none). Claude Code: a fresh `reviewer`. Codex: a report-only worker given the
    reviewer body and the named perspective (the router's Delegation section says where that text is), on the model of
-   the router's Roles table. Record the reviewer and the revision reviewed. When package writes or dispatch are outside
+   the router's Roles table. Record the reviewer, the revision reviewed and the model and effort from its run record
+   (or unconfirmed); a defect the final review finds that a per-task review missed goes in the ledger notes with that
+   review's model. No agent that edits code to simplify it joins a review. When package writes or dispatch are outside
    your scope, report the proposed package path and range and the required input paths and purposes; preparing them
    does not complete the review.
 4. Background work. Track each background agent with `running <issue> add|done <label>`. Run `done` only once its
    result is recovered and its exit confirmed (on failure, timeout or interruption also child processes and partial
-   effects) ([ledger keys](../../../docs/specs/ledger.md#ledger-keys)); a timeout or stop request alone does not show it
-   ended.
+   effects); a timeout or stop request alone does not show it
+   ended, and confirming an exit does not permit terminating it.
 
 ## Fixing findings
 

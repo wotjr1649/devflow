@@ -1,12 +1,14 @@
 # Ship
 
 Done when the integration and completion gates below pass and the resulting commit on the target branch and the Issue
-status are verified ([Stages](../../../docs/specs/lifecycle.md#stages)).
+status are verified.
 
 Contents: Checklist · Sequence · Integration · Completion
 
 Enter ship only for requested integration or completion work; a review-only request ends in review. Ship writes the
-Issue from the Issue branch, because `devflow-state` writes an Issue only from its branch.
+Issue from the Issue branch, because `devflow-state` writes an Issue only from its branch. While the ledger's `mode` is
+`autonomous`, nothing is posted, pushed or integrated: record each in the ledger notes for the next interactive turn,
+because no one is present to approve the effect.
 
 ## Checklist
 
@@ -27,20 +29,18 @@ Copy this into the reply and tick each line, because a skipped step merges unver
 
 ## Sequence
 
-1. Verify gate, on the Issue branch, by the `.devflow.json` profile
-   ([.devflow.json](../../../docs/specs/repository.md#devflowjson)). Under `pr-ci`, push the branch and take CI's
+1. Verify gate, on the Issue branch, by the `.devflow.json` profile. Under `pr-ci`, push the branch and take CI's
    `verify` success on that exact head, bound as in Integration, as the evidence; when CI does not run `verify` or its
    result cannot be verified, run `verify` locally and still wait for required CI. `local-merge` and `push-on-request`
    run `verify` locally.
-2. Trigger eval ([eval](../../../docs/specs/eval.md#eval)). It is worth running when a skill was added, removed or
+2. Trigger eval. It is worth running when a skill was added, removed or
    renamed, an invocation field in `skills/*/SKILL.md` frontmatter changed (`name`, `description`, `when_to_use`,
    `paths`, `disable-model-invocation`, `user-invocable`), or `evals/trigger/` changed; changes to skill bodies,
    references, hooks, agents or AGENTS.md do not change its result. It is optional, and the user runs it in an
    authenticated terminal. The ship checkpoint's `- 검증:` line says whether it ran and its result.
 3. Reconcile the Issue's scope and criteria under Completion. Check off each evidenced criterion with the card's `Tool:`
    command before any closing; unmet scope stays open.
-4. Record. Post the ship checkpoint, then write the state block by profile
-   ([Stages](../../../docs/specs/lifecycle.md#stages)):
+4. Record. Post the ship checkpoint, then write the state block by profile:
    - `local-merge` and `push-on-request`, whole scope: `단계: done` and `남음: push 확인, 로컬 브랜치 정리`, then close
      the Issue before integrating.
    - `pr-ci`: `단계: ship` and `남음: PR 병합 확인`; the Issue stays open, because a merge is not done until it is seen.
@@ -48,7 +48,7 @@ Copy this into the reply and tick each line, because a skipped step merges unver
      the remaining criteria (plan, when that work was not planned).
 5. Integrate under Integration. When a required check fails (CI after a successful push included) or the push is
    refused, return to the Issue branch, reopen an Issue closed early and restore its state: build for a failed check,
-   ship otherwise ([Going back](../../../docs/specs/lifecycle.md#going-back)).
+   ship otherwise.
 6. `pr-ci` after the merge: confirm the merge commit on the target branch and the checks the project requires there;
    then, from the Issue branch, set `단계: done` and close the Issue only when every criterion is checked.
 7. Successors under Completion. Then cleanup, recorded in the ledger only, since a deleted branch can no longer write
@@ -57,7 +57,7 @@ Copy this into the reply and tick each line, because a skipped step merges unver
 
 ## Integration
 
-Follow the project's CI policy ([Integration and CI](../../../docs/specs/repository.md#integration-and-ci)).
+Follow the project's CI policy.
 
 PR. Draft it with the project template: problem and outcome, scope and exclusions, acceptance, checks and limits,
 links to the Issue and the completed subset, remnants left open; without remote metadata, draft it locally from the

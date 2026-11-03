@@ -144,7 +144,7 @@ message.
   remove another session by guessing. When a session ends, the SessionEnd hook of both hosts removes it from every Issue
   (in Claude, including `/clear`). When the hook does not run (a Codex hook before it is trusted, an abnormal exit), it
   is left to the 30-minute expiry. So a brief handed to another session (another host, a headless run) has that session
-  run `release <n>` at the end. If that is missed and the hook does not run either, warnings about the ended session
+  run `release <n>` at the end, unless it runs nested (Claude started inside Codex; see the last item). If that is missed and the hook does not run either, warnings about the ended session
   continue for 30 minutes.
 - SessionEnd confirms the main work tree through the local back link without an external `git`, so lookup delays or
   failures do not make it miss the release.

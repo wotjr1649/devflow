@@ -70,8 +70,8 @@ reads it.
   and the check; puts push, Issue writes, spawning subagents, deleting or weakening tests and new dependencies out of
   scope, with a test change, dependency, or scope or interface change it does not settle ending in `NEEDS_DECISION`;
   asks for one end status (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks
-  run or not; and ends with stop and report once checked, with no extra rounds. One for another session
-  (`codex exec`, `claude -p`) ends with that session running `release <issue>`.
+  run or not; and ends with stop and report once checked, with no extra rounds. One for another session (`codex exec`,
+  `claude -p`) ends with it running `release <issue>`, except `claude -p` from Codex: it has Codex's id and would release Codex.
 - A prompt file goes to `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, never under a name that already exists,
   since concurrent sessions can pick the same name. Leave it uncommitted, and end the reply with `Read <absolute path>
   and continue.`, because a relative path resolves only from where it was written.

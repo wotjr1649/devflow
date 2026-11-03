@@ -16,7 +16,7 @@ Copy this into the reply and tick each line, because a skipped step merges unver
 
 ```text
 - [ ] 1 verify gate passed for the current head (pr-ci: CI on that head; otherwise local)
-- [ ] 2 evals noted: trigger; behavior when stage rules or the description changed: worth running, ran or not, result
+- [ ] 2 evals noted: trigger; behavior if the project has one and stage rules or the description changed: worth running, ran or not, result
 - [ ] 3 scope and criteria reconciled, evidenced criteria checked off
 - [ ] 4 ship checkpoint and state block written (closure timing by profile; partial ship stays open)
 - [ ] 5 PR drafted: summary, review evidence with reviewed SHA, `Refs #<n>`, no closing keyword

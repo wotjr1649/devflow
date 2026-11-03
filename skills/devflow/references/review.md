@@ -45,7 +45,8 @@ untracked bytes; HEAD alone omits dirty work.
 ## Tracked review (with `.devflow.json`)
 
 1. Mode. Pick it by the router's Execution modes table and the M0 lines below it, judged from the current BASE..HEAD
-   and the intended dirty bytes.
+   and the intended dirty bytes. A project's independent-review requirement overrides M0's skipped package and
+   reviewer (step 3).
 2. Package (M1 and up; M0 only as step 3 says). When the session can run git, write the ledger's BASE..HEAD diff, with
    the intended dirty bytes, to `.work/devflow/i<issue>/review-package.diff`; otherwise ask for the diff or package, and
    give no verdict on code you have not read. Give the reviewer the package, scope, acceptance criteria, contracts,

@@ -568,7 +568,7 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
   if (got.error) return stop(got.error)
   if (got.broad) {
     seen.broad.push(`Warning: gh uses a broad OAuth or classic token (scopes: ${got.scopes}) that reaches every repository it can; ` +
-      'use a fine-grained token limited to the repositories agents work on (docs/specs/issues.md, Issue I/O).')
+      'use a fine-grained token limited to the repositories agents work on.')
   }
   seen.checked.add('token scope')
   const { body, checkpoint } = filtered(got.issue)
@@ -1513,7 +1513,7 @@ function ledgerValueError(patch) {
     return `path is the lifecycle path (spike, bounded or architectural), not a branch; got ${JSON.stringify(patch.path)}`
   }
   if ('runMode' in patch && !(typeof patch.runMode === 'string' && /^M[0-3](?![0-9])/.test(patch.runMode))) {
-    return `runMode starts with M0 to M3 (docs/specs/orchestration.md, Execution modes); got ${JSON.stringify(patch.runMode)}`
+    return `runMode starts with M0 to M3 (the devflow skill's Execution modes); got ${JSON.stringify(patch.runMode)}`
   }
   if ('task' in patch && !(patch.task && typeof patch.task === 'object' && count(patch.task.current) && count(patch.task.total))) {
     return 'task is {current, total}, two whole numbers from 1 (current may pass total once the last task is done)'

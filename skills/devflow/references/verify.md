@@ -21,5 +21,7 @@ after the last task, every acceptance criterion in the Issue.
 - A criterion that cannot be executed stays open: name it, the reason, and the evidence that stands in for it.
 - A failure goes back to build without asking the user; after the fix, verify the affected criteria again.
 
-Record the evidence in the ledger as `notes` lines. At the stage boundary after the last task, the checkpoint's `- 검증:`
+Record the evidence in the ledger as `notes` lines. When a task's verify passes, `ledger-update` moves `task` current to
+the next task, or past total after the last one, since an open task is what lets unattended work continue. At the
+stage boundary after the last task, the checkpoint's `- 검증:`
 line lists what ran and what did not, then the work moves to review.

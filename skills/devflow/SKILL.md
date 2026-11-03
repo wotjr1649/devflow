@@ -130,7 +130,9 @@ state included, "not configured" too:
 The state block's `단계` is the stage; in build and verify the ledger's `task` locates the loop. An open task (current
 not past total) is what lets unattended work continue: build opens it at the first task, a verify failure sent back to
 build keeps it open, and leaving build and verify (for review or later, or back to plan, design or start) moves current
-past total. A review finding sent back to build reopens one task for the fix. The path is the ledger's `path`; when unset, classify it, the heavier one when unsure (hidden complexity costs more):
+past total. Work sent back to build from review or ship reopens one task for the fix: `task {current: total, total:
+total}`. The path is the ledger's `path`; when unset, classify it, the heavier one when unsure (hidden complexity
+costs more):
 
 - spike (feasibility only): discover → build (throwaway experiment) → report.
 - bounded (changes an existing flow): start → design (short, in chat, with the prerequisite check) → build → verify →

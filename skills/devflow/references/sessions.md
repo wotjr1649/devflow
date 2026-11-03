@@ -35,7 +35,7 @@ Where each fact comes from:
 - Create no milestone fields, duplicate status records or routine public posts; keep private paths and logs local.
 
 Reconciling:
-- Issue `build` with ledger task `verify` is the normal loop; Issue `done` with cleanup or learn is normal closeout.
+- Issue `build` or `verify` with an open ledger task (current not past total) is the normal loop; Issue `done` with cleanup or learn is normal closeout.
   Reconcile other differences by repository, Issue and branch identity, scope and applicable revision, not by the newest
   timestamp.
 - Missing or stale evidence, or unclear task versus full verification, leaves acceptance unpassed. Keep warnings and

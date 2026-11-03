@@ -29,11 +29,11 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
 
 - The main session keeps decisions, Issue writes, integration and the ledger, so unstated choices of several writers do
   not collide. A subagent gets one task through a brief, in English, that starts `TASK k/N · Issue #i · BASE <sha>` and
-  gives the goal, acceptance, files it may change, interfaces, constraints and the check with healthy output. It puts
-  push, Issue writes, spawning subagents, deleting or weakening tests and adding dependencies out of scope - needing one,
-  or a scope or interface change, ends the task with `NEEDS_DECISION` unless the brief already settles it - asks for one
-  end status (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not, and
-  ends: keep working until done, stopping early only with `NEEDS_DECISION` or `BLOCKED`; once the checks pass, stop and
+  gives the goal, acceptance, files it may change, interfaces, constraints, git-ignored inputs (plan, specs) by path and
+  part, and the check with healthy output. It puts push, Issue writes, spawning subagents, deleting or weakening tests
+  and adding dependencies out of scope; a test change, dependency, or scope or interface change the brief does not
+  settle ends the task with `NEEDS_DECISION`. It asks for one end status (`DONE`, `DONE_WITH_CONCERNS`,
+  `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not, and ends: keep working until done, stopping early only with `NEEDS_DECISION` or `BLOCKED`; once the checks pass, stop and
   report, with no extra rounds or changes outside the listed files.
 - Delegate to `implementer`. Model and effort come from the router's Roles table: mechanical work runs on the
   definition's default, work that needs judgment across files on a stronger model; settle design decisions before

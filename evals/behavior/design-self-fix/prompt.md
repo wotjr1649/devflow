@@ -19,4 +19,4 @@ Facts: Issue #21's acceptance criterion is that a 1,000,000-row CSV export strea
 confirmed it and nothing about it has changed. Your own design draft from earlier in this session assumed the exporter
 lives in `src/csv.js`, and compared two approaches (a Node stream pipeline, and chunked writes) on that file. A search
 now shows the exporter is `src/export/csv.js`; `src/csv.js` does not exist. Both approaches still apply to the real file.
-Continue the design.
+The source files are not available in this session; these facts are all the design needs. Continue the design.

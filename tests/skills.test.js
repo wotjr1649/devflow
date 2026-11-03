@@ -82,13 +82,15 @@ test('devflow: a reference links no other reference and no agents/ file', () => 
 })
 
 // The skill works from its own folder (#138): every local link resolves inside skills/devflow, and no sentence cites a
-// plugin spec by file name. The user's own docs/design/current-decisions.md is a project path, not a plugin file.
+// plugin spec by file name. The user's own docs/design/current-decisions.md is a project path, not a plugin file. The
+// card's bin/devflow-state and the agents/*.md bodies Codex briefs carry are runtime parts named in prose, not links.
 const SPEC_NAME = /\b(lifecycle|orchestration|ledger|issues|repository|documents|eval|hooks|credentials|host-facts|sources|overview)\.md\b/
 const localTargets = text => [
   ...[...text.matchAll(/\]\(\s*<([^>]*)>/g)].map(m => m[1]),
   ...linkTargets(text).filter(t => !t.startsWith('<')),
   ...[...text.matchAll(/^\s*\[[^\]]+\]:\s*<?([^\s>]+)/gm)].map(m => m[1]),
-].filter(t => !/^[a-z][a-z+.-]*:/i.test(t) && !t.startsWith('#'))
+// A URL scheme has two or more letters; a drive letter (C:) or file: is a local path and is checked.
+].filter(t => !(/^[a-z][a-z+.-]+:/i.test(t) && !/^file:/i.test(t)) && !t.startsWith('#'))
 const escapes = (rel, target) => {
   let t
   try { t = decodeURIComponent(target.split('#')[0]) } catch { return true }
@@ -104,7 +106,9 @@ test('devflow: every local link stays inside skills/devflow and no text cites a 
     assert.doesNotMatch(text, SPEC_NAME, `${rel} cites a plugin spec`)
   }
   const from = `${SKILL}/SKILL.md`
-  const bad = ['../../docs/specs/lifecycle.md', 'references\\start.md', 'references/gone.md', '%2E%2E/%2E%2E/README.md']
+  const bad = ['../../docs/specs/lifecycle.md', 'references\\start.md', 'references/gone.md', '%2E%2E/%2E%2E/README.md',
+    'C:\\repo\\agents\\reviewer.md', 'C:/repo/agents/reviewer.md', 'file:///repo/agents/reviewer.md']
+  assert.deepEqual(localTargets('[w](C:/x.md) [f](file:///x.md) [u](https://e.org)'), ['C:/x.md', 'file:///x.md'])
   for (const t of bad) assert.ok(escapes(from, t), `counterexample: ${t}`)
   assert.deepEqual(localTargets('[a](<../x.md>) [c](https://e.org/z.md) [d](#e)\n[b]: ../y.md'), ['../x.md', '../y.md'])
   assert.ok(!escapes(from, 'references/start.md#checklist'), 'a reference with an anchor is inside')

@@ -6,7 +6,6 @@ change - is complete, with every ledger or Issue write (`note`, `mode`, `intent`
 
 ## Notes and closed branches
 
-`ledger-update` replaces whole keys, so two sessions adding notes through it would drop one; add a note with `note`.
 After the Issue branch is gone (cleanup on main), `note` still takes the Issue's number, as long as its ledger exists.
 
 ## Progress and returns
@@ -67,10 +66,11 @@ another session carries only what they lack: instructions and decisions made sin
 tokens, pointing at the Issue rather than restating it - restating costs output now and input in every session that
 reads it.
 
-- A subagent brief, in English, names the task, BASE, files it may change and the check; puts push, Issue writes,
-  spawning subagents, deleting or weakening tests and new dependencies out of scope (needing one ends with
-  `NEEDS_DECISION`); asks for one end status (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files
-  changed and checks run; and ends with stop and report once checked, with no extra rounds. One for another session
+- A subagent brief, in English, gives the task, BASE, goal, acceptance, files it may change, git-ignored inputs by path
+  and the check; puts push, Issue writes, spawning subagents, deleting or weakening tests and new dependencies out of
+  scope, with a test change, dependency, or scope or interface change it does not settle ending in `NEEDS_DECISION`;
+  asks for one end status (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks
+  run or not; and ends with stop and report once checked, with no extra rounds. One for another session
   (`codex exec`, `claude -p`) ends with that session running `release <issue>`.
 - A prompt file goes to `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, never under a name that already exists,
   since concurrent sessions can pick the same name. Leave it uncommitted, and end the reply with `Read <absolute path>

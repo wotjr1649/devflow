@@ -1,5 +1,6 @@
 'use strict'
-// Pins the agent definitions to the role table in docs/specs/orchestration.md (Models and effort). The live check reads a
+// Pins the agent definitions to the Roles table in skills/devflow/SKILL.md and the host table in
+// docs/specs/orchestration.md. The live check reads a
 // subagent transcript instead: model, effort, prompt_snapshot.tools and instructions (docs/research/host-facts.md).
 const test = require('node:test')
 const assert = require('node:assert/strict')

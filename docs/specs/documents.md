@@ -20,20 +20,20 @@ the skill a session reads. A conflict between the two kinds is a defect fixed in
 | state block | stage, branch and PR, done and remaining, next action, blockers, latest checkpoint | block at the bottom of the Issue body | public | **overwritten** |
 | checkpoint | changes, verification (run and not run), decisions, next | Issue comment | public | **append only** |
 | ledger | stage, task progress, decisions and blockers, content an unattended run could not post ([keys](ledger.md#ledger-keys)) | `.work/devflow/i<issue>/ledger.json` ([main work tree](repository.md#issue-folder)) | private | until the Issue closes |
-| product contracts | lasting behavior rules | `docs/specs/` | public | when a contract changes |
+| product contracts | lasting rules code, tests and developers rely on, and the reasons for the skill's rules | `docs/specs/` | public | when a contract changes |
 | current design decisions | current choices and reasons, alternatives not taken, conditions for revisiting | `docs/design/current-decisions.md` | public | updated in place when a choice changes |
 | plan | files, order, risks, proof, per-task interfaces | `docs/plans/` | private | until the Issue closes |
 | plan summary | four lines: files, order, risks, proof | PR body or checkpoint | public | permanent |
 | prompt | only new instructions and the changed part of decisions | chat or `docs/prompts/` | private | one-off |
 | handoff | not written; the state block and checkpoints replace it. Only when private evidence is truly needed | `artifacts/handoff/` | private | as needed |
 | evidence | raw logs, measurements | `artifacts/`, `.work/` | private | kept |
-| lessons | where they go depends on their kind ([learn and memory](lifecycle.md#learn-and-memory)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
+| lessons | where they go depends on their kind (the devflow skill's [learn reference](../../skills/devflow/references/learn.md)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
 
 Keep each fact in one place. Other places only link to it, except the test-pinned copies named at the top.
 
 Current design decisions live by topic in `docs/design/current-decisions.md` alone; when a choice changes, update its
 section in place. Each section holds only the current choice and reason, alternatives not taken, and conditions for
-revisiting. The relevant spec owns behavior rules, and the summary points to that spec.
+revisiting. The owner the top of this spec names (a spec or the devflow skill) holds the rules, and the summary points to it.
 Superseded choices, change dates and work history do not pile up in the current summary; they stay in Issues and git.
 Do not create history decision files or archive folders.
 
@@ -112,7 +112,7 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
    parses and user prompts the eval simulates stay as they are.
 10. devflow has no blocking mechanisms. Effects a test can decide go in tests and CI; the rest is left to instructions
     and review ([why the current choice](../design/current-decisions.md#instructions-and-protections)). Sentences moved into tests are
-    deleted ([learn and memory](lifecycle.md#learn-and-memory)), but the safety floor stays. Rules that need judgment stay in
+    deleted (the devflow skill's [learn reference](../../skills/devflow/references/learn.md)), but the safety floor stays. Rules that need judgment stay in
     documents and review. Host-specific means are marked as in rule 7, and their support follows
     [host-facts](../research/host-facts.md).
 
@@ -134,8 +134,10 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
   rules are lost.
 - A reference links no other reference, and a procedure never needs a second reference. When a request spans two
   procedures, SKILL.md names both, so every read stays one level deep.
-- Skill files link only inside the skill folder and cite no plugin spec, so a session needs nothing outside the skill to
-  finish a step; specs may link to the skill. A test enforces this.
+- Skill files link only inside the skill folder and cite no plugin spec, so a session needs no plugin document outside
+  the skill to finish a step; specs may link to the skill. A test enforces this. The plugin's runtime parts are the
+  exceptions the skill relies on: the card's `Tool:` (`bin/devflow-state`), the hooks, and the `agents/*.md` bodies a
+  Codex brief carries.
 - It starts with its done condition, so a partial read still knows when to stop. One over 100 lines starts with a
   contents list, so a partial read still sees every section.
 - In-response checklists appear only in start, ship, cleanup, and plan when it has five or more tasks; these long

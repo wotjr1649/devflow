@@ -36,6 +36,8 @@ const USAGE = `usage: devflow-state <command>
                               replace the body above the state block once the user approved it; "## 수용 기준" is
                               required, and checks stay only on criteria whose text is unchanged
   comment <n> < checkpoint    "### Checkpoint <stage> — <summary>", then at most 9 lines starting "- "
+                              state block lines: - 단계:, - 브랜치/PR: <branch>, - 완료: … / 남음: …, - 다음 행동:,
+                              - 막힘:, - 최신 체크포인트:; checkpoint lines: - 변경:, - 검증:, - 결정:, - 다음:
   remark <n> < text           a plain remark on an existing Issue of this repository, from any branch; never a
                               checkpoint, never read as state, interactive turns only
   check <n> <k>...            mark acceptance criteria k (1-based boxes GitHub renders under "## 수용 기준") as done
@@ -1515,18 +1517,20 @@ function mode(env, cwd, n, value, reason) {
   return r.ok ? { code: 0, out: `mode ${value}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
-// The keys the router and the Stop hook decide by take only the values docs/specs/ledger.md defines (Issue #34): another
-// repository's agent wrote branch names into path. Other keys are taken as sent.
-const STAGES = ['discover', 'start', 'design', 'plan', 'build', 'verify', 'review', 'ship', 'cleanup', 'learn', 'done']
+// The keys the router and the Stop hook decide by are checked against docs/specs/ledger.md (Issue #34: another
+// repository's agent wrote branch names into path). Stage and execution-mode names belong to the skill (#150), so only
+// their shape is checked; path keeps its three values. Other keys are taken as sent.
+const STAGE_SHAPE = /^[a-z][a-z-]{0,29}$/
 const count = v => Number.isInteger(v) && v >= 1
 function ledgerValueError(patch) {
-  if (patch.stage === 'ready') return 'ready is now part of plan; use stage plan'
-  if ('stage' in patch && !STAGES.includes(patch.stage)) return `stage is one of ${STAGES.join(', ')}; got ${JSON.stringify(patch.stage)}`
+  if ('stage' in patch && !(typeof patch.stage === 'string' && STAGE_SHAPE.test(patch.stage))) {
+    return 'stage is a lowercase stage name from the devflow skill (letters and hyphens, at most 30)'
+  }
   if ('path' in patch && !['spike', 'bounded', 'architectural'].includes(patch.path)) {
     return `path is the lifecycle path (spike, bounded or architectural), not a branch; got ${JSON.stringify(patch.path)}`
   }
-  if ('runMode' in patch && !(typeof patch.runMode === 'string' && /^M[0-3](?![0-9])/.test(patch.runMode))) {
-    return `runMode starts with M0 to M3 (the devflow skill's Execution modes); got ${JSON.stringify(patch.runMode)}`
+  if ('runMode' in patch && !(typeof patch.runMode === 'string' && /^M\d/.test(patch.runMode))) {
+    return 'runMode starts with M and the mode number from the devflow skill\'s Execution modes'
   }
   if ('task' in patch && !(patch.task && typeof patch.task === 'object' && count(patch.task.current) && count(patch.task.total))) {
     return 'task is {current, total}, two whole numbers from 1 (current may pass total once the last task is done)'
@@ -1691,4 +1695,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

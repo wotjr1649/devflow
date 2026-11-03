@@ -1,13 +1,14 @@
 # Build
 
 Done when every task in the plan (on the bounded path, the one change) is committed with the checks that execute it
-passing, and the ledger holds the last commit and the next task. On an Issue-free spike, done is the throwaway
+passing, and the ledger holds the last commit and the open task. On an Issue-free spike, done is the throwaway
 experiment and its evidence in chat; the Issue, ledger, commit and mode steps below apply only to tracked work.
 
 ## Before the first change of a task
 
 - Work in the ledger's `runMode`. Needing another mode goes back to where it was picked: plan, or design on the
   bounded path.
+- At the first task, record `task {current: 1, total: N}` in the ledger, N from the plan (1 on the bounded path).
 - Record `base` (`git rev-parse HEAD`) in the ledger before the change or the delegation. Reviews read BASE..HEAD;
   `HEAD~1` drops the first commits of a multi-commit task.
 
@@ -73,12 +74,13 @@ The fix loop separates finding a cause from fixing it, so fixes do not cover sym
 3. Then one promotion, one step to the promotion column of the router's Roles table, tried once.
 4. Then the main session takes the task over or reports where it is blocked.
 
-Record each fix attempt and each promotion as one ledger `notes` line with its reason; `counts` holds only the Stop
-hook's `{continue}`. After three failures toward the same goal, change the approach or stop and report. A plan that
+Record each fix attempt and each promotion as one ledger `notes` line with its reason; `counts` is not for these, since
+unattended continuation counts there. After three failures toward the same goal, change the approach or stop and report. A plan that
 turns out wrong goes back to plan, fixed on the spot; a build that departs from the plan fixes the private plan before
 the task ends and notes a changed public summary in the next checkpoint. A broken design assumption goes back to design.
 
 ## After the task
 
-Commit, then `ledger-update` with `lastCommit` and `task`. The task moves to verify; after its verify the next task
-starts here again, and after the last one verify covers every acceptance criterion.
+Commit, then `ledger-update` with `lastCommit`; `task` keeps this task until its verify passes (verify moves it on).
+The task moves to verify; after its verify the next task starts here again, and after the last one
+verify covers every acceptance criterion.

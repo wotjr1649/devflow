@@ -507,20 +507,19 @@ test('card shows the last mode change and stays under budget (#32)', () => {
 
 test('the ledger spec and unattended skill describe the mode command (#32)', () => {
   const spec = fs.readFileSync(path.join(__dirname, '../docs/specs/ledger.md'), 'utf8')
-  const skill = fs.readFileSync(path.join(__dirname, '../skills/devflow/SKILL.md'), 'utf8')
   const row = spec.split('\n').find(line => line.startsWith('| `mode` |'))
   assert.match(row, /devflow-state mode/)
   const autonomous = spec.split('## Unattended runs')[1].split('## Concurrent sessions')[0]
   assert.match(autonomous, /devflow-state mode <n> autonomous < reason/)
   assert.match(autonomous, /devflow-state mode <n> interactive < reason/)
   assert.match(autonomous, /first line of stdin/)
-  // The router points to skills/devflow/references/sessions.md for mode switches, which holds the commands (#74).
-  assert.match(skill, /\[sessions\]\(references\/sessions\.md\)[^]*?switching unattended mode/)
-  const sessions = fs.readFileSync(path.join(__dirname, '../skills/devflow/references/sessions.md'), 'utf8')
-  const unattended = sessions.split('## Unattended work')[1].split('## Changed requirements')[0]
-  assert.match(unattended, /mode <issue> autonomous < reason/)
-  assert.match(unattended, /mode <issue> interactive < reason/)
-  assert.match(unattended, /first line of stdin/)
+  // #150: the skill may say it anywhere, but it gives both switches with the reason on stdin, as the command takes it.
+  const dir = path.join(__dirname, '../skills/devflow')
+  const skill = [path.join(dir, 'SKILL.md'), ...fs.readdirSync(path.join(dir, 'references')).map(n => path.join(dir, 'references', n))]
+    .map(f => fs.readFileSync(f, 'utf8')).join('\n')
+  assert.match(skill, /mode <(?:n|issue)> autonomous < reason/)
+  assert.match(skill, /mode <(?:n|issue)> interactive < reason/)
+  assert.match(skill, /stdin/)
 })
 
 test('mode is in usage and records successful session activity (#32)', () => {
@@ -554,15 +553,16 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
   const branch = up({ path: 'fix/251-empty-reply-native-retry' })
   assert.equal(branch.code, 1)
   assert.match(branch.out, /path is the lifecycle path \(spike, bounded or architectural\), not a branch/)
-  assert.match(up({ stage: 'coding' }).out, /stage is one of discover, start/)
-  assert.match(up({ runMode: 'M5' }).out, /runMode starts with M0 to M3/)
-  assert.match(up({ runMode: 'M4' }).out, /runMode starts with M0 to M3/, 'M4 is outside the execution modes in skills/devflow/SKILL.md')
+  // #150: stage and mode names are the skill's; only their shape is checked, which still refuses a branch.
+  for (const stage of ['fix/251-x', 'Build', '', 3, 'a'.repeat(31)]) assert.match(up({ stage }).out, /stage is a lowercase stage name/, String(stage))
+  for (const runMode of ['X1', '4', 'm2', 3]) assert.match(up({ runMode }).out, /runMode starts with M and the mode number/, String(runMode))
   assert.match(up({ task: { current: 1 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: -1, total: 2 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: 0, total: 0 } }).out, /task is \{current, total\}/, 'the Stop hook would read 0/0 as an open task')
   assert.match(up({ path: null }).out, /path is the lifecycle path/, 'a checked key is not cleared with null')
   assert.match(state.main(['ledger-update', '1'], () => '[1]', env(root), '.').out, /JSON object of keys/)
-  for (const ok of [{ path: 'architectural' }, { stage: 'done' }, { runMode: 'M2 for task 1, M1 otherwise' }, { runMode: 'M3' }, { task: { current: 3, total: 2 } }, { notes: [] }]) {
+  for (const ok of [{ path: 'architectural' }, { stage: 'done' }, { stage: 'polish' }, { stage: 'ready' }, { runMode: 'M2 for task 1, M1 otherwise' },
+    { runMode: 'M3' }, { runMode: 'M4' }, { task: { current: 3, total: 2 } }, { notes: [] }]) {
     assert.equal(up(ok).code, 0, JSON.stringify(ok))
   }
   // A new ledger: mode is checked too.
@@ -1486,12 +1486,12 @@ test('N2 A13: a private file name cannot add a Tool line', { skip: process.platf
   assert.doesNotMatch(out, /evil/)
 })
 
-test('N2 A14: the router and the tracking reference say what a card without a Tool line allows', () => {
-  for (const file of ['../skills/devflow/SKILL.md', '../skills/devflow/references/start.md']) {
-    const text = fs.readFileSync(path.join(__dirname, file), 'utf8')
-    assert.match(text, /last line is not a `Tool:` line/, file)
-    assert.match(text, /never search the repository for it/, file)
-  }
+// Safety floor (#150): the router, always loaded first, keeps what a card without a Tool line allows and where the path
+// may come from. The wording is the skill's; these are the facts it must state.
+test('N2 A14: the router says what a card without a Tool line allows', () => {
+  const text = fs.readFileSync(path.join(__dirname, '../skills/devflow/SKILL.md'), 'utf8')
+  assert.match(text, /last line is not a `Tool:` line/)
+  assert.match(text, /never search the repository/)
 })
 
 test('N2 A7b: next or blocker text after a line separator inside one state line is not taken for a state line', () => {
@@ -1613,16 +1613,13 @@ test('removed commands and running --worktree have no effects', () => {
   assert.equal(fs.existsSync(path.join(root, '.work')), false)
 })
 
-test('ready ledgers remain readable while new validated stage writes use plan', () => {
+test('ready ledgers remain readable, and stage names are the skill\'s to write (#150)', () => {
   const root = repo({ ledger: { stage: 'ready', mode: 'interactive' } })
   const data = issue({ body: issue().body.replace('- 단계: build', '- 단계: ready') })
   const e = env(root, { data })
   assert.match(state.card(e, '.'), /- 단계: ready/)
   assert.match(state.read(e, '.', 1).out, /- 단계: ready/)
   assert.equal(state.main(['ledger'], () => '', e, '.').code, 0)
-  const rejected = state.main(['ledger-update', '1'], () => '{"stage":"ready"}', e, '.')
-  assert.equal(rejected.code, 1)
-  assert.match(rejected.out, /ready is now part of plan/)
   assert.equal(state.readLedger(root, 1).stage, 'ready')
   assert.equal(state.main(['ledger-update', '1'], () => '{"stage":"plan"}', e, '.').code, 0)
 })

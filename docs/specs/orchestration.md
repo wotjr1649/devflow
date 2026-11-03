@@ -28,7 +28,7 @@ The procedure is the [build reference](../../skills/devflow/references/build.md)
 ## Execution modes
 
 Decisions and writes happen in one place, the main session: when several agents write at once, the unstated decisions in
-each one's actions collide. Subagents protect context and verify with fresh eyes. The modes M0 to M3 and how to choose
+each one's actions collide. Subagents protect context and verify with fresh eyes. The execution modes and how to choose
 by meaning are in [SKILL.md](../../skills/devflow/SKILL.md#execution-modes).
 
 Workflow is not an execution mode. The user runs it directly, outside devflow ([conditions to

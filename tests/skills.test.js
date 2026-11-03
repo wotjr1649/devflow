@@ -144,26 +144,28 @@ test('skill descriptions: devflow has at most two sentences and names no indepen
   assert.ok(!plainColon('Does `x: y` well.'), 'a colon inside backticks is fine')
 })
 
-test('devflow: the stage and session references are the expected eleven', () => {
-  const expected = ['build', 'cleanup', 'design', 'discover', 'learn', 'plan', 'review', 'sessions', 'ship', 'start', 'verify']
-  assert.deepEqual(refNames().map(n => n.replace(/\.md$/, '')).sort(), expected)
-  assert.notDeepEqual(expected.slice(1), expected, 'counterexample: a missing reference')
-})
-
 // A quoted label: Korean words, optionally ending in an ASCII part after a slash (`브랜치/PR`).
 const LABEL = /[가-힣][가-힣/ ]*(?:[가-힣]|\/[A-Za-z]+):|[가-힣]:/g
 
-test('issues spec: the state-block and checkpoint labels are the ones the references quote', () => {
+// The headings and labels devflow-state parses (#150): the interface the skill must keep, checked against the parsers
+// themselves. Other template labels are the skill's to use or not, but any it quotes must be one issues.md defines.
+const { PARSERS } = require(path.join(root, 'bin/devflow-state'))
+const PARSED = [['## 현재 상태', PARSERS.STATE_HEADING, '## 현재 상태'], ['- 단계:', PARSERS.PROTECTED, '- 단계: build'],
+  ['- 브랜치/PR:', PARSERS.BRANCH_LINE, '- 브랜치/PR: feat/1-x'], ['- 다음 행동:', PARSERS.PROTECTED, '- 다음 행동: x'],
+  ['- 막힘:', PARSERS.PROTECTED, '- 막힘: 없음'], ['### Checkpoint', PARSERS.CHECKPOINT_HEAD, '### Checkpoint build — x']]
+
+test('issues spec: the skill carries the labels devflow-state parses and quotes only defined ones', () => {
+  for (const [l, re, sample] of PARSED) assert.match(sample, re, `devflow-state no longer parses "${l}"; update PARSED`)
+  assert.doesNotMatch('- 상태: x', PARSERS.PROTECTED, 'counterexample')
   const issues = read('docs/specs/issues.md')
   const template = ['단계', '브랜치/PR', '완료', '다음 행동', '막힘', '최신 체크포인트', '변경', '검증', '결정', '다음']
   for (const l of template) assert.ok(issues.includes(`- ${l}:`), `issues.md lacks "- ${l}:"`)
   assert.ok(issues.includes('남음:'), 'issues.md lacks 남음:')
   const allowed = new Set([...template, '남음'])
+  const router = read(`${SKILL}/SKILL.md`)
+  for (const [l] of PARSED) assert.ok(router.includes(l), `SKILL.md lacks "${l}", which devflow-state parses`)
   const quoted = skillFiles().flatMap(rel =>
     [...read(rel).matchAll(LABEL)].map(m => [rel, m[0].slice(0, -1)]))
-  assert.ok(quoted.length >= 5, 'expected the references to quote labels')
-  const router = read(`${SKILL}/SKILL.md`)
-  for (const l of template) assert.ok(router.includes(`- ${l}:`), `SKILL.md lacks "- ${l}:"`)
   for (const [rel, l] of quoted) assert.ok(allowed.has(l), `${rel} quotes "${l}:" which issues.md does not define`)
   assert.ok(!allowed.has('상태'), 'counterexample')
   const labelsIn = text => [...text.matchAll(LABEL)].map(m => m[0].slice(0, -1))
@@ -184,45 +186,43 @@ test('devflow-state: every command a reference or SKILL.md names appears in the 
         span.match(/^([a-z][a-z-]*(?: (?:add|list))?) <(?:n|issue|parent)>/)
       if (m) named.set(m[1], rel)
     }
-  for (const c of ['running', 'mode', 'release', 'read', 'intent', 'sub-issue add'])
+  // The tools rely on these two: the Stop hook waits while `running` lists work, and only `mode` makes a run unattended.
+  for (const c of ['running', 'mode'])
     assert.ok(named.has(c), `expected the skill text to name ${c} with an Issue argument or devflow-state`)
+  const spans = skillFiles().flatMap(rel => [...read(rel).matchAll(/`([^`\n]+)`/g)].map(m => m[1]))
+  assert.ok(spans.some(x => /^running <(?:n|issue)> add\b/.test(x)), 'the skill must say to record background work with running <issue> add')
+  // #150: the usage text shows the labels the state block and checkpoint use, so the skill can point to it.
+  for (const l of ['- 단계:', '- 브랜치/PR:', '- 완료:', '- 다음 행동:', '- 막힘:', '- 최신 체크포인트:', '- 변경:', '- 검증:', '- 결정:', '- 다음:'])
+    assert.ok(usage.includes(l), `usage lacks ${l}`)
   for (const [c, rel] of named) assert.ok(inUsage(c), `${rel} names "${c}", which the usage text lacks`)
   assert.ok(!inUsage('frobnicate'), 'counterexample')
   assert.ok(!inUsage('never'), 'a prose word is not a command')
 })
 
-// SKILL.md owns the mode and role tables (#138). A Claude cell names its agent and shows that agent's own model or
-// effort in parentheses, which must match the agent definition's frontmatter.
-const tableRows = (text, heading) => {
-  const ls = lines(text)
-  const i = ls.findIndex(l => l === heading)
-  assert.ok(i >= 0, `missing heading ${heading}`)
-  const start = ls.findIndex((l, j) => j > i && l.startsWith('|'))
-  const end = ls.findIndex((l, j) => j > start && !l.startsWith('|'))
-  return ls.slice(start + 2, end).map(l => l.split('|').slice(1, -1).map(c => c.trim()))
+// SKILL.md owns the mode and role tables (#138); the agent definitions own their defaults (#150). A Claude cell names an
+// agent that exists, and a mode is M and a number, so a role or mode can be added without touching code.
+const tableRows = (texts, header) => {
+  for (const text of texts) {
+    const ls = lines(text)
+    const start = ls.findIndex(l => l.startsWith(header))
+    if (start < 0) continue
+    const end = ls.findIndex((l, j) => j > start && !l.startsWith('|'))
+    return ls.slice(start + 2, end < 0 ? undefined : end).map(l => l.split('|').slice(1, -1).map(c => c.trim()))
+  }
+  return []
 }
-const ROLES = ['Exploration', 'Test and log summary', 'Failure root-cause analysis', 'Mechanical implementation',
-  'Implementation needing judgment', 'Design alternatives, plan validation', 'Execution verification', 'Per-task review',
-  'Final review', 'Security and high-risk review']
+const agentOf = cell => (cell.match(/^`([\w-]+)`/) || [])[1]
 
-const frontmatter = name => {
-  const block = read(`agents/${name}.md`).split('---')[1]
-  return Object.fromEntries([...block.matchAll(/^(model|effort):\s*(\S+)$/gm)].map(m => [m[1], m[2]]))
-}
-const defaultsMismatch = cell => {
-  const agent = (cell.match(/`(explorer|reviewer|implementer)`/) || [])[1]
-  const shown = [...((cell.match(/\(([^)]*)\)\s*$/) || [])[1] || '').matchAll(/`([\w.-]+)`/g)].map(m => m[1])
-  if (!agent || !shown.length) return `no agent or defaults in "${cell}"`
-  const own = Object.values(frontmatter(agent))
-  return shown.filter(v => !own.includes(v)).map(v => `${agent} default ${v}`).join(', ')
-}
-
-test("router tables: Roles lists the roles with their agents' defaults, Execution modes names M0 to M3", () => {
-  const router = read(`${SKILL}/SKILL.md`)
-  const roles = tableRows(router, '### Roles')
-  assert.deepEqual(roles.map(r => r[0]), ROLES, 'the router lists the roles the references use')
-  for (const row of roles) assert.equal(defaultsMismatch(row[1]), '', `router Roles row ${row[0]}`)
-  const modes = rows => rows.map(r => (r[0].match(/^\**(M\d)\b/) || [, r[0]])[1])
-  assert.deepEqual(modes(tableRows(router, '### Execution modes')), ['M0', 'M1', 'M2', 'M3'])
-  assert.notEqual(defaultsMismatch('`explorer` + `model: haiku` (`low`)'), '', 'counterexample: a wrong default')
+test('router tables: each Roles row names an existing agent, each execution mode is M and a number', () => {
+  const texts = skillFiles().map(read)
+  const agents = fs.readdirSync(path.join(root, 'agents')).filter(n => n.endsWith('.md')).map(n => n.slice(0, -3))
+  const roles = tableRows(texts, '| Role |')
+  for (const row of roles) assert.ok(agents.includes(agentOf(row[1])), `Roles row ${row[0]} names no existing agent`)
+  const namesAgents = texts.some(x => x.split('\n').some(l => l.startsWith('|') && agents.some(a => l.includes('`' + a + '`'))))
+  assert.ok(!namesAgents || roles.length > 0, 'a table names agents but none has the "| Role |" header this check reads')
+  assert.equal(agentOf('`auditor` + `model: haiku`'), 'auditor')
+  assert.ok(!agents.includes('auditor'), 'counterexample: an agent that does not exist')
+  const modes = tableRows(texts, '| Mode |').map(r => r[0].replace(/\*/g, '').split(' ')[0])
+  assert.ok(modes.every(m => /^M\d+$/.test(m)), `modes: ${modes}`)
+  assert.deepEqual(tableRows(['x\n| Mode | When |\n|---|---|\n| M7 | y |\n'], '| Mode |'), [['M7', 'y']], 'a table is found by its header')
 })

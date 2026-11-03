@@ -35,7 +35,7 @@ Where each fact comes from:
 - Create no milestone fields, duplicate status records or routine public posts; keep private paths and logs local.
 
 Reconciling:
-- Issue `build` with ledger task `verify` is the normal loop; Issue `done` with cleanup or learn is normal closeout.
+- Issue `build` or `verify` with an open ledger task (current not past total) is the normal loop; Issue `done` with cleanup or learn is normal closeout.
   Reconcile other differences by repository, Issue and branch identity, scope and applicable revision, not by the newest
   timestamp.
 - Missing or stale evidence, or unclear task versus full verification, leaves acceptance unpassed. Keep warnings and
@@ -85,8 +85,9 @@ The ledger's `mode` becomes `autonomous` only when the user steps away or orders
 non-interactively says so; bypass or yolo settings do not show whether a person is present. Set it with
 `mode <issue> autonomous < reason`, giving the reason on the first line of stdin; the command keeps the reason and time.
 While it is autonomous, nothing is posted to Issues, pushed or integrated: `devflow-state` refuses Issue writes, so keep
-what would have been posted in the ledger's notes for the next interactive turn. The Stop hook decides from `mode` (and the session that set it),
-`stage`, `task`, `decisions`, `blocked` and `running` whether unattended work continues. A new session taking over
+what would have been posted in the ledger's notes for the next interactive turn. Unattended work continues
+only while `mode` is autonomous for this session, a task is open (`task` current not past total), and `decisions`,
+`blocked` and `running` are empty; to stop and wait for a person, record the reason in `blocked` or `decisions`. A new session taking over
 an autonomous task switches it to interactive when the user is present, or claims it with `mode <issue> autonomous` to
 continue unattended. When the user is back, run `mode <issue> interactive < reason`, show the notes, and post what the
 user approves.

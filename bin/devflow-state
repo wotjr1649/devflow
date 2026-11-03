@@ -23,8 +23,10 @@ const RUN_TIMEOUT_MS = 10000
 const QUERY = 'query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){' +
   'number title state url body authorAssociation comments(last:30){nodes{body authorAssociation url createdAt}}}}}'
 
-// Unicode tag block, zero-width and joiner characters, bidirectional controls, variation selectors, BOM, soft hyphen.
-const INVISIBLE = /[\u{E0000}-\u{E007F}\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFE00-\uFE0F\uFEFF\u00AD]/u
+// Unicode's default-ignorable code points (tag block, zero-width and joiner characters, bidirectional controls,
+// variation selectors, BOM, soft hyphen, fillers) and the line and paragraph separators: none shows to a reader (#153).
+// Precomposed Hangul syllables are not among them.
+const INVISIBLE = /[\p{Default_Ignorable_Code_Point}\u2028\u2029]/u
 const INVISIBLE_ALL = new RegExp(INVISIBLE.source, 'gu')
 const MAX_CARD_COMMITS = 5
 const CRITERIA_HEADING = /^## 수용 기준[ \t]*$/m
@@ -75,6 +77,9 @@ const LEAKS = [
   // The keyword may end a longer name (GH_TOKEN, DB_PASSWORD, OPENAI_API_KEY) or a quoted JSON key, camelCase or escaped
   // inside a string ("password": …, "accessToken": …, \"secret\": …).
   ['credential assignment', /(?<![A-Za-z0-9])(?:password|passwd|secret|token|api[_-]?key)\\?['"]?\s*[:=]\s*\\?['"]?(?:[^\s'"\\]|\\(?!['"])){8,}|['"][\w-]*(?:password|passwd|secret|token|api[_-]?key)\\?['"]\s*:\s*\\?['"](?:[^\s'"\\]|\\(?!['"])){8,}/i],
+  // A camelCase or PascalCase key, quoted or not (clientSecret: …, JWTSecret=…, PrivateKey: …), and the private,
+  // access, secret and signing keys. Case sensitive: the capital marks the word boundary (#153).
+  ['camelCase credential', /(?:Password|Passwd|Secret|Token|(?:Api|API)[_-]?Key|(?:[Pp]rivate|[Aa]ccess|[Ss]ecret|[Ss]igning)Key)\\?['"]?\s*[:=]\s*\\?['"]?(?:[^\s'"\\]|\\(?!['"])){8,}/],
   ['bearer token', /\bbearer\s+[\w.~+/-]{16,}/i],
   ['HTML comment', /<!--/],
   ['invisible character', INVISIBLE],

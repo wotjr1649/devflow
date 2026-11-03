@@ -254,6 +254,15 @@ test('read strips invisible characters and write refuses them', () => {
   assert.ok(![...r.out].some(ch => hidden().includes(ch)), 'no hidden character survives')
   const w = state.write(env(repo()), '.', 'comment', 1, checkpoint('x') + `\n- 숨김${hidden()}`)
   assert.match(w.out, /invisible character/)
+  // #153: the rest of Unicode's default-ignorable set, Hangul fillers included, and the line and paragraph separators.
+  const more = String.fromCodePoint(0x180e, 0x34f, 0x61c, 0xe0100, 0xe01ef, 0x115f, 0x1160, 0x3164, 0xffa0, 0x2028, 0x2029)
+  for (const ch of more) {
+    const t = `## 문제\n본${ch}문\n\n${block()}\n`
+    const rr = state.read(env(repo(), { data: issue({ body: t, title: `T${ch}` }) }), '.')
+    assert.ok(![...rr.out].includes(ch), `U+${ch.codePointAt(0).toString(16)} survives read`)
+    assert.match(state.write(env(repo()), '.', 'comment', 1, checkpoint('x') + `\n- 숨김${ch}`).out, /invisible character/)
+  }
+  assert.deepEqual(state.leaks('한글 본문, 가각간 갇갈 ㄱㄴㄷ ㅏㅑ'), [], 'precomposed Hangul and compatibility jamo pass')
 })
 
 test('card names the devflow-state command and keeps the whole card in budget', () => {
@@ -296,13 +305,18 @@ test('leaks catch prefixed credentials, bearer headers and paths after any separ
     ['//' + '192.168.0.10/team', /local absolute path/], ['smb:' + '//fs/team', /local absolute path/],
     ['file:' + '///repo/x', /local absolute path/], ['see ' + p('Volumes', 'AcmeClient'), /local absolute path/],
     ['see ' + p('srv', 'acme-portal'), /local absolute path/],
+    // #153: unquoted camelCase keys and the named key kinds, quoted or not.
+    ...['clientSecret: ', 'accessToken=', 'refreshToken: "', 'privateKey=', '{"privateKey": "', 'awsSecretKey=',
+      'signingKey: ', 'dbPassword='].map(k => [k + 'abcdefgh12345678', /credential/]),
   ]
   for (const [text, rule] of caught) assert.ok(state.leaks(text).some(l => rule.test(l)), text)
   for (const text of ['https://github.com/o/r/issues/1', 'skills/devflow/references/build.md', 'max_tokens: 1000', 'and/or',
     '"max_tokens": 4096', 'git@github.com:o/r.git', 'see //cdn.example.com/lib.js', 'a // comment/with slash',
     'https://example.com:8080/path', 'src/var/x and docs/etc/y', 'task_live_value', 'macOS temp is /var → /private/var)',
     'see /etc/hosts', 'brew in /opt/homebrew', '"tokens": 5',
-    'N/A or /N/A', '"token": "short"', 'http://host:8080/path'])
+    'N/A or /N/A', '"token": "short"', 'http://host:8080/path', 'maxTokens: 4096', 'maxOutputToken: 128000',
+    'accessToken: string', 'getAccessToken(): Promise<string>', 'primaryKey: user_id_column', 'sortKey=abcdefgh123',
+    '한국어 문장과 English text, 이모지 없이'])
     assert.deepEqual(state.leaks(text), [], text)
 })
 

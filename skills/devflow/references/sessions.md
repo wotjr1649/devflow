@@ -58,20 +58,20 @@ optional.
 ## Handing off
 
 Before handing off, including asking the user to `/clear`, finish the work's checks, commits and state updates, wait for
-its delegated work to finish, then run `release <issue>` as the last ledger action. Report the next step and let the
+its delegated work to finish, then run `release <issue>` as the last ledger action, unless this is Claude started from
+Codex (`CODEX_THREAD_ID` is set): that release would remove the Codex session. Report the next step and let the
 user clear: Codex may keep the old thread alive after `/clear`.
 
 The resume card already brings back the Issue, its latest checkpoint and the ledger, so a resume prompt or a brief for
 another session carries only what they lack: instructions and decisions made since the last checkpoint, under 500
-tokens, pointing at the Issue rather than restating it - restating costs output now and input in every session that
-reads it.
+tokens, pointing at the Issue rather than restating it, which costs output now and input in every later session.
 
 - A subagent brief, in English, gives the task, BASE, goal, acceptance, files it may change, git-ignored inputs by path
   and the check; puts push, Issue writes, spawning subagents, deleting or weakening tests and new dependencies out of
   scope, with a test change, dependency, or scope or interface change it does not settle ending in `NEEDS_DECISION`;
   asks for one end status (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks
-  run or not; and ends with stop and report once checked, with no extra rounds. One for another session
-  (`codex exec`, `claude -p`) ends with that session running `release <issue>`.
+  run or not; and ends with stop and report once checked, with no extra rounds. One for another session (`codex exec`,
+  `claude -p`) ends with it running `release <issue>`, except `claude -p` from Codex: it has Codex's id and would release Codex.
 - A prompt file goes to `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, never under a name that already exists,
   since concurrent sessions can pick the same name. Leave it uncommitted, and end the reply with `Read <absolute path>
   and continue.`, because a relative path resolves only from where it was written.

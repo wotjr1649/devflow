@@ -30,7 +30,11 @@ function continueWork(env, cwd) {
     // Empty means empty: [] and {} are how ledger-update clears a key it cannot delete.
     const filled = v => (v && typeof v === 'object' ? Object.keys(v).length > 0 : Boolean(v))
     const waiting = filled(ledger.blocked) || filled(ledger.decisions) || filled(ledger.running)
-    if (ledger.mode !== 'autonomous' || !open || waiting) return { result: null }
+    // Only the session that switched or claimed the run continues it; a later session on the branch, or one whose id
+    // is unknown, stops (ledger.md, Unattended runs).
+    const owner = ledger.modeChanged && typeof ledger.modeChanged === 'object' ? ledger.modeChanged.session : null
+    const owned = Boolean(eventSession) && owner === eventSession
+    if (ledger.mode !== 'autonomous' || !owned || !open || waiting) return { result: null }
     const key = String(task.current)
     const counts = { ...(ledger.counts || {}) }
     const mine = { ...(counts[key] || {}) }

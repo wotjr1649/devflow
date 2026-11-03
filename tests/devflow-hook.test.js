@@ -63,8 +63,17 @@ test('Stop continues open unattended work at most twice per task', () => {
       'remote get-url origin': 'https://github.com/o/r.git' }[a]
     return out ? { code: 0, stdout: out + '\n', stderr: '' } : { code: 1, stdout: '', stderr: '' }
   } }
-  const stop = () => hook.handle(event('Stop', root, { stop_hook_active: false }), env)
-  const open = { mode: 'autonomous', stage: 'build', task: { current: 1, total: 2 } }
+  const stop = (sid = SID) => hook.handle(event('Stop', root, { stop_hook_active: false, session_id: sid }), env)
+  const open = { mode: 'autonomous', modeChanged: { to: 'autonomous', at: '2026-11-03T00:00:00Z', session: hashOf(SID) },
+    stage: 'build', task: { current: 1, total: 2 } }
+  // #149: only the session that switched or claimed the run continues it.
+  for (const [l, sid, why] of [[open, 'someone-else', 'another session on the branch'], [open, null, 'an unknown session'],
+    [{ ...open, modeChanged: undefined }, SID, 'a run no session switched'],
+    [{ ...open, modeChanged: { to: 'autonomous', at: '2026-11-03T00:00:00Z' } }, SID, 'a switch without a session']]) {
+    setLedger(l)
+    assert.equal(stop(sid), '', why)
+    assert.equal(JSON.parse(fs.readFileSync(ledgerFile, 'utf8')).counts, undefined, `${why}: nothing counted`)
+  }
   setLedger(open)
   assert.equal(JSON.parse(stop()).decision, 'block')
   assert.match(JSON.parse(stop()).reason, /task 1\/2 is open \(build\)/)

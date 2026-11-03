@@ -44,14 +44,15 @@ function continueWork(env, cwd) {
     if ((mine.continue || 0) >= MAX_CONTINUES) return { result: null }
     mine.continue = (mine.continue || 0) + 1
     counts[key] = mine
-    return { ledger: { ...ledger, counts }, result: { task, stage: ledger.stage } }
+    return { ledger: { ...ledger, counts }, result: { task } }
   })
   if (!r.ok || !r.result) return ''
-  const { task, stage } = r.result
-  const where = typeof stage === 'string' && /^[a-z][a-z-]*$/.test(stage) ? ` (${stage})` : ''
-  return JSON.stringify({ decision: 'block', reason: `devflow: task ${task.current}/${task.total} is open${where} in ` +
-    'autonomous mode. Continue it: finish the stage, commit, update the ledger. ' +
-    `Stop only for a blocker or a decision for the user, recorded in the ledger as blocked or decisions.` })
+  const { task } = r.result
+  // The reason names the open task and the unattended limits; it repeats no ledger text, so a stage or other value
+  // cannot speak through the hook (#150).
+  return JSON.stringify({ decision: 'block', reason: `devflow: task ${task.current}/${task.total} is open in autonomous mode. ` +
+    'Continue that task: change, check, commit, update the ledger. Do not push, integrate or write the Issue while ' +
+    'autonomous. Stop only for a blocker or a decision for the user, recorded in the ledger as blocked or decisions.' })
 }
 
 // Issue #10. Claude's shell gets the session id through CLAUDE_ENV_FILE, which every later Bash command sources, so

@@ -127,7 +127,9 @@ state included, "not configured" too:
 
 ## Stages and paths
 
-The state block's `단계` is the stage; in build and verify the ledger's `task` locates the loop. The path is the
+The state block's `단계` is the stage; in build and verify the ledger's `task` locates the loop. An open task (current
+not past total) is what lets unattended work continue, so build opens it at the first task, and leaving the loop or
+going back to an earlier stage moves current past total. The path is the
 ledger's `path`; when unset, classify it, the heavier one when unsure (hidden complexity costs more):
 
 - spike (feasibility only): discover → build (throwaway experiment) → report.

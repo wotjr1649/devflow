@@ -33,8 +33,9 @@ rules are in the [sessions reference](../../skills/devflow/references/sessions.m
 
 ## Stages
 
-The ledger's `stage` and the state block's `단계` take one of the ten stages or `done`: discover, start, design, plan,
-build, verify, review, ship, cleanup, learn, then `done` after ship. Each stage's responsibility and done condition are
+The ledger's `stage` and the state block's `단계` take a stage name the devflow skill defines: today the ten stages
+discover, start, design, plan, build, verify, review, ship, cleanup, learn, then `done` after ship. The tools check only
+the name's shape ([ledger](ledger.md#ledger-keys)), so the skill can add or rename a stage. Each stage's responsibility and done condition are
 the opening of its reference in `skills/devflow/references/`.
 
 ship writes the state block as done on the Issue branch and closes the Issue. `local-merge` and `push-on-request` do this

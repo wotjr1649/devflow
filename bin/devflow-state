@@ -1520,11 +1520,11 @@ function mode(env, cwd, n, value, reason) {
 // The keys the router and the Stop hook decide by are checked against docs/specs/ledger.md (Issue #34: another
 // repository's agent wrote branch names into path). Stage and execution-mode names belong to the skill (#150), so only
 // their shape is checked; path keeps its three values. Other keys are taken as sent.
-const STAGE_SHAPE = /^[a-z][a-z-]*$/
+const STAGE_SHAPE = /^[a-z][a-z-]{0,29}$/
 const count = v => Number.isInteger(v) && v >= 1
 function ledgerValueError(patch) {
   if ('stage' in patch && !(typeof patch.stage === 'string' && STAGE_SHAPE.test(patch.stage))) {
-    return 'stage is a lowercase stage name from the devflow skill (letters and hyphens), not a branch'
+    return 'stage is a lowercase stage name from the devflow skill (letters and hyphens, at most 30)'
   }
   if ('path' in patch && !['spike', 'bounded', 'architectural'].includes(patch.path)) {
     return `path is the lifecycle path (spike, bounded or architectural), not a branch; got ${JSON.stringify(patch.path)}`
@@ -1695,4 +1695,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

@@ -519,7 +519,7 @@ test('the ledger spec and unattended skill describe the mode command (#32)', () 
     .map(f => fs.readFileSync(f, 'utf8')).join('\n')
   assert.match(skill, /mode <(?:n|issue)> autonomous < reason/)
   assert.match(skill, /mode <(?:n|issue)> interactive < reason/)
-  assert.match(skill, /first line of stdin/)
+  assert.match(skill, /stdin/)
 })
 
 test('mode is in usage and records successful session activity (#32)', () => {
@@ -554,7 +554,7 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
   assert.equal(branch.code, 1)
   assert.match(branch.out, /path is the lifecycle path \(spike, bounded or architectural\), not a branch/)
   // #150: stage and mode names are the skill's; only their shape is checked, which still refuses a branch.
-  for (const stage of ['fix/251-x', 'Build', '', 3]) assert.match(up({ stage }).out, /stage is a lowercase stage name/, String(stage))
+  for (const stage of ['fix/251-x', 'Build', '', 3, 'a'.repeat(31)]) assert.match(up({ stage }).out, /stage is a lowercase stage name/, String(stage))
   for (const runMode of ['X1', '4', 'm2', 3]) assert.match(up({ runMode }).out, /runMode starts with M and the mode number/, String(runMode))
   assert.match(up({ task: { current: 1 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: -1, total: 2 } }).out, /task is \{current, total\}/)

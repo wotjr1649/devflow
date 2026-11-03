@@ -22,7 +22,7 @@ where a wrong plan costs a page instead of a build.
 - The public summary is four lines - files, order, risks, proof - plus go or no-go, in the stage-boundary checkpoint,
   because the plan itself is not in git. No-go stays in plan, or goes back to design when an assumption broke, with the
   reason.
-- Record `task {current: 1, total: N}` in the ledger.
+- Keep the task count N in the plan; build opens the task in the ledger when the first task starts.
 
 With five or more tasks, copy this into the reply and tick each line, because a long plan is where a step gets skipped:
 
@@ -33,5 +33,5 @@ With five or more tasks, copy this into the reply and tick each line, because a 
 - [ ] runMode recorded
 - [ ] design-perspective review done, findings fixed and rechecked
 - [ ] checkpoint: four-line summary and go or no-go
-- [ ] ledger task {current: 1, total: N}
+- [ ] task count N in the plan
 ```

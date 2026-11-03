@@ -9,8 +9,8 @@ Written with `devflow-state ledger-update` and the per-key commands, and read by
 `ledger-update` checks the values of `stage`, `path`, `runMode`, `mode` and `task` against the definitions below and
 refuses wrong ones. The ledger is read only when it is a regular file of at most 1MiB, and a write that would make it
 larger is refused, leaving the ledger as it is. These keys cannot be cleared with `null` or an empty value. Stage and
-execution-mode names are the devflow skill's, so only their shape is checked: a stage is a lowercase word (letters and
-hyphens, which a branch name is not) and `runMode` starts with `M` and a digit.
+execution-mode names are the devflow skill's, so only their shape is checked: a stage is a lowercase word of letters and
+hyphens up to 30 characters, and `runMode` starts with `M` and a digit.
 
 | Key | Holds |
 |---|---|
@@ -18,7 +18,7 @@ hyphens, which a branch name is not) and `runMode` starts with `M` and a digit.
 | `mode` | `interactive` or `autonomous`. The only criterion for an unattended stretch. A new ledger may set it with `ledger-update`; an existing ledger switches only with `devflow-state mode <n> autonomous\|interactive < reason` ([unattended runs](#unattended-runs)) |
 | `modeChanged` | `{to, at, session}` of the last mode switch. The `mode` command (including a `ledger-update` that starts a new ledger as autonomous) records the ISO time and the id hash of the session that switched it, and reattribution changes only `session` ([unattended runs](#unattended-runs)). The resume card shows it as `Mode: <to> since <at>` |
 | `runMode` | Starts with `M` and the mode number of the skill's Execution modes (a description may follow) |
-| `task` | `{current, total}`, integers of 1 or more. Leaving the task loop, current is moved past total; the Stop hook continues only while current is at most total |
+| `task` | `{current, total}`, integers of 1 or more. Build opens it at the first task; leaving the loop or going back moves current past total. The Stop hook continues only while current is at most total |
 | `base`, `lastCommit` | The BASE before delegation, the last commit the ledger recorded |
 | `counts` | The Stop hook's per-task continue count `{continue}`. Old fix and promote values are neither read nor validated |
 | `notes` | Reasons for fixes, promotions and path changes, check evidence, and content not posted during unattended runs, one line each (appended with `note`) |
@@ -53,7 +53,8 @@ adds to the continue count under the ledger lock.
 
 - Condition: the run is this session's, there is an open task (`task` current at most total), and `blocked`, open
   `decisions` and `running` are empty ([ledger keys](#ledger-keys)). The hook does not read stage names, which are the
-  skill's; leaving the task loop moves current past total. Waiting to confirm a remote write is also recorded
+  skill's; build opens the task and leaving the loop or going back closes it. Its message names the task and repeats
+  that nothing is pushed, integrated or written to the Issue, since only Issue writes are refused by the tool. Waiting to confirm a remote write is also recorded
   in `blocked`.
 - The run is this session's when `modeChanged.session` names the Stop event's session, the one that switched or
   reattributed it. A session whose id is unknown, or a switch recorded without one, does not continue, and neither does

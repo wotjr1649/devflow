@@ -8,6 +8,7 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
 
 - Work in the ledger's `runMode`. Needing another mode goes back to where it was picked: plan, or design on the
   bounded path.
+- At the first task, record `task {current: 1, total: N}` in the ledger, N from the plan (1 on the bounded path).
 - Record `base` (`git rev-parse HEAD`) in the ledger before the change or the delegation. Reviews read BASE..HEAD;
   `HEAD~1` drops the first commits of a multi-commit task.
 
@@ -81,5 +82,4 @@ the task ends and notes a changed public summary in the next checkpoint. A broke
 ## After the task
 
 Commit, then `ledger-update` with `lastCommit` and `task`. The task moves to verify; after its verify the next task
-starts here again, and after the last one verify covers every acceptance criterion. Leaving the loop, record `task`
-with current past total, so no task stays open after the loop.
+starts here again, and after the last one verify covers every acceptance criterion.

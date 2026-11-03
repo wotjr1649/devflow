@@ -31,9 +31,11 @@ function continueWork(env, cwd) {
     const filled = v => (v && typeof v === 'object' ? Object.keys(v).length > 0 : Boolean(v))
     const waiting = filled(ledger.blocked) || filled(ledger.decisions) || filled(ledger.running)
     // Only the session that switched or claimed the run continues it; a later session on the branch, or one whose id
-    // is unknown, stops (ledger.md, Unattended runs).
+    // is unknown, stops (ledger.md, Unattended runs). The CLI records the shell's id, which in a nested host is the
+    // outer one (Claude started inside Codex inherits CODEX_THREAD_ID), so that id counts as this session's too.
     const owner = ledger.modeChanged && typeof ledger.modeChanged === 'object' ? ledger.modeChanged.session : null
-    const owned = Boolean(eventSession) && owner === eventSession
+    const shell = (state.sessionId((env && env.vars) || {}) || {}).hash || null
+    const owned = typeof owner === 'string' && Boolean(eventSession) && (owner === eventSession || owner === shell)
     if (ledger.mode !== 'autonomous' || !owned || !open || waiting) return { result: null }
     const key = String(task.current)
     const counts = { ...(ledger.counts || {}) }

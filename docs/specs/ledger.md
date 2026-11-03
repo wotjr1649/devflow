@@ -53,7 +53,8 @@ whether a person is present, so they are not used as the criterion. Only then do
 adds to the continue count under the ledger lock.
 
 - Condition: the Stop event's session is the one `modeChanged.session` names (the session that switched or reattributed
-  the run; a session whose id is unknown, or a switch recorded without one, does not continue), the stage is build or
+  the run; a session whose id is unknown, or a switch recorded without one, does not continue). In a nested run the CLI
+  records the outer host's id, so the id the hook's own shell variables give also counts as this session's, the stage is build or
   verify, there is an open task, and `blocked`, open `decisions` and `running` are empty ([ledger keys](#ledger-keys)). Waiting to confirm a remote write is also recorded in `blocked`.
 - At most 2 times for the same task (the ledger's continue count). After that, stop and get a review.
 - When a task ends, check, commit and update the ledger. Only the user can run `/clear`, so an unattended run uses a fresh

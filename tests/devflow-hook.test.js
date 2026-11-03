@@ -74,6 +74,12 @@ test('Stop continues open unattended work at most twice per task', () => {
     assert.equal(stop(sid), '', why)
     assert.equal(JSON.parse(fs.readFileSync(ledgerFile, 'utf8')).counts, undefined, `${why}: nothing counted`)
   }
+  // A Claude run started inside Codex records the inherited Codex thread id, which its hook also sees in the shell.
+  const nested = { ...env, vars: { CODEX_THREAD_ID: 'outer-thread' } }
+  setLedger({ ...open, modeChanged: { ...open.modeChanged, session: hashOf('outer-thread') } })
+  assert.equal(JSON.parse(hook.handle(event('Stop', root, { stop_hook_active: false, session_id: SID }), nested)).decision, 'block')
+  assert.equal(hook.handle(event('Stop', root, { stop_hook_active: false, session_id: SID }), env), '', 'without the shell id it stops')
+  assert.equal(hook.handle(event('Stop', root, { stop_hook_active: false, session_id: null }), nested), '', 'an unknown event session stops')
   setLedger(open)
   assert.equal(JSON.parse(stop()).decision, 'block')
   assert.match(JSON.parse(stop()).reason, /task 1\/2 is open \(build\)/)

@@ -59,18 +59,20 @@ Ledger writes off an Issue branch (cleanup on main) take the Issue number; note 
 to exist. A detached HEAD writes no ledger.`
 // Checked before anything is posted. Only the rule name is ever printed, never the match.
 const LEAKS = [
-  // Any separator may come before the path: an equals sign, a bracket or a colon. System folders count from two levels
-  // down (/var/folders/…), so naming /private/var passes. A share may use forward slashes; a dotted host after // is a
+  // Any separator may come before the path: an equals sign, a bracket or a colon. /Volumes and /srv name a private volume
+  // or site one level down; other system folders count from two (/var/folders/…), so naming /private/var or /etc/hosts
+  // passes. A share may use forward slashes, an IP host or a smb, file, afp or nfs URL; a named dotted host after // is a
   // protocol-relative URL and passes.
-  ['local absolute path', /(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\[\w.-]+\\|\/(?:Users|home)\/[^/\s]+|(?<![\w.~-])\/(?:tmp|mnt|root|[a-z])\/|(?<![\w.~-])\/(?:var|private|opt|etc|srv|Volumes)\/[^/\s]+\/|(?<![:\w/])\/\/[\w-]+\/\w/],
+  ['local absolute path', /(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\[\w.-]+\\|\/(?:Users|home)\/[^/\s]+|(?<![\w.~-])\/(?:tmp|mnt|root|[a-z])\/|(?<![\w.~-])\/(?:Volumes|srv)\/[^/\s]+|(?<![\w.~-])\/(?:var|private|opt|etc)\/[^/\s]+\/|(?<![:\w/])\/\/(?:[\w-]+|\d{1,3}(?:\.\d{1,3}){3})\/\w|\b(?:smb|file|afp|nfs):\/\/[^/\s]*\/\w/],
   ['GitHub token', /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{30,})/],
   ['API key', /\b(?:sk-[\w-]{20,}|[sr]k_(?:live|test)_\w{16,}|glpat-[\w-]{20,}|npm_[A-Za-z0-9]{36}|AIza[\w-]{35}|xox[abprs]-[\w-]{10,})/],
-  ['URL credentials', /\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^/\s@]+@/i],
+  ['URL credentials', /\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@]*:[^/\s@]+@/i],
   ['AWS key', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
   ['private key', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
   ['JWT', /\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/],
-  // The keyword may end a longer name (GH_TOKEN, DB_PASSWORD, OPENAI_API_KEY) or a quoted JSON key ("password": …).
-  ['credential assignment', /(?<![A-Za-z0-9])(?:password|passwd|secret|token|api[_-]?key)['"]?\s*[:=]\s*['"]?[^\s'"]{8,}/i],
+  // The keyword may end a longer name (GH_TOKEN, DB_PASSWORD, OPENAI_API_KEY) or a quoted JSON key, camelCase or escaped
+  // inside a string ("password": …, "accessToken": …, \"secret\": …).
+  ['credential assignment', /(?<![A-Za-z0-9])(?:password|passwd|secret|token|api[_-]?key)\\?['"]?\s*[:=]\s*\\?['"]?[^\s'"\\]{8,}|['"][\w-]*(?:password|passwd|secret|token|api[_-]?key)\\?['"]\s*:\s*\\?['"][^\s'"\\]{8,}/i],
   ['bearer token', /\bbearer\s+[\w.~+/-]{16,}/i],
   ['HTML comment', /<!--/],
   ['invisible character', INVISIBLE],
@@ -560,7 +562,7 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
   const ctx = repoContext(env, cwd, hookSession === undefined ? {} : { session: hookSession ? hashId(hookSession) : null })
   if (!ctx) return ''
   const head = typeof ctx.head === 'string' && COMMIT_HASH.test(ctx.head) ? ctx.head : '?'
-  seen.top = oneLine(`[devflow] ${ctx.repo ? clip(ctx.repo, MAX_SHOWN) : '?'} · ${ctx.branch ? clip(ctx.branch, MAX_SHOWN) : '(detached)'} · HEAD ${head}`)
+  seen.top = oneLine(`[devflow] ${ctx.repo ? clip(ctx.repo, MAX_SHOWN) : '?'} · ${ctx.branch ? clip(stripHidden(ctx.branch), MAX_SHOWN) : '(detached)'} · HEAD ${head}`)
   if (legacyOf(ctx, ctx.issue)) seen.legacy.push(`Warning: ${legacyText(ctx.issue)}`)
   seen.checked.add('legacy ledger')
   const stop = reason => minimal(`${reason}; no Issue state shown.`)

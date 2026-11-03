@@ -140,6 +140,13 @@ test('card lists commits made after the ledger', () => {
   assert.doesNotMatch(hidden, state.INVISIBLE)
 })
 
+test('#149 review: the card shows the branch name without hidden text', () => {
+  const branch = 'feat/1-x' + String.fromCodePoint(0xE0041) + String.fromCharCode(0x202E)
+  const out = state.card(env(repo(), { branch }), '.')
+  assert.match(out, /^\[devflow\] o\/r · feat\/1-x · HEAD/)
+  assert.doesNotMatch(out, state.INVISIBLE)
+})
+
 test('card does not pass a non-hash ledger commit to git', () => {
   const e = env(repo({ ledger: { lastCommit: '--output=x' } }))
   assert.match(state.card(e, '.'), /Ledger lastCommit is not a commit hash/)
@@ -282,11 +289,20 @@ test('leaks catch prefixed credentials, bearer headers and paths after any separ
     ['glpat-' + 'abcdefghijklmnop1234', /API key/], ['npm_' + 'abcdefghijklmnopqrstuvwxyz0123456789', /API key/],
     ...['var', 'private', 'opt', 'etc', 'srv', 'Volumes'].map(top => ['see ' + p(top, 'x', 'y'), /local absolute path/]),
     ['share //' + 'fileserver/team', /local absolute path/],
+    // #149 review: camelCase and escaped JSON keys, an empty URL user, IP and URL shares, one-level volumes and sites.
+    ['{"access' + 'Token": "abcdefgh12345678"}', /credential/], ['{"db' + 'Password": "hunter2hunter2"}', /credential/],
+    ['{\\"pass' + 'word\\":\\"hunter2hunter2\\"}', /credential/],
+    ['https://:' + 's3cr3tpass@host.example/', /URL credentials/],
+    ['//' + '192.168.0.10/team', /local absolute path/], ['smb:' + '//fs/team', /local absolute path/],
+    ['file:' + '///repo/x', /local absolute path/], ['see ' + p('Volumes', 'AcmeClient'), /local absolute path/],
+    ['see ' + p('srv', 'acme-portal'), /local absolute path/],
   ]
   for (const [text, rule] of caught) assert.ok(state.leaks(text).some(l => rule.test(l)), text)
   for (const text of ['https://github.com/o/r/issues/1', 'skills/devflow/references/build.md', 'max_tokens: 1000', 'and/or',
     '"max_tokens": 4096', 'git@github.com:o/r.git', 'see //cdn.example.com/lib.js', 'a // comment/with slash',
-    'https://example.com:8080/path', 'src/var/x and docs/etc/y', 'task_live_value', 'macOS temp is /var → /private/var)', 'see /etc/hosts'])
+    'https://example.com:8080/path', 'src/var/x and docs/etc/y', 'task_live_value', 'macOS temp is /var → /private/var)',
+    'see /etc/hosts', 'brew in /opt/homebrew', '"tokens": 5',
+    'N/A or /N/A', '"token": "short"', 'http://host:8080/path'])
     assert.deepEqual(state.leaks(text), [], text)
 })
 

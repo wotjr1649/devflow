@@ -1303,6 +1303,25 @@ test('N2 A9: a Tool path over 400 tokens is kept exactly when the card still fit
   assert.equal(linesOf(out).at(-1), `Tool: node "${tool}"`)
 })
 
+test('#141: a long state, the token warning and four other sessions keep every warning and the action line in budget', () => {
+  const { root, e } = fullCard()
+  sessionsAt(root, others(4))
+  const action = /^Warning: hold this Issue's state and ledger key writes/m
+  const out = state.card(e, '.', { sessionId: 'mine' })
+  assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
+  assert.equal((out.match(/^Warning: another codex session/gm) || []).length, 2)
+  assert.match(out, /^Warning: and 2 more sessions/m)
+  assert.equal((out.match(action) || []).length, 1)
+  assert.match(out, /^- 다음 행동: /m)
+  assert.match(out, WARNING)
+  assert.match(out, TOOL_LAST)
+  e.tool = `plugin/${'가'.repeat(990)}`
+  const terminal = state.card(e, '.', { sessionId: 'mine' })
+  assert.ok(state.estTokens(terminal) < 1000, `terminal card is ${state.estTokens(terminal)} tokens`)
+  assert.equal(toolLines(terminal).length, 0)
+  assert.match(terminal, action, 'the terminal error keeps the action line with the other warnings')
+})
+
 test('N2 A10: when even the minimal card cannot fit, the terminal error keeps the warnings and shows no state or Tool', () => {
   const e = env(repo(), { headers: withScopes('repo') })
   e.tool = `plugin/${'가'.repeat(990)}`

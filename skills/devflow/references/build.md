@@ -81,5 +81,6 @@ the task ends and notes a changed public summary in the next checkpoint. A broke
 
 ## After the task
 
-Commit, then `ledger-update` with `lastCommit` and `task`. The task moves to verify; after its verify the next task
-starts here again, and after the last one verify covers every acceptance criterion.
+Commit, then `ledger-update` with `lastCommit` and `task`: current stays at this task until its verify passes, then
+moves to the next. The task moves to verify; after its verify the next task starts here again, and after the last one
+verify covers every acceptance criterion and current moves past total.

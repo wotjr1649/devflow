@@ -189,6 +189,8 @@ test('devflow-state: every command a reference or SKILL.md names appears in the 
   // The tools rely on these two: the Stop hook waits while `running` lists work, and only `mode` makes a run unattended.
   for (const c of ['running', 'mode'])
     assert.ok(named.has(c), `expected the skill text to name ${c} with an Issue argument or devflow-state`)
+  const spans = skillFiles().flatMap(rel => [...read(rel).matchAll(/`([^`\n]+)`/g)].map(m => m[1]))
+  assert.ok(spans.some(x => /^running <(?:n|issue)> add\b/.test(x)), 'the skill must say to record background work with running <issue> add')
   // #150: the usage text shows the labels the state block and checkpoint use, so the skill can point to it.
   for (const l of ['- 단계:', '- 브랜치/PR:', '- 완료:', '- 다음 행동:', '- 막힘:', '- 최신 체크포인트:', '- 변경:', '- 검증:', '- 결정:', '- 다음:'])
     assert.ok(usage.includes(l), `usage lacks ${l}`)
@@ -214,7 +216,10 @@ const agentOf = cell => (cell.match(/^`([\w-]+)`/) || [])[1]
 test('router tables: each Roles row names an existing agent, each execution mode is M and a number', () => {
   const texts = skillFiles().map(read)
   const agents = fs.readdirSync(path.join(root, 'agents')).filter(n => n.endsWith('.md')).map(n => n.slice(0, -3))
-  for (const row of tableRows(texts, '| Role |')) assert.ok(agents.includes(agentOf(row[1])), `Roles row ${row[0]} names no existing agent`)
+  const roles = tableRows(texts, '| Role |')
+  for (const row of roles) assert.ok(agents.includes(agentOf(row[1])), `Roles row ${row[0]} names no existing agent`)
+  const namesAgents = texts.some(x => x.split('\n').some(l => l.startsWith('|') && agents.some(a => l.includes('`' + a + '`'))))
+  assert.ok(!namesAgents || roles.length > 0, 'a table names agents but none has the "| Role |" header this check reads')
   assert.equal(agentOf('`auditor` + `model: haiku`'), 'auditor')
   assert.ok(!agents.includes('auditor'), 'counterexample: an agent that does not exist')
   const modes = tableRows(texts, '| Mode |').map(r => r[0].replace(/\*/g, '').split(' ')[0])

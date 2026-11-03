@@ -18,7 +18,7 @@ hyphens up to 30 characters, and `runMode` starts with `M` and a digit.
 | `mode` | `interactive` or `autonomous`. The only criterion for an unattended stretch. A new ledger may set it with `ledger-update`; an existing ledger switches only with `devflow-state mode <n> autonomous\|interactive < reason` ([unattended runs](#unattended-runs)) |
 | `modeChanged` | `{to, at, session}` of the last mode switch. The `mode` command (including a `ledger-update` that starts a new ledger as autonomous) records the ISO time and the id hash of the session that switched it, and reattribution changes only `session` ([unattended runs](#unattended-runs)). The resume card shows it as `Mode: <to> since <at>` |
 | `runMode` | Starts with `M` and the mode number of the skill's Execution modes (a description may follow) |
-| `task` | `{current, total}`, integers of 1 or more. Build opens it at the first task; leaving the loop or going back moves current past total. The Stop hook continues only while current is at most total |
+| `task` | `{current, total}`, integers of 1 or more. Build opens it at the first task; a verify failure sent back to build keeps it open; leaving build and verify moves current past total. The Stop hook continues only while current is at most total |
 | `base`, `lastCommit` | The BASE before delegation, the last commit the ledger recorded |
 | `counts` | The Stop hook's per-task continue count `{continue}`. Old fix and promote values are neither read nor validated |
 | `notes` | Reasons for fixes, promotions and path changes, check evidence, and content not posted during unattended runs, one line each (appended with `note`) |
@@ -53,7 +53,7 @@ adds to the continue count under the ledger lock.
 
 - Condition: the run is this session's, there is an open task (`task` current at most total), and `blocked`, open
   `decisions` and `running` are empty ([ledger keys](#ledger-keys)). The hook does not read stage names, which are the
-  skill's; build opens the task and leaving the loop or going back closes it. Its message names the task and repeats
+  skill's; the skill opens the task in build and closes it on leaving build and verify. Its message names the task and repeats
   that nothing is pushed, integrated or written to the Issue, since only Issue writes are refused by the tool. Waiting to confirm a remote write is also recorded
   in `blocked`.
 - The run is this session's when `modeChanged.session` names the Stop event's session, the one that switched or
@@ -61,6 +61,9 @@ adds to the continue count under the ledger lock.
   a child started from the owner, though its environment carries the owner's id. Known limit: in a nested run the CLI
   records the outer host's id ([concurrent sessions](#concurrent-sessions)), so Claude started inside Codex gets no
   continuation; it works task by task until its own session records it.
+- A ledger written before this rule may hold an open task in review or later. Stop continues it only after a session
+  claims the run with `mode <n> autonomous`, at most twice, and its message forbids push, integration and Issue writes;
+  setting current past total ends it.
 - At most 2 times for the same task (the ledger's continue count). After that, stop and get a review.
 - When a task ends, check, commit and update the ledger. Only the user can run `/clear`, so an unattended run uses a fresh
   context per task through an implementer (M2), and the main session carries on through the ledger and commits.

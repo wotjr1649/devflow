@@ -131,7 +131,7 @@ The state block's `단계` is the stage; in build and verify the ledger's `task`
 not past total) is what lets unattended work continue: build opens it at the first task, a verify failure sent back to
 build keeps it open, and leaving build and verify (for review or later, or back to plan, design or start) moves current
 past total. Work sent back to build from review or ship reopens one task for the fix: `task {current: total, total:
-total}`. The path is the ledger's `path`; when unset, classify it, the heavier one when unsure (hidden complexity
+total}` with `counts` cleared, so the fix gets its own continues. The path is the ledger's `path`; when unset, classify it, the heavier one when unsure (hidden complexity
 costs more):
 
 - spike (feasibility only): discover → build (throwaway experiment) → report.

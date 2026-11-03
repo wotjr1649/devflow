@@ -1,7 +1,7 @@
 # Build
 
 Done when every task in the plan (on the bounded path, the one change) is committed with the checks that execute it
-passing, and the ledger holds the last commit and the next task. On an Issue-free spike, done is the throwaway
+passing, and the ledger holds the last commit and the open task. On an Issue-free spike, done is the throwaway
 experiment and its evidence in chat; the Issue, ledger, commit and mode steps below apply only to tracked work.
 
 ## Before the first change of a task

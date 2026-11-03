@@ -1306,7 +1306,7 @@ test('N2 A9: a Tool path over 400 tokens is kept exactly when the card still fit
 test('#141: a long state, the token warning and four other sessions keep every warning and the action line in budget', () => {
   const { root, e } = fullCard()
   sessionsAt(root, others(4))
-  const action = /^Warning: hold any write that could overlap theirs/m
+  const action = /^Warning: hold this Issue's state and ledger writes/m
   const out = state.card(e, '.', { sessionId: 'mine' })
   assert.ok(state.estTokens(out) < 1000, `card is ${state.estTokens(out)} tokens`)
   assert.equal((out.match(/^Warning: another codex session/gm) || []).length, 2)

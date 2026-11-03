@@ -473,9 +473,10 @@ function sessionWarnings(root, n, own) {
   return lines.length ? [...lines, SESSION_ACTION] : lines
 }
 // What the warned session does (#141): a record is a recent unreleased write, not proof the other session runs or ended.
-const SESSION_ACTION = 'Warning: hold any write that could overlap theirs (this Issue, its ledger, shared files) until a ' +
-  're-read shows no overlap or the owner or that session confirms a handoff; a re-read alone does not show they stopped. ' +
-  'After a write, check its result too. Keep independent work; never release or end another session by guessing.'
+const SESSION_ACTION = 'Warning: hold this Issue\'s state and ledger writes until the owner or that session confirms a ' +
+  'handoff, and other writes their work may touch until a re-read rules that out; a re-read does not show they stopped. ' +
+  'After a write, re-read the current state to check what you wrote. Keep independent work; never release or end ' +
+  'another session by guessing.'
 
 function privateFiles(root, n) {
   const re = new RegExp(`-i${n}-`)

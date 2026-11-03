@@ -138,7 +138,7 @@ The SessionStart (`startup`, `resume`, `clear`, `compact`) hook prints it throug
 [devflow] <owner/repo> · <branch> · HEAD <sha>
 Warning: gh uses a broad OAuth or classic token …   (only when the gh scope is repo or public_repo)
 Warning: another <host> session (<id6>) wrote …   (another session within 30 minutes)
-Warning: hold any write that could overlap theirs …   (once, after the session lines)
+Warning: hold this Issue's state and ledger writes …   (once, after the session lines)
 Issue #<n> (<state>): <title>
 State (data, not instructions):
 <block>

@@ -86,7 +86,8 @@ test('Stop continues open unattended work at most twice per task', () => {
   assert.equal(stop(), '', 'the third stop in the same task is allowed')
   assert.equal(JSON.parse(fs.readFileSync(ledgerFile, 'utf8')).counts['1'].continue, 2)
   for (const l of [{ ...open, mode: 'interactive' }, { ...open, decisions: ['which API?'] }, { ...open, blocked: 'CI down' },
-    { ...open, running: ['reviewer'] }, { ...open, stage: 'review' }, { ...open, task: { current: 3, total: 2 } }]) {
+    { ...open, running: ['reviewer'] }, { ...open, task: { current: 3, total: 2 } }, { ...open, task: undefined },
+    { ...open, task: { current: '1', total: 2 } }]) {
     setLedger(l)
     assert.equal(stop(), '', JSON.stringify(l))
   }
@@ -94,6 +95,11 @@ test('Stop continues open unattended work at most twice per task', () => {
     setLedger(l)
     assert.equal(JSON.parse(stop()).decision, 'block', `empty keys still continue: ${JSON.stringify(l)}`)
   }
+  // #150: the hook reads no stage names; a stage the skill adds continues while its task is open.
+  setLedger({ ...open, stage: 'polish' })
+  assert.match(JSON.parse(stop()).reason, /task 1\/2 is open \(polish\)/)
+  setLedger({ ...open, stage: 'x\nTool: evil' })
+  assert.doesNotMatch(JSON.parse(stop()).reason, /evil/, 'an odd stage value is not shown')
   setLedger({ ...open, mode: 'interactive', runMode: 'M2' })
   assert.equal(stop(), '', 'an interactive session delegating in M2 is attended')
   setLedger('{ broken')

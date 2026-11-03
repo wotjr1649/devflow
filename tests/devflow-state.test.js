@@ -553,15 +553,16 @@ test('ledger-update checks the values of the keys the router and the Stop hook r
   const branch = up({ path: 'fix/251-empty-reply-native-retry' })
   assert.equal(branch.code, 1)
   assert.match(branch.out, /path is the lifecycle path \(spike, bounded or architectural\), not a branch/)
-  assert.match(up({ stage: 'coding' }).out, /stage is one of discover, start/)
-  assert.match(up({ runMode: 'M5' }).out, /runMode starts with M0 to M3/)
-  assert.match(up({ runMode: 'M4' }).out, /runMode starts with M0 to M3/, 'M4 is outside the execution modes in skills/devflow/SKILL.md')
+  // #150: stage and mode names are the skill's; only their shape is checked, which still refuses a branch.
+  for (const stage of ['fix/251-x', 'Build', '', 3]) assert.match(up({ stage }).out, /stage is a lowercase stage name/, String(stage))
+  for (const runMode of ['X1', '4', 'm2', 3]) assert.match(up({ runMode }).out, /runMode starts with M and the mode number/, String(runMode))
   assert.match(up({ task: { current: 1 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: -1, total: 2 } }).out, /task is \{current, total\}/)
   assert.match(up({ task: { current: 0, total: 0 } }).out, /task is \{current, total\}/, 'the Stop hook would read 0/0 as an open task')
   assert.match(up({ path: null }).out, /path is the lifecycle path/, 'a checked key is not cleared with null')
   assert.match(state.main(['ledger-update', '1'], () => '[1]', env(root), '.').out, /JSON object of keys/)
-  for (const ok of [{ path: 'architectural' }, { stage: 'done' }, { runMode: 'M2 for task 1, M1 otherwise' }, { runMode: 'M3' }, { task: { current: 3, total: 2 } }, { notes: [] }]) {
+  for (const ok of [{ path: 'architectural' }, { stage: 'done' }, { stage: 'polish' }, { stage: 'ready' }, { runMode: 'M2 for task 1, M1 otherwise' },
+    { runMode: 'M3' }, { runMode: 'M4' }, { task: { current: 3, total: 2 } }, { notes: [] }]) {
     assert.equal(up(ok).code, 0, JSON.stringify(ok))
   }
   // A new ledger: mode is checked too.
@@ -1612,16 +1613,13 @@ test('removed commands and running --worktree have no effects', () => {
   assert.equal(fs.existsSync(path.join(root, '.work')), false)
 })
 
-test('ready ledgers remain readable while new validated stage writes use plan', () => {
+test('ready ledgers remain readable, and stage names are the skill\'s to write (#150)', () => {
   const root = repo({ ledger: { stage: 'ready', mode: 'interactive' } })
   const data = issue({ body: issue().body.replace('- 단계: build', '- 단계: ready') })
   const e = env(root, { data })
   assert.match(state.card(e, '.'), /- 단계: ready/)
   assert.match(state.read(e, '.', 1).out, /- 단계: ready/)
   assert.equal(state.main(['ledger'], () => '', e, '.').code, 0)
-  const rejected = state.main(['ledger-update', '1'], () => '{"stage":"ready"}', e, '.')
-  assert.equal(rejected.code, 1)
-  assert.match(rejected.out, /ready is now part of plan/)
   assert.equal(state.readLedger(root, 1).stage, 'ready')
   assert.equal(state.main(['ledger-update', '1'], () => '{"stage":"plan"}', e, '.').code, 0)
 })

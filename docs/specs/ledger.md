@@ -8,16 +8,17 @@ lives is set by [repository](repository.md#issue-folder).
 Written with `devflow-state ledger-update` and the per-key commands, and read by the resume card and the Stop hook.
 `ledger-update` checks the values of `stage`, `path`, `runMode`, `mode` and `task` against the definitions below and
 refuses wrong ones. The ledger is read only when it is a regular file of at most 1MiB, and a write that would make it
-larger is refused, leaving the ledger as it is. These keys cannot be cleared with `null` or an empty value. The stages are
-lifecycle's 10 stages and `done` after ship.
+larger is refused, leaving the ledger as it is. These keys cannot be cleared with `null` or an empty value. Stage and
+execution-mode names are the devflow skill's, so only their shape is checked: a stage is a lowercase word (letters and
+hyphens, which a branch name is not) and `runMode` starts with `M` and a digit.
 
 | Key | Holds |
 |---|---|
 | `stage`, `path` | The lifecycle stage and path (spike, bounded, architectural). Stage records follow the post-ship exception in [lifecycle](lifecycle.md#stages) and the [task loop](lifecycle.md#loops) |
 | `mode` | `interactive` or `autonomous`. The only criterion for an unattended stretch. A new ledger may set it with `ledger-update`; an existing ledger switches only with `devflow-state mode <n> autonomous\|interactive < reason` ([unattended runs](#unattended-runs)) |
 | `modeChanged` | `{to, at, session}` of the last mode switch. The `mode` command (including a `ledger-update` that starts a new ledger as autonomous) records the ISO time and the id hash of the session that switched it, and reattribution changes only `session` ([unattended runs](#unattended-runs)). The resume card shows it as `Mode: <to> since <at>` |
-| `runMode` | Starts with M0 to M3 (a description may follow) |
-| `task` | `{current, total}`, integers of 1 or more. When the last task ends, current may exceed total |
+| `runMode` | Starts with `M` and the mode number of the skill's Execution modes (a description may follow) |
+| `task` | `{current, total}`, integers of 1 or more. Leaving the task loop, current is moved past total; the Stop hook continues only while current is at most total |
 | `base`, `lastCommit` | The BASE before delegation, the last commit the ledger recorded |
 | `counts` | The Stop hook's per-task continue count `{continue}`. Old fix and promote values are neither read nor validated |
 | `notes` | Reasons for fixes, promotions and path changes, check evidence, and content not posted during unattended runs, one line each (appended with `note`) |
@@ -34,8 +35,6 @@ approved are posted.
 When the working Issue's ledger cannot be read (an Issue folder that is a link or a file, a ledger that does not parse),
 it may be in autonomous mode, so nothing is written to the Issue.
 Test locks, metrics commands, a post queue or signing keys, delegation binding and block logs are not provided.
-An old ledger with `stage: ready` is read, but writing it as stage in a new ledger-update is refused with the reason that
-it was merged into plan.
 
 ## Unattended runs
 
@@ -52,8 +51,9 @@ reattribute first if it continues unattended. Approval settings such as bypass (
 whether a person is present, so they are not used as the criterion. Only then does the Stop hook ask to continue, and it
 adds to the continue count under the ledger lock.
 
-- Condition: the run is this session's, the stage is build or verify, there is an open task, and `blocked`, open
-  `decisions` and `running` are empty ([ledger keys](#ledger-keys)). Waiting to confirm a remote write is also recorded
+- Condition: the run is this session's, there is an open task (`task` current at most total), and `blocked`, open
+  `decisions` and `running` are empty ([ledger keys](#ledger-keys)). The hook does not read stage names, which are the
+  skill's; leaving the task loop moves current past total. Waiting to confirm a remote write is also recorded
   in `blocked`.
 - The run is this session's when `modeChanged.session` names the Stop event's session, the one that switched or
   reattributed it. A session whose id is unknown, or a switch recorded without one, does not continue, and neither does

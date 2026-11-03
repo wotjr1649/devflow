@@ -26,7 +26,9 @@ function continueWork(env, cwd) {
   const r = state.updateLedger(ctx.store, ctx.issue, ledger => {
     // Unattended means the ledger says so: approval settings such as bypass or yolo say nothing about who is present.
     const task = ledger.task || {}
-    const open = ['build', 'verify'].includes(ledger.stage) && task.current <= task.total
+    // The task loop is open while current has not passed total; the skill moves it past total on leaving the loop, so
+    // stage names stay the skill's (#150).
+    const open = Number.isInteger(task.current) && Number.isInteger(task.total) && task.current <= task.total
     // Empty means empty: [] and {} are how ledger-update clears a key it cannot delete.
     const filled = v => (v && typeof v === 'object' ? Object.keys(v).length > 0 : Boolean(v))
     const waiting = filled(ledger.blocked) || filled(ledger.decisions) || filled(ledger.running)
@@ -46,7 +48,8 @@ function continueWork(env, cwd) {
   })
   if (!r.ok || !r.result) return ''
   const { task, stage } = r.result
-  return JSON.stringify({ decision: 'block', reason: `devflow: task ${task.current}/${task.total} is open (${stage}) in ` +
+  const where = typeof stage === 'string' && /^[a-z][a-z-]*$/.test(stage) ? ` (${stage})` : ''
+  return JSON.stringify({ decision: 'block', reason: `devflow: task ${task.current}/${task.total} is open${where} in ` +
     'autonomous mode. Continue it: finish the stage, commit, update the ledger. ' +
     `Stop only for a blocker or a decision for the user, recorded in the ledger as blocked or decisions.` })
 }

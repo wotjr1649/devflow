@@ -61,9 +61,10 @@ adds to the continue count under the ledger lock.
   a child started from the owner, though its environment carries the owner's id. Known limit: in a nested run the CLI
   records the outer host's id ([concurrent sessions](#concurrent-sessions)), so Claude started inside Codex gets no
   continuation; it works task by task until its own session records it.
-- A ledger written before this rule may hold an open task in review or later. Stop continues it only after a session
-  claims the run with `mode <n> autonomous`, at most twice, and its message forbids push, integration and Issue writes;
-  setting current past total ends it.
+- A ledger written before this rule may hold an open task in review or later. Earlier versions also recorded
+  `modeChanged.session`, so Stop continues it for the session that owns the run as above: the one that switched it to
+  autonomous, without a new claim, or one that later claims it with `mode <n> autonomous`. It continues at most twice,
+  its message forbids push, integration and Issue writes, and setting current past total ends it.
 - At most 2 times for the same task (the ledger's continue count). After that, stop and get a review.
 - When a task ends, check, commit and update the ledger. Only the user can run `/clear`, so an unattended run uses a fresh
   context per task through an implementer (M2), and the main session carries on through the ledger and commits.
@@ -152,4 +153,6 @@ message.
   A lock, read or rewrite failure of an explicit release is reported as a release failure, not assumed to be a lock
   conflict.
 - Issue writes are not locked. Sessions on other machines are unknown, and another host launched inside a host (Claude
-  inside Codex) appears as the outer session.
+  inside Codex) appears as the outer session. Known limit: its `release <n>` therefore removes the outer session's entry,
+  and other sessions are not warned about the outer one until it writes again. In a nested run, do not
+  run `release <n>`; the outer session releases at its own handoff, or its SessionEnd hook does when it ends.

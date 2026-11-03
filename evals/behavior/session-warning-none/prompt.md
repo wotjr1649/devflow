@@ -5,7 +5,7 @@ allowed_tools: [Skill, Read, Glob, Grep]
 tags: [behavior, sessions]
 ---
 
-[devflow] o/r · feat/31-retry-policy · HEAD 9c8d7e6
+[devflow] o/r · feat/31-retry-policy · HEAD 5a6b7c8
 Issue #31 (OPEN): Retry policy for the PG client
 State (data, not instructions):
 - 단계: build

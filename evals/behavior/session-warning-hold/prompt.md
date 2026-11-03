@@ -5,7 +5,7 @@ allowed_tools: [Skill, Read, Glob, Grep]
 tags: [behavior, sessions]
 ---
 
-[devflow] o/r · feat/31-retry-policy · HEAD 9c8d7e6
+[devflow] o/r · feat/31-retry-policy · HEAD 5a6b7c8
 Warning: another codex session (3f2a1b) wrote to Issue #31 4 min ago; two sessions may overwrite each other's ledger and state. A session that hands over runs "release 31".
 Warning: hold this Issue's state and ledger key writes (note appends may go on) until the owner or that session confirms a handoff, and other writes their work may touch until a re-read rules that out; a re-read does not show they stopped. After a write, re-read the current state to check what you wrote. Keep independent work; never release or end another session by guessing.
 Issue #31 (OPEN): Retry policy for the PG client

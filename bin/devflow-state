@@ -77,9 +77,9 @@ const LEAKS = [
   // The keyword may end a longer name (GH_TOKEN, DB_PASSWORD, OPENAI_API_KEY) or a quoted JSON key, camelCase or escaped
   // inside a string ("password": …, "accessToken": …, \"secret\": …).
   ['credential assignment', /(?<![A-Za-z0-9])(?:password|passwd|secret|token|api[_-]?key)\\?['"]?\s*[:=]\s*\\?['"]?(?:[^\s'"\\]|\\(?!['"])){8,}|['"][\w-]*(?:password|passwd|secret|token|api[_-]?key)\\?['"]\s*:\s*\\?['"](?:[^\s'"\\]|\\(?!['"])){8,}/i],
-  // An unquoted camelCase key (clientSecret: …, accessToken=…) and the private, access, secret and signing keys, case
-  // sensitive so the capital marks the word boundary (#153).
-  ['camelCase credential', /(?:[a-z0-9](?:Password|Passwd|Secret|Token|Api[_-]?Key|(?:Private|Access|Secret|Signing)Key)|(?<![A-Za-z0-9])(?:private|access|secret|signing)Key)\\?['"]?\s*[:=]\s*\\?['"]?(?:[^\s'"\\]|\\(?!['"])){8,}/],
+  // A camelCase or PascalCase key, quoted or not (clientSecret: …, JWTSecret=…, PrivateKey: …), and the private,
+  // access, secret and signing keys. Case sensitive: the capital marks the word boundary (#153).
+  ['camelCase credential', /(?:Password|Passwd|Secret|Token|(?:Api|API)[_-]?Key|(?:[Pp]rivate|[Aa]ccess|[Ss]ecret|[Ss]igning)Key)\\?['"]?\s*[:=]\s*\\?['"]?(?:[^\s'"\\]|\\(?!['"])){8,}/],
   ['bearer token', /\bbearer\s+[\w.~+/-]{16,}/i],
   ['HTML comment', /<!--/],
   ['invisible character', INVISIBLE],

@@ -307,7 +307,8 @@ test('leaks catch prefixed credentials, bearer headers and paths after any separ
     ['see ' + p('srv', 'acme-portal'), /local absolute path/],
     // #153: unquoted camelCase keys and the named key kinds, quoted or not.
     ...['clientSecret: ', 'accessToken=', 'refreshToken: "', 'privateKey=', '{"privateKey": "', 'awsSecretKey=',
-      'signingKey: ', 'dbPassword='].map(k => [k + 'abcdefgh12345678', /credential/]),
+      'signingKey: ', 'dbPassword=', 'PrivateKey: ', '{"SecretKey": "', 'AccessKey=', 'JWTSecret=', 'APIToken=',
+      'clientAPIKey='].map(k => [k + 'abcdefgh12345678', /credential/]),
   ]
   for (const [text, rule] of caught) assert.ok(state.leaks(text).some(l => rule.test(l)), text)
   for (const text of ['https://github.com/o/r/issues/1', 'skills/devflow/references/build.md', 'max_tokens: 1000', 'and/or',

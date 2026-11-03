@@ -11,6 +11,7 @@ verify, and leaves checking to review and CI rather than blocking hooks.
 
 - What devflow is: [docs/design/overview.md](docs/design/overview.md)
 - Current choices and reasons: [docs/design/current-decisions.md](docs/design/current-decisions.md)
+- What a session does: [the devflow skill](skills/devflow/SKILL.md) and its references
 - Contracts: [documents](docs/specs/documents.md), [issues](docs/specs/issues.md), [ledger](docs/specs/ledger.md),
   [lifecycle](docs/specs/lifecycle.md), [orchestration](docs/specs/orchestration.md),
   [repository](docs/specs/repository.md), [eval](docs/specs/eval.md)

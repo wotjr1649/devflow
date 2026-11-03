@@ -34,10 +34,11 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
   goal, acceptance, files it may change, interfaces, constraints and the check with healthy output. It puts push, Issue
   writes, spawning subagents, deleting or weakening tests and adding dependencies out of scope, asks for one end status
   (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not run and why, and
-  ends: when the work is done and its checks pass, stop and report.
+  ends: keep working until the brief is done, stopping early only with `NEEDS_DECISION` or `BLOCKED`; when the work
+  is done and its checks pass, stop and report.
 - Delegate to `implementer`. Model and effort come from the router's Roles table: mechanical work runs on the
   definition's default, work that needs judgment across files on a stronger model; settle design decisions before
-  delegating it.
+  delegating it. Take the model and effort a run used from its records, or report them unconfirmed.
 - In interactive M2, the main session may make a one- or two-line edit describable in one sentence and record it in the
   ledger; a delegation costs more than the edit. Unattended work keeps a fresh context for every task, so it has no such
   exception.
@@ -65,8 +66,7 @@ M3 (Claude Code only; files do not overlap and interfaces are fixed in the plan,
 
 ## Failures
 
-The fix loop separates finding a cause from fixing it, so
-fixes do not cover symptoms:
+The fix loop separates finding a cause from fixing it, so fixes do not cover symptoms:
 
 1. A check or CI failure with an unclear cause goes first to `explorer` with the root-cause perspective, which reports
    the cause and evidence without changing files. If it finds none, run it once more on a stronger model (Claude Code:
@@ -76,9 +76,9 @@ fixes do not cover symptoms:
 4. Then the main session takes the task over or reports where it is blocked.
 
 Record each fix attempt and each promotion as one ledger `notes` line with its reason; `counts` holds only the Stop
-hook's `{continue}`. After three failures toward the same goal,
-change the approach or stop and report. A plan that turns out wrong goes back to plan, fixed on the spot; a broken design
-assumption goes back to design.
+hook's `{continue}`. After three failures toward the same goal, change the approach or stop and report. A plan that
+turns out wrong goes back to plan, fixed on the spot; a build that departs from the plan fixes the private plan before
+the task ends and notes a changed public summary in the next checkpoint. A broken design assumption goes back to design.
 
 ## After the task
 

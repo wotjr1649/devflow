@@ -3,8 +3,14 @@
 This spec sets the location, size, format and writing rules of the documents devflow creates and reads. Issue bodies,
 checkpoints and resume cards are set by [issues](issues.md), and the ledger by [ledger](ledger.md). Other documents do
 not restate these rules; they point to the relevant spec.
-As an exception, instructions agents read during execution (skills, references) may restate as much as execution needs;
-when the two disagree, the spec wins.
+
+Each contract has one owner. The devflow skill (`skills/devflow/`) owns what the executor acts on: stage done
+conditions, paths, going back, milestones, execution modes, roles, the delegation brief, review and the fix loop, and
+where lessons go. Specs own what code, tests and developers rely on: tool input and output, Issue and checkpoint
+formats, ledger keys and storage, hooks, the card, packaging, CI, eval method and these document rules. Where the skill
+carries a copy of a spec-owned format (the state block and checkpoint labels), a test pins the copy to the spec. A spec
+explains a skill-owned rule and links to it; the skill never links to a spec, because the plugin's docs are not part of
+the skill a session reads. A conflict between the two kinds is a defect fixed in the same change.
 
 ## One source of truth per artifact
 
@@ -23,8 +29,7 @@ when the two disagree, the spec wins.
 | evidence | raw logs, measurements | `artifacts/`, `.work/` | private | kept |
 | lessons | where they go depends on their kind ([learn and memory](lifecycle.md#learn-and-memory)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
 
-Keep each fact in one place. Other places only link to it. The exception for execution instructions is stated at the
-top.
+Keep each fact in one place. Other places only link to it, except the test-pinned copies named at the top.
 
 Current design decisions live by topic in `docs/design/current-decisions.md` alone; when a choice changes, update its
 section in place. Each section holds only the current choice and reason, alternatives not taken, and conditions for
@@ -129,8 +134,8 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
   rules are lost.
 - A reference links no other reference, and a procedure never needs a second reference. When a request spans two
   procedures, SKILL.md names both, so every read stays one level deep.
-- A reference may link specs and research as the source of a rule it states; the spec wins on conflict. The rule is
-  stated in the reference, so the link is for checking, not for finishing the procedure.
+- Skill files link only inside the skill folder and cite no plugin spec, so a session needs nothing outside the skill to
+  finish a step; specs may link to the skill. A test enforces this.
 - It starts with its done condition, so a partial read still knows when to stop. One over 100 lines starts with a
   contents list, so a partial read still sees every section.
 - In-response checklists appear only in start, ship, cleanup, and plan when it has five or more tasks; these long

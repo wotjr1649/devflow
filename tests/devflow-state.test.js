@@ -175,7 +175,21 @@ test('write allows URLs and posts a valid checkpoint', () => {
   const e = env(repo())
   const r = state.write(e, '.', 'comment', 1, checkpoint('ok') + '\n- 링크 https://github.com/o/r/issues/1')
   assert.equal(r.code, 0)
-  assert.deepEqual(ghWrites(e)[0].args.slice(0, 5), ['issue', 'comment', '1', '-R', 'o/r'])
+  assert.deepEqual(ghWrites(e)[0].args.slice(0, 5), ['issue', 'comment', '1', '-R', 'github.com/o/r'])
+})
+
+test('#149: every gh call names github.com, so GH_HOST or another default host is never the target', () => {
+  const e = env(repo())
+  state.card(e, '.')
+  state.read(e, '.')
+  state.write(e, '.', 'comment', 1, checkpoint('ok'))
+  state.write(e, '.', 'close', 1)
+  const pinned = c => (c.args[0] === 'api' && c.args[1] === '--hostname' && c.args[2] === 'github.com') ||
+    c.args.some((a, i) => c.args[i - 1] === '-R' && a.startsWith('github.com/'))
+  const gh = e.calls.filter(c => c.cmd === 'gh')
+  assert.ok(gh.some(c => c.args[0] === 'api') && gh.some(c => c.args[0] === 'issue'), 'both kinds of call ran')
+  for (const c of gh) assert.ok(pinned(c), c.args.join(' '))
+  assert.ok(!pinned({ args: ['issue', 'view', '1', '-R', 'o/r'] }), 'counterexample')
 })
 
 test('write enforces checkpoint and state block lengths', () => {
@@ -646,7 +660,7 @@ test('intent replaces only the part above the state block and keeps the rest byt
   assert.equal(r.code, 0)
   const w = ghWrites(e)
   assert.equal(w.length, 1)
-  assert.deepEqual(w[0].args.slice(0, 6), ['issue', 'edit', '1', '-R', 'o/r', '--body-file'])
+  assert.deepEqual(w[0].args.slice(0, 6), ['issue', 'edit', '1', '-R', 'github.com/o/r', '--body-file'])
   assert.ok(!w[0].args.includes('--title'))
   assert.equal(w[0].input, next.replace('- [x] not', '- [ ] not').trimEnd() + '\n\n' + tail)
 })
@@ -1023,7 +1037,7 @@ test('#70: an Issue made on this branch takes a remark; a checkpoint comment to 
   assert.equal(state.write(e, '.', 'create', undefined, '## 문제\nx\n\n## 수용 기준\n- [ ] a\n', 'Tracking').code, 0)
   const r = state.write(e, '.', 'remark', 323, '새 근거: 재현 조건이 하나 더 있다.')
   assert.equal(r.code, 0, r.out)
-  assert.deepEqual(remarks(e).at(-1).args.slice(0, 5), ['issue', 'comment', '323', '-R', 'o/r'])
+  assert.deepEqual(remarks(e).at(-1).args.slice(0, 5), ['issue', 'comment', '323', '-R', 'github.com/o/r'])
   assert.match(state.write(e, '.', 'comment', 323, checkpoint('x')).out, /only to the branch's Issue #1/)
 })
 

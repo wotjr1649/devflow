@@ -224,7 +224,7 @@ function fetchIssue(ctx, n, { include } = {}) {
   // n reaches gh as -F n=<value>, and gh reads a file for a value that starts with @: only a whole number goes there.
   if (!Number.isSafeInteger(n) || n < 1) return { error: 'the Issue number is not a whole number' }
   const [owner, name] = ctx.repo.split('/')
-  const r = ctx.env.run('gh', ['api', 'graphql', ...(include ? ['--include'] : []), '-f', `query=${QUERY}`, '-f', `o=${owner}`, '-f', `r=${name}`, '-F', `n=${n}`])
+  const r = ctx.env.run('gh', ['api', '--hostname', 'github.com', 'graphql', ...(include ? ['--include'] : []), '-f', `query=${QUERY}`, '-f', `o=${owner}`, '-f', `r=${name}`, '-F', `n=${n}`])
   if (r.code !== 0) return { error: `Issue #${n} lookup failed (gh exit ${r.code})` }
   try {
     let json = r.stdout
@@ -1061,7 +1061,7 @@ function postedAlready(ctx, op, n, text, title, since) {
       .find(c => c && WRITERS.has(c.authorAssociation) && same(c.body) && after(c.createdAt))
     return hit ? hit.url : false
   }
-  const r = ctx.env.run('gh', ['issue', 'list', '-R', ctx.repo, '--author', '@me', '--state', 'all', '--limit', '20',
+  const r = ctx.env.run('gh', ['issue', 'list', '-R', `github.com/${ctx.repo}`, '--author', '@me', '--state', 'all', '--limit', '20',
     '--json', 'title,body,url,createdAt'], { cwd: ctx.root })
   if (r.code !== 0) return null
   try {
@@ -1191,11 +1191,11 @@ function post(ctx, op, n, text, title) {
     if (no) return no
     const next = nextBody('check', body, text)
     if (next === body) return { code: 0, out: `#${n}: already checked` }
-    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], next)
+    r = gh(['issue', 'edit', String(n), '-R', `github.com/${ctx.repo}`, '--body-file', '-'], next)
   } else if (op === 'state') {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
-    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-'], nextBody('state', got.issue.body || '', text))
+    r = gh(['issue', 'edit', String(n), '-R', `github.com/${ctx.repo}`, '--body-file', '-'], nextBody('state', got.issue.body || '', text))
   } else if (op === 'intent') {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
@@ -1206,24 +1206,24 @@ function post(ctx, op, n, text, title) {
     const body = replaceIntent(old, carried.body)
     const lf = s => s.replace(/\r\n/g, '\n')
     if (lf(body) === lf(old) && (title === undefined || title === got.issue.title)) return { code: 0, out: `#${n}: intent unchanged` }
-    r = gh(['issue', 'edit', String(n), '-R', ctx.repo, '--body-file', '-', ...(title === undefined ? [] : ['--title', title])], body)
+    r = gh(['issue', 'edit', String(n), '-R', `github.com/${ctx.repo}`, '--body-file', '-', ...(title === undefined ? [] : ['--title', title])], body)
     const notes = [
       ...(carried.dropped.length ? [`checked criteria not carried over (text changed or removed; numbers in the previous body): ${carried.dropped.join(', ')}`] : []),
       ...(carried.unread ? [`the previous "## 수용 기준" was missing or not plain, so none of its ${carried.unread} checked boxes carried over; check again with evidence`] : []),
     ]
     if (r.code === 0 && notes.length) return { code: 0, out: [r.stdout.trim() || `intent #${n} done`, ...notes].join('\n') }
   } else if (op === 'comment' || op === 'remark') {
-    r = gh(['issue', 'comment', String(n), '-R', ctx.repo, '--body-file', '-'], text.trim() + '\n')
+    r = gh(['issue', 'comment', String(n), '-R', `github.com/${ctx.repo}`, '--body-file', '-'], text.trim() + '\n')
   } else if (op === 'create') {
-    r = gh(['issue', 'create', '-R', ctx.repo, '--title', title, '--body-file', '-'], text)
+    r = gh(['issue', 'create', '-R', `github.com/${ctx.repo}`, '--title', title, '--body-file', '-'], text)
   } else if (op === 'close') {
     const got = fetchIssue(ctx, n)
     if (got.error) return { code: 1, out: got.error }
     const no = bodyRefusal('close', n, got.issue.body || '', text)
     if (no) return no
-    r = gh(['issue', 'close', String(n), '-R', ctx.repo])
+    r = gh(['issue', 'close', String(n), '-R', `github.com/${ctx.repo}`])
   } else {
-    r = gh(['issue', op, String(n), '-R', ctx.repo])
+    r = gh(['issue', op, String(n), '-R', `github.com/${ctx.repo}`])
   }
   if (r.code !== 0 && READ_BACK.has(op) && r.code !== 4) {
     const url = postedAlready(ctx, op, n, text, title, since)

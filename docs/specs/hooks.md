@@ -43,7 +43,7 @@ the target host's nested scenario.
 | Event | Action |
 |---|---|
 | SessionStart (`startup`, `resume`, `clear`, `compact`) | Injects the resume card and shares the session id. A card failure shows as a reason, and no state is inferred |
-| Stop | When its own Issue's unattended work is open and nothing is waiting, asks to continue at most 2 times per task. The count is added under the ledger lock, and it stops on an error or a lock conflict |
+| Stop | When its own Issue's unattended work is open, this session switched or reattributed it, and nothing is waiting, asks to continue at most 2 times per task. The count is added under the ledger lock, and it stops on an error or a lock conflict |
 | SessionEnd | Releases only the input session from the session records of every Issue. It does not wait for the lock and preserves other sessions' records |
 
 PreToolUse and PostToolUse are not registered. The hooks do not block Issue writes or edits to test files, profiles or

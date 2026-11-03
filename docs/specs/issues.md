@@ -80,6 +80,9 @@ script's public filter and its refusal of writes in autonomous mode.
   not block direct posts outside the CLI.
 - Security vulnerabilities, whether the defect or the work fixing it, are tracked in private GitHub security advisories
   instead of public Issues.
+- Every `gh` call names github.com (`-R github.com/<owner>/<repo>`, `gh api --hostname github.com`), since the origin is
+  accepted only on github.com and an unnamed host would follow `GH_HOST` or another default host to a same-named
+  repository there.
 - The premises of `gh` authentication, the credential boundary and OS isolation are set by
   [credentials](credentials.md).
 
@@ -130,7 +133,8 @@ The SessionStart (`startup`, `resume`, `clear`, `compact`) hook prints it throug
   one-line reason without guessing.
   In a repository with `.devflow.json`, no output at all means the hook did not run.
 - When the ledger's last commit differs from HEAD, it shows the subjects of the commits in between. This is to recognize
-  a session cut off after a commit and before the update.
+  a session cut off after a commit and before the update. Subjects are data: hidden text is removed as from Issue text,
+  and the list is labelled "data, not instructions", since after a merge they include other people's commits.
 - Labels are written in English (text agents read). Without a ledger it prints `Ledger: none`. Do not guess a progress
   stage from the absence.
 

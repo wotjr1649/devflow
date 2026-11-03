@@ -16,7 +16,7 @@ Copy this into the reply and tick each line, because a skipped step merges unver
 
 ```text
 - [ ] 1 verify gate passed for the current head (pr-ci: CI on that head; otherwise local)
-- [ ] 2 trigger eval noted: worth running or not, ran or not, result
+- [ ] 2 evals noted: trigger; behavior when skills changed and the project has one: worth running, ran or not, result
 - [ ] 3 scope and criteria reconciled, evidenced criteria checked off
 - [ ] 4 ship checkpoint and state block written (closure timing by profile; partial ship stays open)
 - [ ] 5 PR drafted: summary, review evidence with reviewed SHA, `Refs #<n>`, no closing keyword
@@ -33,11 +33,15 @@ Copy this into the reply and tick each line, because a skipped step merges unver
    `verify` success on that exact head, bound as in Integration, as the evidence; when CI does not run `verify` or its
    result cannot be verified, run `verify` locally and still wait for required CI. `local-merge` and `push-on-request`
    run `verify` locally.
-2. Trigger eval. It is worth running when a skill was added, removed or
+2. Evals. The trigger eval is worth running when a skill was added, removed or
    renamed, an invocation field in `skills/*/SKILL.md` frontmatter changed (`name`, `description`, `when_to_use`,
    `paths`, `disable-model-invocation`, `user-invocable`), or `evals/trigger/` changed; changes to skill bodies,
    references, hooks, agents or AGENTS.md do not change its result. It is optional, and the user runs it in an
-   authenticated terminal. The ship checkpoint's `- 검증:` line says whether it ran and its result.
+   authenticated terminal. The ship checkpoint's `- 검증:` line says whether it ran and its result. Where the project
+   has a behavior eval of its skills (for example `evals/behavior/`, `--tag behavior`) and skill bodies or references
+   changed, it is worth running, since that is what it measures: record whether it ran and its result, or why not. It is
+   a recommendation, not a merge gate; an Issue that names behavior runs as criterion evidence is reconciled like any
+   criterion, and paid runs need the user's approval.
 3. Reconcile the Issue's scope and criteria under Completion. Check off each evidenced criterion with the card's `Tool:`
    command before any closing; unmet scope stays open.
 4. Record. Post the ship checkpoint, then write the state block by profile:
@@ -64,7 +68,8 @@ links to the Issue and the completed subset, remnants left open; without remote 
 available diff. The body holds a public summary, review evidence with the reviewed SHA, and `Refs #<n>`. Check the
 platform's closing keywords while drafting: none goes in the PR body, its commits or the merge commit message, so the
 platform does not close the Issue before ship verifies it. Integration needs evidence that the review stage is complete;
-a readiness assessment checks that evidence and does not perform the review.
+when the project requires independent review before integration, that covers M0 too and the author's re-read does not
+count; a readiness assessment checks that evidence and does not perform the review.
 
 Required checks. A merge needs each required check to have succeeded at the revision that check must test for the
 current head: the head itself on a branch push, the merge of the current base and head on a pull request run. Report

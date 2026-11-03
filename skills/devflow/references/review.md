@@ -46,14 +46,16 @@ untracked bytes; HEAD alone omits dirty work.
 
 1. Mode. Pick it by the router's Execution modes table and the M0 lines below it, judged from the current BASE..HEAD
    and the intended dirty bytes.
-2. Package (M1 and up). When the session can run git, write the ledger's BASE..HEAD diff, with the intended dirty
+2. Package (M1 and up; M0 only as step 3 says). When the session can run git, write the ledger's BASE..HEAD diff, with the intended dirty
    bytes, to `.work/devflow/i<issue>/review-package.diff`; otherwise ask for the diff or package, and give no verdict
    on code you have not read. Give the reviewer the package, scope, acceptance criteria, contracts, base, head, the
    plan summary, project REVIEW.md, checks run and not run, and the reference identity - never a verdict, because a
    reviewer told the answer confirms it. Name each required git-ignored plan, spec, test or output
    path and its purpose; open it before declaring it absent. Report unreadable required inputs; missing evidence never
    passes.
-3. Reviewer (M1 and up; M0 has none). Claude Code: a fresh `reviewer`. Codex: a report-only worker given the
+3. Reviewer (M1 and up). M0 has none, because its re-read stands in for review; that re-read is not an independent
+   review, so when the project requires independent review before integration, the requirement covers M0 as well and
+   M0 also runs steps 2 and 3, recording reviewer, reviewed SHA, scope and result. Claude Code: a fresh `reviewer`. Codex: a report-only worker given the
    reviewer body and the named perspective (the router's Delegation section says where that text is), on the model of
    the router's Roles table. Record the reviewer, the revision reviewed and the model and effort from its run record
    (or unconfirmed); a defect the final review finds that a per-task review missed goes in the ledger notes with that

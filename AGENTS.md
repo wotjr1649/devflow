@@ -56,7 +56,8 @@ are checked, and reopen unfinished scope. Create follow-ups only for user-decide
 or reproduced defects; propose others at ship. Follow `docs/specs/issues.md`; in unattended
 runs keep Issue text in the ledger notes (`docs/specs/ledger.md`).
 
-Integration is a merge-commit PR into main after its required checks pass; never push to main.
+Integration is a merge-commit PR into main after its required checks pass and an independent review of the
+reviewed head, M0 included; never push to main.
 PR body: summary, review evidence, `Refs #<n>`; no closing keyword in PR text or commits. Only on explicit
 user instruction: tags, releases, repository settings, host installation or updates, and host
 configuration (`~/.claude`, `~/.codex`, `~/.agents`).

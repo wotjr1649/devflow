@@ -27,7 +27,11 @@ plugin.
 
 **Behavior eval** (`evals/behavior/`, `--tag behavior`) checks that, after entering a stage, the agent reads the right
 reference and takes the correct next action.
-It is worth running when changing skill bodies and references.
+It is worth running only for a change that alters what an agent does in a stage: a rule moved, removed or added in a
+skill body or reference, a changed routing or safety step, or a changed description. Wording, format and tool output
+changes are covered by tests and review. Run only the cases that read the changed text, three runs each, not the whole
+suite: in this repository's history the behavior eval found defects only where a rule's flow changed, while most of its
+cost went to its own case and judge defects.
 
 - A case puts the resume card and the request in the prompt and allows only read-only tools. It makes no external
   writes.
@@ -40,6 +44,9 @@ It is worth running when changing skill bodies and references.
   a regression that proceeds on everything or refuses everything goes unnoticed. The `llm` grader sees only the last
   answer, so judge tool use (such as a search that should not happen) with a `tool_used` grader.
 - A case that passes even without the plugin reads as a regression guard, not as an effect of the plugin.
+- The evidence for a run's behavior is a fresh-context reviewer's verdict on its final answer and tool record, judged
+  against the case's grader; the `llm` judge's score is a metric. The judge often fails a healthy answer that says it
+  made no write because the case allows no write tool, so a score alone can report a regression that is not there.
 - Run the default 2-arm comparison of no plugin against the current plugin. For a change to structure, run the same
   cases on the revisions before and after the change with the same model and compare.
 

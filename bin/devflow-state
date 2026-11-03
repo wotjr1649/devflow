@@ -72,7 +72,7 @@ const LEAKS = [
   ['JWT', /\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/],
   // The keyword may end a longer name (GH_TOKEN, DB_PASSWORD, OPENAI_API_KEY) or a quoted JSON key, camelCase or escaped
   // inside a string ("password": …, "accessToken": …, \"secret\": …).
-  ['credential assignment', /(?<![A-Za-z0-9])(?:password|passwd|secret|token|api[_-]?key)\\?['"]?\s*[:=]\s*\\?['"]?[^\s'"\\]{8,}|['"][\w-]*(?:password|passwd|secret|token|api[_-]?key)\\?['"]\s*:\s*\\?['"][^\s'"\\]{8,}/i],
+  ['credential assignment', /(?<![A-Za-z0-9])(?:password|passwd|secret|token|api[_-]?key)\\?['"]?\s*[:=]\s*\\?['"]?(?:[^\s'"\\]|\\(?!['"])){8,}|['"][\w-]*(?:password|passwd|secret|token|api[_-]?key)\\?['"]\s*:\s*\\?['"](?:[^\s'"\\]|\\(?!['"])){8,}/i],
   ['bearer token', /\bbearer\s+[\w.~+/-]{16,}/i],
   ['HTML comment', /<!--/],
   ['invisible character', INVISIBLE],

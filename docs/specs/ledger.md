@@ -56,8 +56,10 @@ adds to the continue count under the ledger lock.
   `decisions` and `running` are empty ([ledger keys](#ledger-keys)). Waiting to confirm a remote write is also recorded
   in `blocked`.
 - The run is this session's when `modeChanged.session` names the Stop event's session, the one that switched or
-  reattributed it. In a nested run the CLI records the outer host's id, so the id the hook's own shell variables give
-  counts too. A session whose id is unknown, or a switch recorded without one, does not continue.
+  reattributed it. A session whose id is unknown, or a switch recorded without one, does not continue, and neither does
+  a child started from the owner, though its environment carries the owner's id. Known limit: in a nested run the CLI
+  records the outer host's id ([concurrent sessions](#concurrent-sessions)), so Claude started inside Codex gets no
+  continuation; it works task by task until its own session records it.
 - At most 2 times for the same task (the ledger's continue count). After that, stop and get a review.
 - When a task ends, check, commit and update the ledger. Only the user can run `/clear`, so an unattended run uses a fresh
   context per task through an implementer (M2), and the main session carries on through the ledger and commits.

@@ -292,7 +292,7 @@ test('leaks catch prefixed credentials, bearer headers and paths after any separ
     // #149 review: camelCase and escaped JSON keys, an empty URL user, IP and URL shares, one-level volumes and sites.
     ['{"access' + 'Token": "abcdefgh12345678"}', /credential/], ['{"db' + 'Password": "hunter2hunter2"}', /credential/],
     ['{\\"pass' + 'word\\":\\"hunter2hunter2\\"}', /credential/],
-    ['https://:' + 's3cr3tpass@host.example/', /URL credentials/],
+    ['https://:' + 's3cr3tpass@host.example/', /URL credentials/], ['pass' + 'word=ab\\cdefghijkl', /credential/],
     ['//' + '192.168.0.10/team', /local absolute path/], ['smb:' + '//fs/team', /local absolute path/],
     ['file:' + '///repo/x', /local absolute path/], ['see ' + p('Volumes', 'AcmeClient'), /local absolute path/],
     ['see ' + p('srv', 'acme-portal'), /local absolute path/],

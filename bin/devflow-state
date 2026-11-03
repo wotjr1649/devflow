@@ -469,8 +469,13 @@ function sessionWarnings(root, n, own) {
     `${Math.max(0, Math.floor((now - v.at) / 60000))} min ago; two sessions may overwrite each other's ledger and state. ` +
     `A session that hands over runs "release ${n}".`)
   const more = others.length - lines.length
-  return more > 0 ? [...lines, `Warning: and ${more} more sessions wrote to Issue #${n} in the last 30 min.`] : lines
+  if (more > 0) lines.push(`Warning: and ${more} more sessions wrote to Issue #${n} in the last 30 min.`)
+  return lines.length ? [...lines, SESSION_ACTION] : lines
 }
+// What the warned session does (#141): a record is a recent unreleased write, not proof the other session runs or ended.
+const SESSION_ACTION = 'Warning: hold any write that could overlap theirs (this Issue, its ledger, shared files) until a ' +
+  're-read shows no overlap or the owner or that session confirms a handoff; a re-read alone does not show they stopped. ' +
+  'After a write, check its result too. Keep independent work; never release or end another session by guessing.'
 
 function privateFiles(root, n) {
   const re = new RegExp(`-i${n}-`)

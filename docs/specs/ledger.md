@@ -116,7 +116,10 @@ message.
   linked worktree not on an Issue branch are refused.
 - Writes (to the Issue and the ledger) leave the session in `sessions.json` (id hash and time). When another session
   wrote within 30 minutes and did not release, the resume card and the write output warn. This does not refuse, and reads
-  are not counted.
+  are not counted. The warnings end with one line for the warned session: hold only writes that could overlap theirs
+  until a re-read shows no overlap or the owner or that session confirms a handoff, check the result of a write already
+  made, keep independent work, and never release or end another session by guessing, because the record is a recent
+  unreleased write, not proof that the other session is running or has ended.
 - [Current session id passing](hooks.md#common-contract-of-both-hosts): the CLI uses the first non-empty value of
   `CODEX_THREAD_ID` → `DEVFLOW_SESSION_ID` → `CLAUDE_CODE_SESSION_ID`. Nested hosts follow the same order. A subagent has
   the parent's id; without an id, nothing is recorded or warned.

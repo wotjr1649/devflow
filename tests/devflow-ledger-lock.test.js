@@ -227,6 +227,22 @@ test('a write by another session in the last 30 minutes is warned about; the sam
   assert.match(run(root, A, ['ledger-update', '1'], '{"x":1}').out, WARN, 'A now sees B')
 })
 
+// #141: the warnings end with one line saying what to do, in the card and in a write's output alike.
+const ACTION = /^Warning: hold any write that could overlap theirs \(this Issue, its ledger, shared files\) until a re-read shows no overlap or the owner or that session confirms a handoff; a re-read alone does not show they stopped\. After a write, check its result too\. Keep independent work; never release or end another session by guessing\.$/m
+
+test('the session warnings end with one action line, in the card and in write output, and only when warning', () => {
+  const root = repo({ stage: 'build' })
+  assert.doesNotMatch(run(root, A, ['note', '1'], 'a').out, ACTION, 'no other session, no action line')
+  const write = run(root, B, ['note', '1'], 'b').out
+  assert.match(write, ACTION)
+  const card = state.card(env(root, { vars: A }), '.')
+  assert.match(card, ACTION)
+  assert.equal((card.match(ACTION) || []).length, 1)
+  const lines = card.split('\n')
+  assert.ok(lines.findIndex(l => ACTION.test(l)) > lines.findIndex(l => WARN.test(l)), 'after the session lines')
+  assert.match(lines[lines.length - 1], /^Tool: node "/, 'the Tool line stays last')
+})
+
 test('activity older than 30 minutes is ignored and dropped', () => {
   const root = repo({ stage: 'build' })
   run(root, A, ['note', '1'], 'a')
@@ -487,6 +503,8 @@ test('session entries are validated, and warnings are capped', () => {
   const card = state.card(env(root, { vars: A }), '.')
   assert.equal((card.match(/^Warning: another /gm) || []).length, 2)
   assert.match(card, /^Warning: and 2 more sessions wrote to Issue #1 in the last 30 min\.$/m)
+  assert.equal((card.match(ACTION) || []).length, 1, 'one action line however many sessions')
+  assert.ok(state.estTokens(card) < 1000, 'the card stays in budget')
   assert.doesNotMatch(card, /injected|evil/)
   run(root, A, ['note', '1'], 'a')
   const kept = Object.keys(JSON.parse(fs.readFileSync(sessionsFile(root), 'utf8')))

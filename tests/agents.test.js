@@ -1,6 +1,6 @@
 'use strict'
-// Pins the agent definitions to the Roles table in skills/devflow/SKILL.md and the host table in
-// docs/specs/orchestration.md. The live check reads a
+// Pins the agent definitions' own defaults and tools (the Roles table in skills/devflow/SKILL.md leaves them to the
+// definitions) and the host table in docs/specs/orchestration.md. The live check reads a
 // subagent transcript instead: model, effort, prompt_snapshot.tools and instructions (docs/research/host-facts.md).
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -28,7 +28,8 @@ test('Codex subagents start without the parent conversation in both the spec and
   const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8')
   const row = read('docs/specs/orchestration.md').split('\n').find(line => line.startsWith('| Implementer and reviewer agents |'))
   assert.match(row, /fork_turns: "none"/)
-  assert.match(read('skills/devflow/SKILL.md'), /Spawn each Codex subagent with `fork_turns: "none"`/)
+  // Safety floor (#150): the router names the setting; how it says so is the skill's.
+  assert.match(read('skills/devflow/SKILL.md'), /`fork_turns: "none"`/)
 })
 
 test('agent definitions match the role table', () => {

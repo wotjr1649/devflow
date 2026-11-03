@@ -507,20 +507,19 @@ test('card shows the last mode change and stays under budget (#32)', () => {
 
 test('the ledger spec and unattended skill describe the mode command (#32)', () => {
   const spec = fs.readFileSync(path.join(__dirname, '../docs/specs/ledger.md'), 'utf8')
-  const skill = fs.readFileSync(path.join(__dirname, '../skills/devflow/SKILL.md'), 'utf8')
   const row = spec.split('\n').find(line => line.startsWith('| `mode` |'))
   assert.match(row, /devflow-state mode/)
   const autonomous = spec.split('## Unattended runs')[1].split('## Concurrent sessions')[0]
   assert.match(autonomous, /devflow-state mode <n> autonomous < reason/)
   assert.match(autonomous, /devflow-state mode <n> interactive < reason/)
   assert.match(autonomous, /first line of stdin/)
-  // The router points to skills/devflow/references/sessions.md for mode switches, which holds the commands (#74).
-  assert.match(skill, /\[sessions\]\(references\/sessions\.md\)[^]*?switching unattended mode/)
-  const sessions = fs.readFileSync(path.join(__dirname, '../skills/devflow/references/sessions.md'), 'utf8')
-  const unattended = sessions.split('## Unattended work')[1].split('## Changed requirements')[0]
-  assert.match(unattended, /mode <issue> autonomous < reason/)
-  assert.match(unattended, /mode <issue> interactive < reason/)
-  assert.match(unattended, /first line of stdin/)
+  // #150: the skill may say it anywhere, but it gives both switches with the reason on stdin, as the command takes it.
+  const dir = path.join(__dirname, '../skills/devflow')
+  const skill = [path.join(dir, 'SKILL.md'), ...fs.readdirSync(path.join(dir, 'references')).map(n => path.join(dir, 'references', n))]
+    .map(f => fs.readFileSync(f, 'utf8')).join('\n')
+  assert.match(skill, /mode <(?:n|issue)> autonomous < reason/)
+  assert.match(skill, /mode <(?:n|issue)> interactive < reason/)
+  assert.match(skill, /first line of stdin/)
 })
 
 test('mode is in usage and records successful session activity (#32)', () => {
@@ -1486,12 +1485,12 @@ test('N2 A13: a private file name cannot add a Tool line', { skip: process.platf
   assert.doesNotMatch(out, /evil/)
 })
 
-test('N2 A14: the router and the tracking reference say what a card without a Tool line allows', () => {
-  for (const file of ['../skills/devflow/SKILL.md', '../skills/devflow/references/start.md']) {
-    const text = fs.readFileSync(path.join(__dirname, file), 'utf8')
-    assert.match(text, /last line is not a `Tool:` line/, file)
-    assert.match(text, /never search the repository for it/, file)
-  }
+// Safety floor (#150): the router, always loaded first, keeps what a card without a Tool line allows and where the path
+// may come from. The wording is the skill's; these are the facts it must state.
+test('N2 A14: the router says what a card without a Tool line allows', () => {
+  const text = fs.readFileSync(path.join(__dirname, '../skills/devflow/SKILL.md'), 'utf8')
+  assert.match(text, /last line is not a `Tool:` line/)
+  assert.match(text, /never search the repository/)
 })
 
 test('N2 A7b: next or blocker text after a line separator inside one state line is not taken for a state line', () => {

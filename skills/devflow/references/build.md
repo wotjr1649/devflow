@@ -73,12 +73,13 @@ The fix loop separates finding a cause from fixing it, so fixes do not cover sym
 3. Then one promotion, one step to the promotion column of the router's Roles table, tried once.
 4. Then the main session takes the task over or reports where it is blocked.
 
-Record each fix attempt and each promotion as one ledger `notes` line with its reason; `counts` holds only the Stop
-hook's `{continue}`. After three failures toward the same goal, change the approach or stop and report. A plan that
+Record each fix attempt and each promotion as one ledger `notes` line with its reason; `counts` is not for these, since
+unattended continuation counts there. After three failures toward the same goal, change the approach or stop and report. A plan that
 turns out wrong goes back to plan, fixed on the spot; a build that departs from the plan fixes the private plan before
 the task ends and notes a changed public summary in the next checkpoint. A broken design assumption goes back to design.
 
 ## After the task
 
 Commit, then `ledger-update` with `lastCommit` and `task`. The task moves to verify; after its verify the next task
-starts here again, and after the last one verify covers every acceptance criterion.
+starts here again, and after the last one verify covers every acceptance criterion. Leaving the loop, record `task`
+with current past total, so no task stays open after the loop.

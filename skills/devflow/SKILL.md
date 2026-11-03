@@ -5,13 +5,13 @@ description: Runs the Issue-tracked development lifecycle in repositories with a
 
 # devflow
 
-devflow moves one GitHub Issue through lifecycle stages. The resume card is the entry: the SessionStart hook prints
-it in repositories with `.devflow.json`, with the Issue state, the ledger and a last `Tool:` line.
+devflow moves one GitHub Issue through lifecycle stages. The resume card is the entry: a session in a repository with
+`.devflow.json` starts with it, showing the Issue state, the ledger and a last `Tool:` line.
 
 ## Card and scope
 
 - Without a card, check for `.devflow.json`. Absent: this is not a devflow repository; say so and route nothing.
-  Present: the hook did not run or failed; say which.
+  Present: the card was not produced or failed; say which.
 - A card whose last line is not a `Tool:` line (resume card failed or unavailable) is the same case; report its reason.
 - In both cases new work may be discussed and analysed (discover), but no Issue is read or written, no stage is
   inferred, and no work that needs an Issue starts until a valid card arrives or the user supplies the `devflow-state`
@@ -182,18 +182,18 @@ stages, the Issue, the ledger and integration stay.
 
 ### Roles
 
-Values in parentheses are the definition's defaults. Promotion goes one step to the promotion column through the
-call's `model` or `effort`, not `ultrathink`.
+A Claude cell names the agent and what the call overrides; the rest comes from the agent definition. Promotion goes one
+step to the promotion column through the call's `model` or `effort`, not `ultrathink`; `—` means none.
 
 | Role | Claude default | Claude promotion | Codex |
 |---|---|---|---|
-| Exploration | `explorer` + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (`xhigh` if not enough) |
-| Test and log summary | `explorer` + summary perspective + `model: haiku` (`medium`) | `effort: high` → `model: sonnet` | gpt-6-luna `high` (`xhigh` if not enough) |
-| Failure root-cause analysis | `explorer` + root-cause perspective + `effort: high` (`sonnet`) | `model: opus` | gpt-6.1-sol `high`, worker told to report only |
-| Mechanical implementation | `implementer` (`sonnet` `medium`) | `model: opus` | gpt-6.1-terra `medium` (promotion: gpt-6.1-sol `high`) |
-| Implementation needing judgment | `implementer` + `model: opus` (`medium`) | `effort: high` | gpt-6.1-sol `high` |
-| Design alternatives, plan validation | `reviewer` + design perspective (`opus` `high`) | — | done by the main session |
-| Execution verification | `explorer` + verification perspective (`sonnet` `medium`) | — | gpt-6.1-terra `high`, worker told to report only |
-| Per-task review | `reviewer` + `model: sonnet` (`high`) | — | gpt-6.1-terra `high` |
-| Final review | `reviewer` (`opus` `high`) | — | gpt-6.1-sol `high` |
-| Security and high-risk review | `reviewer` + security perspective (`opus` `high`) | — | gpt-6.1-sol `high` |
+| Exploration | `explorer` + `model: haiku` | `effort: high` → `model: sonnet` | gpt-6-luna `high` (`xhigh` if not enough) |
+| Test and log summary | `explorer` + summary perspective + `model: haiku` | `effort: high` → `model: sonnet` | gpt-6-luna `high` (`xhigh` if not enough) |
+| Failure root-cause analysis | `explorer` + root-cause perspective + `effort: high` | `model: opus` | gpt-6.1-sol `high`, worker told to report only |
+| Mechanical implementation | `implementer` | `model: opus` | gpt-6.1-terra `medium` (promotion: gpt-6.1-sol `high`) |
+| Implementation needing judgment | `implementer` + `model: opus` | `effort: high` | gpt-6.1-sol `high` |
+| Design alternatives, plan validation | `reviewer` + design perspective | — | done by the main session |
+| Execution verification | `explorer` + verification perspective | — | gpt-6.1-terra `high`, worker told to report only |
+| Per-task review | `reviewer` + `model: sonnet` | — | gpt-6.1-terra `high` |
+| Final review | `reviewer` | — | gpt-6.1-sol `high` |
+| Security and high-risk review | `reviewer` + security perspective | — | gpt-6.1-sol `high` |

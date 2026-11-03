@@ -68,10 +68,10 @@ tokens, pointing at the Issue rather than restating it - restating costs output 
 reads it.
 
 - A subagent brief, in English, names the task, BASE, files it may change and the check; puts push, Issue writes,
-  spawning subagents, deleting or weakening tests and new dependencies out of scope; asks for one end status (`DONE`,
-  `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run; and ends with stop and report
-  once checked, with no extra rounds. One for another session (`codex exec`, `claude -p`) ends with that
-  session running `release <issue>`.
+  spawning subagents, deleting or weakening tests and new dependencies out of scope (needing one ends with
+  `NEEDS_DECISION`); asks for one end status (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files
+  changed and checks run; and ends with stop and report once checked, with no extra rounds. One for another session
+  (`codex exec`, `claude -p`) ends with that session running `release <issue>`.
 - A prompt file goes to `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, never under a name that already exists,
   since concurrent sessions can pick the same name. Leave it uncommitted, and end the reply with `Read <absolute path>
   and continue.`, because a relative path resolves only from where it was written.

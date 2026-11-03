@@ -20,9 +20,7 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
 - Run the checks that execute the change and the behaviour it affects: the project's tests for the paths touched and
   their callers. When nothing justifies a narrower set (shared code, configuration, test tooling), run the full
   `verify` locally now.
-- The full `verify` that gates integration follows the integration profile. Under `pr-ci`, ship takes CI's `verify`
-  success on the pushed revision as the evidence; when CI does not run `verify` or its result cannot be verified, run
-  `verify` locally and still wait for required CI. Under `local-merge` and `push-on-request`, ship runs it locally.
+- The full `verify` that gates integration belongs to ship, by the `.devflow.json` integration profile.
 - Syntax checks and checks that never started are not verification; name any check that could not run and why.
 - A missing dependency the project already declares is installed with the project's package manager and lockfile, not
   with sudo or a system package manager.
@@ -32,7 +30,8 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
 - The main session keeps decisions, Issue writes, integration and the ledger, so unstated choices of several writers do
   not collide. A subagent gets one task through a brief, in English, that starts `TASK k/N · Issue #i · BASE <sha>` and
   gives the goal, acceptance, files it may change, interfaces, constraints and the check with healthy output. It puts
-  push, Issue writes, spawning subagents, deleting or weakening tests and adding dependencies out of scope, asks for one
+  push, Issue writes, spawning subagents, deleting or weakening tests and adding dependencies out of scope - needing one,
+  or a scope or interface change, ends the task with `NEEDS_DECISION` unless the brief already settles it - asks for one
   end status (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not, and
   ends: keep working until done, stopping early only with `NEEDS_DECISION` or `BLOCKED`; once the checks pass, stop and
   report, with no extra rounds or changes outside the listed files.

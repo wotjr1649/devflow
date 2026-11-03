@@ -45,7 +45,8 @@ cost went to its own case and judge defects.
   answer, so judge tool use (such as a search that should not happen) with a `tool_used` grader.
 - A case that passes even without the plugin reads as a regression guard, not as an effect of the plugin.
 - The evidence for a run's behavior is a fresh-context reviewer's verdict on its final answer and tool record, judged
-  against the case's grader; the `llm` judge's score is a metric. The judge often fails a healthy answer that says it
+  against the case's `llm` rubric and `tool_used` graders (not the metric-only Read and Skill graders); the `llm`
+  judge's score is a metric. The judge often fails a healthy answer that says it
   made no write because the case allows no write tool, so a score alone can report a regression that is not there.
 - Run the default 2-arm comparison of no plugin against the current plugin. For a change to structure, run the same
   cases on the revisions before and after the change with the same model and compare.

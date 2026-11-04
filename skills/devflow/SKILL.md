@@ -160,20 +160,24 @@ A truncated card is not the whole state; read it through the `Tool:` command.
 ## Delegation
 
 Delegate by role: `explorer` reads and runs commands, `reviewer` reads only, `implementer` edits. Every brief also
-carries, from [roles](references/roles.md), the role's body and at most one perspective, verbatim (summary, root cause or
-verification for explorer; design or security for reviewer), because the agent has nothing else to work from and a
-reviewer given two perspectives does neither well. When the main session applies a perspective itself, it reads it
-there.
+opens with, from [roles](references/roles.md), the role's body and one perspective, verbatim: the one named (summary,
+root cause or verification for explorer; design or security for reviewer), else the role's default (search,
+correctness); the implementer has none. The agent has nothing else to work from, and one given two perspectives does
+neither well. When the main session applies a perspective itself, it reads it there.
 
 - Claude Code: use the plugin agent of the role's name (`devflow:explorer`, `devflow:reviewer`, `devflow:implementer`)
   when offered, because its definition limits its tools and turns. Otherwise use `general-purpose` with the same brief
-  and the role's Claude Code default model and effort, and say in the report, and in an unattended run in a `notes`
-  line, that the tool limits held only by instruction. Not Explore or Plan: they start without the project instructions.
+  and the Roles table's model and effort (the role's Claude Code default where a cell names none), and say in the
+  report, and in an unattended run in a `notes` line, that the tool limits held only by instruction. Not Explore or
+  Plan: they start without the project instructions.
 - Codex: spawn with `fork_turns: "none"` and the brief; the default, `"all"`, hands it this conversation, so its review
   or verification is no longer independent. Pick an agent type only where the spawn tool offers one, and set the Roles
   table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
   Where the spawn offers no per-agent tool or sandbox limit, report-only is an instruction.
-- Record which agent ran each review and verification: `devflow:<role>`, `general-purpose` or a Codex spawn.
+- Record which agent ran each review and verification: `devflow:<role>`, `general-purpose` or a Codex spawn. After an
+  explorer or reviewer that ran without tool limits (`general-purpose` or Codex), check that HEAD and the working tree
+  are unchanged apart from the byproducts its brief allowed, and read the Issue and PR for posts it made; a change
+  voids its report, which is redone, and the change is reported to the user.
 
 ### Execution modes
 

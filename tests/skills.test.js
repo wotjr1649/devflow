@@ -200,8 +200,8 @@ test('devflow-state: every command a reference or SKILL.md names appears in the 
   assert.ok(!inUsage('never'), 'a prose word is not a command')
 })
 
-// SKILL.md owns the mode and role tables (#138); the agent definitions own their defaults (#150). A Claude cell names an
-// agent that exists, and a mode is M and a number, so a role or mode can be added without touching code.
+// SKILL.md owns the mode and role tables (#138); roles.md owns the roles and their defaults (#157). A Claude cell names
+// a role of roles.md, and a mode is M and a number, so a role or mode can be added without touching code.
 const tableRows = (texts, header) => {
   for (const text of texts) {
     const ls = lines(text)

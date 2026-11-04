@@ -29,8 +29,8 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
 ## Delegating (M2, M3)
 
 - The main session keeps decisions, Issue writes, integration and the ledger, so unstated choices of several writers do
-  not collide. A subagent gets one task through a brief, in English, that starts `TASK k/N · Issue #i · BASE <sha>` and
-  gives the goal, acceptance, files it may change, interfaces, constraints, git-ignored inputs (plan, specs) by path and
+  not collide. A subagent gets one task through a brief, in English, that opens with the role text the router's
+  Delegation section names, then starts `TASK k/N · Issue #i · BASE <sha>` and gives the goal, acceptance, files it may change, interfaces, constraints, git-ignored inputs (plan, specs) by path and
   part, and the check with healthy output. It puts push, Issue writes, spawning subagents, deleting or weakening tests
   and adding dependencies out of scope; a test change, dependency, or scope or interface change the brief does not
   settle ends the task with `NEEDS_DECISION`. It asks for one end status (`DONE`, `DONE_WITH_CONCERNS`,
@@ -44,7 +44,8 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
 - In M2 and M3 each task gets a narrow review before the next starts: `reviewer` (Claude Code, with `model: sonnet`;
   Codex, the per-task review worker of the router's Roles table), given that task's BASE..HEAD. A mechanical change
   inside one file that touches no trust boundary skips it; the final review covers it. A change to a trust boundary gets one
-  separate review with the security perspective.
+  separate review with the security perspective. Each of these briefs, and the root-cause one under Failures, carries
+  its role text the same way.
 - A subagent that ends with `NEEDS_DECISION` is resumed after the main session decides what lies within existing
   permissions and the brief (Claude Code: `SendMessage` to the same agent; Codex: a follow-up task to the same agent).
   Messages during its run are notifications; do not act on a guessed decision.

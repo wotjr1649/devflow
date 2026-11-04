@@ -84,7 +84,7 @@ test('devflow: a reference links no other reference and no agents/ file', () => 
 // The skill works from its own folder (#138): every local link resolves inside skills/devflow, and no sentence cites a
 // plugin spec by file name. The user's own docs/design/current-decisions.md is a project path, not a plugin file. The
 // card's bin/devflow-state is a runtime part named in prose, not a link. Role text lives in the skill's roles reference
-// (#157), so no brief reads the plugin's agents/*.md.
+// (#157), and the plugin ships no agent definitions (#159).
 const SPEC_NAME = /\b(lifecycle|orchestration|ledger|issues|repository|documents|eval|hooks|credentials|host-facts|sources|overview)\.md\b/
 const localTargets = text => [
   ...[...text.matchAll(/\]\(\s*<([^>]*)>/g)].map(m => m[1]),
@@ -214,7 +214,7 @@ const tableRows = (texts, header) => {
 }
 const agentOf = cell => (cell.match(/^`([\w-]+)`/) || [])[1]
 // The roles reference (#157): `## <role>` sections, each with a Claude Code default line, a body up to its first `###`
-// and `###` perspectives. The agents/ definitions follow it; nothing here reads agents/.
+// and `###` perspectives. Every brief carries it; the plugin has no agent definitions (#159).
 const roleSections = text => [...text.matchAll(/^## ([a-z][\w-]*)\n([\s\S]*?)(?=^## |(?![\s\S]))/gm)]
   .map(([, name, body]) => ({ name, body: body.split(/^### /m)[0], perspectives: body.split(/^### /m).slice(1) }))
 const ROLE_DEFAULT = /^Claude Code default: `model: ([\w.-]+)`, `effort: (\w+)`/m
@@ -234,7 +234,7 @@ test('roles: each role states its Claude Code default, and every carried unit en
 })
 
 test('Codex subagents start without the parent conversation in both the spec and the router (#126)', () => {
-  const row = read('docs/specs/orchestration.md').split('\n').find(line => line.startsWith('| Implementer and reviewer agents |'))
+  const row = read('docs/specs/orchestration.md').split('\n').find(line => line.startsWith('| Delegated agents |'))
   assert.match(row, /fork_turns: "none"/)
   // Safety floor (#150): the router names the setting; how it says so is the skill's.
   assert.match(read(`${SKILL}/SKILL.md`), /`fork_turns: "none"`/)

@@ -171,20 +171,23 @@ neither well. When the main session applies a perspective itself, it reads it th
   or verification is no longer independent. Pick an agent type only where the spawn tool offers one, and set the Roles
   table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
 - No host here limits a delegated agent's tools or turns, so the role's limits hold only by instruction. Around every
-  explorer and reviewer the main session checks for the effects it can see. Before it starts and after it ends, first
-  compare the effective git config with its included files (`git config --list --show-origin`) and a hash of the hooks
-  folder (`git rev-parse --git-path hooks`); these run nothing the config names, but a later git command can, so if
-  either changed or cannot be read, run no other git command in that repository and treat the run as having an outside
-  effect. Then note HEAD, the branches, the working tree with ignored files, the ledger and the remote's refs (`git
-  ls-remote`), and list the Issues, PRs and comments the account created in this repository since the start: ids and
-  times only, with `gh api` and `--jq`, never bodies, so no Issue text is read outside the card's `Tool:`. A difference
-  that is neither the brief's byproduct nor the main session's own work is the agent's; another session's work looks the
-  same, so report it (in `blocked` when unattended) rather than guess. A local change voids the report: keep it out of
-  commits and redo that work once in a new fresh context with the same check. After a remote ref change, a post, or a
-  remote part that cannot be checked, redo nothing: the review or verification stays open, and an unattended run stops
-  in `blocked`; a local part that cannot be checked counts as a local change. If the redo is voided too, the same holds;
-  the main session's own re-read is not independent. The check is a tripwire, not isolation: it does not see effects
-  outside these parts. Record which agent ran each review and verification.
+  explorer and reviewer the main session checks for the effects it can see. Before it starts and after it ends, note
+  only what reading can show, because git commands such as `status` and `ls-remote` can run programs the agent planted
+  or changed (an fsmonitor, a filter, a credential helper, a pager): the effective git config with its includes and a
+  hash of the hooks folder, HEAD and the branches, all with `git --no-pager` and only `config --list --show-origin`,
+  `rev-parse` and `for-each-ref`; a hash of every file in the working tree, ignored ones too, made by a script rather
+  than git; the ledger; the remote's refs through `gh api` (`git/matching-refs/heads` and `tags`), which bypasses git's
+  config; and list the Issues, PRs and comments the account created in this repository since the start: ids and times
+  only, with `gh api` and `--jq`, never bodies, so no Issue text is read outside the card's `Tool:`. A difference that
+  is neither the brief's byproduct nor the main session's own work is the agent's; another session's work looks the
+  same, so report it (in `blocked` when unattended) rather than guess. A local change voids the report, and git may run
+  what it planted, so run no git command in that repository until the user has looked at it: report it (in `blocked`
+  when unattended), and once the user has restored the state, redo that work once in a new fresh context with the same
+  check. After a remote ref change, a post, or a remote part that cannot be checked, redo nothing: the review or
+  verification stays open, and an unattended run stops in `blocked`; a local part that cannot be checked counts as a
+  local change. If the redo is voided too, the same holds; the main session's own re-read is not independent. The check
+  is a tripwire, not isolation: it does not see effects outside these parts. Record which agent ran each review and
+  verification.
 
 ### Execution modes
 

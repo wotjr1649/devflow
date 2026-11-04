@@ -52,8 +52,8 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
 
 M3 (Claude Code only; files do not overlap and interfaces are fixed in the plan, two or three at once):
 
-- Launch implementers in the background with the Agent tool's `isolation: "worktree"` on each call, never in the agent
-  definition, which would put M2 in worktrees too.
+- Launch implementers in the background with the Agent tool's `isolation: "worktree"` on each call, so only M3 runs in
+  worktrees.
 - Record each launch with `running <n> add <label>`. Run `running <n> done <label>` only once the result is recovered and
   the exit confirmed; after a failure, timeout or interruption, confirm child processes and partial effects too, and if
   you cannot, leave the entry, continue only independent work and do not launch it again. Confirming an exit does not

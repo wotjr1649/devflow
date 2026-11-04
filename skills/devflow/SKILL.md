@@ -172,14 +172,15 @@ neither well. When the main session applies a perspective itself, it reads it th
   table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
 - No host here limits a delegated agent's tools or turns, so the role's limits hold only by instruction, and the main
   session checks them. Before an explorer or reviewer starts, note HEAD, the branch and remote refs, the working tree
-  and the ledger, and compare them after; look for Issues, PRs and comments the account posted meanwhile. A part that
-  cannot be checked counts as changed. A change
-  beyond its brief's byproducts, the main session's own work and other sessions' ledger entries voids its report: keep
-  the change out of commits, record it in `blocked` in an unattended run or report it to the user, and redo that work
-  once in a new fresh context with the same check around it. After a post, a push or a remote ref change, redo nothing:
-  the review or verification stays open, and in an unattended run the work stops in `blocked`. If the redo is voided
-  too, the same holds; the main session's own re-read is not independent. Record which agent ran each review and
-  verification, and for an implementer, whether it spawned agents.
+  and the ledger, and compare them after; read the remote's refs (`git ls-remote`) and the working Issue's and PR's
+  comments directly, not from the events feed, which lags; posts elsewhere are beyond the check. A part that cannot be
+  checked counts as changed. A change beyond its brief's byproducts and the main session's own work voids its report,
+  unless it is on another branch or Issue or the ledger shows another session made it: keep the change out of commits,
+  record it in `blocked` in an unattended run or report it to the user, and redo that work once in a new fresh context
+  with the same check around it. After a post, a push or a remote ref change, redo nothing: the review or verification
+  stays open, and in an unattended run the work stops in `blocked`. If the redo is voided too, the same holds; the main
+  session's own re-read is not independent. Record which agent ran each review and verification, and for an implementer,
+  whether it spawned agents.
 
 ### Execution modes
 

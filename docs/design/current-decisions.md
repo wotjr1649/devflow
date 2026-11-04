@@ -60,14 +60,15 @@ Role text and perspectives live in the skill's roles reference, and every brief 
 perspective on both hosts, so the skill depends on no agent name or file (#157). The plugin ships no agent definitions
 (#159): Claude Code runs every role on `general-purpose`, Codex on `spawn_agent`, so each host has one delegation path.
 The owner accepted the loss of the controls only a Claude definition gave - the reviewer's read-only tools, the
-explorer's lack of Edit and Write, the implementer's `maxTurns` and spawn ban, and the definitions' `BLOCKED` floor -
-because a 30-run comparison found no difference in findings or integrity between plugin agents and `general-purpose`,
-a spike without definitions passed review, verification and implementation cases with injected and hidden side
-effects on both hosts, and Codex never had these limits. The roles state the limits; the main session compares the
-state before and after every explorer and reviewer, counts what it cannot check as changed, and after an outside
-effect leaves the review or verification open. Each task gets a new agent, so a missing turn limit bounds nothing
-across tasks; within one task the implementer stops with `NEEDS_DECISION` rather than loop. Out-of-scope decisions are
-gathered in the main session through stop and resume.
+explorer's lack of Edit and Write, the implementer's `maxTurns` and spawn ban, the definitions' `BLOCKED` floor, and a
+`devflow:<role>` name another plugin's subagent rules could exclude - because a 30-run comparison found no difference in
+findings or integrity between plugin agents and `general-purpose`, a spike without definitions passed review,
+verification and implementation cases with injected and hidden side effects on both hosts, and Codex never had these
+limits. The roles state the limits; the main session compares the state before and after every explorer and reviewer,
+counts what it cannot check as changed, and after an outside effect leaves the review or verification open. Each task
+gets a new agent, so the lost turn limit only ever bounded one task; within one task nothing now stops an implementer
+that keeps retrying, and the main session's failure rules apply between attempts. Posts outside the working Issue and PR
+are beyond the after-check. Out-of-scope decisions are gathered in the main session through stop and resume.
 The devflow skill sets execution modes, roles, promotion and the question procedure; [orchestration](../specs/orchestration.md)
 keeps their reasons, per-host support, authority to choose models and the isolation limits of reporting roles. Workflows are run directly outside
 devflow.

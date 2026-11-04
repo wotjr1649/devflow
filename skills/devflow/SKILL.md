@@ -180,10 +180,11 @@ neither well. When the main session applies a perspective itself, it reads it th
   session's own work is the agent's; another session's work looks the same, so report it (in `blocked` when
   unattended) rather than guess. A change of the agent's in a local part, or `UNVERIFIED local`, voids the report, and
   git may run what it planted, so run no git command in that repository, devflow-state commands that run git such as
-  `card` included, until the user has looked at it: report it, saying its remote part went unchecked (in `blocked` when
-  unattended), and once the user has restored the state, redo that work once in a new fresh context with the same
-  check. After a `remote: changed` or `remote: unverified` line, or a `remote: skipped` line with no local change of the
-  agent's, redo nothing: the review or verification stays open, and an unattended run stops in `blocked`. If the redo is voided too, the same holds; the main session's own re-read is not independent. The check
+  `card` included, until the user has looked at it, and report it with the `remote:` line as printed (in `blocked` when
+  unattended). Redo voided work once, in a new fresh context with the same check once the user has restored the state,
+  only when that line is `remote: unchanged`. After any other `remote:` line (`changed`; `unverified`; `skipped`, which
+  was not checked), redo nothing: the review or verification stays open, and an unattended run stops in `blocked`. If
+  the redo is voided too, the same holds; the main session's own re-read is not independent. The check
   is a tripwire, not isolation: it does not see effects outside the parts it covers. Record which agent ran each review
   and verification.
 

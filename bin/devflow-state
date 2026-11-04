@@ -1726,6 +1726,16 @@ function note(env, cwd, n, text) {
 const DELEGATION_LIMIT = 200000
 const delegationKey = (part, p) => part + '\0' + samePathKey(p)
 const delegationFail = reason => { throw new Error(reason) }
+const delegationContains = (parent, p) => {
+  const relative = path.relative(parent, p)
+  return !relative || relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+}
+const delegationEscape = s => String(s).replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029]/g, c => {
+  const short = { '\b': '\\b', '\t': '\\t', '\n': '\\n', '\f': '\\f', '\r': '\\r' }
+  return short[c] || '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')
+})
+const delegationChange = (part, p) => `changed: ${part} ${delegationEscape(
+  /[\x00-\x1f\x7f-\x9f\u2028\u2029]/.test(p) ? JSON.stringify(p) : p)}`
 function delegationLocal(p) {
   const result = strictLocalPath(p)
   if (!result.ok) delegationFail(`path guard: ${result.why}`)
@@ -1826,10 +1836,13 @@ function delegationManifestDir(create) {
   return dir
 }
 
-function delegationSnapshot(roots, configs, after = false) {
+function delegationSnapshot(roots, configs, after = false, blocked = []) {
   const entries = new Map()
   const objects = new Set(roots.filter(r => r.part === 'git').map(r => samePathKey(path.join(r.path, 'objects'))))
+  const common = roots.filter(r => r.part === 'git').at(-1)
+  const commonHooks = common && path.join(common.path, 'hooks')
   function visit(part, p, treeRoot) {
+    if (blocked.some(parent => delegationContains(parent, p))) return
     const key = delegationKey(part, p)
     if (entries.has(key)) return
     if (entries.size >= DELEGATION_LIMIT) delegationFail('entry limit exceeded')
@@ -1842,6 +1855,9 @@ function delegationSnapshot(roots, configs, after = false) {
     }
     let entry = { part, path: p }
     if (st.isSymbolicLink()) {
+      if (!after && (part === 'hooks' || part === 'git' && commonHooks && delegationContains(commonHooks, p))) {
+        delegationFail('hooks contain a link')
+      }
       const text = fs.readlinkSync(p)
       if (isNetwork(text)) delegationFail('network path link')
       entry = { ...entry, type: 'link', text }
@@ -1859,7 +1875,7 @@ function delegationSnapshot(roots, configs, after = false) {
     if (entry.type !== 'directory' || part === 'config') return
     for (const name of fs.readdirSync(p)) {
       if (part === 'tree' && samePathKey(p) === samePathKey(treeRoot) && caseKey(name) === '.git') continue
-      if (part === 'git' && objects.has(samePathKey(p)) && name !== 'info') continue
+      if (part === 'git' && objects.has(samePathKey(p)) && caseKey(name) !== 'info') continue
       visit(part, path.join(p, name), treeRoot)
     }
   }
@@ -1878,29 +1894,8 @@ function delegationChanges(before, after) {
   for (const [key, entry] of old) {
     if (!now.has(key) || JSON.stringify(entry) !== JSON.stringify(now.get(key))) changes.push(entry)
   }
-  const added = after.filter(e => !old.has(delegationKey(e.part, e.path)))
-  const collapsed = []
-  const directories = new Map()
-  for (const entry of added.sort((a, b) => a.path.length - b.path.length)) {
-    let dir = path.dirname(entry.path)
-    let parent
-    for (;;) {
-      parent = directories.get(delegationKey(entry.part, dir))
-      if (parent) break
-      const next = path.dirname(dir)
-      if (next === dir) break
-      dir = next
-    }
-    if (parent) { parent.count++; continue }
-    if (entry.type === 'directory') {
-      const directory = { ...entry, count: 0 }
-      collapsed.push(directory)
-      directories.set(delegationKey(entry.part, entry.path), directory)
-    }
-    else changes.push(entry)
-  }
-  return [...changes.map(e => `changed: ${e.part} ${e.path}`),
-    ...collapsed.map(e => `changed: ${e.part} ${e.path}${path.sep} (new, ${e.count} entries)`)]
+  for (const entry of after) if (!old.has(delegationKey(entry.part, entry.path))) changes.push(entry)
+  return changes.map(e => delegationChange(e.part, e.path))
 }
 
 const delegationVar = (vars, name) => {
@@ -1912,7 +1907,7 @@ function delegationGh(vars, cwd) {
   const dirs = (delegationVar(vars, 'PATH') || '').split(path.delimiter)
   const extensions = process.platform === 'win32' ? (delegationVar(vars, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';') : ['']
   for (const dir of dirs) {
-    if (isNetwork(dir)) continue
+    if (!path.isAbsolute(dir) || isNetwork(dir)) continue
     for (const ext of extensions) {
       const candidate = path.resolve(cwd, dir, 'gh' + ext)
       const local = strictLocalPath(candidate)
@@ -2136,7 +2131,7 @@ function delegationBefore(env, cwd) {
       if (key === 'core.hookspath') configuredHooks = value
       if (!/^include(?:if\..+)?\.path$/.test(key)) continue
       let target = value
-      if (isNetwork(target) || /^~[^/\\]/.test(target)) delegationFail('unsupported config include')
+      if (isNetwork(target) || target.startsWith('%(prefix)/') || /^~[^/\\]/.test(target)) delegationFail('unsupported config include')
       if (/^~[\\/]/.test(target)) target = absolute(vars.HOME || os.homedir(), target.slice(2))
       else if (!path.isAbsolute(target)) {
         if (!source) delegationFail('relative config include without a file origin')
@@ -2166,7 +2161,7 @@ function delegationBefore(env, cwd) {
       if (!slug) delegationFail('no GitHub origin')
       remote = delegationRemoteBefore((...args) => env.run(...args), env.vars || process.env, root, slug[1])
     } catch (e) {
-      return { code: 0, out: `UNVERIFIED remote ${e.code || e.message || 'check failed'}` }
+      return { code: 0, out: `UNVERIFIED remote ${delegationEscape(e.code || e.message || 'check failed')}` }
     }
     const manifest = { version: 1, root, dotgit, dot, commondir, commonPointer,
       pointerChain, rootChains, roots, configs, entries, remote }
@@ -2178,7 +2173,7 @@ function delegationBefore(env, cwd) {
     return { code: 0, out: `token ${id}.${crypto.createHash('sha256').update(bytes).digest('hex')}\n` +
       'limits: host code, same-user races, mapped drives, Windows temp ACL, and changes outside recorded paths' }
   } catch (e) {
-    return { code: 0, out: `UNVERIFIED local ${e.code || e.message || 'check failed'}` }
+    return { code: 0, out: `UNVERIFIED local ${delegationEscape(e.code || e.message || 'check failed')}` }
   }
 }
 
@@ -2186,7 +2181,7 @@ function delegationAfter(cwd, token, remoteRun) {
   let file
   let manifest
   try {
-    delegationLocal(cwd)
+    if (isNetwork(cwd)) delegationFail('path guard: network path')
     if (!/^[0-9a-f]{16}\.[0-9a-f]{64}$/.test(token)) delegationFail('invalid token')
     file = path.join(delegationManifestDir(false), token.slice(0, 16) + '.json')
     const bytes = delegationRead(file)
@@ -2204,26 +2199,53 @@ function delegationAfter(cwd, token, remoteRun) {
       return { code: 0, out: [changes.length ? 'local: changed' : 'local: unchanged', ...changes,
         ...remote.lines, changes.length ? 'LOCAL_CHANGE' : remote.status].join('\n') }
     }
-    if (JSON.stringify(delegationPointer(manifest.dotgit)) !== JSON.stringify(manifest.dot)) {
-      return finish([`changed: git ${manifest.dotgit}`])
-    }
-    const pointerChain = delegationResolve(path.dirname(manifest.commondir), manifest.pointerChain.links)
-    if (pointerChain.changed) return finish([`changed: git ${pointerChain.changed}`])
-    if (JSON.stringify(delegationPointer(manifest.commondir)) !== JSON.stringify(manifest.commonPointer)) {
-      return finish([`changed: git ${manifest.commondir}`])
-    }
-    for (const config of manifest.configs) {
-      const resolved = delegationResolve(config.path, config.links)
-      if (resolved.changed) return finish([`changed: config ${resolved.changed}`])
-      if (differs(resolved.path, config.final)) return finish([`changed: config ${config.path}`])
-    }
-    for (const root of manifest.rootChains) {
+    const changes = new Set()
+    const blocked = []
+    const obstruction = p => blocked.find(parent => delegationContains(parent, p))
+    const changed = (part, p) => { changes.add(delegationChange(part, p)); blocked.push(p) }
+    const roots = []
+    const checkRoot = root => {
+      const parent = obstruction(root.path)
+      if (parent) { changes.add(delegationChange(root.part, parent)); return parent }
       const resolved = delegationResolve(root.path, root.links)
-      if (resolved.changed) return finish([`changed: ${root.part} ${resolved.changed}`])
+      if (resolved.changed) { changed(root.part, resolved.changed); return resolved.changed }
+      else roots.push(root)
     }
-    return finish(delegationChanges(manifest.entries, delegationSnapshot(manifest.roots, manifest.configs, true)))
+    const tree = manifest.rootChains.find(root => root.part === 'tree')
+    const treeChange = tree && checkRoot(tree)
+    if (treeChange) changes.add(delegationChange('git', treeChange))
+    else delegationLocal(cwd)
+    if (!treeChange && !obstruction(manifest.dotgit) && JSON.stringify(delegationPointer(manifest.dotgit)) !== JSON.stringify(manifest.dot)) {
+      changed('git', manifest.dotgit)
+    }
+    if (!obstruction(manifest.commondir)) {
+      const pointerChain = delegationResolve(path.dirname(manifest.commondir), manifest.pointerChain.links)
+      if (pointerChain.changed) changed('git', pointerChain.changed)
+      else if (JSON.stringify(delegationPointer(manifest.commondir)) !== JSON.stringify(manifest.commonPointer)) {
+        changed('git', manifest.commondir)
+      }
+    }
+    for (const root of manifest.rootChains) if (root !== tree) checkRoot(root)
+    const configs = []
+    for (const config of manifest.configs) {
+      const parent = [config.path, config.final, ...config.links.map(link => link.path)].map(obstruction).find(Boolean)
+      if (parent) { changes.add(delegationChange('config', parent)); continue }
+      const resolved = delegationResolve(config.path, config.links)
+      if (resolved.changed) changed('config', resolved.changed)
+      else if (differs(resolved.path, config.final)) changed('config', config.path)
+      else configs.push(config)
+    }
+    const safeRoots = roots.filter(root => !obstruction(root.path))
+    const safeConfigs = configs.filter(config => ![config.path, config.final, ...config.links.map(link => link.path)].some(obstruction))
+    const configKeys = new Set(safeConfigs.flatMap(config => [config.final, ...config.links.map(link => link.path)]
+      .map(p => delegationKey('config', p))))
+    const previous = manifest.entries.filter(entry => !obstruction(entry.path) && (entry.part === 'config'
+      ? configKeys.has(delegationKey('config', entry.path))
+      : safeRoots.some(root => root.part === entry.part && delegationContains(root.path, entry.path))))
+    for (const change of delegationChanges(previous, delegationSnapshot(safeRoots, safeConfigs, true, blocked))) changes.add(change)
+    return finish([...changes])
   } catch (e) {
-    return { code: 0, out: `local: unverified ${e.code || e.message || 'check failed'}\nremote: skipped (local unverified)\nUNVERIFIED local` }
+    return { code: 0, out: `local: unverified ${delegationEscape(e.code || e.message || 'check failed')}\nremote: skipped (local unverified)\nUNVERIFIED local` }
   }
 }
 

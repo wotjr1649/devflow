@@ -267,6 +267,114 @@ test('changed linked-worktree pointers are reported before opening their new tar
   }
 })
 
+test('independent changes are listed when both worktree pointers change', t => {
+  const f = fixture()
+  const linked = path.join(f.dir, 'linked')
+  f.git('worktree', 'add', '-qb', 'linked', linked)
+  const dotgit = path.join(linked, '.git')
+  const gitdir = fs.readFileSync(dotgit, 'utf8').trim().replace(/^gitdir: /, '')
+  const commondir = path.join(gitdir, 'commondir')
+  const target = path.join(f.dir, 'new-git-target')
+  const g = { ...f, root: linked }
+  const token = before(g)
+  fs.chmodSync(dotgit, 0o666)
+  fs.chmodSync(commondir, 0o666)
+  fs.unlinkSync(dotgit)
+  fs.writeFileSync(dotgit, `gitdir: ${target}\n`)
+  fs.writeFileSync(commondir, `${target}\n`)
+  fs.writeFileSync(path.join(linked, 'tracked'), 'changed')
+  fs.writeFileSync(f.vars.GIT_CONFIG_GLOBAL, '[test]\nvalue = changed\n')
+  for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
+    const original = fs[method]
+    t.mock.method(fs, method, (...args) => {
+      if (typeof args[0] === 'string') assert.equal(args[0].startsWith(target), false)
+      return original(...args)
+    })
+  }
+  const out = after(g, token)
+  for (const [part, p] of [['git', dotgit], ['git', commondir], ['tree', path.join(linked, 'tracked')],
+    ['config', f.vars.GIT_CONFIG_GLOBAL]]) assert.ok(out.includes(`changed: ${part} ${p}`), out)
+  assert.match(out, /remote: skipped \(local change\)\nLOCAL_CHANGE$/)
+})
+
+test('multiple changed chains leave independent roots and configurations observable', t => {
+  const f = fixture()
+  const targets = [path.join(f.dir, 'old-a'), path.join(f.dir, 'old-b')]
+  const links = [path.join(f.dir, 'link-a'), path.join(f.dir, 'link-b')]
+  const replacements = [path.join(f.dir, 'new-a'), path.join(f.dir, 'new-b')]
+  const hooksParent = path.join(f.dir, 'hooks-parent')
+  const hooksTarget = path.join(f.dir, 'new-hooks-target')
+  fs.mkdirSync(path.join(hooksParent, 'hooks'), { recursive: true })
+  fs.mkdirSync(path.join(hooksTarget, 'hooks'), { recursive: true })
+  f.git('config', 'core.hooksPath', path.join(hooksParent, 'hooks'))
+  for (let i = 0; i < links.length; i++) {
+    fs.writeFileSync(targets[i], '')
+    fs.writeFileSync(replacements[i], '')
+    try { fs.symlinkSync(targets[i], links[i], 'file') } catch (e) {
+      if (!['EPERM', 'EACCES', 'ENOSYS', 'EOPNOTSUPP', 'ENOTSUP'].includes(e.code)) throw e
+      return t.skip('file symlinks are unavailable')
+    }
+    include(f, links[i])
+  }
+  const token = before(f)
+  for (let i = 0; i < links.length; i++) {
+    fs.unlinkSync(links[i])
+    fs.symlinkSync(replacements[i], links[i], 'file')
+  }
+  fs.rmdirSync(path.join(hooksParent, 'hooks'))
+  fs.rmdirSync(hooksParent)
+  fs.symlinkSync(hooksTarget, hooksParent, 'dir')
+  fs.writeFileSync(path.join(f.root, 'tracked'), 'changed')
+  fs.writeFileSync(f.vars.GIT_CONFIG_GLOBAL, '[test]\nvalue = changed\n')
+  for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
+    const original = fs[method]
+    t.mock.method(fs, method, (...args) => {
+      if (typeof args[0] === 'string') {
+        for (const target of [...replacements, hooksTarget]) assert.equal(args[0].startsWith(target), false)
+      }
+      return original(...args)
+    })
+  }
+  const out = after(f, token)
+  for (const [part, p] of [['config', links[0]], ['config', links[1]], ['hooks', hooksParent],
+    ['tree', path.join(f.root, 'tracked')], ['config', f.vars.GIT_CONFIG_GLOBAL]]) {
+    assert.ok(out.includes(`changed: ${part} ${p}`), out)
+  }
+})
+
+test('a retargeted worktree root is reported without opening it or starting gh', t => {
+  const f = fixture()
+  const alias = path.join(f.dir, 'worktree-link')
+  const target = path.join(f.dir, 'new-worktree-target')
+  fs.mkdirSync(target)
+  try { fs.symlinkSync(f.root, alias, 'dir') } catch (e) {
+    if (!['EPERM', 'EACCES', 'ENOSYS', 'EOPNOTSUPP', 'ENOTSUP'].includes(e.code)) throw e
+    return t.skip('directory symlinks are unavailable')
+  }
+  const env = { vars: f.vars, run(cmd, args, opts) {
+    const result = f.env.run(cmd, args, opts)
+    return cmd === 'git' && args.includes('--show-toplevel') ? { ...result, stdout: alias + '\n' } : result
+  } }
+  const g = { ...f, root: alias, env }
+  const token = before(g)
+  const calls = f.remote.calls.length
+  fs.unlinkSync(alias)
+  fs.symlinkSync(target, alias, 'dir')
+  fs.writeFileSync(f.vars.GIT_CONFIG_GLOBAL, '[test]\nvalue = changed\n')
+  for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
+    const original = fs[method]
+    t.mock.method(fs, method, (...args) => {
+      if (typeof args[0] === 'string') assert.equal(args[0].startsWith(target), false)
+      return original(...args)
+    })
+  }
+  const out = after(g, token)
+  assert.ok(out.includes(`changed: tree ${alias}`), out)
+  assert.ok(out.includes(`changed: config ${f.vars.GIT_CONFIG_GLOBAL}`), out)
+  assert.equal(f.remote.calls.length, calls)
+  assert.match(out, /remote: skipped \(local change\)\nLOCAL_CHANGE$/)
+})
+
 test('a directory replaced by a link is recorded without opening its target', t => {
   const f = fixture()
   const directory = path.join(f.root, 'directory')
@@ -408,6 +516,48 @@ test('linked hooks are unverified before delegation', t => {
   assert.match(command(f.env, f.root, 'before').out, /^UNVERIFIED local /)
 })
 
+test('links anywhere inside hook directories are unverified before and changes after', t => {
+  for (const kind of ['effective', 'common', 'after']) {
+    const f = fixture()
+    const hooks = kind === 'common' ? path.join(f.root, '.git', 'hooks') : path.join(f.dir, 'external-hooks')
+    fs.mkdirSync(path.join(hooks, 'nested'), { recursive: true })
+    const effective = kind === 'common' ? path.join(f.dir, 'other-hooks') : hooks
+    fs.mkdirSync(effective, { recursive: true })
+    f.git('config', 'core.hooksPath', effective)
+    const target = path.join(f.dir, 'hook-target')
+    const link = path.join(hooks, 'nested', 'pre-commit')
+    fs.writeFileSync(target, 'hook')
+    const token = kind === 'after' ? before(f) : null
+    try { fs.symlinkSync(target, link, 'file') } catch (e) {
+      if (!['EPERM', 'EACCES', 'ENOSYS', 'EOPNOTSUPP', 'ENOTSUP'].includes(e.code)) throw e
+      return t.skip('file symlinks are unavailable')
+    }
+    if (kind === 'after') assert.ok(after(f, token).includes(`changed: hooks ${link}`))
+    else assert.match(command(f.env, f.root, 'before').out, /^UNVERIFIED local /, kind)
+  }
+})
+
+test('installation-prefix config includes are unverified before delegation', () => {
+  const f = fixture()
+  f.git('config', '--add', 'include.path', '%(prefix)/devflow-test-config')
+  assert.match(command(f.env, f.root, 'before').out, /^UNVERIFIED local /)
+})
+
+test('objects INFO alternates are tracked case-insensitively on Windows', { skip: process.platform !== 'win32' }, () => {
+  const f = fixture()
+  const objects = path.join(f.root, '.git', 'objects')
+  const info = path.join(objects, 'info')
+  const upper = path.join(objects, 'INFO')
+  const intermediate = path.join(objects, 'rename-info')
+  fs.renameSync(info, intermediate)
+  fs.renameSync(intermediate, upper)
+  const alternates = path.join(upper, 'alternates')
+  fs.writeFileSync(alternates, '')
+  const token = before(f)
+  fs.writeFileSync(alternates, 'changed')
+  assert.ok(after(f, token).includes(`changed: git ${alternates}`))
+})
+
 test('replaced, edited, and linked manifests are unverified', t => {
   for (const kind of ['replacement', 'edit', 'link']) {
     const f = fixture()
@@ -428,7 +578,7 @@ test('replaced, edited, and linked manifests are unverified', t => {
   }
 })
 
-test('every changed file is listed and wholly new directories are collapsed', () => {
+test('every changed file and wholly new directory is listed', () => {
   const f = fixture()
   const dir = path.join(f.root, 'existing')
   fs.mkdirSync(dir)
@@ -442,10 +592,60 @@ test('every changed file is listed and wholly new directories are collapsed', ()
   fs.writeFileSync(path.join(f.root, 'added-sibling', 'file'), 'new')
   const out = after(f, token)
   assert.equal((out.match(/^changed: tree .*file-\d+$/gm) || []).length, 60)
-  assert.match(out, /changed: tree .*added[\\/] \(new, \d+ entries\)/)
-  assert.match(out, /changed: tree .*added-sibling[\\/] \(new, 1 entries\)/)
-  assert.doesNotMatch(out, /changed: tree .*added[\\/]nested/)
+  for (const p of [added, path.join(added, 'nested'), path.join(added, 'nested', 'file'),
+    path.join(f.root, 'added-sibling'), path.join(f.root, 'added-sibling', 'file')]) {
+    assert.ok(out.split('\n').includes(`changed: tree ${p}`), out)
+  }
   assert.match(out, /LOCAL_CHANGE$/)
+})
+
+test('control characters and Unicode line separators are escaped in printed paths', t => {
+  const f = fixture()
+  const token = before(f)
+  const real = path.join(f.root, 'safe-name')
+  const other = path.join(f.root, 'other-name')
+  const name = 'line\nbreak\r\t\x1b\x85\u2028\u2029'
+  const fake = path.join(f.root, name)
+  const fakeOther = path.join(f.root, 'collision\n')
+  const plain = path.join(f.root, 'collision', 'n')
+  fs.writeFileSync(real, 'new')
+  fs.writeFileSync(other, 'new')
+  fs.mkdirSync(path.dirname(plain))
+  fs.writeFileSync(plain, 'new')
+  const readdir = fs.readdirSync
+  t.mock.method(fs, 'readdirSync', (...args) => {
+    const entries = readdir(...args)
+    return typeof args[0] === 'string' && !path.relative(args[0], f.root)
+      ? entries.map(entry => entry === 'safe-name' ? name : entry === 'other-name' ? 'collision\n' : entry) : entries
+  })
+  for (const method of ['lstatSync', 'openSync']) {
+    const original = fs[method]
+    t.mock.method(fs, method, (...args) => {
+      const p = args[0]
+      return original(typeof p === 'string' && !path.relative(p, fake) ? real
+        : typeof p === 'string' && !path.relative(p, fakeOther) ? other : p, ...args.slice(1))
+    })
+  }
+  const out = after(f, token)
+  const escaped = JSON.stringify(fake).replace(/[\x7f-\x9f\u2028\u2029]/g, c =>
+    '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'))
+  assert.ok(out.split('\n').includes(`changed: tree ${escaped}`), out)
+  assert.ok(out.split('\n').includes(`changed: tree ${JSON.stringify(fakeOther)}`), out)
+  assert.ok(out.split('\n').includes(`changed: tree ${plain}`), out)
+  assert.doesNotMatch(out, /[\r\t\x1b\x85\u2028\u2029]/)
+})
+
+test('gh search ignores empty and relative PATH entries', () => {
+  for (const entry of ['', '.', 'malicious']) {
+    const f = fixture()
+    const planted = path.join(f.root, entry === 'malicious' ? entry : '', path.basename(f.gh))
+    fs.mkdirSync(path.dirname(planted), { recursive: true })
+    fs.writeFileSync(planted, 'planted gh')
+    f.vars.PATH = entry + path.delimiter + f.vars.PATH
+    const token = before(f)
+    assert.equal(JSON.parse(fs.readFileSync(manifest(token), 'utf8')).remote.gh.path, f.gh, entry)
+    assert.equal(f.remote.calls[0].cmd, f.gh, entry)
+  }
 })
 
 test('hook executable mode changes are detected', { skip: process.platform === 'win32' }, () => {

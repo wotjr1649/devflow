@@ -172,7 +172,8 @@ neither well. When the main session applies a perspective itself, it reads it th
   table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
 - No host here limits a delegated agent's tools or turns, so the role's limits hold only by instruction, and the main
   session checks them. Before an explorer or reviewer starts, note HEAD, the branch and remote refs, the working tree
-  and the ledger, and compare them after; look for Issues, PRs and comments the account posted meanwhile. A change
+  and the ledger, and compare them after; look for Issues, PRs and comments the account posted meanwhile. A part that
+  cannot be checked counts as changed. A change
   beyond its brief's byproducts, the main session's own work and other sessions' ledger entries voids its report: keep
   the change out of commits, record it in `blocked` in an unattended run or report it to the user, and redo that work
   once in a new fresh context with the same check around it. After a post, a push or a remote ref change, redo nothing:

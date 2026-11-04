@@ -127,8 +127,8 @@ profiles and what to verify for each kind of change. The resume card and session
   public text filter, and test changes are left to review. Keep credential scope and host permissions appropriate.
 - Delegated agents are the hosts' built-ins (`general-purpose` in Claude Code, `spawn_agent` in Codex); this plugin
   installs no agent definitions. A role's report-only or no-spawn limit is an instruction, not a tool restriction. The
-  main session's check before and after each explorer and reviewer catches visible effects; it is not isolation. See [host
-  facts](docs/research/host-facts.md).
+  main session's check before and after each explorer and reviewer (`devflow-state delegation-check`) catches visible
+  effects without running git after the agent; it is not isolation. See [host facts](docs/research/host-facts.md).
 - Before clearing a Codex session, complete the [handoff](docs/specs/ledger.md#concurrent-sessions): release its record last,
   then use `/clear`. Clearing alone can leave the previous session's warning until expiry.
 

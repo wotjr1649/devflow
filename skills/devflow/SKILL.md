@@ -171,23 +171,22 @@ neither well. When the main session applies a perspective itself, it reads it th
   or verification is no longer independent. Pick an agent type only where the spawn tool offers one, and set the Roles
   table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
 - No host here limits a delegated agent's tools or turns, so the role's limits hold only by instruction. Around every
-  explorer and reviewer the main session checks for the effects it can see. Before it starts and after it ends, note
-  only what reading can show, because git commands such as `status` and `ls-remote` can run programs the agent planted
-  or changed (an fsmonitor, a filter, a credential helper, a pager): the effective git config with its includes and a
-  hash of the hooks folder, HEAD and the branches, all with `git --no-pager --no-lazy-fetch` (a partial clone would
-  otherwise fetch, and fetching can run a credential helper) and only `config --list --show-origin`, `rev-parse` and
-  `for-each-ref`; a hash of every file in the working tree, ignored ones too, made by a script rather than git; the
-  ledger; the remote's refs through `gh api` (`git/matching-refs/heads` and `tags`), which bypasses git's config; and
-  list the Issues, PRs and comments the account created in this repository since the start: ids and times only, with `gh
-  api` and `--jq`, never bodies, so no Issue text is read outside the card's `Tool:`. A difference that is neither the
-  brief's byproduct nor the main session's own work is the agent's; another session's work looks the same, so report it
-  (in `blocked` when unattended) rather than guess. A local change voids the report, and git may run what it planted, so
-  run no git command in that repository until the user has looked at it: report it (in `blocked` when unattended), and
-  once the user has restored the state, redo that work once in a new fresh context with the same check. After a remote
-  ref change, a post, or a remote part that cannot be checked, redo nothing: the review or verification stays open, and
-  an unattended run stops in `blocked`; a local part that cannot be checked counts as a local change. If the redo is
-  voided too, the same holds; the main session's own re-read is not independent. The check is a tripwire, not isolation:
-  it does not see effects outside these parts. Record which agent ran each review and verification.
+  explorer and reviewer the main session runs the check of the card's `Tool:`: `devflow-state delegation-check before`
+  just before the agent starts, and `delegation-check after` with the printed token once it ends; keep `running`
+  ledger writes and any git, config or hooks change of your own outside that window. `before` reads the git layout while no agent has run; `after` runs no git and
+  starts gh only when the local result allows, because after the agent git may run a program it planted (an fsmonitor,
+  a filter, a hook, a credential helper), so do not check with git yourself. When `before` prints `UNVERIFIED`, do not
+  delegate that work. `after` lists every changed path: a change that is neither the brief's byproduct nor the main
+  session's own work is the agent's; another session's work looks the same, so report it (in `blocked` when
+  unattended) rather than guess. A change of the agent's in a local part, or `UNVERIFIED local`, voids the report, and
+  git may run what it planted, so run no git command in that repository, devflow-state commands that run git such as
+  `card` included, until the user has looked at it, and report it with the `remote:` line as printed (in `blocked` when
+  unattended). Redo voided work once, in a new fresh context with the same check once the user has restored the state,
+  only when that line is `remote: unchanged`. After any other `remote:` line (`changed`; `unverified`; `skipped`, which
+  was not checked), redo nothing: the review or verification stays open, and an unattended run stops in `blocked`. If
+  the redo is voided too, the same holds; the main session's own re-read is not independent. The check
+  is a tripwire, not isolation: it does not see effects outside the parts it covers. Record which agent ran each review
+  and verification.
 
 ### Execution modes
 

@@ -112,6 +112,11 @@ original in [sources](sources.md) again and fix this document.
   explorer+haiku+`high`, explorer+sonnet, explorer+`high`, implementer+opus+`high`, reviewer+sonnet) all matched the run
   record's `message.model` and `effort`. The call's `effort` took precedence over the definition's `effort`. Each
   combination was checked once, with a small task of counting files.
+- Tool limits (`tools`, `disallowedTools`) and `maxTurns` exist only in an agent definition; a call can set `model` and
+  `effort` but no tool list (2026-11-04, [sub-agents](https://code.claude.com/docs/en/sub-agents)). Built-ins:
+  `general-purpose` has every tool a subagent can have; Explore and Plan deny Write and Edit, the docs do not say whether
+  they have Bash, and they start without the CLAUDE.md files and the git status snapshot; `claude` is a catch-all with
+  every tool. Local v2.1.317.
 - A subagent that has `SendMessage` is given `main` and a list of named agents (v2.1.206+).
 - Nesting is up to 3 levels by default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), and up to 20 run concurrently.
 - In an interactive session, the default is background execution, and in the background fewer tools are available.
@@ -363,6 +368,12 @@ original in [sources](sources.md) again and fix this document.
   [models](https://learn.chatgpt.com/docs/models), local 0.166.0).
 - The documentation says a custom agent can be chosen by name, and that a custom agent takes precedence when it has the
   same name as a built-in agent.
+- Observation (2026-11-04, a Codex session, installed CLI 0.166.0; correspondence with the tool environment
+  unconfirmed): `collaboration.spawn_agent` took `message` and `task_name` (required) and `fork_turns`, `model` and
+  `reasoning_effort` (optional), with no parameter choosing an agent type, built-in or custom; it said a spawned agent
+  has the parent's tools, file system and working folder and can spawn its own subagents. Neither `.codex/agents` nor
+  `~/.codex/agents` existed. This differs from the 2026-10-01 observation below, where a custom agent was chosen by
+  name; type selection depends on the host version and tool environment.
 - A running subagent can be steered, stopped or closed.
 - Observation (2026-10-01, project `.codex/agents/*.toml`): a custom agent can be chosen by name, and the definition's
   `model` and `model_reasoning_effort` apply. `sandbox_mode = "read-only"` did not apply. It inherited the parent's

@@ -87,7 +87,9 @@ host behavior looks doubtful, check the original here again. Host documentation 
   - [Build plugins](https://developers.openai.com/plugins/build/plugins): local-source marketplace format, install cache
     location.
   - [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents): built-in and custom agents,
-    precedence of the model and effort given at spawn, luna starts at `high`.
+    precedence of the model and effort given at spawn, luna starts at `high`; a custom agent's instructions do not make
+    a read-only sandbox. A 2026-11-04 session's spawn tool offered no agent-type parameter, unlike these docs and the
+    2026-10-01 observation ([host-facts](host-facts.md#codex)).
   - [Models](https://learn.chatgpt.com/docs/models), [OpenAI models](https://developers.openai.com/api/docs/models),
     [Latest model](https://developers.openai.com/api/docs/guides/latest-model): use and price per ID, terra starts at
     `medium`, sol and astra for the hardest coding.

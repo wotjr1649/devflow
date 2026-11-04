@@ -133,11 +133,14 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
   file linked from SKILL.md is read whole; a file reached through another file is often read only in part, and its
   rules are lost.
 - A reference links no other reference, and a procedure never needs a second reference. When a request spans two
-  procedures, SKILL.md names both, so every read stays one level deep.
+  procedures, SKILL.md names both, so every read stays one level deep. A stage that delegates also uses the roles
+  reference for the brief's role text; SKILL.md names it in its Delegation section and reading table, and the stage
+  reference points there rather than linking it.
 - Skill files link only inside the skill folder and cite no plugin spec, so a session needs no plugin document outside
   the skill to finish a step; specs may link to the skill. A test enforces this. The plugin's runtime parts are the
-  exceptions the skill relies on: the card's `Tool:` (`bin/devflow-state`), the hooks, and the `agents/*.md` bodies a
-  Codex brief carries.
+  exceptions the skill relies on: the card's `Tool:` (`bin/devflow-state`) and the hooks. The plugin's `agents/*.md`
+  are optional: they follow the skill's roles (name and Claude Code default) and add tool limits, and the skill works
+  without them (#157).
 - It starts with its done condition, so a partial read still knows when to stop. One over 100 lines starts with a
   contents list, so a partial read still sees every section.
 - In-response checklists appear only in start, ship, cleanup, and plan when it has five or more tasks; these long

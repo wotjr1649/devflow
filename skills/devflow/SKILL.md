@@ -170,8 +170,9 @@ there.
   and the role's Claude Code default model and effort, and say in the report, and in an unattended run in a `notes`
   line, that the tool limits held only by instruction. Not Explore or Plan: they start without the project instructions.
 - Codex: spawn with `fork_turns: "none"` and the brief; the default, `"all"`, hands it this conversation, so its review
-  or verification is no longer independent. Pick an agent type only where the spawn tool offers one. The spawn offers
-  no per-agent tool or sandbox limit, so report-only is an instruction.
+  or verification is no longer independent. Pick an agent type only where the spawn tool offers one, and set the Roles
+  table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
+  Where the spawn offers no per-agent tool or sandbox limit, report-only is an instruction.
 - Record which agent ran each review and verification: `devflow:<role>`, `general-purpose` or a Codex spawn.
 
 ### Execution modes

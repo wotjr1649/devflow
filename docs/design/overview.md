@@ -30,7 +30,7 @@ model judgment.
 | Global instructions | Safety, authority | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | Guidance |
 | Project AGENTS.md | Facts, commands, document map, boundaries | Loaded directly if there is no CLAUDE.md | Loaded | Guidance |
 | Skills | Procedures | Plugin `skills/` | Same folder | Guidance |
-| Agents | Isolated work, tool limits | Plugin `agents/` | Built-in explorer, worker | The Claude reviewer gets read tools only. Reporting roles with shell tools and Codex report-only roles are instructions, not file system isolation |
+| Agents | Isolated work, tool limits | Plugin `agents/` (tool limits only; role text is the skill's) | `spawn_agent` with the brief | The Claude reviewer gets read tools only through the plugin agent; the `general-purpose` fallback, reporting roles with shell tools and Codex report-only roles are instructions, not file system isolation |
 | Hooks | Resume and sessions | `hooks/hooks.json` | `hooks/hooks.json` | Do not block. Only the resume card, unattended continuation and session release |
 | Scripts | Ledger, Issue I/O, resume card | `bin/devflow-state` | Skills run it by path | Public text filter. Does not block posting that bypasses it |
 | git hooks, CI | Final gate | Common | Common | Deterministic |
@@ -52,17 +52,19 @@ Document format and budgets: [documents](../specs/documents.md).
 
 - **5 skills**
   - `devflow`: the one lifecycle skill. Its SKILL.md holds scope, Issue I/O, the stop conditions and a situation ->
-    reference table, and links eleven references in [`skills/devflow/references/`](../../skills/devflow/references/):
-    discover, start, design, plan, build, verify, review, ship, cleanup, learn and sessions. Each reference finishes its
-    procedure without reading another. It serves only repositories with `.devflow.json`. Choice and reason: [Entry
+    reference table, and links its references in [`skills/devflow/references/`](../../skills/devflow/references/):
+    discover, start, design, plan, build, verify, review, ship, cleanup, learn, sessions and roles. Each stage reference
+    finishes its procedure without reading another; a brief also takes its role text from roles. It serves only repositories with `.devflow.json`. Choice and reason: [Entry
     points and stages](current-decisions.md#entry-points-and-stages).
   - Independent skills: `decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`. The lifecycle does not invoke them, and they are used on their own in any repository. Reason: [Independent skills](current-decisions.md#independent-skills).
   - Compatibility: the former `development-start`, `pr-review-workflow` and `workspace-cleanup` skills are gone, with
     their `/` commands. Their requests go to `devflow` in a devflow repository, and repositories without
     `.devflow.json` no longer get them.
-- **Claude agents**: 3 definitions split by tools, each holding the text of its perspectives; the brief names at most
-  one. `explorer` (reads and runs commands): search by default, summary, root cause, verification. `reviewer` (reads
-  only): correctness by default, design, security. `implementer` (edits). Codex gets the same role body in the brief.
+- **Roles and Claude agents**: the skill's roles reference holds three roles and their perspectives; every brief
+  carries the role's body and at most one perspective, on both hosts. `explorer` (reads and runs commands): search by
+  default, summary, root cause, verification. `reviewer` (reads only): correctness by default, design, security.
+  `implementer` (edits). The plugin's 3 Claude agent definitions add only tool limits, turn limits and default models;
+  without them the skill falls back to `general-purpose` ([why](current-decisions.md#execution-and-delegation)).
   Models, effort, promotion: the devflow skill's Roles table ([why](../specs/orchestration.md#models-and-effort))
 - **Claude Workflows**: devflow does not ship them and does not keep them as an execution mode. The user runs them
   directly outside devflow ([execution modes](../specs/orchestration.md#execution-modes))

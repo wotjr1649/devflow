@@ -1,6 +1,7 @@
 'use strict'
-// Pins the agent definitions' own defaults and tools (the Roles table in skills/devflow/SKILL.md leaves them to the
-// definitions) and the host table in docs/specs/orchestration.md. The live check reads a
+// Pins the agent definitions' tools and limits, and that they follow the skill (#157): each agent is a role of
+// skills/devflow/references/roles.md with that role's Claude Code default, and its body holds no role text, which the
+// brief carries. The skill's own tests never read agents/. The live check reads a
 // subagent transcript instead: model, effort, prompt_snapshot.tools and instructions (docs/research/host-facts.md).
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -24,14 +25,6 @@ function frontmatter(file) {
 
 const list = v => (v ? v.split(',').map(s => s.trim()) : [])
 
-test('Codex subagents start without the parent conversation in both the spec and the router (#126)', () => {
-  const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8')
-  const row = read('docs/specs/orchestration.md').split('\n').find(line => line.startsWith('| Implementer and reviewer agents |'))
-  assert.match(row, /fork_turns: "none"/)
-  // Safety floor (#150): the router names the setting; how it says so is the skill's.
-  assert.match(read('skills/devflow/SKILL.md'), /`fork_turns: "none"`/)
-})
-
 test('agent definitions match the role table', () => {
   const dir = path.join(__dirname, '..', 'agents')
   const names = fs.readdirSync(dir).filter(f => f.endsWith('.md')).map(f => f.slice(0, -3)).sort()
@@ -45,5 +38,23 @@ test('agent definitions match the role table', () => {
     assert.deepEqual(list(fm.disallowedTools), want.disallowedTools || [], `${name} disallowedTools`)
     assert.equal(Boolean(fm.maxTurns), Boolean(want.maxTurns), `${name} maxTurns`)
     assert.ok(!('omitClaudeMd' in fm), `${name} must load the project instructions`)
+  }
+})
+
+test('agent definitions follow the roles reference and carry no role text (#157)', () => {
+  const roles = fs.readFileSync(path.join(__dirname, '../skills/devflow/references/roles.md'), 'utf8')
+  const dir = path.join(__dirname, '..', 'agents')
+  for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.md'))) {
+    const name = file.slice(0, -3)
+    const section = new RegExp(`^## ${name}\\n([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, 'm').exec(roles)
+    assert.ok(section, `${name} is not a role section of roles.md`)
+    const def = /^Claude Code default: `model: ([\w.-]+)`, `effort: (\w+)`/m.exec(section[1])
+    const fm = frontmatter(path.join(dir, file))
+    assert.ok(def, `${name}: roles.md states no Claude Code default`)
+    assert.deepEqual([fm.model, fm.effort], [def[1], def[2]], `${name} defaults differ from roles.md`)
+    const body = fs.readFileSync(path.join(dir, file), 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '')
+    assert.doesNotMatch(body, /^#/m, `${name}: the body has a heading, so it holds role text`)
+    assert.ok(body.trim().split('\n').length <= 8, `${name}: the body is longer than a pointer and its floor`)
+    assert.match(body, /BLOCKED/, `${name}: the body does not stop when the brief carries no role text`)
   }
 })

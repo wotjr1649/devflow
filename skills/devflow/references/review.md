@@ -57,9 +57,9 @@ untracked bytes; HEAD alone omits dirty work.
 3. Reviewer (M1 and up). M0 has none, because its re-read stands in for review; that re-read is not an independent
    review, so when the project requires independent review before integration, the requirement covers M0 as well and M0
    also runs steps 2 and 3, recording reviewer, reviewed SHA, scope and result. Claude Code: a fresh `reviewer`. Codex:
-   a report-only worker given the reviewer body and the named perspective (the router's Delegation section says where
-   that text is), on the model of the router's Roles table. Record the reviewer, the revision reviewed and the model and
-   effort from its run record (or unconfirmed); a defect the final review finds that a per-task review missed goes in
+   a report-only worker. Either way the brief carries the reviewer body and the named perspective as the router's
+   Delegation section says, on the model of the router's Roles table. Record the reviewer and the agent that ran it,
+   the revision reviewed and the model and effort from its run record (or unconfirmed); a defect the final review finds that a per-task review missed goes in
    the ledger notes with that review's model. No agent that edits code to simplify it joins a review. When package
    writes or dispatch are outside your scope, report the proposed package path and range and the required input paths
    and purposes; preparing them does not complete the review.

@@ -83,7 +83,8 @@ test('devflow: a reference links no other reference and no agents/ file', () => 
 
 // The skill works from its own folder (#138): every local link resolves inside skills/devflow, and no sentence cites a
 // plugin spec by file name. The user's own docs/design/current-decisions.md is a project path, not a plugin file. The
-// card's bin/devflow-state and the agents/*.md bodies Codex briefs carry are runtime parts named in prose, not links.
+// card's bin/devflow-state is a runtime part named in prose, not a link. Role text lives in the skill's roles reference
+// (#157), so no brief reads the plugin's agents/*.md.
 const SPEC_NAME = /\b(lifecycle|orchestration|ledger|issues|repository|documents|eval|hooks|credentials|host-facts|sources|overview)\.md\b/
 const localTargets = text => [
   ...[...text.matchAll(/\]\(\s*<([^>]*)>/g)].map(m => m[1]),
@@ -212,16 +213,42 @@ const tableRows = (texts, header) => {
   return []
 }
 const agentOf = cell => (cell.match(/^`([\w-]+)`/) || [])[1]
+// The roles reference (#157): `## <role>` sections, each with a Claude Code default line, a body up to its first `###`
+// and `###` perspectives. The agents/ definitions follow it; nothing here reads agents/.
+const roleSections = text => [...text.matchAll(/^## ([a-z][\w-]*)\n([\s\S]*?)(?=^## |(?![\s\S]))/gm)]
+  .map(([, name, body]) => ({ name, body: body.split(/^### /m)[0], perspectives: body.split(/^### /m).slice(1) }))
+const ROLE_DEFAULT = /^Claude Code default: `model: ([\w.-]+)`, `effort: (\w+)`/m
 
-test('router tables: each Roles row names an existing agent, each execution mode is M and a number', () => {
+test('roles: each role states its Claude Code default, and every carried unit ends with a status line', () => {
+  const roles = roleSections(read(`${REFS}/roles.md`))
+  assert.ok(roles.length > 0, 'roles.md has no `## <role>` section')
+  for (const r of roles) {
+    assert.match(r.body, ROLE_DEFAULT, `${r.name}: no Claude Code default line`)
+    // A brief carries the body and one perspective; whichever it picks must say how the reply ends.
+    for (const unit of r.perspectives.length ? r.perspectives.map(p => r.body + p) : [r.body])
+      assert.match(unit, /End with/, `${r.name}: a body and perspective without a status line`)
+  }
+  const fake = roleSections('## x\nClaude Code default: `model: a`, `effort: b`\nbody\n### P\nno status\n')
+  assert.equal(fake[0].perspectives.length, 1, 'counterexample: a perspective is found')
+  assert.doesNotMatch(fake[0].body + fake[0].perspectives[0], /End with/, 'counterexample: a unit without a status line')
+})
+
+test('Codex subagents start without the parent conversation in both the spec and the router (#126)', () => {
+  const row = read('docs/specs/orchestration.md').split('\n').find(line => line.startsWith('| Implementer and reviewer agents |'))
+  assert.match(row, /fork_turns: "none"/)
+  // Safety floor (#150): the router names the setting; how it says so is the skill's.
+  assert.match(read(`${SKILL}/SKILL.md`), /`fork_turns: "none"`/)
+})
+
+test('router tables: each Roles row names a role of the roles reference, each execution mode is M and a number', () => {
   const texts = skillFiles().map(read)
-  const agents = fs.readdirSync(path.join(root, 'agents')).filter(n => n.endsWith('.md')).map(n => n.slice(0, -3))
+  const names = roleSections(read(`${REFS}/roles.md`)).map(r => r.name)
   const roles = tableRows(texts, '| Role |')
-  for (const row of roles) assert.ok(agents.includes(agentOf(row[1])), `Roles row ${row[0]} names no existing agent`)
-  const namesAgents = texts.some(x => x.split('\n').some(l => l.startsWith('|') && agents.some(a => l.includes('`' + a + '`'))))
-  assert.ok(!namesAgents || roles.length > 0, 'a table names agents but none has the "| Role |" header this check reads')
+  for (const row of roles) assert.ok(names.includes(agentOf(row[1])), `Roles row ${row[0]} names no role of roles.md`)
+  const namesRoles = texts.some(x => x.split('\n').some(l => l.startsWith('|') && names.some(a => l.includes('`' + a + '`'))))
+  assert.ok(!namesRoles || roles.length > 0, 'a table names roles but none has the "| Role |" header this check reads')
   assert.equal(agentOf('`auditor` + `model: haiku`'), 'auditor')
-  assert.ok(!agents.includes('auditor'), 'counterexample: an agent that does not exist')
+  assert.ok(!names.includes('auditor'), 'counterexample: a role that does not exist')
   const modes = tableRows(texts, '| Mode |').map(r => r[0].replace(/\*/g, '').split(' ')[0])
   assert.ok(modes.every(m => /^M\d+$/.test(m)), `modes: ${modes}`)
   assert.deepEqual(tableRows(['x\n| Mode | When |\n|---|---|\n| M7 | y |\n'], '| Mode |'), [['M7', 'y']], 'a table is found by its header')

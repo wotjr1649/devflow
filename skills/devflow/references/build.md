@@ -37,7 +37,7 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
   `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not, and ends: keep working until done, stopping early only with `NEEDS_DECISION` or `BLOCKED`; once the checks pass, stop and
   report, with no extra rounds or changes outside the listed files.
 - Delegate to `implementer`. Model and effort come from the router's Roles table: mechanical work runs on the
-  definition's default, work that needs judgment across files on a stronger model; settle design decisions before
+  role's default, work that needs judgment across files on a stronger model; settle design decisions before
   delegating it. Report the model and effort a run used from its records, or unconfirmed.
 - In interactive M2, the main session may make a one- or two-line edit describable in one sentence and record it in the
   ledger; a delegation costs more. Unattended work keeps a fresh context per task, so it has no such exception.

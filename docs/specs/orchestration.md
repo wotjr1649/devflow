@@ -90,16 +90,23 @@ In Claude Code, the `model` (aliases only) and `effort` given at call time take 
 defaults, but the host's current tool instructions may limit what can be set. Read-only roles in Codex are kept only by
 instruction: a custom agent's `sandbox_mode` cannot narrow the parent sandbox ([host-facts](../research/host-facts.md#codex)).
 
-There are three agent definitions, split by tools: `explorer`, which only reads and runs commands; `reviewer`, which
-only reads; and `implementer`, which edits files ([rationale](../design/current-decisions.md#execution-and-delegation)).
-Definitions do not set `omitClaudeMd`, because the agents need the project instructions and boundaries as they are.
-Claude implementers carry `disallowedTools: Agent` and `maxTurns`.
+The skill's [roles reference](../../skills/devflow/references/roles.md) holds three roles: `explorer`, which only reads
+and runs commands; `reviewer`, which only reads; and `implementer`, which edits files. Every brief carries the role's
+body and at most one perspective verbatim, on both hosts, so one text serves both and the skill needs nothing outside
+its folder ([rationale](../design/current-decisions.md#execution-and-delegation)).
+
+The plugin's three Claude agent definitions carry only what a definition alone can give: tool limits (`tools`,
+`disallowedTools: Agent` and `maxTurns` for the implementer) and the role's default model and effort; their body says
+the role text comes in the brief and stops with `BLOCKED` when it does not. A call cannot set a tool list, so without
+these definitions the skill uses `general-purpose` with the same brief and reports the limits as instruction-only.
+Explore and Plan are not fallbacks: they start without the project instructions. Definitions do not set
+`omitClaudeMd`, because the agents need the project instructions and boundaries as they are.
 
 ### Perspectives
 
-An agent definition holds the text of its perspectives, so no stage reads a separate perspectives file and both hosts
-apply one text: a Codex subagent gets the same role body and perspective text in its brief. A brief names at most one
-perspective, because a reviewer given two does neither well.
+Each role's perspectives are `###` sections of the roles reference, so no stage reads a separate perspectives file
+and both hosts apply one text. A brief carries at most one, because a reviewer given two does neither well; the main
+session reads one there when it applies it itself (a Codex design review).
 
 ### Promotion
 
@@ -112,7 +119,7 @@ Workflow](../design/current-decisions.md#execution-and-delegation).
 
 | Mechanism | Claude Code | Codex |
 |---|---|---|
-| Implementer and reviewer agents | plugin `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`) | built-in explorer and worker spawned with `fork_turns: "none"` and a set model and effort. The default `"all"` passes on the parent conversation |
+| Implementer and reviewer agents | plugin `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`), else `general-purpose`; role text from the brief | `spawn_agent` with the brief, `fork_turns: "none"` and a set model and effort; an agent type only where the spawn tool offers one ([host-facts](../research/host-facts.md#codex)). The default `"all"` passes on the parent conversation |
 | Resume card, unattended continuation, session release | [hooks](hooks.md#registered-events) | same file |
 
 Codex's SessionEnd does not run in subagents. A session that ended without the hook running expires after 30 minutes

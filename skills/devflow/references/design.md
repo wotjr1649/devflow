@@ -8,9 +8,9 @@ bounded path, in a design note on the architectural one.
 - A change to a lasting rule goes into `docs/specs/`, because the spec owns it; update the current choice and its reason
   in the project's `docs/design/current-decisions.md`. Change history stays in the Issue checkpoint and git.
 - On the architectural path, review the design before plan with the design perspective. Claude Code: delegate it to
-  `reviewer` with the design perspective named in the brief; the agent holds the perspective text, and its run record
-  shows the model and effort used (else report unconfirmed). Codex: the main
-  session performs the design review itself, as the router's Roles table says.
+  `reviewer`, the brief carrying the reviewer body and the design perspective as the router's Delegation section says;
+  its run record shows the agent, model and effort used (else report unconfirmed). Codex: the main session performs the
+  design review itself, reading the design perspective where that section says, as the router's Roles table says.
 - A design that moves a trust boundary - loosening a filter that guards public text, or taking paths, permissions or
   write targets from repository files, git metadata or tool output - gets that review on any path, before plan or
   build, with the reviewer trying to break it. Confirm or refute each bypass the review claims with the real renderer

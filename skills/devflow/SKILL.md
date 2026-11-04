@@ -69,7 +69,8 @@ Hold only what a condition below blocks and continue independent work in scope.
 ## After compaction or `/clear`
 
 Invoke devflow again and reread the current stage's reference, and open the new stage's reference after a stage
-change: only the start of an invoked skill body is reattached after compaction, reference files are not.
+change; reread [roles](references/roles.md) before the next brief. Only the start of an invoked skill body is
+reattached after compaction, reference files are not.
 
 ## Where to read
 
@@ -88,6 +89,7 @@ change: only the start of an invoked skill body is reattached after compaction, 
 | PR, CI, merge readiness, merge, Issue completion | ship | [ship](references/ship.md) |
 | Branch and worktree cleanup, merged task branches included | cleanup | [cleanup](references/cleanup.md); with tracking readiness also [completion](references/ship.md#completion) |
 | A lesson to put in its place | learn | [learn](references/learn.md) |
+| Writing a brief for a subagent, or applying a perspective yourself | unchanged | [roles](references/roles.md) |
 | Handoff, `/clear`, a resume prompt or brief for another session, switching unattended mode, an intent change, explaining progress, a ledger note after the Issue branch is gone | unchanged | [sessions](references/sessions.md) |
 
 ## Review, ship and cleanup
@@ -157,15 +159,20 @@ A truncated card is not the whole state; read it through the `Tool:` command.
 
 ## Delegation
 
-Delegate by role to `explorer` (reads and runs commands), `reviewer` (reads only) or `implementer` (edits), because each
-definition's tools fit its role. A brief names at most one perspective, whose text the agent definition holds: summary,
-root cause or verification for explorer, design or security for reviewer; a reviewer given two does neither well.
+Delegate by role: `explorer` reads and runs commands, `reviewer` reads only, `implementer` edits. Every brief also
+carries, from [roles](references/roles.md), the role's body and at most one perspective, verbatim (summary, root cause or
+verification for explorer; design or security for reviewer), because the agent has nothing else to work from and a
+reviewer given two perspectives does neither well. When the main session applies a perspective itself, it reads it
+there.
 
-Codex loads no plugin agents, so its brief carries the role text itself: the body below the frontmatter of the plugin's
-agents/explorer.md, agents/reviewer.md or agents/implementer.md (two folders above this skill's
-folder), plus the named perspective's paragraph from its Perspectives section.
-Spawn each Codex subagent with `fork_turns: "none"`; the default, `"all"`, hands it this conversation, so its review
-or verification is no longer independent.
+- Claude Code: use the plugin agent of the role's name (`devflow:explorer`, `devflow:reviewer`, `devflow:implementer`)
+  when offered, because its definition limits its tools and turns. Otherwise use `general-purpose` with the same brief
+  and the role's Claude Code default model and effort, and say in the report, and in an unattended run in a `notes`
+  line, that the tool limits held only by instruction. Not Explore or Plan: they start without the project instructions.
+- Codex: spawn with `fork_turns: "none"` and the brief; the default, `"all"`, hands it this conversation, so its review
+  or verification is no longer independent. Pick an agent type only where the spawn tool offers one. The spawn offers
+  no per-agent tool or sandbox limit, so report-only is an instruction.
+- Record which agent ran each review and verification: `devflow:<role>`, `general-purpose` or a Codex spawn.
 
 ### Execution modes
 
@@ -186,8 +193,9 @@ stages, the Issue, the ledger and integration stay.
 
 ### Roles
 
-A Claude cell names the agent and what the call overrides; the rest comes from the agent definition. Promotion goes one
-step to the promotion column through the call's `model` or `effort`, not `ultrathink`; `—` means none.
+A Claude cell names the role and what the call overrides; the rest is the role's Claude Code default in roles. A Codex
+cell's "worker" describes the job, not an agent type. Promotion goes one step to the promotion column through the
+call's `model` or `effort`, not `ultrathink`; `—` means none.
 
 | Role | Claude default | Claude promotion | Codex |
 |---|---|---|---|

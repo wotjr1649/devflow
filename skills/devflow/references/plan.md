@@ -15,9 +15,9 @@ where a wrong plan costs a page instead of a build.
   instruction.
 - Pick the run mode by the router's Execution modes table and record `runMode`.
 - When the plan changes a trust boundary (authentication, permissions, secrets, hooks, handling outside input) or has
-  five or more tasks, review it once with the design perspective. Claude Code: delegate it to `reviewer` with the
-  design perspective named in the brief; the agent holds the perspective text. Codex: the main session performs the
-  review itself, as the router's Roles table says. Fix the plan for each finding and recheck the affected
+  five or more tasks, review it once with the design perspective. Claude Code: delegate it to `reviewer`, the
+  brief carrying the reviewer body and the design perspective as the router's Delegation section says. Codex: the main
+  session performs the review itself with that perspective, as the router's Roles table says. Fix the plan for each finding and recheck the affected
   tasks against the questions above.
 - The public summary is four lines - files, order, risks, proof - plus go or no-go, in the stage-boundary checkpoint,
   because the plan itself is not in git. No-go stays in plan, or goes back to design when an assumption broke, with the

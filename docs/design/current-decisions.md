@@ -70,10 +70,10 @@ refs, new posts in the repository), counts what it cannot check as the agent's, 
 review or verification open. It is not isolation, and the owner accepted what it does not see: host configuration, edits
 to existing Issues and PRs, repository settings, network traffic, posts in other repositories, effects of a background
 process or nested agent after the check, and an implementer's nested agents. Each task gets a new agent, so the lost
-turn limit only ever bounded one task; within one task nothing now stops an implementer that keeps retrying, and the
-main session's failure rules apply between attempts. Out-of-scope decisions are gathered in the main session through
-stop and resume.
-The devflow skill sets execution modes, roles, promotion and the question procedure; [orchestration](../specs/orchestration.md)
+turn limit only ever bounded one task; within one task the implementer stops with `BLOCKED` after two fixes that leave
+its Check failing, by instruction only, and the main session's failure rules take it from there (#161). Out-of-scope
+decisions are gathered in the main session through stop and resume. The devflow skill sets execution modes, roles,
+promotion and the question procedure; [orchestration](../specs/orchestration.md)
 keeps their reasons, per-host support, authority to choose models and the isolation limits of reporting roles. Workflows are run directly outside
 devflow.
 

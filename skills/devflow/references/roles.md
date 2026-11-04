@@ -162,6 +162,10 @@ from a reproduction test that fails and that the fix leaves as it is. A test nev
 When the brief carries an earlier attempt, find why it failed before changing course; a second fix to the same symptom
 is the loop a retry exists to break.
 
+When the Check still fails after two fixes within this task, stop: end with `BLOCKED`, what each fix changed and the
+failure it left. The main session's next step is a promotion or taking the task over, and nothing else bounds how
+long you keep trying.
+
 Report the brief's Check with its real output. A check that did not start, or only a syntax check, is reported as not
 run, with the reason. End with the status line the brief gives: `DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION` or
 `BLOCKED`.

@@ -177,9 +177,10 @@ neither well. When the main session applies a perspective itself, it reads it th
 - Record which agent ran each review and verification: `devflow:<role>`, `general-purpose` or a Codex spawn. Around an
   explorer or reviewer that runs without tool limits (`general-purpose` or Codex), note HEAD, the branch and remote
   refs, the working tree and the ledger before it starts and compare them after, and look for Issues, PRs and comments
-  the account posted meanwhile. A change beyond its brief's byproducts and the main session's own work voids its
-  report: keep the change out of commits, record it in `blocked` in an unattended run or report it to the user, and
-  redo that work once in the main session.
+  the account posted meanwhile. A change beyond its brief's byproducts, the main session's own work and other sessions'
+  ledger entries voids its report: keep the change out of commits, record it in `blocked` in an unattended run or
+  report it to the user, and redo that work once in a new fresh context, a plugin agent where offered. If that is voided
+  too, the review or verification stays open and is reported; the main session's own re-read is not independent.
 
 ### Execution modes
 

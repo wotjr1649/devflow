@@ -174,10 +174,12 @@ neither well. When the main session applies a perspective itself, it reads it th
   or verification is no longer independent. Pick an agent type only where the spawn tool offers one, and set the Roles
   table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
   Where the spawn offers no per-agent tool or sandbox limit, report-only is an instruction.
-- Record which agent ran each review and verification: `devflow:<role>`, `general-purpose` or a Codex spawn. After an
-  explorer or reviewer that ran without tool limits (`general-purpose` or Codex), check that HEAD and the working tree
-  are unchanged apart from the byproducts its brief allowed, and read the Issue and PR for posts it made; a change
-  voids its report, which is redone, and the change is reported to the user.
+- Record which agent ran each review and verification: `devflow:<role>`, `general-purpose` or a Codex spawn. Around an
+  explorer or reviewer that runs without tool limits (`general-purpose` or Codex), note HEAD, the branch and remote
+  refs, the working tree and the ledger before it starts and compare them after, and look for Issues, PRs and comments
+  the account posted meanwhile. A change beyond its brief's byproducts and the main session's own work voids its
+  report: keep the change out of commits, record it in `blocked` in an unattended run or report it to the user, and
+  redo that work once in the main session.
 
 ### Execution modes
 

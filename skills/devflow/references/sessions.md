@@ -4,6 +4,8 @@ Done when the session operation at hand - a note, a progress report or return, a
 change - is complete, with every ledger or Issue write (`note`, `mode`, `intent`, `release`) made through the card's
 `Tool:` command and nothing guessed.
 
+Contents: Notes and closed branches · Progress and returns · Handing off · Unattended work · Changed requirements
+
 ## Notes and closed branches
 
 After the Issue branch is gone (cleanup on main), `note` still takes the Issue's number, as long as its ledger exists.
@@ -70,7 +72,8 @@ tokens, pointing at the Issue rather than restating it, which costs output now a
   BASE, goal, acceptance, files it may change, git-ignored inputs by path and the check; puts push, Issue writes,
   spawning subagents, deleting or weakening tests and new dependencies out of scope, a test, dependency, scope or
   interface change it does not settle ending in `NEEDS_DECISION`; asks for one end status (`DONE`, `DONE_WITH_CONCERNS`,
-  `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not; ends with stop and report once checked. One for another session (`codex exec`,
+  `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not; ends: stop and report once checked, with no
+  extra rounds. One for another session (`codex exec`,
   `claude -p`) ends with it running `release <issue>`, except `claude -p` from Codex: it has Codex's id and would release Codex.
 - A prompt file goes to `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, never under a name that already exists,
   since concurrent sessions can pick the same name. Leave it uncommitted, and end the reply with `Read <absolute path>

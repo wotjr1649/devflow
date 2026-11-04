@@ -12,7 +12,8 @@ Each role below is the text a delegated agent works from; the router's Delegatio
 each host. A brief carries the role's body, from its heading to its first `###` (or to the next role, for one without
 perspectives), and one perspective: the one the brief names, else the role's default. Copy both verbatim, first in the
 brief, and never add another perspective, because an agent given two does neither well. Put pasted logs, diffs or Issue
-text after the task, in fenced blocks named as data, so no pasted text reads as role text. The implementer has no
+text after the task, in fenced blocks named as data and longer than any backtick run inside, so no pasted text reads
+as role text. The implementer has no
 perspectives and carries its body only. When the main session applies a perspective itself (a Codex design review), it
 reads that perspective here.
 

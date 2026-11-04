@@ -165,24 +165,20 @@ root cause or verification for explorer; design or security for reviewer), else 
 correctness); the implementer has none. The agent has nothing else to work from, and one given two perspectives does
 neither well. When the main session applies a perspective itself, it reads it there.
 
-- Claude Code: use the plugin agent of the role's name (`devflow:explorer`, `devflow:reviewer`, `devflow:implementer`)
-  when offered, because its definition limits its tools and turns. Otherwise use `general-purpose` with the same brief
-  and the Roles table's model and effort (the role's Claude Code default where a cell names none), and say in the
-  report, and in an unattended run in a `notes` line, that the tool limits held only by instruction. Not Explore or
-  Plan: they start without the project instructions.
+- Claude Code: use `general-purpose` with the brief and the Roles table's model and effort (the role's Claude Code
+  default where a cell names none). Not Explore or Plan: they start without the project instructions.
 - Codex: spawn with `fork_turns: "none"` and the brief; the default, `"all"`, hands it this conversation, so its review
   or verification is no longer independent. Pick an agent type only where the spawn tool offers one, and set the Roles
   table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
-  Where the spawn offers no per-agent tool or sandbox limit, report-only is an instruction.
-- Record which agent ran each review and verification: `devflow:<role>`, `general-purpose` or a Codex spawn. Around an
-  explorer or reviewer that runs without tool limits (`general-purpose` or Codex), note HEAD, the branch and remote
-  refs, the working tree and the ledger before it starts and compare them after, and look for Issues, PRs and comments
-  the account posted meanwhile. A change beyond its brief's byproducts, the main session's own work and other sessions'
-  ledger entries voids its report: keep the change out of commits, record it in `blocked` in an unattended run or
-  report it to the user, and redo that work once in a new fresh context, a plugin agent where offered, with the same
-  check around it. After a post, a push or a remote ref change, redo only a review, on the read-only plugin reviewer.
-  If the redo is voided or not possible, the review or verification stays open and is reported; the main session's own
-  re-read is not independent.
+- No host here limits a delegated agent's tools or turns, so the role's limits hold only by instruction, and the main
+  session checks them. Before an explorer or reviewer starts, note HEAD, the branch and remote refs, the working tree
+  and the ledger, and compare them after; look for Issues, PRs and comments the account posted meanwhile. A change
+  beyond its brief's byproducts, the main session's own work and other sessions' ledger entries voids its report: keep
+  the change out of commits, record it in `blocked` in an unattended run or report it to the user, and redo that work
+  once in a new fresh context with the same check around it. After a post, a push or a remote ref change, redo nothing:
+  the review or verification stays open, and in an unattended run the work stops in `blocked`. If the redo is voided
+  too, the same holds; the main session's own re-read is not independent. Record which agent ran each review and
+  verification, and for an implementer, whether it spawned agents.
 
 ### Execution modes
 

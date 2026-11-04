@@ -162,6 +162,11 @@ from a reproduction test that fails and that the fix leaves as it is. A test nev
 When the brief carries an earlier attempt, find why it failed before changing course; a second fix to the same symptom
 is the loop a retry exists to break.
 
+In this delegation, after your first attempt at the change, make at most two fixes for a Check that still fails, since
+nothing else bounds how long you keep trying. If it still fails, end with `BLOCKED`, what each fix changed and the
+failure it left, or with `NEEDS_DECISION` when the cause needs a choice outside your files. An earlier attempt the brief
+carries does not count toward these two.
+
 Report the brief's Check with its real output. A check that did not start, or only a syntax check, is reported as not
 run, with the reason. End with the status line the brief gives: `DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION` or
 `BLOCKED`.

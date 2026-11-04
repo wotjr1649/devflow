@@ -71,7 +71,8 @@ The fix loop separates finding a cause from fixing it, so fixes do not cover sym
 1. A check or CI failure with an unclear cause goes first to `explorer` with the root-cause perspective, which reports
    the cause and evidence without changing files. If it finds none, run it once more on a stronger model (Claude Code:
    `model: opus`).
-2. The implementer fixes a task at most twice.
+2. The implementer fixes a task at most twice, counted in fix delegations; one that ends `BLOCKED` after its own two
+   fixes uses up both.
 3. Then one promotion, one step to the promotion column of the router's Roles table, tried once.
 4. Then the main session takes the task over or reports where it is blocked.
 

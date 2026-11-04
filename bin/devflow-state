@@ -296,6 +296,7 @@ function isCheckpoint(text) {
 }
 
 const issueOf = b => { const m = /^[^/]+\/(\d+)-/.exec(b || ''); return m ? Number(m[1]) : null }
+const GITHUB_ORIGIN = /^(?:https?:\/\/github\.com\/|(?:ssh|git):\/\/(?:git@)?github\.com\/|git@github\.com:)([\w.-]+\/[\w.-]+?)(?:\.git)?$/i
 
 // opts.session is the session id hash; the hook passes its input's, and the CLI its own by default.
 function repoContext(env, cwd, opts = {}) {
@@ -305,8 +306,7 @@ function repoContext(env, cwd, opts = {}) {
   if (!fs.existsSync(path.join(root, '.devflow.json'))) return null
   const git = (...args) => env.run('git', args, { cwd: root }).stdout.trim()
   const branch = git('branch', '--show-current')
-  const origin = /^(?:https?:\/\/github\.com\/|(?:ssh|git):\/\/(?:git@)?github\.com\/|git@github\.com:)([\w.-]+\/[\w.-]+?)(?:\.git)?$/i
-    .exec(git('remote', 'get-url', 'origin'))
+  const origin = GITHUB_ORIGIN.exec(git('remote', 'get-url', 'origin'))
   // The Issue folder lives in the main work tree, whichever worktree this is (Issue #14); which Issue a worktree works
   // for is bindingOf's (#73 G1).
   const main = mainTree(env, root)
@@ -1903,6 +1903,163 @@ function delegationChanges(before, after) {
     ...collapsed.map(e => `changed: ${e.part} ${e.path}${path.sep} (new, ${e.count} entries)`)]
 }
 
+const delegationVar = (vars, name) => {
+  const key = Object.keys(vars).find(k => process.platform === 'win32' ? k.toUpperCase() === name : k === name)
+  return key === undefined ? undefined : vars[key]
+}
+
+function delegationGh(vars, cwd) {
+  const dirs = (delegationVar(vars, 'PATH') || '').split(path.delimiter)
+  const extensions = process.platform === 'win32' ? (delegationVar(vars, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';') : ['']
+  for (const dir of dirs) {
+    if (isNetwork(dir)) continue
+    for (const ext of extensions) {
+      const candidate = path.resolve(cwd, dir, 'gh' + ext)
+      const local = strictLocalPath(candidate)
+      if (!local.ok || local.absent) continue
+      try {
+        if (fs.lstatSync(candidate).isFile()) {
+          const hash = hashFile(candidate)
+          if (hash) return { path: candidate, hash }
+        }
+      } catch (e) {
+        if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e
+      }
+    }
+  }
+  delegationFail('gh not found')
+}
+
+function delegationGhConfig(vars, cwd) {
+  let dir = delegationVar(vars, 'GH_CONFIG_DIR')
+  if (!dir) {
+    const xdg = delegationVar(vars, 'XDG_CONFIG_HOME')
+    if (xdg) dir = path.join(xdg, 'gh')
+    else if (process.platform === 'win32') {
+      const appdata = delegationVar(vars, 'APPDATA')
+      if (!appdata) delegationFail('ghconfig directory unavailable')
+      dir = path.join(appdata, 'GitHub CLI')
+    } else dir = path.join(delegationVar(vars, 'HOME') || os.homedir(), '.config', 'gh')
+  }
+  if (isNetwork(dir)) delegationFail('ghconfig path is not local')
+  dir = path.resolve(cwd, dir)
+  const roots = []
+  const chains = []
+  const entries = new Map()
+  const paths = new Set()
+  const add = p => {
+    const key = samePathKey(p)
+    if (!paths.has(key)) { paths.add(key); roots.push({ part: 'ghconfig', path: p }) }
+  }
+  add(dir)
+  for (let i = 0; i < roots.length; i++) {
+    const p = roots[i].path
+    const resolved = delegationResolve(p)
+    chains.push({ path: p, final: resolved.path, links: resolved.links })
+    if (differs(p, resolved.path)) add(resolved.path)
+    for (const entry of delegationSnapshot([roots[i]], [])) {
+      entries.set(delegationKey(entry.part, entry.path), entry)
+      if (entries.size > DELEGATION_LIMIT) delegationFail('entry limit exceeded')
+      if (entry.type === 'other') delegationFail('ghconfig contains a special file')
+      if (entry.type === 'link') add(entry.path)
+    }
+  }
+  return { path: dir, roots, chains, entries: [...entries.values()] }
+}
+
+function delegationGhRun(run, remote, vars, args) {
+  const childVars = { ...vars }
+  for (const key of Object.keys(childVars)) if (key.toUpperCase() === 'GH_CONFIG_DIR') delete childVars[key]
+  childVars.GH_CONFIG_DIR = remote.ghconfig.path
+  const result = run(remote.gh.path, args, { cwd: remote.root, env: childVars })
+  if (result.code !== 0) delegationFail('gh request failed')
+  return result.stdout
+}
+
+function delegationRemoteRecords(run, remote, vars) {
+  const queries = [
+    ['heads', `repos/${remote.slug}/git/matching-refs/heads`, '.[] | [.ref, .object.sha] | @tsv'],
+    ['tags', `repos/${remote.slug}/git/matching-refs/tags`, '.[] | [.ref, .object.sha] | @tsv'],
+    ['issues', `repos/${remote.slug}/issues?state=all&since=${remote.since}&per_page=100`, '.[] | [.number, .updated_at, .user.login] | @tsv'],
+    ['issueComments', `repos/${remote.slug}/issues/comments?since=${remote.since}&per_page=100`, '.[] | [.id, .updated_at, .user.login] | @tsv'],
+    ['pullComments', `repos/${remote.slug}/pulls/comments?since=${remote.since}&per_page=100`, '.[] | [.id, .updated_at, .user.login] | @tsv'],
+  ]
+  const records = {}
+  for (const [kind, endpoint, jq] of queries) {
+    const output = delegationGhRun(run, remote, vars, ['api', '--hostname', 'github.com', '--paginate', endpoint, '--jq', jq])
+    const rows = output === '' ? [] : output.replace(/\r?\n$/, '').split(/\r?\n/)
+    const ids = new Set()
+    records[kind] = rows.map(row => {
+      const fields = row.split('\t')
+      const refs = kind === 'heads' || kind === 'tags'
+      if (refs) {
+        const prefix = kind === 'heads' ? 'refs/heads/' : 'refs/tags/'
+        if (fields.length !== 2 || !fields[0].startsWith(prefix) || fields[0].length === prefix.length ||
+            /\s/.test(fields[0]) || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(fields[1])) delegationFail(`invalid ${kind} response`)
+      } else {
+        const date = fields[1] && /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,3}))?Z$/.exec(fields[1])
+        const time = date && Date.parse(fields[1])
+        const normalized = date && `${date[1]}.${(date[2] || '').padEnd(3, '0')}Z`
+        if (fields.length !== 3 || !/^[1-9]\d*$/.test(fields[0]) || !date || !Number.isFinite(time) ||
+            new Date(time).toISOString() !== normalized || !/^[\w.\-[\]]+$/.test(fields[2])) delegationFail(`invalid ${kind} response`)
+      }
+      if (ids.has(fields[0])) delegationFail(`duplicate ${kind} response`)
+      ids.add(fields[0])
+      return fields
+    })
+  }
+  return records
+}
+
+function delegationRemoteBefore(run, vars, root, slug) {
+  const gh = delegationGh(vars, root)
+  const ghconfig = delegationGhConfig(vars, root)
+  const remote = { root, slug, gh, ghconfig }
+  const response = delegationGhRun(run, remote, vars, ['api', '-i', '--hostname', 'github.com', 'rate_limit'])
+  const header = /^date:[ \t]*([^\r\n]+)\r?$/im.exec(response)
+  const time = header && Date.parse(header[1])
+  if (!Number.isFinite(time)) delegationFail('invalid server Date')
+  remote.since = new Date(time - 10 * 60 * 1000).toISOString()
+  remote.baseline = delegationRemoteRecords(run, remote, vars)
+  return remote
+}
+
+function delegationRemoteAfter(run, manifest) {
+  const remote = manifest.remote
+  try {
+    for (const chain of remote.ghconfig.chains) {
+      const resolved = delegationResolve(chain.path, chain.links)
+      if (resolved.changed || differs(resolved.path, chain.final)) {
+        return { lines: ['remote: unverified ghconfig changed'], status: 'UNVERIFIED remote' }
+      }
+    }
+    if (delegationChanges(remote.ghconfig.entries,
+      delegationSnapshot(remote.ghconfig.roots, [], true)).length) {
+      return { lines: ['remote: unverified ghconfig changed'], status: 'UNVERIFIED remote' }
+    }
+  } catch {
+    return { lines: ['remote: unverified ghconfig changed'], status: 'UNVERIFIED remote' }
+  }
+  if (JSON.stringify(hashFile(remote.gh.path)) !== JSON.stringify(remote.gh.hash)) {
+    return { lines: ['remote: unverified gh changed'], status: 'UNVERIFIED remote' }
+  }
+  try {
+    const current = delegationRemoteRecords(run, remote, process.env)
+    const changed = []
+    for (const kind of Object.keys(current)) {
+      const refs = kind === 'heads' || kind === 'tags'
+      const old = new Map(remote.baseline[kind].map(row => [row[0], row[1]]))
+      const now = new Map(current[kind].map(row => [row[0], row[1]]))
+      const ids = [...now].filter(([id, value]) => !old.has(id) || old.get(id) !== value).map(([id]) => id)
+      if (refs) for (const id of old.keys()) if (!now.has(id)) ids.push(id)
+      if (ids.length) changed.push(`remote: changed ${kind} ${ids.sort().join(', ')}`)
+    }
+    return changed.length ? { lines: changed, status: 'REMOTE_CHANGE' } : { lines: ['remote: unchanged'], status: 'UNCHANGED' }
+  } catch (e) {
+    return { lines: [`remote: unverified ${e.code || e.message || 'check failed'}`], status: 'UNVERIFIED remote' }
+  }
+}
+
 function delegationBefore(env, cwd) {
   try {
     delegationLocal(cwd)
@@ -2002,8 +2159,17 @@ function delegationBefore(env, cwd) {
     }
     const rootChains = roots.map(r => ({ ...r, links: delegationResolve(r.path).links }))
     const entries = delegationSnapshot(roots, configs)
+    let remote
+    try {
+      const origin = safeEnv.run('git', ['remote', 'get-url', 'origin'], { cwd: root })
+      const slug = origin.code === 0 && GITHUB_ORIGIN.exec(origin.stdout.trim())
+      if (!slug) delegationFail('no GitHub origin')
+      remote = delegationRemoteBefore((...args) => env.run(...args), env.vars || process.env, root, slug[1])
+    } catch (e) {
+      return { code: 0, out: `UNVERIFIED remote ${e.code || e.message || 'check failed'}` }
+    }
     const manifest = { version: 1, root, dotgit, dot, commondir, commonPointer,
-      pointerChain, rootChains, roots, configs, entries, remote: null }
+      pointerChain, rootChains, roots, configs, entries, remote }
     const bytes = Buffer.from(JSON.stringify(manifest))
     const id = crypto.randomBytes(8).toString('hex')
     const file = path.join(delegationManifestDir(true), id + '.json')
@@ -2016,7 +2182,7 @@ function delegationBefore(env, cwd) {
   }
 }
 
-function delegationAfter(cwd, token) {
+function delegationAfter(cwd, token, remoteRun) {
   let file
   let manifest
   try {
@@ -2030,11 +2196,13 @@ function delegationAfter(cwd, token) {
       delegationFail('manifest belongs to another work tree')
     }
     const finish = changes => {
+      const blocked = changes.some(change => /^changed: (?:git|config|hooks) /.test(change))
+      const remote = blocked ? { lines: ['remote: skipped (local change)'], status: 'LOCAL_CHANGE' }
+        : delegationRemoteAfter(remoteRun, manifest)
       delegationLocal(file)
       fs.unlinkSync(file)
-      return changes.length
-        ? { code: 0, out: ['local: changed', ...changes, 'remote: skipped (T3)', 'LOCAL_CHANGE'].join('\n') }
-        : { code: 0, out: 'local: unchanged\nremote: skipped (T3)\nUNCHANGED' }
+      return { code: 0, out: [changes.length ? 'local: changed' : 'local: unchanged', ...changes,
+        ...remote.lines, changes.length ? 'LOCAL_CHANGE' : remote.status].join('\n') }
     }
     if (JSON.stringify(delegationPointer(manifest.dotgit)) !== JSON.stringify(manifest.dot)) {
       return finish([`changed: git ${manifest.dotgit}`])
@@ -2055,7 +2223,7 @@ function delegationAfter(cwd, token) {
     }
     return finish(delegationChanges(manifest.entries, delegationSnapshot(manifest.roots, manifest.configs, true)))
   } catch (e) {
-    return { code: 0, out: `local: unverified ${e.code || e.message || 'check failed'}\nremote: skipped (T3)\nUNVERIFIED local` }
+    return { code: 0, out: `local: unverified ${e.code || e.message || 'check failed'}\nremote: skipped (local unverified)\nUNVERIFIED local` }
   }
 }
 
@@ -2079,7 +2247,7 @@ function command(argv, stdin, env, cwd) {
   switch (cmd) {
     case 'delegation-check':
       if (rest.length === 1 && rest[0] === 'before') return delegationBefore(env, cwd)
-      if (rest.length === 2 && rest[0] === 'after') return delegationAfter(cwd, rest[1])
+      if (rest.length === 2 && rest[0] === 'after') return delegationAfter(cwd, rest[1], (...args) => env.run(...args))
       return { code: 2, out: 'usage: devflow-state delegation-check before | delegation-check after <token>' }
     case 'card':
       try {

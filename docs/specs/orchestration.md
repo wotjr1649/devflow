@@ -102,8 +102,9 @@ used: they start without the project instructions. Tool lists, `disallowedTools`
 agent definition and no Codex spawn sets a tool or sandbox limit, so the roles' limits (the reviewer reads only, the
 explorer changes no files, the implementer spawns no agents) hold by instruction. The main session's check before and
 after every explorer and reviewer, `devflow-state delegation-check`, catches the effects it can see: `before` reads the
-git layout with git while no agent has run, and `after` runs no git and opens no path it did not record, because git
-run after the agent could start a program the agent planted. It is a tripwire, not isolation
+git layout with git while no agent has run, and `after` runs no git and opens only recorded paths and new entries
+beneath recorded folders, through a guard that follows no changed link and refuses network paths, because git run after
+the agent could start a program the agent planted. It is a tripwire, not isolation
 ([rationale](../design/current-decisions.md#execution-and-delegation)).
 
 ### Perspectives

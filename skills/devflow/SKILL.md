@@ -173,7 +173,7 @@ neither well. When the main session applies a perspective itself, it reads it th
 - No host here limits a delegated agent's tools or turns, so the role's limits hold only by instruction. Around every
   explorer and reviewer the main session runs the check of the card's `Tool:`: `devflow-state delegation-check before`
   just before the agent starts, and `delegation-check after` with the printed token once it ends; keep `running`
-  ledger writes outside that window. `before` reads the git layout while no agent has run; `after` runs no git and
+  ledger writes and any git, config or hooks change of your own outside that window. `before` reads the git layout while no agent has run; `after` runs no git and
   starts gh only when the local result allows, because after the agent git may run a program it planted (an fsmonitor,
   a filter, a hook, a credential helper), so do not check with git yourself. When `before` prints `UNVERIFIED`, do not
   delegate that work. `after` lists every changed path: a change that is neither the brief's byproduct nor the main
@@ -181,8 +181,8 @@ neither well. When the main session applies a perspective itself, it reads it th
   unattended) rather than guess. A change of the agent's in a local part, or `UNVERIFIED local`, voids the report, and
   git may run what it planted, so run no git command in that repository, devflow-state commands that run git such as
   `card` included, until the user has looked at it: report it (in `blocked` when unattended), and once the user has
-  restored the state, redo that work once in a new fresh context with the same check. After a `remote: changed` or
-  `remote: unverified` line, redo nothing: the review or verification stays open, and an unattended run stops in
+  restored the state, redo that work once in a new fresh context with the same check. After a `remote: changed`,
+  `remote: unverified` or `remote: skipped` line, redo nothing: the review or verification stays open, and an unattended run stops in
   `blocked`. If the redo is voided too, the same holds; the main session's own re-read is not independent. The check
   is a tripwire, not isolation: it does not see effects outside the parts it covers. Record which agent ran each review
   and verification.

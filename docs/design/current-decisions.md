@@ -68,14 +68,19 @@ limits. The roles state the limits; the main session's check before and after ev
 for the effects it can see (local state, git config and hooks, remote refs, new posts in the repository), counts what it
 cannot check as the agent's, and after an outside effect leaves the review or verification open. Since #163 it is a
 devflow-state command: `before` runs git with fixed arguments to learn the git dir, hooks, config files of every scope
-with their include targets, the origin and the main work tree, because no agent has run yet; `after` runs no git and
-opens only recorded paths through a guard that follows no changed link and refuses network spellings, because git run
-after the agent could start what it planted (a signature program for a ref format, an fsmonitor for an index read, a
-network include). It lists every changed path, so the main session can tell a brief's byproduct from the agent's
-change, and starts gh, by its recorded path and hash, only when git, config, hooks and gh's own config are unchanged.
+with their include targets, the origin and the main work tree, because no agent has run yet (so git may already
+follow an include or pointer planted before the check; that is the main session's normal git use, not a new reach);
+`after` runs no git and opens only recorded paths and new entries beneath recorded folders, through a guard that
+follows no changed link and refuses network spellings, because git run after the agent could start what it planted (a
+signature program for a ref format, an fsmonitor for an index read, a network include). It lists every changed path,
+so the main session can tell a brief's byproduct from the agent's change, and starts gh, by its recorded path and hash,
+only when git, config, hooks and gh's own config are unchanged; a skipped remote check counts as one it could not make.
+Its snapshot sits in the OS temp folder, checked for owner and mode on POSIX and trusted to the per-user temp folder's
+access rights on Windows; a token digest catches an edited snapshot.
 It is not isolation, and the owner accepted what it does not see: host configuration, the plugin installation and the
 runtimes it starts (node, gh), which the agent's account can write, same-user races between a check and an open,
-mapped network drives or mounts that look local, edits to existing Issues and PRs, repository settings, network
+mapped network drives or mounts that look local, a pull request review with no inline comment (seen only if GitHub
+updates the pull request's time, unverified), edits to existing Issues and PRs, repository settings, network
 traffic, posts in other repositories, effects of a background process or nested agent after the check, and an
 implementer's nested agents. Each delegation gets a new agent, so the
 lost turn limit only ever bounded one delegation; within one delegation the implementer makes at most two fixes after

@@ -4,6 +4,7 @@
 // Rules: docs/specs/issues.md (Issue I/O, resume card), docs/specs/ledger.md (the ledger), docs/specs/documents.md (size budgets).
 const fs = require('fs')
 const path = require('path')
+const os = require('os')
 const { spawnSync } = require('child_process')
 const crypto = require('crypto')
 // Windows looks for git.exe and gh.exe in the working folder before PATH; a cloned repository must not supply them.
@@ -217,6 +218,8 @@ const USAGE = `usage: devflow-state <command>
   running <n> add|done <label>
                               record a background delegation as it starts and ends; the Stop hook waits while any runs
   release <n>                 when handing the Issue to another session: stop warning it about this one
+  delegation-check before | delegation-check after <token>
+                              compare delegation changes; after runs no git
 Issue text writes go only to the branch's Issue (create and remark excepted); sub-issue add records its explicit targets
 under the working Issue. Commands do not grant authority. Text with local paths, secrets, hidden
 characters or HTML comments is refused. While the ledger's mode is autonomous, Issue writes are refused; keep the content in ledger notes for the user.
@@ -250,7 +253,7 @@ const realEnv = {
   vars: process.env,
   run(cmd, args, opts = {}) {
     const r = spawnSync(cmd, args, {
-      cwd: opts.cwd, input: opts.input, encoding: 'utf8', timeout: opts.timeout || RUN_TIMEOUT_MS, windowsHide: true,
+      cwd: opts.cwd, input: opts.input, env: opts.env, encoding: 'utf8', timeout: opts.timeout || RUN_TIMEOUT_MS, windowsHide: true,
     })
     return { code: r.status ?? (r.error ? r.error.code : 1), stdout: r.stdout || '', stderr: r.stderr || '' }
   },
@@ -1719,6 +1722,343 @@ function note(env, cwd, n, text) {
   return r.ok ? { code: 0, out: `notes ${r.result}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 
+// Delegation checks keep the before paths and never ask git to interpret a changed repository afterward.
+const DELEGATION_LIMIT = 200000
+const delegationKey = (part, p) => part + '\0' + samePathKey(p)
+const delegationFail = reason => { throw new Error(reason) }
+function delegationLocal(p) {
+  const result = strictLocalPath(p)
+  if (!result.ok) delegationFail(`path guard: ${result.why}`)
+  return result
+}
+
+// Resolve one recorded path without following a changed link in after. Components are expanded one at a time.
+function delegationResolve(p, previous) {
+  if (isNetwork(p) || !path.isAbsolute(p)) delegationFail('config or layout path is not local and absolute')
+  if (!previous) delegationLocal(p)
+  const parts = s => s.split(process.platform === 'win32' ? /[\\/]/ : /\//).filter(Boolean)
+  const inputRoot = path.parse(p).root
+  let rest = [inputRoot, ...parts(p.slice(inputRoot.length))]
+  let done = ''
+  const links = []
+  const expected = new Map((previous || []).map(link => [samePathKey(link.path), link.text]))
+  while (rest.length) {
+    const part = rest.shift()
+    if (part === '.') continue
+    if (part === '..') { done = path.dirname(done); continue }
+    const q = done ? path.join(done, part) : part
+    if (done) delegationLocal(done)
+    let st
+    try { st = fs.lstatSync(q) } catch (e) {
+      if (e.code !== 'ENOENT') delegationFail(`path inspection: ${e.code || 'failed'}`)
+      if (previous && links.length !== previous.length) return { changed: q }
+      return { path: path.resolve(q, ...rest), links }
+    }
+    const key = samePathKey(q)
+    if (!st.isSymbolicLink()) {
+      if (expected.has(key)) return { changed: q }
+      if (rest.length && !st.isDirectory()) delegationFail('path component is not a directory')
+      done = q
+      continue
+    }
+    const text = fs.readlinkSync(q)
+    if (previous && (!expected.has(key) || expected.get(key) !== text)) return { changed: q }
+    if (isNetwork(text) || links.length >= MAX_LINKS) delegationFail('network or excessive path links')
+    links.push({ path: q, text })
+    const targetRoot = path.parse(text).root
+    if (targetRoot) {
+      const base = path.isAbsolute(text) ? path.resolve(done, targetRoot) : path.resolve(done, targetRoot + '.')
+      if (isNetwork(base)) delegationFail('network path link')
+      const root = path.parse(base).root
+      done = ''
+      rest = [root, ...parts(base.slice(root.length)), ...parts(text.slice(targetRoot.length)), ...rest]
+    } else {
+      rest = [...parts(text), ...rest]
+    }
+  }
+  if (previous && links.length !== previous.length) return { changed: p }
+  return { path: path.resolve(done), links }
+}
+
+function delegationRead(p) {
+  delegationLocal(path.dirname(p))
+  let fd
+  try {
+    const st = fs.lstatSync(p, { bigint: true })
+    if (!st.isFile()) delegationFail('expected a plain file')
+    delegationLocal(p)
+    const { O_RDONLY, O_NONBLOCK = 0, O_NOFOLLOW = 0 } = fs.constants
+    fd = fs.openSync(p, O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
+    const opened = fs.fstatSync(fd, { bigint: true })
+    const same = s => s.isFile() && s.dev === st.dev && s.ino === st.ino && s.size === st.size && s.mode === st.mode
+    if (!same(opened) || !same(fs.lstatSync(p, { bigint: true }))) delegationFail('file changed while opening')
+    const data = fs.readFileSync(fd)
+    if (BigInt(data.length) !== st.size || !same(fs.fstatSync(fd, { bigint: true })) ||
+        !same(fs.lstatSync(p, { bigint: true }))) delegationFail('file changed while reading')
+    return data
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd)
+  }
+}
+
+function delegationPointer(p) {
+  delegationLocal(path.dirname(p))
+  let st
+  try { st = fs.lstatSync(p) } catch (e) {
+    if (e.code === 'ENOENT') return { type: 'absent' }
+    throw e
+  }
+  if (st.isSymbolicLink()) return { type: 'link', text: fs.readlinkSync(p) }
+  if (st.isFile()) return { type: 'file', text: delegationRead(p).toString('utf8') }
+  return { type: st.isDirectory() ? 'directory' : 'other' }
+}
+
+function delegationManifestDir(create) {
+  const dir = path.join(os.tmpdir(), 'devflow-delegation-check')
+  const local = delegationLocal(dir)
+  if (local.absent && create) fs.mkdirSync(dir, { mode: 0o700 })
+  delegationLocal(dir)
+  const st = fs.lstatSync(dir)
+  if (!st.isDirectory() || st.isSymbolicLink()) delegationFail('manifest directory is not a plain directory')
+  if (process.platform !== 'win32' && (st.uid !== process.getuid() || (st.mode & 0o077))) {
+    delegationFail('manifest directory owner or permissions')
+  }
+  return dir
+}
+
+function delegationSnapshot(roots, configs, after = false) {
+  const entries = new Map()
+  const objects = new Set(roots.filter(r => r.part === 'git').map(r => samePathKey(path.join(r.path, 'objects'))))
+  function visit(part, p, treeRoot) {
+    const key = delegationKey(part, p)
+    if (entries.has(key)) return
+    if (entries.size >= DELEGATION_LIMIT) delegationFail('entry limit exceeded')
+    if (after && part !== 'config') delegationLocal(path.dirname(p))
+    else delegationLocal(p)
+    let st
+    try { st = fs.lstatSync(p) } catch (e) {
+      if (e.code === 'ENOENT') { entries.set(key, { part, path: p, type: 'absent' }); return }
+      throw e
+    }
+    let entry = { part, path: p }
+    if (st.isSymbolicLink()) {
+      const text = fs.readlinkSync(p)
+      if (isNetwork(text)) delegationFail('network path link')
+      entry = { ...entry, type: 'link', text }
+    }
+    else if (st.isFile()) {
+      delegationLocal(p)
+      const hash = hashFile(p)
+      if (!hash) delegationFail('file could not be safely hashed')
+      entry = { ...entry, type: 'file', ...hash }
+    } else {
+      delegationLocal(p)
+      entry.type = st.isDirectory() ? 'directory' : 'other'
+    }
+    entries.set(key, entry)
+    if (entry.type !== 'directory' || part === 'config') return
+    for (const name of fs.readdirSync(p)) {
+      if (part === 'tree' && samePathKey(p) === samePathKey(treeRoot) && caseKey(name) === '.git') continue
+      if (part === 'git' && objects.has(samePathKey(p)) && name !== 'info') continue
+      visit(part, path.join(p, name), treeRoot)
+    }
+  }
+  for (const root of roots) visit(root.part, root.path, root.path)
+  for (const config of configs) {
+    for (const link of config.links) visit('config', link.path)
+    visit('config', config.final)
+  }
+  return [...entries.values()]
+}
+
+function delegationChanges(before, after) {
+  const old = new Map(before.map(e => [delegationKey(e.part, e.path), e]))
+  const now = new Map(after.map(e => [delegationKey(e.part, e.path), e]))
+  const changes = []
+  for (const [key, entry] of old) {
+    if (!now.has(key) || JSON.stringify(entry) !== JSON.stringify(now.get(key))) changes.push(entry)
+  }
+  const added = after.filter(e => !old.has(delegationKey(e.part, e.path)))
+  const collapsed = []
+  const directories = new Map()
+  for (const entry of added.sort((a, b) => a.path.length - b.path.length)) {
+    let dir = path.dirname(entry.path)
+    let parent
+    for (;;) {
+      parent = directories.get(delegationKey(entry.part, dir))
+      if (parent) break
+      const next = path.dirname(dir)
+      if (next === dir) break
+      dir = next
+    }
+    if (parent) { parent.count++; continue }
+    if (entry.type === 'directory') {
+      const directory = { ...entry, count: 0 }
+      collapsed.push(directory)
+      directories.set(delegationKey(entry.part, entry.path), directory)
+    }
+    else changes.push(entry)
+  }
+  return [...changes.map(e => `changed: ${e.part} ${e.path}`),
+    ...collapsed.map(e => `changed: ${e.part} ${e.path}${path.sep} (new, ${e.count} entries)`)]
+}
+
+function delegationBefore(env, cwd) {
+  try {
+    delegationLocal(cwd)
+    const vars = { ...(env.vars || process.env) }
+    for (const key of Object.keys(vars)) if (key.toUpperCase() === 'GIT_CONFIG') delete vars[key]
+    const safeEnv = { vars, run(cmd, args, opts = {}) {
+      return env.run(cmd, ['--no-pager', '--no-lazy-fetch', ...args], { ...opts, env: vars })
+    } }
+    const git = (at, ...args) => {
+      const r = safeEnv.run('git', args, { cwd: at })
+      if (r.code !== 0) delegationFail('git discovery failed')
+      return r.stdout
+    }
+    const root = git(cwd, 'rev-parse', '--show-toplevel').trim()
+    if (!root || isNetwork(root)) delegationFail('work tree is not local')
+    delegationLocal(root)
+    const project = path.join(root, '.devflow.json')
+    delegationLocal(project)
+    if (!fs.lstatSync(project).isFile()) delegationFail('missing .devflow.json')
+    const dotgit = path.join(root, '.git')
+    const dot = delegationPointer(dotgit)
+    if (dot.type === 'file') {
+      const match = /^gitdir:\s*(.+)\s*$/im.exec(dot.text)
+      if (!match || isNetwork(match[1])) delegationFail('invalid or network .git pointer')
+      delegationLocal(path.isAbsolute(match[1]) ? match[1] : root + path.sep + match[1])
+    }
+    const layout = git(root, 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir', '--git-path', 'hooks').trim().split(/\r?\n/)
+    if (layout.length !== 3 || layout.some(p => !p || isNetwork(p) || !path.isAbsolute(p))) delegationFail('invalid or network git layout')
+    const [own, common, hooks] = layout.map(p => path.resolve(p))
+    for (const p of [own, common, hooks]) delegationLocal(p)
+    const hooksPath = delegationResolve(hooks)
+    if (hooksPath.links.length) delegationFail('hooks path contains a link')
+    const commondir = path.join(own, 'commondir')
+    const pointerChain = delegationResolve(path.dirname(commondir))
+    const commonPointer = delegationPointer(commondir)
+    if (commonPointer.type === 'file') {
+      const text = commonPointer.text.trim()
+      if (isNetwork(text)) delegationFail('network commondir pointer')
+      delegationLocal(path.isAbsolute(text) ? text : own + path.sep + text)
+    }
+    for (const p of [path.join(own, 'gitdir'), path.join(common, 'HEAD')]) delegationLocal(p)
+    const main = mainTree(safeEnv, root)
+    const roots = [{ part: 'git', path: own }, { part: 'git', path: common },
+      { part: 'hooks', path: hooks }, { part: 'tree', path: root }]
+    if (main && differs(main.path, root)) roots.push({ part: 'ledger', path: path.join(main.path, '.work', 'devflow') })
+
+    const configs = []
+    let configuredHooks
+    const configKeys = new Set()
+    const addConfig = p => {
+      if (!p || isNetwork(p) || !path.isAbsolute(p)) delegationFail('invalid or network config path')
+      const resolved = delegationResolve(p)
+      const key = caseKey(p)
+      if (!configKeys.has(key)) {
+        configKeys.add(key)
+        configs.push({ path: p, final: resolved.path, links: resolved.links })
+      }
+    }
+    const absolute = (base, p) => {
+      if (isNetwork(p)) delegationFail('network config path')
+      return path.isAbsolute(p) ? p : base + path.sep + p
+    }
+    const raw = git(root, 'config', '--list', '--show-origin', '-z').split('\0')
+    if (raw.at(-1) === '') raw.pop()
+    if (raw.length % 2) delegationFail('invalid config discovery')
+    for (let i = 0; i < raw.length; i += 2) {
+      const origin = raw[i]
+      const entry = raw[i + 1]
+      const split = entry.indexOf('\n')
+      const key = (split < 0 ? entry : entry.slice(0, split)).toLowerCase()
+      const value = split < 0 ? '' : entry.slice(split + 1)
+      const source = origin.startsWith('file:') ? absolute(root, origin.slice(5)) : null
+      if (source) addConfig(source)
+      if (key === 'core.hookspath') configuredHooks = value
+      if (!/^include(?:if\..+)?\.path$/.test(key)) continue
+      let target = value
+      if (isNetwork(target) || /^~[^/\\]/.test(target)) delegationFail('unsupported config include')
+      if (/^~[\\/]/.test(target)) target = absolute(vars.HOME || os.homedir(), target.slice(2))
+      else if (!path.isAbsolute(target)) {
+        if (!source) delegationFail('relative config include without a file origin')
+        target = absolute(path.dirname(source), target)
+      }
+      addConfig(target)
+    }
+    let declaredHooks = configuredHooks === undefined ? path.join(common, 'hooks') : configuredHooks
+    if (!declaredHooks || isNetwork(declaredHooks) || /^~[^/\\]/.test(declaredHooks)) delegationFail('invalid hooks path')
+    if (/^~[\\/]/.test(declaredHooks)) declaredHooks = absolute(vars.HOME || os.homedir(), declaredHooks.slice(2))
+    else declaredHooks = absolute(root, declaredHooks)
+    if (delegationResolve(declaredHooks).links.length) delegationFail('hooks path contains a link')
+    for (const name of ['GIT_CONFIG_SYSTEM', 'GIT_CONFIG_GLOBAL']) {
+      const r = safeEnv.run('git', ['var', name], { cwd: root })
+      if (r.code !== 0) {
+        if (name === 'GIT_CONFIG_SYSTEM' && /^(?:1|true|yes|on)$/i.test(vars.GIT_CONFIG_NOSYSTEM || '')) continue
+        delegationFail('git config path discovery failed')
+      }
+      for (const p of r.stdout.split(/\r?\n/).filter(Boolean)) addConfig(absolute(root, p))
+    }
+    const rootChains = roots.map(r => ({ ...r, links: delegationResolve(r.path).links }))
+    const entries = delegationSnapshot(roots, configs)
+    const manifest = { version: 1, root, dotgit, dot, commondir, commonPointer,
+      pointerChain, rootChains, roots, configs, entries, remote: null }
+    const bytes = Buffer.from(JSON.stringify(manifest))
+    const id = crypto.randomBytes(8).toString('hex')
+    const file = path.join(delegationManifestDir(true), id + '.json')
+    delegationLocal(file)
+    fs.writeFileSync(file, bytes, { flag: 'wx', mode: 0o600 })
+    return { code: 0, out: `token ${id}.${crypto.createHash('sha256').update(bytes).digest('hex')}\n` +
+      'limits: host code, same-user races, mapped drives, Windows temp ACL, and changes outside recorded paths' }
+  } catch (e) {
+    return { code: 0, out: `UNVERIFIED local ${e.code || e.message || 'check failed'}` }
+  }
+}
+
+function delegationAfter(cwd, token) {
+  let file
+  let manifest
+  try {
+    delegationLocal(cwd)
+    if (!/^[0-9a-f]{16}\.[0-9a-f]{64}$/.test(token)) delegationFail('invalid token')
+    file = path.join(delegationManifestDir(false), token.slice(0, 16) + '.json')
+    const bytes = delegationRead(file)
+    if (crypto.createHash('sha256').update(bytes).digest('hex') !== token.slice(17)) delegationFail('manifest digest mismatch')
+    manifest = JSON.parse(bytes.toString('utf8'))
+    if (manifest.version !== 1 || differs(manifest.root, cwd) && !samePathKey(path.resolve(cwd)).startsWith(samePathKey(manifest.root) + path.sep)) {
+      delegationFail('manifest belongs to another work tree')
+    }
+    const finish = changes => {
+      delegationLocal(file)
+      fs.unlinkSync(file)
+      return changes.length
+        ? { code: 0, out: ['local: changed', ...changes, 'remote: skipped (T3)', 'LOCAL_CHANGE'].join('\n') }
+        : { code: 0, out: 'local: unchanged\nremote: skipped (T3)\nUNCHANGED' }
+    }
+    if (JSON.stringify(delegationPointer(manifest.dotgit)) !== JSON.stringify(manifest.dot)) {
+      return finish([`changed: git ${manifest.dotgit}`])
+    }
+    const pointerChain = delegationResolve(path.dirname(manifest.commondir), manifest.pointerChain.links)
+    if (pointerChain.changed) return finish([`changed: git ${pointerChain.changed}`])
+    if (JSON.stringify(delegationPointer(manifest.commondir)) !== JSON.stringify(manifest.commonPointer)) {
+      return finish([`changed: git ${manifest.commondir}`])
+    }
+    for (const config of manifest.configs) {
+      const resolved = delegationResolve(config.path, config.links)
+      if (resolved.changed) return finish([`changed: config ${resolved.changed}`])
+      if (differs(resolved.path, config.final)) return finish([`changed: config ${config.path}`])
+    }
+    for (const root of manifest.rootChains) {
+      const resolved = delegationResolve(root.path, root.links)
+      if (resolved.changed) return finish([`changed: ${root.part} ${resolved.changed}`])
+    }
+    return finish(delegationChanges(manifest.entries, delegationSnapshot(manifest.roots, manifest.configs, true)))
+  } catch (e) {
+    return { code: 0, out: `local: unverified ${e.code || e.message || 'check failed'}\nremote: skipped (T3)\nUNVERIFIED local` }
+  }
+}
+
 const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'sub-issue', 'ledger-update', 'note', 'running', 'mode'])
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
   const r = command(argv, stdin, env, cwd)
@@ -1737,6 +2077,10 @@ function command(argv, stdin, env, cwd) {
   const num = s => (s && /^\d+$/.test(s) ? Number(s) : undefined)
   const input = () => stdin()
   switch (cmd) {
+    case 'delegation-check':
+      if (rest.length === 1 && rest[0] === 'before') return delegationBefore(env, cwd)
+      if (rest.length === 2 && rest[0] === 'after') return delegationAfter(cwd, rest[1])
+      return { code: 2, out: 'usage: devflow-state delegation-check before | delegation-check after <token>' }
     case 'card':
       try {
         return { code: 0, out: card(env, cwd) }

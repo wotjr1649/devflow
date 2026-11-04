@@ -5,6 +5,7 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const state = require('../bin/devflow-state')
+const { isNetwork, localPath, smallFile, provenMain } = state
 
 function devflowRoot(dir) {
   for (let d = path.resolve(dir); ; d = path.dirname(d)) {
@@ -88,68 +89,6 @@ function releaseEverywhere(cwd, sessionId) {
   }
 }
 
-// git metadata the hook reads only when it is a small regular file on a local path. A link, FIFO, device, network
-// path or large file could make the read wait past the hook's timeout.
-const NETWORK_PATH = /^(\\\\|\/\/)/
-// A long-path prefix ("\\?\" or "\\.\") followed by a drive letter is local; a UNC share or "\\?\UNC\" is not.
-const isNetwork = s => NETWORK_PATH.test(s) && !/^(\\\\|\/\/)[?.][\\/][A-Za-z]:/.test(s)
-
-// False when p, or a folder link on the way to it, names a network path. A link is judged by its own text, read
-// without following it, so the check itself never touches the network. A link to a link is judged the same way
-// along the chain (Issue #53): the walk goes on from the link's text, past folders already known to be no links, so
-// each link counts once; past MAX_LINKS links in all, the path counts as remote.
-const MAX_LINKS = 8
-function localPath(p) {
-  if (isNetwork(p)) return false
-  let done = path.parse(path.resolve(p)).root
-  let rest = path.resolve(p).slice(done.length).split(/[\\/]/).filter(Boolean)
-  let links = 0
-  while (rest.length) {
-    const q = path.join(done, rest.shift())
-    let st
-    try { st = fs.lstatSync(q) } catch { return true }
-    if (!st.isSymbolicLink()) {
-      done = q
-      continue
-    }
-    let to
-    try { to = fs.readlinkSync(q) } catch { return false }
-    const next = path.resolve(done, to)
-    if (++links > MAX_LINKS || isNetwork(to) || isNetwork(next)) return false
-    done = path.parse(next).root
-    rest = [...next.slice(done.length).split(/[\\/]/).filter(Boolean), ...rest]
-  }
-  return true
-}
-
-function smallFile(p, maxBytes = 4096) {
-  if (!localPath(p)) return null
-  let fd
-  try {
-    const st = fs.lstatSync(p)
-    if (!st.isFile() || st.size > maxBytes) return null
-    const { O_RDONLY, O_NONBLOCK = 0, O_NOFOLLOW = 0 } = fs.constants
-    fd = fs.openSync(p, O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
-    const opened = fs.fstatSync(fd)
-    if (!opened.isFile() || opened.size > maxBytes || opened.dev !== st.dev || opened.ino !== st.ino) return null
-    // Windows has no O_NOFOLLOW: also reject a path replaced by a link to the same inode before reading the fd.
-    const current = fs.lstatSync(p)
-    if (!current.isFile() || current.dev !== opened.dev || current.ino !== opened.ino) return null
-    const buf = Buffer.alloc(maxBytes + 1)
-    let size = 0
-    while (size < buf.length) {
-      const n = fs.readSync(fd, buf, size, buf.length - size, null)
-      if (!n) break
-      size += n
-    }
-    return size <= maxBytes ? buf.toString('utf8', 0, size) : null
-  } catch {
-    return null
-  } finally {
-    if (fd !== undefined) fs.closeSync(fd)
-  }
-}
-
 // Local git directories for session cleanup. A main tree is returned only with its back-link
 // proof, without starting git or following a network path. Never throws.
 function gitLocation(root) {
@@ -173,29 +112,6 @@ function gitLocation(root) {
 
 let eventSession = null
 const sessionHash = id => (typeof id === 'string' && id ? crypto.createHash('sha256').update(id).digest('hex').slice(0, 12) : null)
-
-// The main work tree of linked worktree root, or null unless git's own records prove the worktree belongs to it
-// (Issue #14): the common dir is a real folder named .git, the worktree's gitdir sits
-// right under <common>/worktrees, and git's back link there names this worktree's .git. A .git file from an extracted
-// archive cannot write into another repository's worktrees folder, so it cannot release sessions there.
-function provenMain(root, own, common) {
-  try {
-    // Spellings only, never fs.realpath: a junction could lead the lookup to a network path past the hook timeout. A
-    // worktree opened through subst or a junction fails the proof.
-    const key = p => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
-    // String tests first: once the gitdir is known to sit right under <common>/worktrees, the common dir is derived
-    // from that local gitdir, so no crafted commondir (a network share, say) reaches the file system.
-    if (isNetwork(common) || path.basename(common) !== '.git') return null
-    if (key(path.dirname(own)) !== key(path.join(common, 'worktrees'))) return null
-    const back = (smallFile(path.join(own, 'gitdir')) || '').trim()
-    if (!back || isNetwork(back) || key(path.resolve(own, back)) !== key(path.join(root, '.git'))) return null
-    // As devflow-state decides (docs/specs/repository.md, Issue folder): a .devflow.json is not asked of the main tree,
-    // which may have a commit without one checked out; git's back link already ties the two.
-    return fs.lstatSync(common).isDirectory() ? path.dirname(common) : null
-  } catch {
-    return null
-  }
-}
 
 function handle(raw, env = state.realEnv) {
   let input

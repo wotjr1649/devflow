@@ -9,6 +9,167 @@ const crypto = require('crypto')
 // Windows looks for git.exe and gh.exe in the working folder before PATH; a cloned repository must not supply them.
 if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
 
+// Check link text without following it, so a path check does not open a network share.
+const NETWORK_PATH = /^(\\\\|\/\/)/
+// A long-path prefix ("\\?\" or "\\.\") followed by a drive letter is local; a UNC share or "\\?\UNC\" is not.
+const isNetwork = s => NETWORK_PATH.test(s) && !/^(\\\\|\/\/)[?.][\\/][A-Za-z]:/.test(s)
+// A path, or a folder link on the way to it, that names a network path is not local. A link is judged by its own text,
+// read without following it, so the check itself never touches the network. A link to a link is judged the same way
+// along the chain (Issue #53), each link counting once; past MAX_LINKS links in all, the path counts as remote. The
+// hook's localPath takes an lstat error as local; strictLocalPath (#163) reports it, and an absent component apart.
+const MAX_LINKS = 8
+function walkLocalPath(p, strict) {
+  if (isNetwork(p)) return { ok: false, why: 'network path' }
+  const resolved = path.resolve(p)
+  if (strict && isNetwork(resolved)) return { ok: false, why: 'network path' }
+  const parts = s => s.split(strict && process.platform !== 'win32' ? /\// : /[\\/]/).filter(Boolean)
+  let root = path.parse(resolved).root
+  let done = root
+  let rest = parts(resolved.slice(root.length))
+  if (strict) {
+    const inputRoot = path.parse(p).root
+    const base = path.isAbsolute(p) ? path.resolve(inputRoot)
+      : inputRoot ? path.resolve(inputRoot + '.') : process.cwd()
+    if (isNetwork(base)) return { ok: false, why: 'network path' }
+    root = path.parse(base).root
+    done = ''
+    // Walk parent components before applying "..", or a link could disappear before it is checked.
+    rest = [root, ...parts(base.slice(root.length)), ...parts(p.slice(inputRoot.length))]
+  }
+  let links = 0
+  while (rest.length) {
+    const part = rest.shift()
+    if (strict && part === '.') continue
+    if (strict && part === '..') { done = path.dirname(done); continue }
+    const q = done ? path.join(done, part) : part
+    let st
+    try { st = fs.lstatSync(q) } catch (e) {
+      if (!strict) return { ok: true }
+      return e.code === 'ENOENT' ? { ok: true, absent: q } : { ok: false, why: e.code || 'lstat failed' }
+    }
+    if (!st.isSymbolicLink()) {
+      if (strict && rest.length && !st.isDirectory()) return { ok: false, why: 'ENOTDIR' }
+      done = q
+      continue
+    }
+    let to
+    try { to = fs.readlinkSync(q) } catch (e) { return { ok: false, why: e.code || 'readlink failed' } }
+    if (++links > MAX_LINKS) return { ok: false, why: 'too many links' }
+    if (isNetwork(to)) return { ok: false, why: 'network path' }
+    if (strict) {
+      const targetRoot = path.parse(to).root
+      if (targetRoot) {
+        const base = path.isAbsolute(to) ? path.resolve(done, targetRoot) : path.resolve(done, targetRoot + '.')
+        if (isNetwork(base)) return { ok: false, why: 'network path' }
+        root = path.parse(base).root
+        done = ''
+        rest = [root, ...parts(base.slice(root.length)), ...parts(to.slice(targetRoot.length)), ...rest]
+      } else {
+        rest = [...parts(to), ...rest]
+      }
+    } else {
+      const next = path.resolve(done, to)
+      if (isNetwork(next)) return { ok: false, why: 'network path' }
+      done = path.parse(next).root
+      rest = [...parts(next.slice(done.length)), ...rest]
+    }
+  }
+  return { ok: true }
+}
+const localPath = p => walkLocalPath(p, false).ok
+const strictLocalPath = p => walkLocalPath(p, true)
+
+// git metadata the hook reads only when it is a small regular file on a local path. A link, FIFO, device, network
+// path or large file could make the read wait past the hook's timeout.
+function smallFile(p, maxBytes = 4096) {
+  if (!localPath(p)) return null
+  let fd
+  try {
+    const st = fs.lstatSync(p)
+    if (!st.isFile() || st.size > maxBytes) return null
+    const { O_RDONLY, O_NONBLOCK = 0, O_NOFOLLOW = 0 } = fs.constants
+    fd = fs.openSync(p, O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
+    const opened = fs.fstatSync(fd)
+    if (!opened.isFile() || opened.size > maxBytes || opened.dev !== st.dev || opened.ino !== st.ino) return null
+    // Windows has no O_NOFOLLOW: also reject a path replaced by a link to the same inode before reading the fd.
+    const current = fs.lstatSync(p)
+    if (!current.isFile() || current.dev !== opened.dev || current.ino !== opened.ino) return null
+    const buf = Buffer.alloc(maxBytes + 1)
+    let size = 0
+    while (size < buf.length) {
+      const n = fs.readSync(fd, buf, size, buf.length - size, null)
+      if (!n) break
+      size += n
+    }
+    return size <= maxBytes ? buf.toString('utf8', 0, size) : null
+  } catch {
+    return null
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd)
+  }
+}
+
+function hashFile(p) {
+  let fd
+  let result = null
+  try {
+    const local = strictLocalPath(p)
+    if (!local.ok || local.absent) return null
+    const st = fs.lstatSync(p, { bigint: true })
+    if (!st.isFile()) return null
+    const { O_RDONLY, O_NONBLOCK = 0, O_NOFOLLOW = 0 } = fs.constants
+    fd = fs.openSync(p, O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
+    const opened = fs.fstatSync(fd, { bigint: true })
+    if (!opened.isFile() || opened.dev !== st.dev || opened.ino !== st.ino ||
+        opened.size !== st.size || opened.mode !== st.mode) return null
+    const hash = crypto.createHash('sha256')
+    const buf = Buffer.alloc(64 * 1024)
+    let size = 0n
+    for (;;) {
+      const n = fs.readSync(fd, buf, 0, buf.length, null)
+      if (!n) break
+      hash.update(buf.subarray(0, n))
+      size += BigInt(n)
+      if (size > st.size) return null
+    }
+    const current = fs.lstatSync(p, { bigint: true })
+    if (!current.isFile() || current.dev !== st.dev || current.ino !== st.ino ||
+        current.size !== st.size || current.mode !== st.mode || size !== st.size) return null
+    result = { sha256: hash.digest('hex'), size: Number(size), mode: Number(st.mode) }
+  } catch {
+    return null
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd) } catch { result = null }
+    }
+  }
+  return result
+}
+
+// The main work tree of linked worktree root, or null unless git's own records prove the worktree belongs to it
+// (Issue #14): the common dir is a real folder named .git, the worktree's gitdir sits right under <common>/worktrees,
+// and git's back link there names this worktree's .git. A .git file from an extracted archive cannot write into another
+// repository's worktrees folder, so it cannot release sessions there.
+function provenMain(root, own, common) {
+  try {
+    // Spellings only, never fs.realpath: a junction could lead the lookup to a network path past the hook timeout. A
+    // worktree opened through subst or a junction fails the proof.
+    const key = p => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p))
+    // String tests first: once the gitdir is known to sit right under <common>/worktrees, the common dir is derived
+    // from that local gitdir, so no crafted commondir (a network share, say) reaches the file system.
+    const base = path.basename(common)
+    if (isNetwork(common) || (process.platform === 'win32' ? base.toLowerCase() : base) !== '.git') return null
+    if (key(path.dirname(own)) !== key(path.join(common, 'worktrees'))) return null
+    const back = (smallFile(path.join(own, 'gitdir')) || '').trim()
+    if (!back || isNetwork(back) || key(path.resolve(own, back)) !== key(path.join(root, '.git'))) return null
+    // As devflow-state decides (docs/specs/repository.md, Issue folder): a .devflow.json is not asked of the main tree,
+    // which may have a commit without one checked out; git's back link already ties the two.
+    return fs.lstatSync(common).isDirectory() ? path.dirname(common) : null
+  } catch {
+    return null
+  }
+}
+
 const WRITERS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR'])
 const STATE_HEADING = /^## 현재 상태[ \t]*$/m
 const BRANCH_LINE = /^- 브랜치\/PR:[ \t]*([^\s(,]+)/m
@@ -1700,4 +1861,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, isNetwork, localPath, strictLocalPath, smallFile, hashFile, provenMain, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

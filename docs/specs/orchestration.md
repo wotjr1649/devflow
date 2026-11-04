@@ -103,6 +103,7 @@ agent definition and no Codex spawn sets a tool or sandbox limit, so the roles' 
 explorer changes no files, the implementer spawns no agents) hold by instruction. The main session's check before and
 after every explorer and reviewer catches the effects it can see; it is a tripwire, not isolation
 ([rationale](../design/current-decisions.md#execution-and-delegation)).
+
 ### Perspectives
 
 Each role's perspectives are `###` sections of the roles reference, so no stage reads a separate perspectives file

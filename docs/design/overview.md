@@ -30,7 +30,7 @@ model judgment.
 | Global instructions | Safety, authority | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | Guidance |
 | Project AGENTS.md | Facts, commands, document map, boundaries | Loaded directly if there is no CLAUDE.md | Loaded | Guidance |
 | Skills | Procedures | Plugin `skills/` | Same folder | Guidance |
-| Agents | Isolated work, tool limits | Plugin `agents/` (tool limits only; role text is the skill's) | `spawn_agent` with the brief | The Claude reviewer gets read tools only through the plugin agent; the `general-purpose` fallback, reporting roles with shell tools and Codex report-only roles are instructions, not file system isolation |
+| Agents | Isolated work | `general-purpose` with the brief | `spawn_agent` with the brief | Role limits are instructions; the main session's before-and-after check around each explorer and reviewer catches visible effects and is not isolation |
 | Hooks | Resume and sessions | `hooks/hooks.json` | `hooks/hooks.json` | Do not block. Only the resume card, unattended continuation and session release |
 | Scripts | Ledger, Issue I/O, resume card | `bin/devflow-state` | Skills run it by path | Public text filter. Does not block posting that bypasses it |
 | git hooks, CI | Final gate | Common | Common | Deterministic |
@@ -60,11 +60,11 @@ Document format and budgets: [documents](../specs/documents.md).
   - Compatibility: the former `development-start`, `pr-review-workflow` and `workspace-cleanup` skills are gone, with
     their `/` commands. Their requests go to `devflow` in a devflow repository, and repositories without
     `.devflow.json` no longer get them.
-- **Roles and Claude agents**: the skill's roles reference holds three roles and their perspectives; every brief
+- **Roles**: the skill's roles reference holds three roles and their perspectives; every brief
   carries the role's body and at most one perspective, on both hosts. `explorer` (reads and runs commands): search by
   default, summary, root cause, verification. `reviewer` (reads only): correctness by default, design, security.
-  `implementer` (edits). The plugin's 3 Claude agent definitions add only tool limits, turn limits and default models;
-  without them the skill falls back to `general-purpose` ([why](current-decisions.md#execution-and-delegation)).
+  `implementer` (edits). The plugin ships no agent definitions: Claude Code runs every role on `general-purpose`,
+  Codex on `spawn_agent` ([why](current-decisions.md#execution-and-delegation)).
   Models, effort, promotion: the devflow skill's Roles table ([why](../specs/orchestration.md#models-and-effort))
 - **Claude Workflows**: devflow does not ship them and does not keep them as an execution mode. The user runs them
   directly outside devflow ([execution modes](../specs/orchestration.md#execution-modes))

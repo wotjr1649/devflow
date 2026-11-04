@@ -5,7 +5,7 @@ procedure the executor follows lives in the devflow skill, which owns it: [SKILL
 (Delegation, Execution modes, Roles) and its [plan](../../skills/devflow/references/plan.md),
 [build](../../skills/devflow/references/build.md), [review](../../skills/devflow/references/review.md) and
 [design](../../skills/devflow/references/design.md) references. This spec keeps the reasons, the policy the skill does
-not apply at run time, and the host facts agent definitions and tests rely on.
+not apply at run time, and the host facts delegation and tests rely on.
 
 ## Stages and paths
 
@@ -36,8 +36,7 @@ revisit](../design/current-decisions.md#execution-and-delegation)).
 
 Interactive M2 lets the main session make a one- or two-line edit itself, because one delegation (brief, fresh context,
 report) costs more than the edit; unattended runs keep a fresh context per task instead. M3 passes `isolation:
-"worktree"` on each Claude Agent call rather than in the agent definition, which would move M2 delegation into worktrees
-too.
+"worktree"` on each Claude Agent call, so M2 delegation stays out of worktrees.
 
 ## What the main session owns
 
@@ -72,8 +71,9 @@ and reports only defects that affect correctness and requirements. Weakening a t
 requirement nor the expectation changed, is a defect
 ([rationale](../design/current-decisions.md#instructions-and-protections)). A design that moves a trust boundary is
 reviewed before planning by a reviewer trying to break it, and a claimed bypass is confirmed with the real renderer or
-command, not by argument. Reviewers only report; no simplification agent edits code during review. If another plugin
-injects rules into subagents, recommend excluding devflow agents from it. The procedure is the
+command, not by argument. Reviewers only report; no simplification agent edits code during review. Rules another plugin
+injects into subagents reach devflow's agents too: they run as `general-purpose`, so no matcher can single them out
+([rationale](../design/current-decisions.md#execution-and-delegation)). The procedure is the
 [review reference](../../skills/devflow/references/review.md) and, for designs, the
 [design reference](../../skills/devflow/references/design.md).
 
@@ -85,22 +85,24 @@ subagents, which use their own cache. The Claude columns of the Roles table in
 [SKILL.md](../../skills/devflow/SKILL.md#roles) are family aliases; the Codex column, which has no aliases, is updated
 when a new version ships. fable and astra are not used.
 
-In Claude Code, the `model` (aliases only) and `effort` given at call time take precedence over the agent definition
-([host-facts](../research/host-facts.md)). In Codex, the model and effort given at spawn take precedence over the
-defaults, but the host's current tool instructions may limit what can be set. Read-only roles in Codex are kept only by
-instruction: a custom agent's `sandbox_mode` cannot narrow the parent sandbox ([host-facts](../research/host-facts.md#codex)).
+In Claude Code, the `model` (aliases only) and `effort` given at call time take precedence over the session's model and
+effort, except that `CLAUDE_CODE_EFFORT_LEVEL` overrides the call's `effort` ([host-facts](../research/host-facts.md)).
+In Codex, the model and effort given at spawn take precedence over the defaults, but the host's current tool
+instructions may limit what can be set. Read-only roles in Codex are kept only by instruction: a custom agent's
+`sandbox_mode` cannot narrow the parent sandbox ([host-facts](../research/host-facts.md#codex)).
 
 The skill's [roles reference](../../skills/devflow/references/roles.md) holds three roles: `explorer`, which only reads
 and runs commands; `reviewer`, which only reads; and `implementer`, which edits files. Every brief carries the role's
 body and at most one perspective verbatim, on both hosts, so one text serves both and the skill needs nothing outside
 its folder ([rationale](../design/current-decisions.md#execution-and-delegation)).
 
-The plugin's three Claude agent definitions carry only what a definition alone can give: tool limits (`tools`,
-`disallowedTools: Agent` and `maxTurns` for the implementer) and the role's default model and effort; their body says
-the role text comes in the brief and stops with `BLOCKED` when it does not. A call cannot set a tool list, so without
-these definitions the skill uses `general-purpose` with the same brief and reports the limits as instruction-only.
-Explore and Plan are not fallbacks: they start without the project instructions. Definitions do not set
-`omitClaudeMd`, because the agents need the project instructions and boundaries as they are.
+The plugin ships no agent definitions. Claude Code runs every role on `general-purpose` with the brief and the Roles
+table's model and effort, and Codex on `spawn_agent`, so each host has one delegation path. Explore and Plan are not
+used: they start without the project instructions. Tool lists, `disallowedTools` and `maxTurns` exist only in a Claude
+agent definition and no Codex spawn sets a tool or sandbox limit, so the roles' limits (the reviewer reads only, the
+explorer changes no files, the implementer spawns no agents) hold by instruction. The main session's check before and
+after every explorer and reviewer catches the effects it can see; it is a tripwire, not isolation
+([rationale](../design/current-decisions.md#execution-and-delegation)).
 
 ### Perspectives
 
@@ -119,7 +121,7 @@ Workflow](../design/current-decisions.md#execution-and-delegation).
 
 | Mechanism | Claude Code | Codex |
 |---|---|---|
-| Implementer and reviewer agents | plugin `agents/` (`model`, `effort`, `tools`, `disallowedTools`, `maxTurns`), else `general-purpose`; role text from the brief | `spawn_agent` with the brief, `fork_turns: "none"` and a set model and effort; an agent type only where the spawn tool offers one ([host-facts](../research/host-facts.md#codex)). The default `"all"` passes on the parent conversation |
+| Delegated agents | `general-purpose` with the brief and a set model and effort; role limits by instruction | `spawn_agent` with the brief, `fork_turns: "none"`, and the model and effort set where the host and its instructions allow, else inherited and reported; an agent type only where the spawn tool offers one ([host-facts](../research/host-facts.md#codex)). The default `"all"` passes on the parent conversation |
 | Resume card, unattended continuation, session release | [hooks](hooks.md#registered-events) | same file |
 
 Codex's SessionEnd does not run in subagents. A session that ended without the hook running expires after 30 minutes

@@ -165,24 +165,26 @@ root cause or verification for explorer; design or security for reviewer), else 
 correctness); the implementer has none. The agent has nothing else to work from, and one given two perspectives does
 neither well. When the main session applies a perspective itself, it reads it there.
 
-- Claude Code: use the plugin agent of the role's name (`devflow:explorer`, `devflow:reviewer`, `devflow:implementer`)
-  when offered, because its definition limits its tools and turns. Otherwise use `general-purpose` with the same brief
-  and the Roles table's model and effort (the role's Claude Code default where a cell names none), and say in the
-  report, and in an unattended run in a `notes` line, that the tool limits held only by instruction. Not Explore or
-  Plan: they start without the project instructions.
+- Claude Code: use `general-purpose` with the brief and the Roles table's model and effort (the role's Claude Code
+  default where a cell names none). Not Explore or Plan: they start without the project instructions.
 - Codex: spawn with `fork_turns: "none"` and the brief; the default, `"all"`, hands it this conversation, so its review
   or verification is no longer independent. Pick an agent type only where the spawn tool offers one, and set the Roles
   table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
-  Where the spawn offers no per-agent tool or sandbox limit, report-only is an instruction.
-- Record which agent ran each review and verification: `devflow:<role>`, `general-purpose` or a Codex spawn. Around an
-  explorer or reviewer that runs without tool limits (`general-purpose` or Codex), note HEAD, the branch and remote
-  refs, the working tree and the ledger before it starts and compare them after, and look for Issues, PRs and comments
-  the account posted meanwhile. A change beyond its brief's byproducts, the main session's own work and other sessions'
-  ledger entries voids its report: keep the change out of commits, record it in `blocked` in an unattended run or
-  report it to the user, and redo that work once in a new fresh context, a plugin agent where offered, with the same
-  check around it. After a post, a push or a remote ref change, redo only a review, on the read-only plugin reviewer.
-  If the redo is voided or not possible, the review or verification stays open and is reported; the main session's own
-  re-read is not independent.
+- No host here limits a delegated agent's tools or turns, so the role's limits hold only by instruction. Around every
+  explorer and reviewer the main session checks for the effects it can see. Before it starts and after it ends, first
+  compare the effective git config with its included files (`git config --list --show-origin`) and a hash of the hooks
+  folder (`git rev-parse --git-path hooks`); these run nothing the config names, but a later git command can, so if
+  either changed or cannot be read, run no other git command in that repository and treat the run as having an outside
+  effect. Then note HEAD, the branches, the working tree with ignored files, the ledger and the remote's refs (`git
+  ls-remote`), and list the Issues, PRs and comments the account created in this repository since the start: ids and
+  times only, with `gh api` and `--jq`, never bodies, so no Issue text is read outside the card's `Tool:`. A difference
+  that is neither the brief's byproduct nor the main session's own work is the agent's; another session's work looks the
+  same, so report it (in `blocked` when unattended) rather than guess. A local change voids the report: keep it out of
+  commits and redo that work once in a new fresh context with the same check. After a remote ref change, a post, or a
+  remote part that cannot be checked, redo nothing: the review or verification stays open, and an unattended run stops
+  in `blocked`; a local part that cannot be checked counts as a local change. If the redo is voided too, the same holds;
+  the main session's own re-read is not independent. The check is a tripwire, not isolation: it does not see effects
+  outside these parts. Record which agent ran each review and verification.
 
 ### Execution modes
 

@@ -112,6 +112,8 @@ original in [sources](sources.md) again and fix this document.
   explorer+haiku+`high`, explorer+sonnet, explorer+`high`, implementer+opus+`high`, reviewer+sonnet) all matched the run
   record's `message.model` and `effort`. The call's `effort` took precedence over the definition's `effort`. Each
   combination was checked once, with a small task of counting files.
+- Observation (2026-11-04): `general-purpose` called with `model: opus` and with `model: sonnet` ran as
+  `claude-opus-5-5` and `claude-sonnet-5-5` in the run record, once each.
 - Tool limits (`tools`, `disallowedTools`) and `maxTurns` exist only in an agent definition; a call can set `model` and
   `effort` but no tool list (2026-11-04, [sub-agents](https://code.claude.com/docs/en/sub-agents)). Built-ins:
   `general-purpose` has every tool a subagent can have; Explore and Plan deny Write and Edit, the docs do not say whether

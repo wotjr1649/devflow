@@ -57,11 +57,22 @@ In side-by-side trials on past work, terra produced the same results as sol in a
 With briefs missing decisions, both models silently filled unstated gaps, so that risk is prevented not by model
 promotion but by the main session settling the behavior in the brief.
 Role text and perspectives live in the skill's roles reference, and every brief carries the role's body and one
-perspective on both hosts, so the skill depends on no agent name or file (#157). The Claude agent definitions stay as
-optional shells, because tool limits and `maxTurns` can be set only in a definition, not per call: they keep the
-reviewer read-only and the implementer bounded. Without them the skill falls back to `general-purpose` and reports the
-limits as instruction-only, as Codex always is. Out-of-scope decisions are gathered in the main session through stop
-and resume.
+perspective on both hosts, so the skill depends on no agent name or file (#157). The plugin ships no agent definitions
+(#159): Claude Code runs every role on `general-purpose`, Codex on `spawn_agent`, so each host has one delegation path.
+The owner accepted the loss of the controls only a Claude definition gave - the reviewer's read-only tools, the
+explorer's lack of Edit and Write, the implementer's `maxTurns` and spawn ban, the definitions' `BLOCKED` floor, and a
+`devflow:<role>` name another plugin's subagent rules could exclude - because a 30-run comparison found no difference in
+findings or integrity between plugin agents and `general-purpose`, a spike without definitions passed review,
+verification and implementation cases with injected and hidden side effects on both hosts, and Codex never had these
+limits. The roles state the limits; the main session's check before and after every explorer and reviewer is a tripwire
+for the effects it can see (local state, git config and hooks, checked first because later git commands run them, remote
+refs, new posts in the repository), counts what it cannot check as the agent's, and after an outside effect leaves the
+review or verification open. It is not isolation, and the owner accepted what it does not see: host configuration, edits
+to existing Issues and PRs, repository settings, network traffic, posts in other repositories, effects of a background
+process or nested agent after the check, and an implementer's nested agents. Each task gets a new agent, so the lost
+turn limit only ever bounded one task; within one task nothing now stops an implementer that keeps retrying, and the
+main session's failure rules apply between attempts. Out-of-scope decisions are gathered in the main session through
+stop and resume.
 The devflow skill sets execution modes, roles, promotion and the question procedure; [orchestration](../specs/orchestration.md)
 keeps their reasons, per-host support, authority to choose models and the isolation limits of reporting roles. Workflows are run directly outside
 devflow.
@@ -69,8 +80,8 @@ devflow.
 **Alternatives.** Always delegating raises the cost of new contexts and reports, and the main session always doing the
 work lets large explorations take up its context.
 Adding definitions for every role or enforcing routes with hooks is not taken until the need is confirmed.
-Removing the agent definitions entirely, as superpowers did, would lose the Claude reviewer's read-only tools and the
-implementer's turn and spawn limits, and no comparison shows the definitions cost quality. Passing the subagent a path
+Keeping the definitions as shells keeps those limits but a second delegation path on Claude Code, with its fallback
+report and redo route, for controls the comparison did not show to matter. Passing the subagent a path
 to its role text instead of the text would shrink briefs but put the role text below the brief, beside tool output.
 
 **Revisit when.** Revisit routes beyond the table and promotion (hook enforcement, declarative routes) when promotion
@@ -78,8 +89,9 @@ recurs in real cycles or the same role's lack of quality is confirmed by review 
 Codex the table's model is not applied and results differ. If terra mechanical implementation is repeatedly promoted to
 sol in the ledger, or the final review catches defects missed by terra per-task review two or more times, that role goes
 back to sol. Revisit whether to add Workflows to the execution modes when they are used repeatedly within devflow cycles
-and their results need to be recorded in the ledger. Revisit removing the agent definitions when a side-by-side
-comparison of plugin agents and `general-purpose` with the same brief shows no loss, or when a call can set tool limits.
+and their results need to be recorded in the ledger. Revisit agent definitions when an after-check finds a delegated
+agent's change or outside effect, when an unattended implementer runs away within one task, or when a call or spawn can
+set tool limits.
 
 ## Entry points and stages
 

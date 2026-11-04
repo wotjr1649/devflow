@@ -13,7 +13,7 @@ const tempRoot = tmpdir('temp-')
 for (const k of ['TEMP', 'TMP', 'TMPDIR']) process.env[k] = tempRoot
 const manifestDir = path.join(tempRoot, 'devflow-delegation-check')
 const state = require('../bin/devflow-state')
-const realTestRoot = fs.realpathSync(tmpdir.root)
+const realTestRoot = fs.realpathSync.native(tmpdir.root)
 const inside = (parent, p) => {
   const relative = path.relative(parent, p)
   return !relative || relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
@@ -121,6 +121,47 @@ test('usage and unchanged snapshots check remote without invoking git in after',
   assert.ok(f.calls.filter(c => c.cmd === 'git').every(c => c.args[0] === '--no-pager' && c.args[1] === '--no-lazy-fetch'))
 })
 
+test('config discovered through two path spellings changes only when the file changes', () => {
+  const f = fixture()
+  fs.writeFileSync(f.vars.GIT_CONFIG_GLOBAL, '[test]\nvalue = before\n')
+  const alternate = fs.realpathSync.native(f.vars.GIT_CONFIG_GLOBAL)
+  const env = { vars: f.vars, run(cmd, args, opts) {
+    const result = f.env.run(cmd, args, opts)
+    return cmd === 'git' && args.includes('--show-origin')
+      ? { ...result, stdout: `file:${alternate}\0test.fixture\nvalue\0` + result.stdout }
+      : result
+  } }
+  const g = { ...f, env }
+  let token = before(g)
+  const configs = JSON.parse(fs.readFileSync(manifest(token), 'utf8')).configs
+  for (const p of [alternate, f.vars.GIT_CONFIG_GLOBAL]) {
+    assert.ok(configs.some(config => !path.relative(config.path, p)))
+  }
+  assert.match(after(g, token), /^local: unchanged\nremote: unchanged\nUNCHANGED$/)
+  token = before(g)
+  fs.writeFileSync(path.join(f.root, 'tracked'), 'changed')
+  const treeChange = after(g, token)
+  assert.doesNotMatch(treeChange, /^changed: config /m)
+  assert.match(treeChange, /remote: unchanged\nLOCAL_CHANGE$/)
+  const linked = path.join(f.dir, 'linked')
+  f.git('worktree', 'add', '-qb', 'linked', linked)
+  const linkedFixture = { ...g, root: linked }
+  token = before(linkedFixture)
+  const dotgit = path.join(linked, '.git')
+  fs.chmodSync(dotgit, 0o666)
+  fs.unlinkSync(dotgit)
+  fs.writeFileSync(dotgit, `gitdir: ${path.join(f.dir, 'new-git-target')}\n`)
+  const pointerChange = after(linkedFixture, token)
+  assert.match(pointerChange, /^changed: git .*linked[\\/]\.git$/m)
+  assert.doesNotMatch(pointerChange, /^changed: config /m)
+  assert.match(pointerChange, /remote: skipped \(local change\)\nLOCAL_CHANGE$/)
+  token = before(g)
+  fs.writeFileSync(f.vars.GIT_CONFIG_GLOBAL, '[test]\nvalue = after\n')
+  const configChange = after(g, token)
+  assertChanged(configChange, 'config', f.vars.GIT_CONFIG_GLOBAL)
+  assert.match(configChange, /remote: skipped \(local change\)\nLOCAL_CHANGE$/)
+})
+
 // macOS temp folders sit under /var, a link to /private/var, and Windows runners may give an 8.3 temp path, so git can
 // name the root another way than the caller's folder.
 test('a work tree reached through another spelling of its path is accepted', () => {
@@ -151,7 +192,6 @@ test('a retargeted caller path is reported without opening its new target', t =>
   const r = command(f.env, alias, 'before')
   const token = (/^token ([0-9a-f]{16}\.[0-9a-f]{64})$/m.exec(r.out) || [])[1]
   assert.ok(token, r.out)
-  const targetPath = fs.realpathSync(target)
   if (process.platform === 'win32') fs.rmdirSync(alias)
   else fs.unlinkSync(alias)
   fs.symlinkSync(target, alias, linkType)
@@ -159,12 +199,9 @@ test('a retargeted caller path is reported without opening its new target', t =>
   for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
     const original = fs[method]
     t.mock.method(fs, method, (...args) => {
-      if (typeof args[0] === 'string') {
-        const relative = path.relative(targetPath, args[0])
-        if (!relative || relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) {
-          openedTarget = true
-          throw new Error('opened new caller target')
-        }
+      if (insideFixture(target, args[0])) {
+        openedTarget = true
+        throw new Error('opened new caller target')
       }
       return original(...args)
     })
@@ -351,6 +388,7 @@ test('changed linked-worktree pointers are reported before opening their new tar
     const open = fs.openSync
     const read = fs.readFileSync
     let pointerFd
+    let intercepted = false
     t.mock.method(fs, 'openSync', (...args) => {
       const fd = open(...args)
       if (sameFixturePath(args[0], file)) pointerFd = fd
@@ -359,11 +397,15 @@ test('changed linked-worktree pointers are reported before opening their new tar
     t.mock.method(fs, 'readFileSync', (...args) => {
       const data = read(...args)
       if (args[0] !== pointerFd) return data
+      intercepted = true
       const changed = Buffer.from(data)
       changed[0] ^= 1
       return changed
     })
-    assert.match(after(g, token), /LOCAL_CHANGE$/, pointer)
+    const out = after(g, token)
+    assert.match(out, /LOCAL_CHANGE$/, pointer)
+    assert.equal(intercepted, true, pointer)
+    assert.doesNotMatch(out, /^changed: config .*global/m)
     t.mock.restoreAll()
   }
 })
@@ -725,10 +767,14 @@ test('control characters and Unicode line separators are escaped in printed path
     })
   }
   const out = after(f, token)
-  const escaped = JSON.stringify(fixturePath(fake)).replace(/[\x7f-\x9f\u2028\u2029]/g, c =>
-    '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'))
-  assert.ok(out.split('\n').includes(`changed: tree ${escaped}`), out)
-  assert.ok(out.split('\n').includes(`changed: tree ${JSON.stringify(fixturePath(fakeOther))}`), out)
+  const quoted = out.split('\n').filter(line => line.startsWith('changed: tree "'))
+    .map(line => line.slice('changed: tree '.length))
+  for (const p of [fake, fakeOther]) {
+    const printed = quoted.find(value => sameFixturePath(JSON.parse(value), p))
+    assert.ok(printed, out)
+    assert.equal(printed, JSON.stringify(JSON.parse(printed)).replace(/[\x7f-\x9f\u2028\u2029]/g, c =>
+      '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')))
+  }
   assertChanged(out, 'tree', plain)
   assert.doesNotMatch(out, /[\r\t\x1b\x85\u2028\u2029]/)
 })

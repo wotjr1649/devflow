@@ -2058,6 +2058,8 @@ function delegationRemoteAfter(run, manifest) {
 function delegationBefore(env, cwd) {
   try {
     delegationLocal(cwd)
+    const caller = { path: path.resolve(cwd), links: delegationResolve(path.resolve(cwd)).links }
+    const hooksLink = link => !caller.links.some(known => !differs(known.path, link.path) && known.text === link.text)
     const vars = { ...(env.vars || process.env) }
     for (const key of Object.keys(vars)) if (key.toUpperCase() === 'GIT_CONFIG') delete vars[key]
     const safeEnv = { vars, run(cmd, args, opts = {}) {
@@ -2086,7 +2088,7 @@ function delegationBefore(env, cwd) {
     const [own, common, hooks] = layout.map(p => path.resolve(p))
     for (const p of [own, common, hooks]) delegationLocal(p)
     const hooksPath = delegationResolve(hooks)
-    if (hooksPath.links.length) delegationFail('hooks path contains a link')
+    if (hooksPath.links.some(hooksLink)) delegationFail('hooks path contains a link')
     const commondir = path.join(own, 'commondir')
     const pointerChain = delegationResolve(path.dirname(commondir))
     const commonPointer = delegationPointer(commondir)
@@ -2143,7 +2145,7 @@ function delegationBefore(env, cwd) {
     if (!declaredHooks || isNetwork(declaredHooks) || /^~[^/\\]/.test(declaredHooks)) delegationFail('invalid hooks path')
     if (/^~[\\/]/.test(declaredHooks)) declaredHooks = absolute(vars.HOME || os.homedir(), declaredHooks.slice(2))
     else declaredHooks = absolute(root, declaredHooks)
-    if (delegationResolve(declaredHooks).links.length) delegationFail('hooks path contains a link')
+    if (delegationResolve(declaredHooks).links.some(hooksLink)) delegationFail('hooks path contains a link')
     for (const name of ['GIT_CONFIG_SYSTEM', 'GIT_CONFIG_GLOBAL']) {
       const r = safeEnv.run('git', ['var', name], { cwd: root })
       if (r.code !== 0) {
@@ -2163,7 +2165,8 @@ function delegationBefore(env, cwd) {
     } catch (e) {
       return { code: 0, out: `UNVERIFIED remote ${delegationEscape(e.code || e.message || 'check failed')}` }
     }
-    const manifest = { version: 1, root, dotgit, dot, commondir, commonPointer,
+    // Git may return a different spelling; retain the caller's path and its links as well.
+    const manifest = { version: 1, root, caller, dotgit, dot, commondir, commonPointer,
       pointerChain, rootChains, roots, configs, entries, remote }
     const bytes = Buffer.from(JSON.stringify(manifest))
     const id = crypto.randomBytes(8).toString('hex')
@@ -2187,7 +2190,10 @@ function delegationAfter(cwd, token, remoteRun) {
     const bytes = delegationRead(file)
     if (crypto.createHash('sha256').update(bytes).digest('hex') !== token.slice(17)) delegationFail('manifest digest mismatch')
     manifest = JSON.parse(bytes.toString('utf8'))
-    if (manifest.version !== 1 || differs(manifest.root, cwd) && !samePathKey(path.resolve(cwd)).startsWith(samePathKey(manifest.root) + path.sep)) {
+    const within = base => typeof base === 'string' &&
+      (!differs(base, cwd) || samePathKey(path.resolve(cwd)).startsWith(samePathKey(base) + path.sep))
+    if (manifest.version !== 1 || !manifest.caller || !Array.isArray(manifest.caller.links) ||
+        !within(manifest.root) && !within(manifest.caller.path)) {
       delegationFail('manifest belongs to another work tree')
     }
     const finish = changes => {
@@ -2212,9 +2218,15 @@ function delegationAfter(cwd, token, remoteRun) {
       else roots.push(root)
     }
     const tree = manifest.rootChains.find(root => root.part === 'tree')
-    const treeChange = tree && checkRoot(tree)
+    const callerChange = delegationResolve(manifest.caller.path, manifest.caller.links).changed
+    if (callerChange) changed('tree', callerChange)
+    let treeChange = callerChange || tree && checkRoot(tree)
+    if (!treeChange) {
+      const base = within(manifest.caller.path) ? manifest.caller : tree
+      treeChange = delegationResolve(path.resolve(cwd), base.links).changed
+      if (treeChange) changed('tree', treeChange)
+    }
     if (treeChange) changes.add(delegationChange('git', treeChange))
-    else delegationLocal(cwd)
     if (!treeChange && !obstruction(manifest.dotgit) && JSON.stringify(delegationPointer(manifest.dotgit)) !== JSON.stringify(manifest.dot)) {
       changed('git', manifest.dotgit)
     }

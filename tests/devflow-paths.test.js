@@ -14,16 +14,19 @@ test('strictLocalPath distinguishes existing paths and the first missing compone
   fs.writeFileSync(file, 'local')
   assert.deepEqual(state.strictLocalPath(root), { ok: true })
   assert.deepEqual(state.strictLocalPath(file), { ok: true })
-  assert.deepEqual(state.strictLocalPath(missing), { ok: true, absent: missing })
+  const resolvedMissing = state.strictLocalPath(missing).absent
+  assert.equal(path.basename(resolvedMissing), 'missing')
+  assert.equal(fs.realpathSync(path.dirname(resolvedMissing)), fs.realpathSync(root))
+  assert.deepEqual(state.strictLocalPath(missing), { ok: true, absent: resolvedMissing })
   const visited = []
   const lstat = fs.lstatSync
   t.mock.method(fs, 'lstatSync', (...args) => {
     visited.push(args[0])
     return lstat(...args)
   })
-  assert.deepEqual(state.strictLocalPath(path.join(missing, 'child', 'file')), { ok: true, absent: missing })
-  assert.equal(visited.includes(path.join(missing, 'child')), false)
-  assert.deepEqual(state.strictLocalPath(missing + path.sep + '..' + path.sep + 'file'), { ok: true, absent: missing })
+  assert.deepEqual(state.strictLocalPath(path.join(missing, 'child', 'file')), { ok: true, absent: resolvedMissing })
+  assert.equal(visited.includes(path.join(resolvedMissing, 'child')), false)
+  assert.deepEqual(state.strictLocalPath(missing + path.sep + '..' + path.sep + 'file'), { ok: true, absent: resolvedMissing })
 })
 
 test('strictLocalPath refuses network spellings before calling the filesystem', t => {
@@ -44,9 +47,12 @@ test('strictLocalPath refuses network spellings before calling the filesystem', 
 test('strictLocalPath fails closed when an ancestor cannot be inspected', t => {
   const root = tmpdir('devflow-paths-')
   const blocked = path.join(root, 'blocked')
+  const resolvedBlocked = state.strictLocalPath(blocked).absent
+  assert.equal(path.basename(resolvedBlocked), 'blocked')
+  assert.equal(fs.realpathSync(path.dirname(resolvedBlocked)), fs.realpathSync(root))
   const lstat = fs.lstatSync
   t.mock.method(fs, 'lstatSync', (...args) => {
-    if (args[0] === blocked) throw Object.assign(new Error('access denied'), { code: 'EACCES' })
+    if (args[0] === resolvedBlocked) throw Object.assign(new Error('access denied'), { code: 'EACCES' })
     return lstat(...args)
   })
   const result = state.strictLocalPath(path.join(blocked, 'child'))

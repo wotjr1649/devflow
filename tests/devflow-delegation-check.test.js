@@ -13,6 +13,20 @@ const tempRoot = tmpdir('temp-')
 for (const k of ['TEMP', 'TMP', 'TMPDIR']) process.env[k] = tempRoot
 const manifestDir = path.join(tempRoot, 'devflow-delegation-check')
 const state = require('../bin/devflow-state')
+const realTestRoot = fs.realpathSync(tmpdir.root)
+const inside = (parent, p) => {
+  const relative = path.relative(parent, p)
+  return !relative || relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+}
+const fixturePath = p => inside(tmpdir.root, p) ? path.join(realTestRoot, path.relative(tmpdir.root, p)) : path.resolve(p)
+const sameFixturePath = (a, b) => typeof a === 'string' && typeof b === 'string' &&
+  !path.relative(fixturePath(a), fixturePath(b))
+const insideFixture = (parent, p) => typeof p === 'string' && inside(fixturePath(parent), fixturePath(p))
+function assertChanged(out, part, p) {
+  const prefix = `changed: ${part} `
+  const paths = out.split('\n').filter(line => line.startsWith(prefix)).map(line => line.slice(prefix.length))
+  assert.ok(paths.some(actual => sameFixturePath(actual.startsWith('"') ? JSON.parse(actual) : actual, p)), out)
+}
 
 function fixture() {
   const dir = tmpdir('delegation-')
@@ -105,6 +119,93 @@ test('usage and unchanged snapshots check remote without invoking git in after',
   assert.match(after(f, token), /^local: unchanged\nremote: unchanged\nUNCHANGED$/)
   assert.equal(fs.existsSync(manifest(token)), false)
   assert.ok(f.calls.filter(c => c.cmd === 'git').every(c => c.args[0] === '--no-pager' && c.args[1] === '--no-lazy-fetch'))
+})
+
+// macOS temp folders sit under /var, a link to /private/var, and Windows runners may give an 8.3 temp path, so git can
+// name the root another way than the caller's folder.
+test('a work tree reached through another spelling of its path is accepted', () => {
+  const f = fixture()
+  const alias = path.join(f.dir, 'alias')
+  try { fs.symlinkSync(f.root, alias, process.platform === 'win32' ? 'junction' : 'dir') } catch (e) {
+    return assert.ok(['EPERM', 'EACCES'].includes(e.code), e.message)
+  }
+  const r = command(f.env, alias, 'before')
+  const token = (/^token ([0-9a-f]{16}\.[0-9a-f]{64})$/m.exec(r.out) || [])[1]
+  assert.ok(token, r.out)
+  const count = spawned
+  const out = command(f.env, alias, 'after', token).out
+  assert.equal(spawned, count)
+  assert.match(out, /^local: unchanged\nremote: unchanged\nUNCHANGED$/)
+})
+
+test('a retargeted caller path is reported without opening its new target', t => {
+  const f = fixture()
+  const alias = path.join(f.dir, 'caller-link')
+  const target = path.join(f.dir, 'new-caller-target')
+  fs.mkdirSync(target)
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+  try { fs.symlinkSync(f.root, alias, linkType) } catch (e) {
+    if (!['EPERM', 'EACCES', 'ENOSYS', 'EOPNOTSUPP', 'ENOTSUP'].includes(e.code)) throw e
+    return t.skip('directory links are unavailable')
+  }
+  const r = command(f.env, alias, 'before')
+  const token = (/^token ([0-9a-f]{16}\.[0-9a-f]{64})$/m.exec(r.out) || [])[1]
+  assert.ok(token, r.out)
+  const targetPath = fs.realpathSync(target)
+  if (process.platform === 'win32') fs.rmdirSync(alias)
+  else fs.unlinkSync(alias)
+  fs.symlinkSync(target, alias, linkType)
+  let openedTarget = false
+  for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
+    const original = fs[method]
+    t.mock.method(fs, method, (...args) => {
+      if (typeof args[0] === 'string') {
+        const relative = path.relative(targetPath, args[0])
+        if (!relative || relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) {
+          openedTarget = true
+          throw new Error('opened new caller target')
+        }
+      }
+      return original(...args)
+    })
+  }
+  const count = spawned
+  const remoteCount = f.remote.calls.length
+  const out = command(f.env, alias, 'after', token).out
+  assert.match(out, /^local: changed\n[\s\S]*changed: tree .*caller-link[\s\S]*remote: skipped \(local change\)\nLOCAL_CHANGE$/)
+  assert.equal(openedTarget, false)
+  assert.equal(spawned, count)
+  assert.equal(f.remote.calls.length, remoteCount)
+})
+
+test('a new link in the after caller path is not followed', t => {
+  const f = fixture()
+  const token = before(f)
+  const alias = path.join(f.root, 'new-caller-link')
+  const target = path.join(f.dir, 'new-caller-target')
+  fs.mkdirSync(target)
+  try { fs.symlinkSync(target, alias, process.platform === 'win32' ? 'junction' : 'dir') } catch (e) {
+    if (!['EPERM', 'EACCES', 'ENOSYS', 'EOPNOTSUPP', 'ENOTSUP'].includes(e.code)) throw e
+    return t.skip('directory links are unavailable')
+  }
+  let openedTarget = false
+  for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
+    const original = fs[method]
+    t.mock.method(fs, method, (...args) => {
+      if (insideFixture(target, args[0])) {
+        openedTarget = true
+        throw new Error('opened new caller target')
+      }
+      return original(...args)
+    })
+  }
+  const count = spawned
+  const remoteCount = f.remote.calls.length
+  const out = command(f.env, alias, 'after', token).out
+  assert.match(out, /^local: changed\n[\s\S]*changed: tree .*new-caller-link[\s\S]*remote: skipped \(local change\)\nLOCAL_CHANGE$/)
+  assert.equal(openedTarget, false)
+  assert.equal(spawned, count)
+  assert.equal(f.remote.calls.length, remoteCount)
 })
 
 test('invalid command shapes are usage errors; invalid tokens are unverified', () => {
@@ -230,7 +331,7 @@ test('a retargeted config link is reported without opening its new target', t =>
   for (const method of ['lstatSync', 'openSync', 'readFileSync']) {
     const original = fs[method]
     t.mock.method(fs, method, (...args) => {
-      assert.notEqual(args[0], other, `opened new target via ${method}`)
+      assert.equal(sameFixturePath(args[0], other), false, `opened new target via ${method}`)
       return original(...args)
     })
   }
@@ -252,7 +353,7 @@ test('changed linked-worktree pointers are reported before opening their new tar
     let pointerFd
     t.mock.method(fs, 'openSync', (...args) => {
       const fd = open(...args)
-      if (args[0] === file) pointerFd = fd
+      if (sameFixturePath(args[0], file)) pointerFd = fd
       return fd
     })
     t.mock.method(fs, 'readFileSync', (...args) => {
@@ -287,13 +388,13 @@ test('independent changes are listed when both worktree pointers change', t => {
   for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
     const original = fs[method]
     t.mock.method(fs, method, (...args) => {
-      if (typeof args[0] === 'string') assert.equal(args[0].startsWith(target), false)
+      assert.equal(insideFixture(target, args[0]), false)
       return original(...args)
     })
   }
   const out = after(g, token)
   for (const [part, p] of [['git', dotgit], ['git', commondir], ['tree', path.join(linked, 'tracked')],
-    ['config', f.vars.GIT_CONFIG_GLOBAL]]) assert.ok(out.includes(`changed: ${part} ${p}`), out)
+    ['config', f.vars.GIT_CONFIG_GLOBAL]]) assertChanged(out, part, p)
   assert.match(out, /remote: skipped \(local change\)\nLOCAL_CHANGE$/)
 })
 
@@ -329,16 +430,14 @@ test('multiple changed chains leave independent roots and configurations observa
   for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
     const original = fs[method]
     t.mock.method(fs, method, (...args) => {
-      if (typeof args[0] === 'string') {
-        for (const target of [...replacements, hooksTarget]) assert.equal(args[0].startsWith(target), false)
-      }
+      for (const target of [...replacements, hooksTarget]) assert.equal(insideFixture(target, args[0]), false)
       return original(...args)
     })
   }
   const out = after(f, token)
   for (const [part, p] of [['config', links[0]], ['config', links[1]], ['hooks', hooksParent],
     ['tree', path.join(f.root, 'tracked')], ['config', f.vars.GIT_CONFIG_GLOBAL]]) {
-    assert.ok(out.includes(`changed: ${part} ${p}`), out)
+    assertChanged(out, part, p)
   }
 })
 
@@ -364,13 +463,13 @@ test('a retargeted worktree root is reported without opening it or starting gh',
   for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
     const original = fs[method]
     t.mock.method(fs, method, (...args) => {
-      if (typeof args[0] === 'string') assert.equal(args[0].startsWith(target), false)
+      assert.equal(insideFixture(target, args[0]), false)
       return original(...args)
     })
   }
   const out = after(g, token)
-  assert.ok(out.includes(`changed: tree ${alias}`), out)
-  assert.ok(out.includes(`changed: config ${f.vars.GIT_CONFIG_GLOBAL}`), out)
+  assertChanged(out, 'tree', alias)
+  assertChanged(out, 'config', f.vars.GIT_CONFIG_GLOBAL)
   assert.equal(f.remote.calls.length, calls)
   assert.match(out, /remote: skipped \(local change\)\nLOCAL_CHANGE$/)
 })
@@ -390,7 +489,7 @@ test('a directory replaced by a link is recorded without opening its target', t 
   for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
     const original = fs[method]
     t.mock.method(fs, method, (...args) => {
-      if (typeof args[0] === 'string') assert.equal(args[0].startsWith(target), false, `${method} reached the new target`)
+      assert.equal(insideFixture(target, args[0]), false, `${method} reached the new target`)
       return original(...args)
     })
   }
@@ -415,7 +514,7 @@ test('a replaced external hooks ancestor is reported without opening its target'
   for (const method of ['lstatSync', 'openSync', 'readdirSync']) {
     const original = fs[method]
     t.mock.method(fs, method, (...args) => {
-      if (typeof args[0] === 'string') assert.equal(args[0].startsWith(target), false, `${method} reached the new target`)
+      assert.equal(insideFixture(target, args[0]), false, `${method} reached the new target`)
       return original(...args)
     })
   }
@@ -429,11 +528,11 @@ for (const spelling of ['\\\\host\\share\\target', '//host/share/target']) {
     const lstat = fs.lstatSync
     const readlink = fs.readlinkSync
     t.mock.method(fs, 'lstatSync', (...args) => {
-      if (args[0] === component) return { isSymbolicLink: () => true }
+      if (sameFixturePath(args[0], component)) return { isSymbolicLink: () => true }
       if (typeof args[0] === 'string') assert.equal(args[0].startsWith(spelling), false)
       return lstat(...args)
     })
-    t.mock.method(fs, 'readlinkSync', (...args) => args[0] === component ? spelling : readlink(...args))
+    t.mock.method(fs, 'readlinkSync', (...args) => sameFixturePath(args[0], component) ? spelling : readlink(...args))
     const env = { vars: f.vars, run() { throw new Error('git must not start') } }
     assert.match(command(env, path.join(component, 'child'), 'before').out, /^UNVERIFIED local /)
   })
@@ -497,7 +596,7 @@ test('absent config ancestors are recorded, but inaccessible ancestors are unver
   assert.match(after(f, token), /changed: config /)
   const lstat = fs.lstatSync
   t.mock.method(fs, 'lstatSync', (...args) => {
-    if (args[0] === parent) throw Object.assign(new Error('denied'), { code: 'EACCES' })
+    if (sameFixturePath(args[0], parent)) throw Object.assign(new Error('denied'), { code: 'EACCES' })
     return lstat(...args)
   })
   assert.match(command(f.env, f.root, 'before').out, /^UNVERIFIED local /)
@@ -532,7 +631,7 @@ test('links anywhere inside hook directories are unverified before and changes a
       if (!['EPERM', 'EACCES', 'ENOSYS', 'EOPNOTSUPP', 'ENOTSUP'].includes(e.code)) throw e
       return t.skip('file symlinks are unavailable')
     }
-    if (kind === 'after') assert.ok(after(f, token).includes(`changed: hooks ${link}`))
+    if (kind === 'after') assertChanged(after(f, token), 'hooks', link)
     else assert.match(command(f.env, f.root, 'before').out, /^UNVERIFIED local /, kind)
   }
 })
@@ -555,7 +654,7 @@ test('objects INFO alternates are tracked case-insensitively on Windows', { skip
   fs.writeFileSync(alternates, '')
   const token = before(f)
   fs.writeFileSync(alternates, 'changed')
-  assert.ok(after(f, token).includes(`changed: git ${alternates}`))
+  assertChanged(after(f, token), 'git', alternates)
 })
 
 test('replaced, edited, and linked manifests are unverified', t => {
@@ -594,7 +693,7 @@ test('every changed file and wholly new directory is listed', () => {
   assert.equal((out.match(/^changed: tree .*file-\d+$/gm) || []).length, 60)
   for (const p of [added, path.join(added, 'nested'), path.join(added, 'nested', 'file'),
     path.join(f.root, 'added-sibling'), path.join(f.root, 'added-sibling', 'file')]) {
-    assert.ok(out.split('\n').includes(`changed: tree ${p}`), out)
+    assertChanged(out, 'tree', p)
   }
   assert.match(out, /LOCAL_CHANGE$/)
 })
@@ -615,23 +714,22 @@ test('control characters and Unicode line separators are escaped in printed path
   const readdir = fs.readdirSync
   t.mock.method(fs, 'readdirSync', (...args) => {
     const entries = readdir(...args)
-    return typeof args[0] === 'string' && !path.relative(args[0], f.root)
+    return sameFixturePath(args[0], f.root)
       ? entries.map(entry => entry === 'safe-name' ? name : entry === 'other-name' ? 'collision\n' : entry) : entries
   })
   for (const method of ['lstatSync', 'openSync']) {
     const original = fs[method]
     t.mock.method(fs, method, (...args) => {
       const p = args[0]
-      return original(typeof p === 'string' && !path.relative(p, fake) ? real
-        : typeof p === 'string' && !path.relative(p, fakeOther) ? other : p, ...args.slice(1))
+      return original(sameFixturePath(p, fake) ? real : sameFixturePath(p, fakeOther) ? other : p, ...args.slice(1))
     })
   }
   const out = after(f, token)
-  const escaped = JSON.stringify(fake).replace(/[\x7f-\x9f\u2028\u2029]/g, c =>
+  const escaped = JSON.stringify(fixturePath(fake)).replace(/[\x7f-\x9f\u2028\u2029]/g, c =>
     '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'))
   assert.ok(out.split('\n').includes(`changed: tree ${escaped}`), out)
-  assert.ok(out.split('\n').includes(`changed: tree ${JSON.stringify(fakeOther)}`), out)
-  assert.ok(out.split('\n').includes(`changed: tree ${plain}`), out)
+  assert.ok(out.split('\n').includes(`changed: tree ${JSON.stringify(fixturePath(fakeOther))}`), out)
+  assertChanged(out, 'tree', plain)
   assert.doesNotMatch(out, /[\r\t\x1b\x85\u2028\u2029]/)
 })
 
@@ -759,7 +857,7 @@ test('linked gh configuration targets are monitored without opening a retargeted
       fs.symlinkSync(other, link, 'dir')
       const lstat = fs.lstatSync
       t.mock.method(fs, 'lstatSync', (...args) => {
-        if (typeof args[0] === 'string') assert.equal(args[0].startsWith(other), false)
+        assert.equal(insideFixture(other, args[0]), false)
         return lstat(...args)
       })
     } else fs.writeFileSync(path.join(target, 'config.yml'), 'after')

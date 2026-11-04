@@ -64,11 +64,14 @@ explorer's lack of Edit and Write, the implementer's `maxTurns` and spawn ban, t
 `devflow:<role>` name another plugin's subagent rules could exclude - because a 30-run comparison found no difference in
 findings or integrity between plugin agents and `general-purpose`, a spike without definitions passed review,
 verification and implementation cases with injected and hidden side effects on both hosts, and Codex never had these
-limits. The roles state the limits; the main session compares the state before and after every explorer and reviewer,
-counts what it cannot check as changed, and after an outside effect leaves the review or verification open. Each task
-gets a new agent, so the lost turn limit only ever bounded one task; within one task nothing now stops an implementer
-that keeps retrying, and the main session's failure rules apply between attempts. Posts outside the working Issue and PR
-are beyond the after-check. Out-of-scope decisions are gathered in the main session through stop and resume.
+limits. The roles state the limits; the main session's check before and after every explorer and reviewer is a tripwire
+for the effects it can see (local state, git config and hooks, remote refs, new posts in the repository), counts what it
+cannot check as the agent's, and after an outside effect leaves the review or verification open. It is not isolation,
+and the owner accepted what it does not see: host configuration, edits to existing Issues and PRs, repository settings,
+network traffic, posts in other repositories, effects of a background process or nested agent after the check, and an
+implementer's nested agents. Each task gets a new agent, so the lost turn limit only ever bounded one task; within one
+task nothing now stops an implementer that keeps retrying, and the main session's failure rules apply between attempts.
+Out-of-scope decisions are gathered in the main session through stop and resume.
 The devflow skill sets execution modes, roles, promotion and the question procedure; [orchestration](../specs/orchestration.md)
 keeps their reasons, per-host support, authority to choose models and the isolation limits of reporting roles. Workflows are run directly outside
 devflow.

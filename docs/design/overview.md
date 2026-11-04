@@ -30,7 +30,7 @@ model judgment.
 | Global instructions | Safety, authority | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | Guidance |
 | Project AGENTS.md | Facts, commands, document map, boundaries | Loaded directly if there is no CLAUDE.md | Loaded | Guidance |
 | Skills | Procedures | Plugin `skills/` | Same folder | Guidance |
-| Agents | Isolated work | `general-purpose` with the brief | `spawn_agent` with the brief | Role limits are instructions, checked by the main session before and after each explorer and reviewer; not file system isolation |
+| Agents | Isolated work | `general-purpose` with the brief | `spawn_agent` with the brief | Role limits are instructions; the main session's before-and-after check around each explorer and reviewer catches visible effects and is not isolation |
 | Hooks | Resume and sessions | `hooks/hooks.json` | `hooks/hooks.json` | Do not block. Only the resume card, unattended continuation and session release |
 | Scripts | Ledger, Issue I/O, resume card | `bin/devflow-state` | Skills run it by path | Public text filter. Does not block posting that bypasses it |
 | git hooks, CI | Final gate | Common | Common | Deterministic |

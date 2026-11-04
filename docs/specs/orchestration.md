@@ -96,14 +96,13 @@ and runs commands; `reviewer`, which only reads; and `implementer`, which edits 
 body and at most one perspective verbatim, on both hosts, so one text serves both and the skill needs nothing outside
 its folder ([rationale](../design/current-decisions.md#execution-and-delegation)).
 
-The plugin ships no agent definitions. Claude Code runs every role on `general-purpose` with the brief and the
-Roles table's model and effort, and Codex on `spawn_agent`, so each host has one delegation path. Explore and Plan are
-not used: they start without the project instructions. Tool lists, `disallowedTools` and `maxTurns` exist only in a
-Claude agent definition and no Codex spawn sets a tool or sandbox limit, so the roles' limits (the reviewer reads only,
-the explorer changes no files, the implementer spawns no agents) hold by instruction. The main session compares the
-state before and after every explorer and reviewer instead, and a part it cannot check counts as changed
+The plugin ships no agent definitions. Claude Code runs every role on `general-purpose` with the brief and the Roles
+table's model and effort, and Codex on `spawn_agent`, so each host has one delegation path. Explore and Plan are not
+used: they start without the project instructions. Tool lists, `disallowedTools` and `maxTurns` exist only in a Claude
+agent definition and no Codex spawn sets a tool or sandbox limit, so the roles' limits (the reviewer reads only, the
+explorer changes no files, the implementer spawns no agents) hold by instruction. The main session's check before and
+after every explorer and reviewer catches the effects it can see; it is a tripwire, not isolation
 ([rationale](../design/current-decisions.md#execution-and-delegation)).
-
 ### Perspectives
 
 Each role's perspectives are `###` sections of the roles reference, so no stage reads a separate perspectives file

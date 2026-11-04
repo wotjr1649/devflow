@@ -179,9 +179,10 @@ neither well. When the main session applies a perspective itself, it reads it th
   refs, the working tree and the ledger before it starts and compare them after, and look for Issues, PRs and comments
   the account posted meanwhile. A change beyond its brief's byproducts, the main session's own work and other sessions'
   ledger entries voids its report: keep the change out of commits, record it in `blocked` in an unattended run or
-  report it to the user, and redo that work once in a new fresh context, a plugin agent where offered; after a post, a
-  push or a remote ref change, only on a plugin agent. If that is voided or not possible, the review or verification
-  stays open and is reported; the main session's own re-read is not independent.
+  report it to the user, and redo that work once in a new fresh context, a plugin agent where offered, with the same
+  check around it. After a post, a push or a remote ref change, redo only a review, on the read-only plugin reviewer.
+  If the redo is voided or not possible, the review or verification stays open and is reported; the main session's own
+  re-read is not independent.
 
 ### Execution modes
 

@@ -101,7 +101,9 @@ table's model and effort, and Codex on `spawn_agent`, so each host has one deleg
 used: they start without the project instructions. Tool lists, `disallowedTools` and `maxTurns` exist only in a Claude
 agent definition and no Codex spawn sets a tool or sandbox limit, so the roles' limits (the reviewer reads only, the
 explorer changes no files, the implementer spawns no agents) hold by instruction. The main session's check before and
-after every explorer and reviewer catches the effects it can see; it is a tripwire, not isolation
+after every explorer and reviewer, `devflow-state delegation-check`, catches the effects it can see: `before` reads the
+git layout with git while no agent has run, and `after` runs no git and opens no path it did not record, because git
+run after the agent could start a program the agent planted. It is a tripwire, not isolation
 ([rationale](../design/current-decisions.md#execution-and-delegation)).
 
 ### Perspectives

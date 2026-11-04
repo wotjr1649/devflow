@@ -65,11 +65,19 @@ explorer's lack of Edit and Write, the implementer's `maxTurns` and spawn ban, t
 findings or integrity between plugin agents and `general-purpose`, a spike without definitions passed review,
 verification and implementation cases with injected and hidden side effects on both hosts, and Codex never had these
 limits. The roles state the limits; the main session's check before and after every explorer and reviewer is a tripwire
-for the effects it can see (local state, git config and hooks, checked first because later git commands run them, remote
-refs, new posts in the repository), counts what it cannot check as the agent's, and after an outside effect leaves the
-review or verification open. It is not isolation, and the owner accepted what it does not see: host configuration, edits
-to existing Issues and PRs, repository settings, network traffic, posts in other repositories, effects of a background
-process or nested agent after the check, and an implementer's nested agents. Each delegation gets a new agent, so the
+for the effects it can see (local state, git config and hooks, remote refs, new posts in the repository), counts what it
+cannot check as the agent's, and after an outside effect leaves the review or verification open. Since #163 it is a
+devflow-state command: `before` runs git with fixed arguments to learn the git dir, hooks, config files of every scope
+with their include targets, the origin and the main work tree, because no agent has run yet; `after` runs no git and
+opens only recorded paths through a guard that follows no changed link and refuses network spellings, because git run
+after the agent could start what it planted (a signature program for a ref format, an fsmonitor for an index read, a
+network include). It lists every changed path, so the main session can tell a brief's byproduct from the agent's
+change, and starts gh, by its recorded path and hash, only when git, config, hooks and gh's own config are unchanged.
+It is not isolation, and the owner accepted what it does not see: host configuration, the plugin installation and the
+runtimes it starts (node, gh), which the agent's account can write, same-user races between a check and an open,
+mapped network drives or mounts that look local, edits to existing Issues and PRs, repository settings, network
+traffic, posts in other repositories, effects of a background process or nested agent after the check, and an
+implementer's nested agents. Each delegation gets a new agent, so the
 lost turn limit only ever bounded one delegation; within one delegation the implementer makes at most two fixes after
 its first attempt and then ends with `BLOCKED`, by instruction only, which uses up the build reference's two fixes and
 leads to the promotion (#161). Out-of-scope decisions are gathered in the main session through stop and resume. The
@@ -81,6 +89,8 @@ devflow.
 **Alternatives.** Always delegating raises the cost of new contexts and reports, and the main session always doing the
 work lets large explorations take up its context.
 Adding definitions for every role or enforcing routes with hooks is not taken until the need is confirmed.
+Pinning the after-check's git arguments in the skill text was not taken: git still reads planted config and includes
+before it reports, and a model can drift from exact arguments (#163).
 Keeping the definitions as shells keeps those limits but a second delegation path on Claude Code, with its fallback
 report and redo route, for controls the comparison did not show to matter. Passing the subagent a path
 to its role text instead of the text would shrink briefs but put the role text below the brief, beside tool output.

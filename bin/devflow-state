@@ -1748,8 +1748,9 @@ const delegationEscape = s => String(s).replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029
   return short[c] || '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')
 })
 const delegationAccess = s => /^(?:(?:path guard|path inspection): )?(?:EACCES|EPERM)(?: |$)/.test(s || '')
-const delegationHint = e => delegationAccess(e.accessError) || delegationAccess(e.code || e.message) || e.message === 'gh request failed'
-  ? '\nhint: a sandbox that denies reads outside the work tree or network access makes this check unverifiable; run before and after outside the sandbox' : ''
+const delegationHint = (e, hint = 'a sandbox that denies reads outside the work tree or network access makes this check unverifiable; run before and after outside the sandbox') =>
+  delegationAccess(e.accessError) || delegationAccess(e.code || e.message) || e.message === 'gh request failed' ? `\nhint: ${hint}` : ''
+const delegationRemoteHint = "a sandbox that denies network access makes the remote check unverifiable; this delegation stays unverified, and a new before would take the agent's changes as its baseline"
 const delegationChange = (part, p) => `changed: ${part} ${delegationEscape(
   /[\x00-\x1f\x7f-\x9f\u2028\u2029]/.test(p) ? JSON.stringify(p) : p)}`
 function delegationLocal(p) {
@@ -2055,12 +2056,12 @@ function delegationRemoteAfter(run, manifest) {
       return { lines: ['remote: unverified ghconfig changed'], status: 'UNVERIFIED remote' }
     }
   } catch (e) {
-    return { lines: ['remote: unverified ghconfig changed'], status: 'UNVERIFIED remote', hint: delegationHint(e) }
+    return { lines: ['remote: unverified ghconfig changed'], status: 'UNVERIFIED remote', hint: delegationHint(e, delegationRemoteHint) }
   }
   const gh = hashFileInfo(remote.gh.path)
   if (JSON.stringify(gh.hash) !== JSON.stringify(remote.gh.hash)) {
     return { lines: ['remote: unverified gh changed'], status: 'UNVERIFIED remote',
-      hint: delegationHint({ accessError: gh.error }) }
+      hint: delegationHint({ accessError: gh.error }, delegationRemoteHint) }
   }
   try {
     const current = delegationRemoteRecords(run, remote, process.env)
@@ -2076,7 +2077,7 @@ function delegationRemoteAfter(run, manifest) {
     return changed.length ? { lines: changed, status: 'REMOTE_CHANGE' } : { lines: ['remote: unchanged'], status: 'UNCHANGED' }
   } catch (e) {
     return { lines: [`remote: unverified ${e.code || e.message || 'check failed'}`],
-      status: 'UNVERIFIED remote', hint: delegationHint(e) }
+      status: 'UNVERIFIED remote', hint: delegationHint(e, delegationRemoteHint) }
   }
 }
 
@@ -2228,7 +2229,7 @@ function delegationAfter(cwd, token, remoteRun) {
       delegationLocal(file)
       fs.unlinkSync(file)
       return { code: 0, out: [changes.length ? 'local: changed' : 'local: unchanged', ...changes,
-        ...remote.lines, changes.length ? 'LOCAL_CHANGE' : remote.status].join('\n') + (remote.hint || '') }
+        ...remote.lines].join('\n') + (remote.hint || '') + '\n' + (changes.length ? 'LOCAL_CHANGE' : remote.status) }
     }
     const changes = new Set()
     const blocked = []
@@ -2282,7 +2283,7 @@ function delegationAfter(cwd, token, remoteRun) {
     for (const change of delegationChanges(previous, delegationSnapshot(safeRoots, safeConfigs, true, blocked))) changes.add(change)
     return finish([...changes])
   } catch (e) {
-    return { code: 0, out: `local: unverified ${delegationEscape(e.code || e.message || 'check failed')}\nremote: skipped (local unverified)\nUNVERIFIED local${delegationHint(e)}` }
+    return { code: 0, out: `local: unverified ${delegationEscape(e.code || e.message || 'check failed')}\nremote: skipped (local unverified)${delegationHint(e, 'a sandbox that denies reads outside the work tree or network access makes this check unverifiable; run after again with this token outside the sandbox, never a new before for this delegation')}\nUNVERIFIED local` }
   }
 }
 

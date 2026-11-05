@@ -14,6 +14,8 @@ for (const k of ['TEMP', 'TMP', 'TMPDIR']) process.env[k] = tempRoot
 const manifestDir = path.join(tempRoot, 'devflow-delegation-check')
 const state = require('../bin/devflow-state')
 const sandboxHint = 'hint: a sandbox that denies reads outside the work tree or network access makes this check unverifiable; run before and after outside the sandbox'
+const localAfterHint = 'hint: a sandbox that denies reads outside the work tree or network access makes this check unverifiable; run after again with this token outside the sandbox, never a new before for this delegation'
+const remoteAfterHint = "hint: a sandbox that denies network access makes the remote check unverifiable; this delegation stays unverified, and a new before would take the agent's changes as its baseline"
 const realTestRoot = fs.realpathSync.native(tmpdir.root)
 const inside = (parent, p) => {
   const relative = path.relative(parent, p)
@@ -676,13 +678,15 @@ test('an inaccessible config during after names the blocked component and sugges
     if (sameFixturePath(args[0], blocked)) throw Object.assign(new Error('denied'), { code: 'EPERM' })
     return lstat(...args)
   })
-  const [line, remote, status, hint] = after(f, token).split('\n')
+  const lines = after(f, token).split('\n')
+  const [line, remote, hint, status] = lines
   const prefix = 'local: unverified path inspection: EPERM '
   assert.ok(line.startsWith(prefix), line)
   assert.ok(sameFixturePath(line.slice(prefix.length), blocked), line)
   assert.equal(remote, 'remote: skipped (local unverified)')
   assert.equal(status, 'UNVERIFIED local')
-  assert.equal(hint, sandboxHint)
+  assert.equal(hint, localAfterHint)
+  assert.equal(lines.length, 4)
 })
 
 test('an inaccessible link during after names the blocked component and suggests the sandbox', t => {
@@ -697,13 +701,15 @@ test('an inaccessible link during after names the blocked component and suggests
     if (sameFixturePath(args[0], blocked)) throw Object.assign(new Error('denied'), { code: 'EPERM' })
     return readlink(...args)
   })
-  const [line, remote, status, hint] = after(f, token).split('\n')
+  const lines = after(f, token).split('\n')
+  const [line, remote, hint, status] = lines
   const prefix = 'local: unverified EPERM '
   assert.ok(line.startsWith(prefix), line)
   assert.ok(sameFixturePath(line.slice(prefix.length), blocked), line)
   assert.equal(remote, 'remote: skipped (local unverified)')
   assert.equal(status, 'UNVERIFIED local')
-  assert.equal(hint, sandboxHint)
+  assert.equal(hint, localAfterHint)
+  assert.equal(lines.length, 4)
 })
 
 test('an access error during after snapshotting suggests the sandbox', t => {
@@ -714,7 +720,32 @@ test('an access error during after snapshotting suggests the sandbox', t => {
     if (sameFixturePath(args[0], f.root)) throw Object.assign(new Error('denied'), { code: 'EACCES' })
     return readdir(...args)
   })
-  assert.equal(after(f, token), `local: unverified EACCES\nremote: skipped (local unverified)\nUNVERIFIED local\n${sandboxHint}`)
+  assert.equal(after(f, token), `local: unverified EACCES\nremote: skipped (local unverified)\n${localAfterHint}\nUNVERIFIED local`)
+})
+
+test('after keeps the token on local access errors and detects changes on retry', t => {
+  for (const step of ['read', 'snapshot', 'remove']) {
+    const f = fixture()
+    const token = before(f)
+    const config = path.join(f.root, '.git', 'config')
+    fs.appendFileSync(config, '\n# changed after before\n')
+    const method = step === 'read' ? 'openSync' : step === 'snapshot' ? 'readdirSync' : 'unlinkSync'
+    const blocked = step === 'snapshot' ? f.root : manifest(token)
+    const original = fs[method]
+    let denied = true
+    const mock = t.mock.method(fs, method, (...args) => {
+      if (denied && sameFixturePath(args[0], blocked)) throw Object.assign(new Error('denied'), { code: 'EACCES' })
+      return original(...args)
+    })
+    assert.equal(after(f, token), `local: unverified EACCES\nremote: skipped (local unverified)\n${localAfterHint}\nUNVERIFIED local`, step)
+    assert.equal(fs.existsSync(manifest(token)), true, step)
+    denied = false
+    const out = after(f, token)
+    assertChanged(out, 'git', config)
+    assert.match(out, /LOCAL_CHANGE$/)
+    assert.equal(fs.existsSync(manifest(token)), false, step)
+    mock.mock.restore()
+  }
 })
 
 test('an access error hashing a local file suggests the sandbox', t => {
@@ -972,7 +1003,8 @@ test('a failed gh request after delegation suggests the sandbox', () => {
   const f = fixture()
   const token = before(f)
   f.remote.fail = true
-  assert.equal(after(f, token), `local: unchanged\nremote: unverified gh request failed\nUNVERIFIED remote\n${sandboxHint}`)
+  assert.equal(after(f, token), `local: unchanged\nremote: unverified gh request failed\n${remoteAfterHint}\nUNVERIFIED remote`)
+  assert.equal(fs.existsSync(manifest(token)), false)
 })
 
 test('an access error hashing the gh binary after delegation suggests the sandbox', t => {
@@ -983,7 +1015,7 @@ test('an access error hashing the gh binary after delegation suggests the sandbo
     if (sameFixturePath(args[0], f.gh)) throw Object.assign(new Error('denied'), { code: 'EPERM' })
     return open(...args)
   })
-  assert.equal(after(f, token), `local: unchanged\nremote: unverified gh changed\nUNVERIFIED remote\n${sandboxHint}`)
+  assert.equal(after(f, token), `local: unchanged\nremote: unverified gh changed\n${remoteAfterHint}\nUNVERIFIED remote`)
 })
 
 test('a failed gh request still suggests the sandbox when the work tree changed', () => {
@@ -993,7 +1025,7 @@ test('a failed gh request still suggests the sandbox when the work tree changed'
   f.remote.fail = true
   const out = after(f, token)
   assert.match(out, /^local: changed\n/)
-  assert.ok(out.endsWith(`remote: unverified gh request failed\nLOCAL_CHANGE\n${sandboxHint}`), out)
+  assert.ok(out.endsWith(`remote: unverified gh request failed\n${remoteAfterHint}\nLOCAL_CHANGE`), out)
 })
 
 test('inaccessible gh config during after suggests the sandbox', t => {
@@ -1005,7 +1037,7 @@ test('inaccessible gh config during after suggests the sandbox', t => {
     if (sameFixturePath(args[0], blocked)) throw Object.assign(new Error('denied'), { code: 'EACCES' })
     return lstat(...args)
   })
-  assert.equal(after(f, token), `local: unchanged\nremote: unverified ghconfig changed\nUNVERIFIED remote\n${sandboxHint}`)
+  assert.equal(after(f, token), `local: unchanged\nremote: unverified ghconfig changed\n${remoteAfterHint}\nUNVERIFIED remote`)
 })
 
 test('changed gh binary or configuration stops gh before it starts', () => {

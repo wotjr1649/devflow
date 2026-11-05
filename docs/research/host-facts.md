@@ -246,6 +246,11 @@ original in [sources](sources.md) again and fix this document.
   guarantee about the child shell in other versions or execution paths.
 - Observation (2026-10-01, codex-cli 0.159.3): because of the command network restriction of the default sandbox
   (`workspace-write`), `devflow-state`, which calls `gh`, failed.
+- Observation (2026-11-05, codex-cli 0.166.0, `[windows] sandbox = "elevated"`, #167): sandboxed commands run as a
+  separate local user in a `CodexSandboxUsers` group. `lstat` of `~/.config`, whose inherited ACL grants that group
+  nothing, failed with `EPERM` (`~/.gitconfig` granted it read), and `gh api` failed for lack of network, so
+  `devflow-state delegation-check` printed `UNVERIFIED` inside the sandbox and a token and `UNCHANGED` outside it.
+  Other hosts' ACLs may differ.
 - Running `codex exec` in an untrusted folder can add a `trust_level = "trusted"` entry for that folder to the global
   `config.toml` (2026-10-01). The 0.160.0 source records it only when trust is undecided and the run can write to the
   working folder

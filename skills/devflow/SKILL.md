@@ -172,7 +172,8 @@ neither well. When the main session applies a perspective itself, it reads it th
   table's model and effort where the host and its instructions allow an override; otherwise inherit and report that.
 - No host here limits a delegated agent's tools or turns, so the role's limits hold only by instruction. Around every
   explorer and reviewer the main session runs the check of the card's `Tool:`: `devflow-state delegation-check before`
-  just before the agent starts, and `delegation-check after` with the printed token once it ends; keep `running`
+  just before the agent starts, and `delegation-check after` with the printed token once it ends (in Codex, run both
+  outside the sandbox: they read git and gh configuration outside the work tree and query GitHub); keep `running`
   ledger writes and any git, config or hooks change of your own outside that window. `before` reads the git layout while no agent has run; `after` runs no git and
   starts gh only when the local result allows, because after the agent git may run a program it planted (an fsmonitor,
   a filter, a hook, a credential helper), so do not check with git yourself. When `before` prints `UNVERIFIED`, do not

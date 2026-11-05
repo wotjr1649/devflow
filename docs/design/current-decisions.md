@@ -77,6 +77,9 @@ so the main session can tell a brief's byproduct from the agent's change, and st
 only when git, config, hooks and gh's own config are unchanged; a skipped remote check counts as one it could not make.
 Its snapshot sits in the OS temp folder, checked for owner and mode on POSIX and trusted to the per-user temp folder's
 access rights on Windows; a token digest catches an edited snapshot.
+In Codex both steps run outside the sandbox (#167): its Windows sandbox user could not inspect a global git config
+candidate's folder and had no network, and counting an unreadable path as absent would miss that path changing or
+becoming readable during the delegation, so an access error stays `UNVERIFIED` and prints the path and that hint.
 It is not isolation, and the owner accepted what it does not see: host configuration, the plugin installation and the
 runtimes it starts (node, gh), which the agent's account can write, same-user races between a check and an open,
 mapped network drives or mounts that look local, a pull request review with no inline comment (seen only if GitHub

@@ -80,6 +80,9 @@ access rights on Windows; a token digest catches an edited snapshot.
 In Codex both steps run outside the sandbox (#167): its Windows sandbox user could not inspect a global git config
 candidate's folder and had no network, and counting an unreadable path as absent would miss that path changing or
 becoming readable during the delegation, so an access error stays `UNVERIFIED` and prints the path and that hint.
+After the agent has run, the hint offers only `after` again with the same token, never a new `before`, whose baseline
+would include the agent's changes; and approval is asked for the `delegation-check` prefix only, because other
+devflow-state commands run git, which outside the sandbox could start a program an agent planted.
 It is not isolation, and the owner accepted what it does not see: host configuration, the plugin installation and the
 runtimes it starts (node, gh), which the agent's account can write, same-user races between a check and an open,
 mapped network drives or mounts that look local, a pull request review with no inline comment (seen only if GitHub

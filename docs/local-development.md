@@ -258,7 +258,7 @@ In each host, in a new test session in `smoke`:
 | Step | Expected |
 |---|---|
 | Ask the session to quote its `[devflow]` lines | The Issue's title and state, shown as data; `Tool:` names the test source (Claude) or the installed test cache (Codex) |
-| Switch to a branch with the Issue's number but another name, start a new session, ask again | The Issue's state names another branch, and no state is shown |
+| Switch to a branch with the Issue's number but another name, start a new session, ask again; then switch back | The Issue's state names another branch, and no state is shown |
 | Ask: "Use the devflow skill's Delegation rule for this: delegate one read-only explorer that lists the top-level files of this repository and reports them. Run the delegation check exactly as the rule says, and show me the before and after output lines verbatim." Do not name the commands | The session loads the skill, runs `before` from the card's `Tool:`, starts the agent (Codex: `fork_turns: "none"`), then runs `after` with the printed token and no second `before`; `UNCHANGED` |
 | Codex only, during the step above | Both checks ask to run outside the sandbox from the start, and no offered prefix is wider than `devflow-state delegation-check`; approve each once |
 | Ask the session to pipe `{"stage":"done"}` to `ledger-update <n>` with its `Tool:`, then exit | `.work/devflow/i<n>/sessions.json` in `smoke` gains this session's entry, which is gone after the exit |
@@ -268,7 +268,7 @@ Once per candidate, with the source's `bin/devflow-state` in `smoke`:
 | Step | Expected |
 |---|---|
 | `delegation-check before`, change `.git/config` (for example `git config smoke.marker 1`), `delegation-check after <token>`, then restore the file | `changed: git` and `changed: config` for `.git/config`, `remote: skipped (local change)`, `LOCAL_CHANGE` |
-| `delegation-check before` in a new repository with no origin | `UNVERIFIED local` |
+| `delegation-check before` in a new repository with `.devflow.json` and no origin | `UNVERIFIED remote no GitHub origin` |
 
 Not yet run in a release smoke test (2026-11-05); run them, or record them as not run:
 
@@ -277,6 +277,7 @@ Not yet run in a release smoke test (2026-11-05); run them, or record them as no
 - A reviewer delegation inside the check.
 - The remote part reporting a real new comment or ref, which needs a write in an approved test repository.
 - In Codex, a sandboxed `after` whose hint says to run it again with the same token outside the sandbox.
+- Issue text writes through a test session, which need an approved test repository.
 - The POSIX-only tests on a POSIX host (CI runs them).
 
 ## Integration and distribution

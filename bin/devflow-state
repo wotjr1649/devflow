@@ -10,14 +10,19 @@ const crypto = require('crypto')
 // Windows looks for git.exe and gh.exe in the working folder before PATH; a cloned repository must not supply them.
 if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
 
-// Check link text without following it, so a path check does not open a network share.
+// Check path and link text without following it, so a path check does not open a network share.
 const NETWORK_PATH = /^(\\\\|\/\/)/
-// A long-path prefix ("\\?\" or "\\.\") followed by a drive letter is local; a UNC share or "\\?\UNC\" is not.
-const isNetwork = s => NETWORK_PATH.test(s) && !/^(\\\\|\/\/)[?.][\\/][A-Za-z]:/.test(s)
-// A path, or a folder link on the way to it, that names a network path is not local. A link is judged by its own text,
-// read without following it, so the check itself never touches the network. A link to a link is judged the same way
-// along the chain (Issue #53), each link counting once; past MAX_LINKS links in all, the path counts as remote. The
-// hook's localPath takes an lstat error as local; strictLocalPath (#163) reports it, and an absent component apart.
+// On Windows, text rooted without a drive is an NT object path when a reparse point holds it ("\Device\Mup\h\s",
+// "\??\GLOBALROOT\...", "\Sessions\0\DosDevices\<luid>\Global\UNC\h\s"), which the walk would read on the current
+// drive instead (Issue #165); only a long-path ("\\?\", "\\.\") or "\??\" prefix before a drive letter is local.
+// shortcut: raw \??\X: input is walked on the current drive, upgrade if raw NT input must be resolved correctly.
+const WIN_LOCAL_PREFIX = /^(?:[\\/]{2}[?.][\\/]|\\\?\?\\)[A-Za-z]:(?:[\\/]|$)/
+const isNetwork = s => process.platform === 'win32'
+  ? /^[\\/]/.test(s) && !WIN_LOCAL_PREFIX.test(s)
+  : NETWORK_PATH.test(s) && !/^(\\\\|\/\/)[?.][\\/][A-Za-z]:/.test(s)
+// Network-shaped paths and folder-link text are not local. A link is judged by its own text, and a link to a link the
+// same way along the chain (Issue #53), each link counting once; past MAX_LINKS links in all, the path counts as remote.
+// The hook's localPath takes an lstat error as local; strictLocalPath (#163) reports it, and an absent component apart.
 const MAX_LINKS = 8
 function walkLocalPath(p, strict) {
   if (isNetwork(p)) return { ok: false, why: 'network path' }

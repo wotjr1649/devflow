@@ -7,6 +7,86 @@ const crypto = require('crypto')
 const tmpdir = require('./tmpdir')
 const state = require('../bin/devflow-state')
 
+test('isNetwork keeps existing UNC and local drive rules', () => {
+  for (const target of ['\\\\h\\s', '//h/s', '\\\\?\\UNC\\h\\s', '//?/UNC/h/s']) {
+    assert.equal(state.isNetwork(target), true, target)
+  }
+  for (const target of ['\\\\?\\C:\\x', '\\\\.\\c:\\x', '//?/C:/x', 'C:\\x', 'relative\\x']) {
+    assert.equal(state.isNetwork(target), false, target)
+  }
+})
+
+const windowsRefused = [
+  ['NT UNC', '\\??\\UNC\\h\\s'],
+  ['NT GLOBALROOT', '\\??\\GLOBALROOT\\Device\\Mup\\h\\s'],
+  ['NT volume', '\\??\\Volume{g}\\x'],
+  ['DosDevices UNC', '\\DosDevices\\UNC\\h\\s'],
+  ['DosDevices drive alias', '\\DosDevices\\C:\\work\\redirect'],
+  ['GLOBAL namespace UNC', '\\GLOBAL??\\UNC\\h\\s'],
+  ['device Mup', '\\Device\\Mup\\h\\s'],
+  ['session object directory', '\\Sessions\\0\\DosDevices\\x\\Global\\UNC\\h\\s'],
+  ['backslash rooted', '\\Users\\x'],
+  ['slash rooted', '/Users/x'],
+  ['mixed UNC backslash first', '\\/h/s'],
+  ['mixed UNC slash first', '/\\h\\s'],
+  ['incomplete NT drive', '\\??\\C'],
+  ['drive-relative NT path', '\\??\\C:x'],
+  ['drive-relative long path', '\\\\?\\C:x'],
+]
+
+for (const [name, target] of windowsRefused) {
+  test('isNetwork refuses Windows ' + name, { skip: process.platform !== 'win32' }, () => {
+    assert.equal(state.isNetwork(target), true)
+  })
+}
+
+test('isNetwork accepts Windows drive prefixes and relative paths', { skip: process.platform !== 'win32' }, () => {
+  for (const target of ['\\??\\C:\\x', '\\??\\c:', '\\\\?\\C:\\x', '\\\\.\\C:\\x',
+    '//?/C:/x', '\\/?/C:/x', 'C:\\x', 'C:x', 'relative\\x']) {
+    assert.equal(state.isNetwork(target), false, target)
+  }
+})
+
+test('isNetwork keeps POSIX backslash filenames local', { skip: process.platform === 'win32' }, () => {
+  for (const target of ['\\Device\\local', '\\??\\UNC\\h\\s']) assert.equal(state.isNetwork(target), false)
+})
+
+const windowsLinkTexts = [
+  ['NT GLOBALROOT', '\\??\\GLOBALROOT\\Device\\Mup\\h\\s'],
+  ['device Mup', '\\Device\\Mup\\h\\s'],
+  ['session object directory', '\\Sessions\\0\\DosDevices\\x\\Global\\UNC\\h\\s'],
+  ['DosDevices drive alias', '\\DosDevices\\C:\\work\\redirect'],
+]
+
+for (const [name, text] of windowsLinkTexts) {
+  for (const guard of ['localPath', 'strictLocalPath']) {
+    test(guard + ' refuses Windows ' + name + ' link text', { skip: process.platform !== 'win32' }, t => {
+      const link = path.join(fs.realpathSync.native(tmpdir('devflow-paths-')), 'nt-link')
+      const lstat = fs.lstatSync
+      const readlink = fs.readlinkSync
+      let read = false
+      t.mock.method(fs, 'lstatSync', (...args) => args[0] === link ? { isSymbolicLink: () => true } : lstat(...args))
+      t.mock.method(fs, 'readlinkSync', (...args) => {
+        if (args[0] !== link) return readlink(...args)
+        read = true
+        return text
+      })
+      const result = state[guard](path.join(link, 'file'))
+      assert.equal(read, true, 'the mocked link was inspected')
+      if (guard === 'localPath') assert.equal(result, false)
+      else assert.deepEqual(result, { ok: false, why: 'network path' })
+    })
+  }
+}
+
+test('strictLocalPath accepts a POSIX link to a backslash filename', { skip: process.platform === 'win32' }, () => {
+  const root = tmpdir('devflow-paths-')
+  const target = '\\Device\\local'
+  fs.writeFileSync(path.join(root, target), 'local')
+  fs.symlinkSync(target, path.join(root, 'settings'))
+  assert.deepEqual(state.strictLocalPath(path.join(root, 'settings')), { ok: true })
+})
+
 test('strictLocalPath distinguishes existing paths and the first missing component', t => {
   const root = tmpdir('devflow-paths-')
   const file = path.join(root, 'file')

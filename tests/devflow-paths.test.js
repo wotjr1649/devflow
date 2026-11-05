@@ -137,8 +137,7 @@ test('strictLocalPath fails closed when an ancestor cannot be inspected', t => {
   })
   const result = state.strictLocalPath(path.join(blocked, 'child'))
   assert.equal(result.ok, false)
-  assert.equal(typeof result.why, 'string')
-  assert.match(result.why, /EACCES/)
+  assert.equal(result.why, `EACCES ${resolvedBlocked}`)
 })
 
 test('strictLocalPath refuses a link naming a network path', t => {

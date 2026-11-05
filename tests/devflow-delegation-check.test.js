@@ -971,6 +971,26 @@ test('remote baseline uses server time and compares all 31 paginated comments an
   assert.match(out, /REMOTE_CHANGE$/)
 })
 
+test('before names a missing .devflow.json, and a file error names its path', t => {
+  const f = fixture()
+  fs.unlinkSync(path.join(f.root, '.devflow.json'))
+  assert.equal(command(f.env, f.root, 'before').out, 'UNVERIFIED local missing .devflow.json')
+  const g = fixture()
+  const project = path.join(g.root, '.devflow.json')
+  const lstat = fs.lstatSync
+  let calls = 0
+  // The path guard's own lstat comes first; the second is the raw check, whose error used to print only its code.
+  t.mock.method(fs, 'lstatSync', (...args) => {
+    if (sameFixturePath(args[0], project) && ++calls === 2) {
+      throw Object.assign(new Error('io'), { code: 'EIO', path: args[0] })
+    }
+    return lstat(...args)
+  })
+  const out = command(g.env, g.root, 'before').out
+  assert.equal(calls, 2)
+  assert.match(out, /^UNVERIFIED local EIO .*\.devflow\.json$/)
+})
+
 test('remote refuses missing origin and malformed records', () => {
   const noOrigin = fixture()
   noOrigin.git('remote', 'remove', 'origin')

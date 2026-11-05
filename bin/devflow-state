@@ -51,7 +51,7 @@ function walkLocalPath(p, strict) {
     let st
     try { st = fs.lstatSync(q) } catch (e) {
       if (!strict) return { ok: true }
-      return e.code === 'ENOENT' ? { ok: true, absent: q } : { ok: false, why: e.code || 'lstat failed' }
+      return e.code === 'ENOENT' ? { ok: true, absent: q } : { ok: false, why: `${e.code || 'lstat failed'} ${q}` }
     }
     if (!st.isSymbolicLink()) {
       if (strict && rest.length && !st.isDirectory()) return { ok: false, why: 'ENOTDIR' }
@@ -115,19 +115,19 @@ function smallFile(p, maxBytes = 4096) {
   }
 }
 
-function hashFile(p) {
+function hashFileInfo(p) {
   let fd
-  let result = null
+  const result = { hash: null, error: undefined }
   try {
     const local = strictLocalPath(p)
-    if (!local.ok || local.absent) return null
+    if (!local.ok || local.absent) { result.error = local.why; return result }
     const st = fs.lstatSync(p, { bigint: true })
-    if (!st.isFile()) return null
+    if (!st.isFile()) return result
     const { O_RDONLY, O_NONBLOCK = 0, O_NOFOLLOW = 0 } = fs.constants
     fd = fs.openSync(p, O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
     const opened = fs.fstatSync(fd, { bigint: true })
     if (!opened.isFile() || opened.dev !== st.dev || opened.ino !== st.ino ||
-        opened.size !== st.size || opened.mode !== st.mode) return null
+        opened.size !== st.size || opened.mode !== st.mode) return result
     const hash = crypto.createHash('sha256')
     const buf = Buffer.alloc(64 * 1024)
     let size = 0n
@@ -136,21 +136,25 @@ function hashFile(p) {
       if (!n) break
       hash.update(buf.subarray(0, n))
       size += BigInt(n)
-      if (size > st.size) return null
+      if (size > st.size) return result
     }
     const current = fs.lstatSync(p, { bigint: true })
     if (!current.isFile() || current.dev !== st.dev || current.ino !== st.ino ||
-        current.size !== st.size || current.mode !== st.mode || size !== st.size) return null
-    result = { sha256: hash.digest('hex'), size: Number(size), mode: Number(st.mode) }
-  } catch {
-    return null
+        current.size !== st.size || current.mode !== st.mode || size !== st.size) return result
+    result.hash = { sha256: hash.digest('hex'), size: Number(size), mode: Number(st.mode) }
+  } catch (e) {
+    result.error = e?.code
   } finally {
     if (fd !== undefined) {
-      try { fs.closeSync(fd) } catch { result = null }
+      try { fs.closeSync(fd) } catch (e) {
+        result.hash = null
+        if (!result.error || ['EACCES', 'EPERM'].includes(e?.code)) result.error = e?.code
+      }
     }
   }
   return result
 }
+const hashFile = p => hashFileInfo(p).hash
 
 // The main work tree of linked worktree root, or null unless git's own records prove the worktree belongs to it
 // (Issue #14): the common dir is a real folder named .git, the worktree's gitdir sits right under <common>/worktrees,
@@ -1730,7 +1734,11 @@ function note(env, cwd, n, text) {
 // Delegation checks keep the before paths and never ask git to interpret a changed repository afterward.
 const DELEGATION_LIMIT = 200000
 const delegationKey = (part, p) => part + '\0' + samePathKey(p)
-const delegationFail = reason => { throw new Error(reason) }
+const delegationFail = (reason, accessError) => {
+  const error = new Error(reason)
+  error.accessError = accessError
+  throw error
+}
 const delegationContains = (parent, p) => {
   const relative = path.relative(parent, p)
   return !relative || relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
@@ -1739,6 +1747,9 @@ const delegationEscape = s => String(s).replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029
   const short = { '\b': '\\b', '\t': '\\t', '\n': '\\n', '\f': '\\f', '\r': '\\r' }
   return short[c] || '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')
 })
+const delegationAccess = s => /^(?:(?:path guard|path inspection): )?(?:EACCES|EPERM)(?: |$)/.test(s || '')
+const delegationHint = e => delegationAccess(e.accessError) || delegationAccess(e.code || e.message) || e.message === 'gh request failed'
+  ? '\nhint: a sandbox that denies reads outside the work tree or network access makes this check unverifiable; run before and after outside the sandbox' : ''
 const delegationChange = (part, p) => `changed: ${part} ${delegationEscape(
   /[\x00-\x1f\x7f-\x9f\u2028\u2029]/.test(p) ? JSON.stringify(p) : p)}`
 function delegationLocal(p) {
@@ -1765,7 +1776,7 @@ function delegationResolve(p, previous) {
     if (done) delegationLocal(done)
     let st
     try { st = fs.lstatSync(q) } catch (e) {
-      if (e.code !== 'ENOENT') delegationFail(`path inspection: ${e.code || 'failed'}`)
+      if (e.code !== 'ENOENT') delegationFail(`path inspection: ${e.code || 'failed'} ${q}`)
       if (previous && links.length !== previous.length) return { changed: q }
       return { path: path.resolve(q, ...rest), links }
     }
@@ -1776,7 +1787,8 @@ function delegationResolve(p, previous) {
       done = q
       continue
     }
-    const text = fs.readlinkSync(q)
+    let text
+    try { text = fs.readlinkSync(q) } catch (e) { delegationFail(`${e.code || e.message || 'check failed'} ${q}`) }
     if (previous && (!expected.has(key) || expected.get(key) !== text)) return { changed: q }
     if (isNetwork(text) || links.length >= MAX_LINKS) delegationFail('network or excessive path links')
     links.push({ path: q, text })
@@ -1869,9 +1881,9 @@ function delegationSnapshot(roots, configs, after = false, blocked = []) {
     }
     else if (st.isFile()) {
       delegationLocal(p)
-      const hash = hashFile(p)
-      if (!hash) delegationFail('file could not be safely hashed')
-      entry = { ...entry, type: 'file', ...hash }
+      const result = hashFileInfo(p)
+      if (!result.hash) delegationFail('file could not be safely hashed', result.error)
+      entry = { ...entry, type: 'file', ...result.hash }
     } else {
       delegationLocal(p)
       entry.type = st.isDirectory() ? 'directory' : 'other'
@@ -1911,23 +1923,28 @@ const delegationVar = (vars, name) => {
 function delegationGh(vars, cwd) {
   const dirs = (delegationVar(vars, 'PATH') || '').split(path.delimiter)
   const extensions = process.platform === 'win32' ? (delegationVar(vars, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';') : ['']
+  let accessError
   for (const dir of dirs) {
     if (!path.isAbsolute(dir) || isNetwork(dir)) continue
     for (const ext of extensions) {
       const candidate = path.resolve(cwd, dir, 'gh' + ext)
       const local = strictLocalPath(candidate)
-      if (!local.ok || local.absent) continue
+      if (!local.ok || local.absent) {
+        if (delegationAccess(local.why)) accessError = local.why
+        continue
+      }
       try {
         if (fs.lstatSync(candidate).isFile()) {
-          const hash = hashFile(candidate)
-          if (hash) return { path: candidate, hash }
+          const result = hashFileInfo(candidate)
+          if (result.hash) return { path: candidate, hash: result.hash }
+          if (delegationAccess(result.error)) accessError = result.error
         }
       } catch (e) {
         if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e
       }
     }
   }
-  delegationFail('gh not found')
+  delegationFail('gh not found', accessError)
 }
 
 function delegationGhConfig(vars, cwd) {
@@ -2037,11 +2054,13 @@ function delegationRemoteAfter(run, manifest) {
       delegationSnapshot(remote.ghconfig.roots, [], true)).length) {
       return { lines: ['remote: unverified ghconfig changed'], status: 'UNVERIFIED remote' }
     }
-  } catch {
-    return { lines: ['remote: unverified ghconfig changed'], status: 'UNVERIFIED remote' }
+  } catch (e) {
+    return { lines: ['remote: unverified ghconfig changed'], status: 'UNVERIFIED remote', hint: delegationHint(e) }
   }
-  if (JSON.stringify(hashFile(remote.gh.path)) !== JSON.stringify(remote.gh.hash)) {
-    return { lines: ['remote: unverified gh changed'], status: 'UNVERIFIED remote' }
+  const gh = hashFileInfo(remote.gh.path)
+  if (JSON.stringify(gh.hash) !== JSON.stringify(remote.gh.hash)) {
+    return { lines: ['remote: unverified gh changed'], status: 'UNVERIFIED remote',
+      hint: delegationHint({ accessError: gh.error }) }
   }
   try {
     const current = delegationRemoteRecords(run, remote, process.env)
@@ -2056,7 +2075,8 @@ function delegationRemoteAfter(run, manifest) {
     }
     return changed.length ? { lines: changed, status: 'REMOTE_CHANGE' } : { lines: ['remote: unchanged'], status: 'UNCHANGED' }
   } catch (e) {
-    return { lines: [`remote: unverified ${e.code || e.message || 'check failed'}`], status: 'UNVERIFIED remote' }
+    return { lines: [`remote: unverified ${e.code || e.message || 'check failed'}`],
+      status: 'UNVERIFIED remote', hint: delegationHint(e) }
   }
 }
 
@@ -2168,7 +2188,7 @@ function delegationBefore(env, cwd) {
       if (!slug) delegationFail('no GitHub origin')
       remote = delegationRemoteBefore((...args) => env.run(...args), env.vars || process.env, root, slug[1])
     } catch (e) {
-      return { code: 0, out: `UNVERIFIED remote ${delegationEscape(e.code || e.message || 'check failed')}` }
+      return { code: 0, out: `UNVERIFIED remote ${delegationEscape(e.code || e.message || 'check failed')}${delegationHint(e)}` }
     }
     // Git may return a different spelling; retain the caller's path and its links as well.
     const manifest = { version: 1, root, caller, dotgit, dot, commondir, commonPointer,
@@ -2181,7 +2201,7 @@ function delegationBefore(env, cwd) {
     return { code: 0, out: `token ${id}.${crypto.createHash('sha256').update(bytes).digest('hex')}\n` +
       'limits: host code, same-user races, mapped drives, Windows temp ACL, and changes outside recorded paths' }
   } catch (e) {
-    return { code: 0, out: `UNVERIFIED local ${delegationEscape(e.code || e.message || 'check failed')}` }
+    return { code: 0, out: `UNVERIFIED local ${delegationEscape(e.code || e.message || 'check failed')}${delegationHint(e)}` }
   }
 }
 
@@ -2208,7 +2228,7 @@ function delegationAfter(cwd, token, remoteRun) {
       delegationLocal(file)
       fs.unlinkSync(file)
       return { code: 0, out: [changes.length ? 'local: changed' : 'local: unchanged', ...changes,
-        ...remote.lines, changes.length ? 'LOCAL_CHANGE' : remote.status].join('\n') }
+        ...remote.lines, changes.length ? 'LOCAL_CHANGE' : remote.status].join('\n') + (remote.hint || '') }
     }
     const changes = new Set()
     const blocked = []
@@ -2262,7 +2282,7 @@ function delegationAfter(cwd, token, remoteRun) {
     for (const change of delegationChanges(previous, delegationSnapshot(safeRoots, safeConfigs, true, blocked))) changes.add(change)
     return finish([...changes])
   } catch (e) {
-    return { code: 0, out: `local: unverified ${delegationEscape(e.code || e.message || 'check failed')}\nremote: skipped (local unverified)\nUNVERIFIED local` }
+    return { code: 0, out: `local: unverified ${delegationEscape(e.code || e.message || 'check failed')}\nremote: skipped (local unverified)\nUNVERIFIED local${delegationHint(e)}` }
   }
 }
 

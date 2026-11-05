@@ -13,6 +13,7 @@ const tempRoot = tmpdir('temp-')
 for (const k of ['TEMP', 'TMP', 'TMPDIR']) process.env[k] = tempRoot
 const manifestDir = path.join(tempRoot, 'devflow-delegation-check')
 const state = require('../bin/devflow-state')
+const sandboxHint = 'hint: a sandbox that denies reads outside the work tree or network access makes this check unverifiable; run before and after outside the sandbox'
 const realTestRoot = fs.realpathSync.native(tmpdir.root)
 const inside = (parent, p) => {
   const relative = path.relative(parent, p)
@@ -641,7 +642,104 @@ test('absent config ancestors are recorded, but inaccessible ancestors are unver
     if (sameFixturePath(args[0], parent)) throw Object.assign(new Error('denied'), { code: 'EACCES' })
     return lstat(...args)
   })
-  assert.match(command(f.env, f.root, 'before').out, /^UNVERIFIED local /)
+  const [line, hint] = command(f.env, f.root, 'before').out.split('\n')
+  const prefix = 'UNVERIFIED local path guard: EACCES '
+  assert.ok(line.startsWith(prefix), line)
+  assert.ok(sameFixturePath(line.slice(prefix.length), parent), line)
+  assert.equal(hint, sandboxHint)
+})
+
+test('EPERM before delegation names the blocked path and escapes line separators', t => {
+  const f = fixture()
+  const blocked = path.join(f.dir, 'denied\u2028path')
+  f.vars.GIT_CONFIG_GLOBAL = blocked
+  const lstat = fs.lstatSync
+  t.mock.method(fs, 'lstatSync', (...args) => {
+    if (sameFixturePath(args[0], blocked)) throw Object.assign(new Error('denied'), { code: 'EPERM' })
+    return lstat(...args)
+  })
+  const [line, hint] = command(f.env, f.root, 'before').out.split('\n')
+  const prefix = 'UNVERIFIED local path guard: EPERM '
+  assert.ok(line.startsWith(prefix), line)
+  assert.ok(sameFixturePath(line.slice(prefix.length).replace('\\u2028', '\u2028'), blocked), line)
+  assert.ok(line.includes('\\u2028'), line)
+  assert.doesNotMatch(line, /\u2028/)
+  assert.equal(hint, sandboxHint)
+})
+
+test('an inaccessible config during after names the blocked component and suggests the sandbox', t => {
+  const f = fixture()
+  const blocked = f.vars.GIT_CONFIG_GLOBAL
+  const token = before(f)
+  const lstat = fs.lstatSync
+  t.mock.method(fs, 'lstatSync', (...args) => {
+    if (sameFixturePath(args[0], blocked)) throw Object.assign(new Error('denied'), { code: 'EPERM' })
+    return lstat(...args)
+  })
+  const [line, remote, status, hint] = after(f, token).split('\n')
+  const prefix = 'local: unverified path inspection: EPERM '
+  assert.ok(line.startsWith(prefix), line)
+  assert.ok(sameFixturePath(line.slice(prefix.length), blocked), line)
+  assert.equal(remote, 'remote: skipped (local unverified)')
+  assert.equal(status, 'UNVERIFIED local')
+  assert.equal(hint, sandboxHint)
+})
+
+test('an inaccessible link during after names the blocked component and suggests the sandbox', t => {
+  const f = fixture()
+  const blocked = f.vars.GIT_CONFIG_GLOBAL
+  const token = before(f)
+  const lstat = fs.lstatSync
+  const readlink = fs.readlinkSync
+  t.mock.method(fs, 'lstatSync', (...args) => sameFixturePath(args[0], blocked)
+    ? { isSymbolicLink: () => true } : lstat(...args))
+  t.mock.method(fs, 'readlinkSync', (...args) => {
+    if (sameFixturePath(args[0], blocked)) throw Object.assign(new Error('denied'), { code: 'EPERM' })
+    return readlink(...args)
+  })
+  const [line, remote, status, hint] = after(f, token).split('\n')
+  const prefix = 'local: unverified EPERM '
+  assert.ok(line.startsWith(prefix), line)
+  assert.ok(sameFixturePath(line.slice(prefix.length), blocked), line)
+  assert.equal(remote, 'remote: skipped (local unverified)')
+  assert.equal(status, 'UNVERIFIED local')
+  assert.equal(hint, sandboxHint)
+})
+
+test('an access error during after snapshotting suggests the sandbox', t => {
+  const f = fixture()
+  const token = before(f)
+  const readdir = fs.readdirSync
+  t.mock.method(fs, 'readdirSync', (...args) => {
+    if (sameFixturePath(args[0], f.root)) throw Object.assign(new Error('denied'), { code: 'EACCES' })
+    return readdir(...args)
+  })
+  assert.equal(after(f, token), `local: unverified EACCES\nremote: skipped (local unverified)\nUNVERIFIED local\n${sandboxHint}`)
+})
+
+test('an access error hashing a local file suggests the sandbox', t => {
+  const f = fixture()
+  const blocked = path.join(f.root, 'tracked')
+  const open = fs.openSync
+  t.mock.method(fs, 'openSync', (...args) => {
+    if (sameFixturePath(args[0], blocked)) throw Object.assign(new Error('denied'), { code: 'EACCES' })
+    return open(...args)
+  })
+  assert.equal(command(f.env, f.root, 'before').out, `UNVERIFIED local file could not be safely hashed\n${sandboxHint}`)
+})
+
+test('a non-access path error does not suggest the sandbox', t => {
+  const f = fixture()
+  const blocked = path.join(f.dir, 'EPERM')
+  f.vars.GIT_CONFIG_GLOBAL = blocked
+  const lstat = fs.lstatSync
+  t.mock.method(fs, 'lstatSync', (...args) => {
+    if (sameFixturePath(args[0], blocked)) throw Object.assign(new Error('I/O failure'), { code: 'EIO' })
+    return lstat(...args)
+  })
+  const out = command(f.env, f.root, 'before').out
+  assert.match(out, /^UNVERIFIED local path guard: EIO /)
+  assert.doesNotMatch(out, /\nhint:/)
 })
 
 test('linked hooks are unverified before delegation', t => {
@@ -654,7 +752,9 @@ test('linked hooks are unverified before delegation', t => {
     return t.skip('directory symlinks are unavailable')
   }
   f.git('config', 'core.hooksPath', link)
-  assert.match(command(f.env, f.root, 'before').out, /^UNVERIFIED local /)
+  const out = command(f.env, f.root, 'before').out
+  assert.match(out, /^UNVERIFIED local /)
+  assert.doesNotMatch(out, /\nhint:/)
 })
 
 test('links anywhere inside hook directories are unverified before and changes after', t => {
@@ -840,21 +940,72 @@ test('remote baseline uses server time and compares all 31 paginated comments an
   assert.match(out, /REMOTE_CHANGE$/)
 })
 
-test('remote refuses missing origin, gh failures, and malformed records', () => {
+test('remote refuses missing origin and malformed records', () => {
   const noOrigin = fixture()
   noOrigin.git('remote', 'remove', 'origin')
   assert.match(command(noOrigin.env, noOrigin.root, 'before').out, /^UNVERIFIED remote no GitHub origin$/)
   assert.equal(noOrigin.remote.calls.length, 0)
-  const failing = fixture()
-  failing.remote.fail = true
-  assert.match(command(failing.env, failing.root, 'before').out, /^UNVERIFIED remote /)
   const malformed = fixture()
   malformed.remote.issueComments = ['1\tnot-a-date\treviewer']
   assert.match(command(malformed.env, malformed.root, 'before').out, /^UNVERIFIED remote /)
-  const later = fixture()
-  const token = before(later)
-  later.remote.fail = true
-  assert.match(after(later, token), /remote: unverified .+\nUNVERIFIED remote$/)
+})
+
+test('a failed gh request before delegation suggests the sandbox', () => {
+  const f = fixture()
+  f.remote.fail = true
+  assert.equal(command(f.env, f.root, 'before').out, `UNVERIFIED remote gh request failed\n${sandboxHint}`)
+})
+
+test('inaccessible gh candidates suggest the sandbox', t => {
+  const f = fixture()
+  const lstat = fs.lstatSync
+  t.mock.method(fs, 'lstatSync', (...args) => {
+    if (typeof args[0] === 'string' && /^gh(?:\.exe)?$/i.test(path.basename(args[0]))) {
+      throw Object.assign(new Error('denied'), { code: 'EACCES' })
+    }
+    return lstat(...args)
+  })
+  assert.equal(command(f.env, f.root, 'before').out, `UNVERIFIED remote gh not found\n${sandboxHint}`)
+})
+
+test('a failed gh request after delegation suggests the sandbox', () => {
+  const f = fixture()
+  const token = before(f)
+  f.remote.fail = true
+  assert.equal(after(f, token), `local: unchanged\nremote: unverified gh request failed\nUNVERIFIED remote\n${sandboxHint}`)
+})
+
+test('an access error hashing the gh binary after delegation suggests the sandbox', t => {
+  const f = fixture()
+  const token = before(f)
+  const open = fs.openSync
+  t.mock.method(fs, 'openSync', (...args) => {
+    if (sameFixturePath(args[0], f.gh)) throw Object.assign(new Error('denied'), { code: 'EPERM' })
+    return open(...args)
+  })
+  assert.equal(after(f, token), `local: unchanged\nremote: unverified gh changed\nUNVERIFIED remote\n${sandboxHint}`)
+})
+
+test('a failed gh request still suggests the sandbox when the work tree changed', () => {
+  const f = fixture()
+  const token = before(f)
+  fs.writeFileSync(path.join(f.root, 'tracked'), 'changed')
+  f.remote.fail = true
+  const out = after(f, token)
+  assert.match(out, /^local: changed\n/)
+  assert.ok(out.endsWith(`remote: unverified gh request failed\nLOCAL_CHANGE\n${sandboxHint}`), out)
+})
+
+test('inaccessible gh config during after suggests the sandbox', t => {
+  const f = fixture()
+  const blocked = path.join(f.dir, 'gh')
+  const token = before(f)
+  const lstat = fs.lstatSync
+  t.mock.method(fs, 'lstatSync', (...args) => {
+    if (sameFixturePath(args[0], blocked)) throw Object.assign(new Error('denied'), { code: 'EACCES' })
+    return lstat(...args)
+  })
+  assert.equal(after(f, token), `local: unchanged\nremote: unverified ghconfig changed\nUNVERIFIED remote\n${sandboxHint}`)
 })
 
 test('changed gh binary or configuration stops gh before it starts', () => {

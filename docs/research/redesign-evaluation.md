@@ -49,8 +49,13 @@ paths, and a noncanonical default CLI output path. Repairs use a controlled empt
 file, prepare canonical fixture roots, and canonicalize only the host-selected default output directory. Explicit
 caller path rejection and the substantive test assertions remain intact. A new alias regression failed before the
 CLI fix and passed after it; the integrated Linux suite above includes that case. The 19 skill files remain byte-for-byte
-identical to the matched-probe snapshot. The subsequent CI result is reported separately with its exact commit;
-a Linux result does not stand in for those jobs or for native Claude Code/Codex integration.
+identical to the matched-probe snapshot. The
+[second run](https://github.com/wotjr1649/devflow/actions/runs/42196803608) passed Linux and macOS but exposed a
+Windows shell-marker fixture quoting error and an output-containment comparison mismatch. Portable shell quoting
+retains the positive executable-marker control. CLI root/default/output-parent comparisons now use native real
+paths, and the regression refuses both original and native in-tree spellings before any dirty-directory check could
+mask the guard. The subsequent CI result is reported separately with its exact commit; a Linux result does not
+stand in for those jobs or for native Claude Code/Codex integration.
 
 ## Independent review and repairs
 

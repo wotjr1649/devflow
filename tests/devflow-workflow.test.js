@@ -347,7 +347,7 @@ test('autonomous protected Issue effects remain refused before invoking the prov
 
 test('review-package CLI creates one private bounded artifact outside the tree and prints no file blobs', () => {
   const root = gitRepo(), head = git(root, ['rev-parse', 'HEAD'])
-  const output = path.join(fs.realpathSync(tmpdir('devflow-review-output-')), 'package.json')
+  const output = path.join(fs.realpathSync.native(tmpdir('devflow-review-output-')), 'package.json')
   const result = state.main(['review-package', head, head, '--owned-clean-snapshot', '--out', output], () => '', undefined, root)
   assert.equal(result.code, 0, result.out)
   const summary = JSON.parse(result.out), data = JSON.parse(fs.readFileSync(output))
@@ -357,6 +357,13 @@ test('review-package CLI creates one private bounded artifact outside the tree a
   assert.ok(data.scope)
   if (process.platform !== 'win32') assert.equal(fs.statSync(output).mode & 0o777, 0o600)
   assert.equal(state.main(['review-package', head, head, '--owned-clean-snapshot', '--out', output], () => '', undefined, root).code, 1)
+  // Refuse before another dirty-input check can mask a short-name/long-name containment mismatch on Windows.
+  for (const insideRoot of new Set([root, fs.realpathSync.native(root)])) {
+    const direct = state.main(['review-package', head, head, '--owned-clean-snapshot', '--out', path.join(insideRoot, 'package.json')], () => '', undefined, root)
+    assert.equal(direct.code, 1)
+    assert.match(direct.out, /outside the snapshot/)
+    assert.equal(fs.existsSync(path.join(root, 'package.json')), false)
+  }
   const subdir = path.join(root, 'sub'); fs.mkdirSync(subdir)
   const unsafe = state.main(['review-package', head, head, '--owned-clean-snapshot', '--out', path.join(root, 'package.json')], () => '', undefined, subdir)
   assert.equal(unsafe.code, 1); assert.match(unsafe.out, /outside the snapshot/)
@@ -365,8 +372,8 @@ test('review-package CLI creates one private bounded artifact outside the tree a
 
 test('review-package default output resolves a host temporary-directory alias while explicit aliases remain refused', t => {
   const root = gitRepo(), head = git(root, ['rev-parse', 'HEAD'])
-  const target = fs.realpathSync(tmpdir('devflow-review-target-'))
-  const alias = path.join(fs.realpathSync(tmpdir('devflow-review-parent-')), 'alias')
+  const target = fs.realpathSync.native(tmpdir('devflow-review-target-'))
+  const alias = path.join(fs.realpathSync.native(tmpdir('devflow-review-parent-')), 'alias')
   fs.symlinkSync(target, alias, process.platform === 'win32' ? 'junction' : 'dir')
   t.mock.method(require('node:os'), 'tmpdir', () => alias)
   const args = ['review-package', head, head, '--owned-clean-snapshot']

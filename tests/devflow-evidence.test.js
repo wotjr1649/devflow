@@ -284,18 +284,21 @@ test('review package preserves a legal POSIX LF inside a tracked filename', { sk
 
 test('review package never invokes repository diff, textconv, clean-filter, fsmonitor, or pager helpers', () => {
   const fixture = repository('source.txt diff=marker filter=marker\n')
-  const outside = tmpdir('evidence-helper-')
-  const marker = path.join(outside, 'executed')
-  const executable = path.join(outside, 'helper')
-  fs.writeFileSync(executable, `#!/bin/sh\nprintf invoked >> '${marker}'\nprintf hidden\n`, { mode: 0o755 })
-  git(fixture.root, ['config', 'diff.marker.command', executable])
+  const outside = tmpdir("evidence-helper's space-")
+  const marker = path.join(outside, "executed marker's file")
+  const executable = path.join(outside, "helper's command")
+  // Git uses sh for these commands, including on Windows; preserve literal POSIX backslashes.
+  const shellPath = value => "'" + value.split(path.sep).join('/').replace(/'/g, "'\\''") + "'"
+  const command = shellPath(executable)
+  fs.writeFileSync(executable, `#!/bin/sh\nprintf invoked >> ${shellPath(marker)}\nprintf hidden\n`, { mode: 0o755 })
+  git(fixture.root, ['config', 'diff.marker.command', command])
   git(fixture.root, ['diff', fixture.base, fixture.head])
   assert.equal(fs.readFileSync(marker, 'utf8'), 'invoked')
   fs.unlinkSync(marker)
-  for (const key of ['diff.marker.textconv', 'filter.marker.clean', 'core.fsmonitor', 'core.pager', 'core.editor']) git(fixture.root, ['config', key, executable])
+  for (const key of ['diff.marker.textconv', 'filter.marker.clean', 'core.fsmonitor', 'core.pager', 'core.editor']) git(fixture.root, ['config', key, command])
   git(fixture.root, ['config', 'filter.marker.required', 'true'])
   const original = process.env.GIT_EXTERNAL_DIFF
-  process.env.GIT_EXTERNAL_DIFF = executable
+  process.env.GIT_EXTERNAL_DIFF = command
   try {
     assert.match(packet(fixture).diff, /-before\n\+after/)
     assert.equal(fs.existsSync(marker), false)

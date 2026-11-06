@@ -4,6 +4,8 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { execFileSync, spawnSync } = require('node:child_process')
+const { createRequire } = require('node:module')
+const vm = require('node:vm')
 const tmpdir = require('../tmpdir')
 const state = require('../../bin/devflow-state')
 const v2 = state.v2, deps = state.v2deps()
@@ -22,7 +24,7 @@ const notStarted = code => ({ [modelJob]: true, code, stdout: '', stderr: 'trans
   job: { version: 1, adapter: 'linux-subreaper-v1', state: 'not_started', reason: 'launch_failed', errorCode: code, launched: false,
     rootPid: null, rootExit: null, observedExits: [], observedExitCount: 0, hasObservedFailure: false, outputComplete: false } })
 const bindModel = (result, cmd, args, opts) => {
-  if (result?.[modelJob]) result.job.command = { file: cmd, args, cwd: opts.cwd }
+  if (result?.[modelJob]) result.job.command = { file: cmd, args, cwd: path.resolve(opts.cwd) }
   return result
 }
 const refs = (...ids) => ids.map(id => ({ id, definitionRevision: 1 }))
@@ -145,5 +147,28 @@ function actualCliFixture() {
   return { f, cli, ledger, expected: () => v2.expectedOf(ledger()), readRemote, save }
 }
 
+// Exercise the unchanged runtime sources with Node's Windows lexical path API.
+// This is a path/protocol model, not a native Windows execution adapter. The
+// caller supplies a bounded filesystem model so a broken traversal fails promptly.
+function windowsBoundaryModel(fileSystem = fs) {
+  let launches = 0
+  const load = (name, overrides, expose = '') => {
+    const filename = path.resolve(__dirname, '../../lib', name), localRequire = createRequire(filename)
+    const module = { exports: {} }
+    vm.runInNewContext(fs.readFileSync(filename, 'utf8') + expose, {
+      module, process, Buffer, __dirname: path.dirname(filename),
+      require: name => Object.hasOwn(overrides, name) ? overrides[name] : localRequire(name),
+    }, { filename, timeout: 1000 })
+    return module.exports
+  }
+  const execution = load('devflow-execution.js', {
+    'node:path': path.win32,
+    'node:child_process': { spawnSync() { launches++; throw new Error('Windows path model must not launch a command') } },
+  })
+  const runtime = load('devflow-state-v2.js', { 'node:path': path.win32, 'node:fs': fileSystem, './devflow-execution.js': execution },
+    '\nmodule.exports = { config, commandSummary, localExecutionState };\n')
+  return { ...runtime, execution, launches: () => launches }
+}
+
 module.exports = { ok, modelJob, settled, refs, all, body, fixture, ghWrites, at, nodeCommand, local, wholeTask,
-  liveJob, waitFor, complete, actualCliFixture }
+  liveJob, waitFor, complete, actualCliFixture, windowsBoundaryModel }

@@ -7,7 +7,55 @@ const path = require('node:path')
 const tmpdir = require('./tmpdir')
 const state = require('../bin/devflow-state')
 const v2 = state.v2, deps = state.v2deps()
-const { ok, settled, refs, body, fixture, ghWrites, nodeCommand, local, wholeTask, liveJob, complete } = require('./fixtures/devflow-v2')
+const { ok, settled, refs, body, fixture, ghWrites, nodeCommand, local, wholeTask, liveJob, complete, windowsBoundaryModel } = require('./fixtures/devflow-v2')
+
+test('Windows path model bounds configuration traversal and rejects drive-relative, escaping and linked inputs', () => {
+  const payload = Buffer.from('{"strict":true}\n'), visited = [], opened = []
+  let linked = null
+  const stat = (directory, symlink = false) => ({ dev: 1, ino: 1, size: payload.length,
+    isFile: () => !directory, isDirectory: () => directory, isSymbolicLink: () => symlink })
+  const model = windowsBoundaryModel({
+    constants: fs.constants,
+    lstatSync(file) {
+      visited.push(file)
+      assert.ok(visited.length <= 12, 'configuration traversal failed to stop at its repository root')
+      return stat(!file.endsWith('config.json'), file === linked)
+    },
+    openSync(file) { opened.push(file); return 7 },
+    fstatSync() { return stat(false) }, readFileSync() { return payload }, closeSync() {},
+  })
+  for (const root of ['C:/Users/runneradmin/project', 'C:/Users/runneradmin/project/', 'C:\\Users\\runneradmin\\project', 'C:/']) {
+    visited.length = 0; opened.length = 0
+    const result = model.config({ root }, ['config.json', 'nested/deep/config.json'])
+    assert.equal(result.length, 2); assert.equal(result[0].sha256, result[1].sha256)
+    assert.equal(opened[0], path.win32.resolve(root, 'config.json'))
+    assert.equal(opened[1], path.win32.resolve(root, 'nested/deep/config.json'))
+    assert.ok(visited.every(file => {
+      const relative = path.win32.relative(path.win32.resolve(root), file)
+      return relative && relative !== '..' && !relative.startsWith('..\\') && !path.win32.isAbsolute(relative)
+    }), 'configuration inspection left the bound repository')
+  }
+  const root = 'C:/Users/runneradmin/project'
+  for (const file of ['C:config.json', 'D:config.json', 'C:/outside/config.json', 'D:\\outside\\config.json',
+    '/outside/config.json', '\\\\server\\share\\config.json', '../config.json', '..\\config.json', 'nested/../../config.json', '.', './', '.\\']) {
+    visited.length = 0; opened.length = 0
+    assert.throws(() => model.config({ root }, [file]), /configuration path/)
+    assert.equal(visited.length, 0); assert.equal(opened.length, 0)
+  }
+  visited.length = 0; opened.length = 0; linked = path.win32.resolve(root, 'nested')
+  assert.throws(() => model.config({ root }, ['nested/deep/config.json']), /contains a link/)
+  assert.equal(opened.length, 0)
+})
+
+test('verification keeps a normalized cwd and applicable proof when the bound root has a trailing separator', () => {
+  const f = fixture(), ctx = { ...f.ctx(), root: f.ctx().root + path.sep }
+  f.env.onCommand = () => settled('trusted protocol model; no native execution claim')
+  const proof = v2.verify(ctx, 1, { expected: f.expected(), scope: 'delivery', criteria: refs('a', 'b'),
+    configFiles: ['config.json'], command: nodeCommand('process.stdout.write("proof")') }, deps).proof
+  assert.equal(proof.result, 'passed'); assert.equal(proof.cwd, path.resolve(ctx.root))
+  assert.equal(v2.evidenceApplies(f.read(), proof, f.original, 'delivery', ctx), true)
+  assert.equal(f.read().verification, undefined)
+})
 
 test('CF01 pure AC display reorder preserves original execution proof after raw intent reconciliation', liveJob, () => {
   const f = fixture()

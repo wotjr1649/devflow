@@ -54,8 +54,11 @@ test('shared store, Issue branch and session cannot authorize a different worktr
   const other = path.join(tmpdir('devflow-other-worktree-'), 'checkout')
   f.git('worktree', 'add', '--force', other, 'feat/1-x')
   const ctx = state.repoContext(f.env, other)
-  assert.equal(ctx.store, fs.realpathSync(f.root)); assert.equal(ctx.branch, f.ctx().branch); assert.equal(ctx.session, f.ctx().session)
+  // Windows TEMP may use an 8.3 alias while Git returns the long directory name.
+  const physicalRoot = fs.realpathSync.native(f.root)
+  assert.equal(fs.realpathSync.native(ctx.store), physicalRoot); assert.equal(ctx.branch, f.ctx().branch); assert.equal(ctx.session, f.ctx().session)
+  assert.notEqual(fs.realpathSync.native(ctx.root), physicalRoot)
   assert.throws(() => v2.read(f.root, 1, ctx), /identity mismatch/)
   assert.throws(() => v2.control(ctx, 1, { expected: f.expected(), op: 'update', patch: { blocked: [] } }, deps), /identity mismatch/)
-  assert.equal(f.read().binding.worktreeRoot, fs.realpathSync(f.root))
+  assert.equal(fs.realpathSync.native(f.read().binding.worktreeRoot), physicalRoot)
 })

@@ -7,7 +7,26 @@ const path = require('node:path')
 const tmpdir = require('./tmpdir')
 const state = require('../bin/devflow-state')
 const v2 = state.v2, deps = state.v2deps()
-const { body, fixture, ghWrites, at } = require('./fixtures/devflow-v2')
+const { body, fixture, ghWrites, at, windowsBoundaryModel } = require('./fixtures/devflow-v2')
+
+test('Windows path model keeps unsupported execution terminal without accepting another cwd, command or argv', () => {
+  const model = windowsBoundaryModel(), run = model.execution.createRunner({ platform: 'win32' })
+  const args = ['issue', 'comment', '1']
+  for (const root of ['C:/Users/runneradmin/project', 'C:/Users/runneradmin/project/', 'C:\\Users\\runneradmin\\project', 'C:/']) {
+    const expected = model.commandSummary('gh', args, root)
+    const result = run('gh', args, { cwd: root })
+    assert.equal(result.job.command.cwd, path.win32.resolve(root))
+    assert.equal(model.execution.isNotStartedResult(result), true)
+    assert.equal(model.localExecutionState(result, expected), 'not_started', root)
+    assert.equal(result.job.reason, 'unsupported_platform'); assert.equal(result.job.launched, false)
+    for (const command of [
+      { ...result.job.command, cwd: 'C:\\another-worktree' },
+      { ...result.job.command, file: 'another-command' },
+      { ...result.job.command, args: [...args, 'another-operation'] },
+    ]) assert.equal(model.localExecutionState({ ...result, job: { ...result.job, command } }, expected), 'unknown')
+  }
+  assert.equal(model.launches(), 0)
+})
 
 test('RUNTIME-05 unsupported external execution launches nothing and records a terminal not-sent result', () => {
   const f = fixture(), unsupported = require('../lib/devflow-execution.js').createRunner({ platform: 'win32' })

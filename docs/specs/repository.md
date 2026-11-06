@@ -161,7 +161,7 @@ write a check line in the integration commit.
 
 In a `pr-ci` repository the evidence for the full `verify` that is the integration gate is CI that actually checked the
 same revision. The project's `verify` step must succeed on HEAD for a branch push and on the latest merge result for a
-PR; how to confirm this follows the [integration](../../skills/devflow/references/ship.md#integration) part of the devflow ship reference. Locally, run only checks that exercise the
+PR; how to confirm this follows the [integration](../../skills/devflow/references/ship.md#integration-checklist) part of the devflow ship reference. Locally, run only checks that exercise the
 change and the behavior it affects (tests of the touched paths and their callers). When there is no basis for narrowing
 the scope (changes to shared code, configuration or test tooling), run the full `verify` locally then and there. When CI
 does not run `verify` or its result cannot be confirmed, run the full `verify` locally and wait for required CI
@@ -277,3 +277,54 @@ updates the marketplace and plugin again.
 On a host that refuses an older version by comparing versions, remove and reinstall only that plugin. Keep other
 plugins and existing tags.
 Rollback also changes the shared catalog and hosts, so it runs on a user instruction that names its targets and effects.
+
+## Evidence Git helpers
+
+`bin/lib/evidence.js` provides bounded Git operations. Callers retain repository identity, authorization, workflow
+gates, and host isolation.
+
+### Review package
+
+`reviewPackage({cwd, base, head, ownedCleanSnapshot: true, gitPath})` requires nonzero full lowercase commit OIDs of one
+object format and an owned worktree root. It verifies commit, root/nested tree, and blob content hashes and returns
+original commits, complete raw source manifests/base64 blobs, and a binary-capable diff. Replacements and
+`export-ignore` cannot remove source. Defaults limit raw source plus diff to 16 MiB and each tree to 10,000 entries;
+exceeding bounds refuses the whole package.
+
+A temporary neutral Git directory avoids source/user/system Git configuration. The reader disables replacement
+objects, lazy fetching, commit-graph metadata, external diff, textconv, paging, fsmonitor, optional locks, and network
+protocols. Commands use argv and a constrained environment, without a shell, configuration edits, or clean/smudge
+filters. Disabling [commit-graph reads](https://git-scm.com/docs/git-config#Documentation/git-config.txt-corecommitGraph)
+prevents auxiliary tree pointers from changing the diff. See Git's [global options](https://git-scm.com/docs/git#_options)
+and [diff options](https://git-scm.com/docs/git-diff#_options).
+
+HEAD, index, raw tracked bytes, file types, and executable modes must match the requested head. Untracked/ignored
+inputs, alternate object stores, submodules, non-UTF-8 names, and unsupported index layouts are refused. Legal UTF-8
+line terminators in filenames are preserved. A CRLF/autocrlf or filter-transformed checkout may fail despite clean
+`git status`. The host must prepare an exclusive canonical snapshot with exact raw head blobs and matching index;
+disabling autocrlf alone does not override attribute conversions. Keep output outside it. `ownedCleanSnapshot` asserts
+this precondition; the helper neither creates the snapshot nor proves OS exclusion or a sandbox.
+
+The CLI stores the bounded package in a private artifact and prints a compact summary, exact OIDs, and pointer.
+Do not print its blob map into default tool context. Receipts identify the exact package and report
+`dirtyCoverage: false`; omitted local inputs are not reviewed.
+
+### Conditional remote branch deletion
+
+`resolveDeleteDestination({cwd, remote, gitPath})` reads and validates one named remote's single push destination and
+returns `{remote, destination}` without contacting it. Store that exact destination in the protected effect payload.
+`conditionalDelete({cwd, remote, ref, expectedOid, expectedDestination, gitPath})` requires it, revalidates resolution,
+and refuses a changed destination. Do not replace the prepared value with a fresh value during execution.
+
+Only explicit local directories, HTTPS URLs, and SSH/scp destinations are supported. Multiple push URLs, URL rewriting,
+option-like names, and destinations that also name configured/legacy remotes or groups are refused. This prevents Git
+from reinterpreting an approved URL as another remote with different or multiple push URLs.
+
+The mutation is one `:refs/heads/...` refspec with `--force-with-lease=<full-ref>:<full-expected-OID>`. Empty, zero, or
+abbreviated expected OIDs are refused. A moved ref survives the failed lease. No general `--force` or `--no-verify` is
+emitted; implicit follow-tags/submodule pushes are disabled, and native pre-push hooks/authentication remain enabled.
+See the [explicit expected-value lease](https://git-scm.com/docs/git-push). The caller must establish exclusive control
+of the repository/remote and every effective Git configuration source throughout resolution and push, or defer deletion.
+The helper does not enforce this exclusion: concurrent alias/rewrite edits between native Git processes are not fenced
+by `expectedDestination`. Host authentication, transport identity, and server policy remain trusted. Hosted and native
+Windows transports require separate validation. Success grants no other cleanup authority.

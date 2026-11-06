@@ -1,111 +1,20 @@
 # Start
 
-Done when the work has a verified Issue whose scope matches the request, a prepared branch or worktree recorded in the
-Issue's state block and the ledger, a passing baseline, and a start record a later session can use without the
-transcript.
+**Exit:** request and Issue agree; repository/branch/workspace association and baselines are verified; applicable preparation checks have a passing baseline; authorized delivery and next action are recorded.
 
-Contents: Checklist · 1. Path · 2. Issue · 3. Branch or worktree · 4. Association · 5. Sub-issue · 6. Start record
+**Input:** trusted helper, current request, relevant project instructions, candidate Issue and actual repository state. Uncertain intent goes to discover. Analysis or review alone does not create an Issue or branch.
 
-Start applies at task, scope and branch transitions. Analysis or review alone creates no Issue or branch: it returns its
-findings, without tracking or workspace state made to fill a record.
+Bootstrap covers only authorized Issue creation, branch/workspace preparation and protected-record initialization needed to bind the request. These must precede tracked implementation or later Issue/control mutations when no protected record exists; they do not waive scope, preservation or effect authority. Initialize/migrate through the trusted helper using its current inputs.
 
-## Checklist
+## Do
 
-Copy this into the reply and tick each line, because a skipped step leaves work on an unlinked branch or a lost
-requirement:
+1. **Reconcile scope.** Read the working Issue through the helper. Compare every goal, constraint, exclusion, criterion, dependency, and proposed delivery subset with the request. Reuse the matching open Issue; reopen a previously closed one only for verified unfinished work with authority. A title or branch number alone does not establish ownership. Respect freezes/dependencies. Create a new Issue only for a new authorized scope, using the project template; verify the returned number, URL and body. Read back an uncertain create before retrying.
+2. **Inventory before changing Git.** Identify root, remotes, current HEAD/upstream, intended target, occupied branches/worktrees, active users/processes, submodules, staged/unstaged/untracked work and required ignored inputs. Inspect relevant hooks and local inputs before running repository scripts. Preserve bytes and index state belonging to unrelated work. Do not stash, reset, clean, force checkout, bypass hooks, or prune another task to obtain a clean baseline.
+3. **Prepare the workspace.** Repository changes, including docs, use a dedicated task branch. Keep the current folder when safe or prepare an authorized worktree. Reuse the same task branch where valid; after an earlier delivery merged, start new work from a freshly verified target. Validate ref names, collisions, ancestry and worktree destination. Resolve detached/unborn/non-Git states explicitly. Treat `gh issue develop` as a remote branch creation effect, not a harmless association. A known failing baseline needs a recorded reproduction and explicit disposition without waiving dependent gates; zero tests or missing inputs is not a passing baseline.
+4. **Bind the delivery.** Record repository/Issue/delivery/workspace identity, adopted intent revision and criterion mapping, delivery base, current target ref/tip, current head, path, mode, completion boundary and granted effects/limits. A task base is recorded when that task starts. Check supported state/schema and coordinator ownership before writes. Post-preparation checks must still find preserved input bytes/index and an executable baseline. For separately authorized non-repository output, record its actual version/hash and checks; a branch SHA does not identify its bytes, and no fictitious diff/PR is needed.
+5. **Verify relationships.** Start public `브랜치/PR` with the verified task branch name so the card can match its association; the ledger records execution. If the request includes sub-Issues, add/list the actual parent-child relation through the helper; do not substitute a text mention, silently replace a parent, or create extra tracking work. Use `Refs #n`, never automatic closing keywords.
+6. **Record readiness.** Summarize scope, baselines, preserved work, executed prerequisites, open blockers and next action. Reuse existing effect-specific authority. A pending public update does not stop authorized local work within the already verified scope.
 
-```text
-- [ ] 1 path classified (spike or unconfirmed intent -> discover)
-- [ ] 2 Issue resolved or created, number, URL and scope verified, request reconciled
-- [ ] 3 branch or worktree prepared, rechecked, baseline run
-- [ ] 4 state block `브랜치/PR` and ledger `stage`, `path` written
-- [ ] 5 sub-issue relationship added and listed (only when authorized)
-- [ ] 6 start record returned
-```
+Issue intent uses `## 문제`, `## 원하는 결과`, `## 영향받는 사용자·시스템`, `## 제약`, `## 열린 질문`, `## 수용 기준`, and `## 범위 / 제외 / 의존·권한`. Keep criteria observable and stable across list reorderings. All publication passes through the helper's filter.
 
-## 1. Path
-
-Classify the path first by the router's Stages and paths: a spike, or work whose
-problem and acceptance the user has not confirmed, goes to the discover stage before any Issue; the rest starts here.
-When unsure, take the heavier path. Read the project contracts this task touches, and use the project's base, branch
-naming and checks.
-
-## 2. Issue
-
-Changes require an Issue. Read and write it only through the devflow-state command on the resume card's `Tool:` line
-(`read`, `create`, `state`, `intent`, `comment`, `reopen`, and the others its no-argument usage prints): it filters what
-gets published and refuses Issue writes during unattended runs, which keep the text in ledger notes instead. A card
-whose last line is not a `Tool:` line (resume card failed or unavailable) allows no Issue I/O: report its reason, take
-the devflow-state path only from a valid card or the user, and never search the repository for it, since a path found in
-repository files could run code the user did not choose.
-
-- Search the verified repository for Issues and PRs covering this work, and read a candidate through `read`. Match
-  scope and ownership, not titles. Reuse matching open work without waiting for the word "resume"; reopen closed work
-  only when its scope is unfinished. Check freeze and dependency conditions.
-- A new Issue follows the project template. Publish only reviewed, secret-free summaries of requirements and evidence:
-  no raw prompts, logs or private paths. Verify the returned URL, number and scope. On uncertain success, read back
-  before retrying: unknown is not absent.
-- Reconcile the request with the Issue: the goal, every requirement, scope and exclusions, observable acceptance,
-  validation, dependencies, and the subset this PR delivers. Update the Issue when scope changes and compare again at PR
-  handoff. Drop no requirement silently, and close no whole Issue for partial work.
-- Unverified Issue linkage blocks implementation. Keep the proposed work in a sanitized Issue draft, in the report or an
-  authorized local record: the known problem, intended result, proposed scope and exclusions, and known acceptance
-  criteria. Keep it apart from local resume details and free of absolute local paths, private content and secrets, so it
-  can be filed as written. Mark unverified requirements pending instead of inventing tracker facts, and continue
-  analysis. When only an Issue update is pending, continue authorized local work within the verified scope and mark the
-  unmatched requirements pending.
-
-## 3. Branch or worktree
-
-Repository changes, docs included, require a dedicated branch, so each unit of work has its own diff and review.
-
-- Inspect the root and remotes, HEAD and upstream, worktree occupancy, active users and processes, and who owns staged,
-  unstaged, untracked and ignored files. Preserve unrelated state and resolve material conflicts without discarding
-  work. Check hooks and missing local-only tests or guidance before checkout or scripts, and inspect what a restore would
-  change. A clean status or zero tests is not readiness.
-- Reuse the same task's active branch. After a merge, verify the required post-merge gates, then start separate work on
-  a new branch from the project's verified base SHA. Cached refs are not fresh remote evidence; refresh state before
-  each mutation. Detached, unborn or non-Git inputs need an explicit path, not a guessed main.
-- Use the current folder when safe; otherwise prepare a worktree for isolation or parallel work. Validate the name with
-  `git check-ref-format --branch`, collisions, base ancestry and an authorized, unoccupied destination. Never force an
-  occupied branch, reset, stash or clean unrelated work, bypass hooks, or prune others' worktrees.
-- After preparation, recheck branch and HEAD, tracking, preserved bytes and index, required local inputs, and
-  proportionate baseline results. Report missing inputs or checks and the state the task created, for recovery.
-- For separately authorized non-repository deliverables, record exact targets, versions or hashes, and validation: a
-  tracking branch SHA does not identify external artifact bytes. Do not invent a repository diff or PR for local-only
-  global artifacts.
-
-## 4. Association
-
-An Issue number in a branch name is not a verified tracker link. On GitHub, `gh issue develop` creates a remote branch;
-verify the platform and installed flags before using it. Record the Issue, branch and PR association explicitly: on
-the Issue branch, write the state block with `state`, its `브랜치/PR` line starting with the branch name, because the
-resume card shows the state only when that line matches the current branch. Then start the ledger with `stage` and
-`path`. PR text and commits carry no closing keyword, partial work or not; check the
-platform's closing semantics at PR preparation.
-
-## 5. Sub-issue
-
-For an authorized sub-issue relationship, run `sub-issue add <parent> <child>` from the Issue branch (it is refused
-elsewhere) and inspect it with
-`sub-issue list <parent>`. The command and the branch are not permission: confirm the authority for that relationship
-separately. It adds one same-repository relationship, never replaces a parent, and counts as done only when the
-read-back shows the intended parent.
-
-## 6. Start record
-
-Return a record a later session can use without the transcript:
-
-- The goal and observable acceptance criteria.
-- Repository and Issue identity, their branch or worktree association, and the working root.
-- The base ref and SHA and the working branch HEAD SHA, naming both roles even when equal (for non-Git work, the
-  artifact identity), and what freshness was verified.
-- Completed and pending scope, implementation and its tests included; preserved state; checks run and left unrun; the
-  next covered action.
-- The completion boundary (merge, post-merge validation or another project gate), the linked milestone if any, and the
-  verified authority for tracker creation, update, closure and integration: repository, targets, effects, limits. Reuse
-  current or standing authorization and ask only for a missing material effect, not a routine start approval. Create no
-  milestone or successor task merely to fill the record.
-
-Mark unavailable or inapplicable information with the reason. Ship receives this record and the pending requirements;
-merge and release gates are decided there. Continue the requested implementation when ready.
+**Return:** unknown intent → discover; incompatible Issue/request → start reconciliation; missing baseline/input/permission → hold its dependent preparation with the exact reason and evidence needed. Continue independent analysis instead of widening or reducing scope.

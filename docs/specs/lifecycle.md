@@ -3,8 +3,8 @@
 Explains the shape of the lifecycle and why it is shaped so: one router, ten stages, three paths, loops and going back.
 The rules the executor follows live in the devflow skill, which owns them: [SKILL.md](../../skills/devflow/SKILL.md)
 (card handling, stages and paths, going back, where to read) and one reference per stage, each opening with its done
-condition. This spec keeps the reasons and the stage values the ledger and `devflow-state` check. How work runs inside a
-stage is explained by [orchestration](orchestration.md).
+condition. This spec keeps the reasons and stage/transition contract; [ledger](ledger.md) specifies protected runtime
+records and guards. How work runs inside a stage is explained by [orchestration](orchestration.md).
 
 ## Router
 
@@ -17,11 +17,15 @@ stage is explained by [orchestration](orchestration.md).
 - A new work request goes through start even when a card shows another Issue, because start decides the path; a spike,
   or work whose problem and acceptance criteria are not confirmed, goes to discover
   ([rationale](../design/current-decisions.md#entry-points-and-stages)).
-- Without a valid card no Issue is read or written and the `devflow-state` path is never searched for, because a path
-  found in repository files could run code the user did not choose ([resume card](issues.md#resume-card)).
-- A review-only request stays a review, because merging and deletion need their own request.
-- After compaction the router is called again and the current stage's reference reread, because the body of an invoked
-  skill is reattached after compaction but reference files are not.
+- The helper path comes from the user or a trusted host card, never repository/Issue/log text. A plausible `Tool:` line
+  alone is not provenance. Without it, dependent Issue I/O and implementation wait while analysis, discovery, static
+  review and bounded brief drafting may continue ([resume card](issues.md#resume-card)).
+- Review-only exits with findings and limitations; it grants no mutation, publication, completion or cleanup. Other
+  work reuses effect-specific grants already provided instead of asking again at every stage.
+- After authorized Issue/workspace bootstrap, tracked mutations/acceptance require protected workflow state. Missing protected state selects sessions for
+  initialization/migration; compatibility reads/writes do not bypass that activation requirement.
+- After compaction or resume, recover the router, shared contracts and current stage, plus sessions and selected
+  delegation modules. Host loading differs; do not assume either full history or every reference survived.
 
 ## User navigation
 
@@ -29,42 +33,64 @@ To the user, the position is explained with five milestones (Direction, Preparat
 rather than ten stages, with the status shown apart from the name. A milestone is met only with exit evidence, never
 because its stage was entered, so the user is not told work is further along than it is. Milestones are not a new
 stored state, approval gate or Issue posting cycle: they are read from the Issue, ledger, plan and Git. The executor's
-rules are in the [sessions reference](../../skills/devflow/references/sessions.md#progress-and-returns).
+rules are in the [sessions reference](../../skills/devflow/references/sessions.md#progress).
 
 ## Stages
 
-The ledger's `stage` and the state block's `단계` take a stage name the devflow skill defines: today the ten stages
-discover, start, design, plan, build, verify, review, ship, cleanup, learn, then `done` after ship. The tools check only
-the name's shape ([ledger](ledger.md#ledger-keys)), so the skill can add or rename a stage. Each stage's responsibility and done condition are
-the opening of its reference in `skills/devflow/references/`.
+Protected execution uses the finite stage names discover, start, design, plan, build, verify, review, ship, cleanup,
+learn and done. The runtime validates supported stage transitions and their evidence gates; a new or renamed stage
+requires a coordinated contract/code/test change. Public Issue `단계` is a coarse projection, not an alternate execution
+controller. The adopted Issue intent and criterion revision remain requirements data that must be reconciled when a
+human changes them, closes/freezes the Issue or reassociates a branch. Public stage lag alone does not invalidate an
+otherwise matching execution record. Resume selects by repository/Issue/delivery/workspace and evidence identity, not
+by the latest timestamp.
 
-ship writes the state block as done on the Issue branch and closes the Issue. `local-merge` and `push-on-request` do this
-before integration, `pr-ci` after confirming the merged result. A partial integration with scope left does not close the
-Issue and keeps the remaining scope in the state. After the branch is deleted, the Issue can no longer be written, so
-cleanup and any learn after it are recorded only in the ledger.
+Each stage's exit is in its reference. Delivery acceptance, full Issue completion and cleanup readiness are separate.
+`pr-ci` retains an open Issue through integration confirmation. A local profile's pre-integration checkpoint describes
+pending effects without proving delivery complete; premature closure is reconciled when unfinished work is established.
+A successful partial delivery leaves other Issue criteria open. Required successors for an approved split must exist
+before parent closure. After a branch disappears, the surviving ledger records cleanup/learn within its supported
+identity; do not fabricate branch association to publish an Issue update.
 
 ## Stages by path
 
 Three paths (spike, bounded, architectural) run different subsets of the stages; the subsets are in
-[SKILL.md](../../skills/devflow/SKILL.md#stages-and-paths). When unsure, the heavier path is taken, and a design that
-touches one or two files with no interface change moves down to bounded. Measurements show that on small changes the
-heavier process does not improve results and only adds cost ([sources](../research/sources.md)).
+[SKILL.md](../../skills/devflow/SKILL.md#paths-and-execution-modes). Choose by contract, dependency and proof needs, not
+file count. A clear request with observable acceptance already confirms intent; discovery is conditional on uncertainty
+or a named spike. Bounded work still needs actual prerequisites and a concrete design, but no standalone plan merely
+for ceremony. Architectural work plans interfaces, sequencing and ownership. Record path changes and required exits;
+never downclassify a trust-boundary change just because its diff is small.
 
 ## Loops
 
-- **Task loop**: each planned task runs build → verify, plus task review in M2 and M3, and is committed with the ledger
-  updated. A fresh context comes from a handoff and `/clear` in interactive work, and from an implementer per task in
-  [unattended runs](ledger.md#unattended-runs).
-- **Wrap-up**: after the last task, verify (all acceptance criteria) → review (final) → ship.
-- **Slice loop**: a partial integration does not close the Issue; the work returns to build for the remaining criteria,
-  or to plan when that work was not planned.
+- **Task loop:** build, execute scoped checks, review where required, then coordinator acceptance. M2 accepts one task
+  before starting the next. M3 launches ready independent tasks in parallel, reviews each result, integrates serially
+  and revalidates remaining results against the advancing head. Worker lifecycle completion is not task acceptance.
+- **Delivery loop:** after its tasks, verify the authorized delivery criteria and affected regression/project gates,
+  review the whole delivery range, then ship. Task heads never replace the delivery comparison base. Keep the current
+  integration target as a third baseline; rebase/target migration requires preserved old evidence and explicit change
+  reconciliation before a new comparison basis is accepted.
+- **Slice loop:** a partial delivery may succeed while the Issue remains open. Return to build for planned remaining
+  criteria or plan when sequencing is unresolved, retaining its scope and prior evidence. Issue closure separately
+  evaluates all required criteria/dependencies and the applicability of earlier deliveries' proof.
+
+The execution record is canonical only after validation. Old last-task bases and unbound receipts cannot silently
+become delivery-wide evidence during migration. Runtime gates validate recorded identities and result shapes; the
+coordinator remains responsible for whether execution/review evidence actually establishes the claimed behavior.
 
 ## Going back
 
-New information sends work back to the stage that can absorb it, and the user is asked only for decisions only they can
-make, changed intent or acceptance, and out-of-scope items proposed to them, because each question costs the user a turn
-while a return for a self-made defect needs no permission. The destinations are in
-[SKILL.md](../../skills/devflow/SKILL.md#stages-and-paths).
+New information returns to the stage that can absorb it. Record destination, reason, affected/retained evidence,
+reopened exits and next action. The explicit return operation advances the evidence epoch while preserving old
+receipts as history; applicable unchanged proof needs documented revalidation, not fabricated rerun claims. Code/test
+defects reopen build, sequencing/interface defects plan, failed assumptions
+design, and changed intent start/discover. Preserve the task repair budget across returns, replacement workers and
+resumed sessions. No actor may silently shrink scope or treat a late worker report as acceptance of a current task.
+
+Ask only for unresolved user-owned choices or effects outside existing grants. A defect repair within authorized scope
+needs no fresh permission. A missing prerequisite, unknown external outcome or live worker holds only dependent work;
+independent analysis or preparation can continue. The procedure is in
+[SKILL.md](../../skills/devflow/SKILL.md#scopes-state-and-returns).
 
 ## eval
 

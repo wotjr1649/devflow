@@ -1,23 +1,15 @@
 # Design
 
-Done when every decision only the user can make is settled and the chosen approach is written down: in the chat on the
-bounded path, in a design note on the architectural one.
+**Exit:** consequential user-only choices are settled and the selected approach, interfaces, risks and proof are concrete. A bounded task may keep this in chat; architectural work keeps a standalone plan next.
 
-- Compare at least two approaches by what each changes, what it risks and what it costs; say why the others lose.
-- Mark the places a wrong assumption would hurt most, so plan can put proof there first.
-- A change to a lasting rule goes into `docs/specs/`, because the spec owns it; update the current choice and its reason
-  in the project's `docs/design/current-decisions.md`. Change history stays in the Issue checkpoint and git.
-- On the architectural path, review the design before plan with the design perspective. Claude Code: delegate it to
-  `reviewer`, the brief carrying the reviewer body and the design perspective as the router's Delegation section says;
-  its run record shows the agent, model and effort used (else report unconfirmed). Codex: the main session performs the
-  design review itself, reading the design perspective where that section says, as the router's Roles table says.
-- A design that moves a trust boundary - loosening a filter that guards public text, or taking paths, permissions or
-  write targets from repository files, git metadata or tool output - gets that review on any path, before plan or
-  build, with the reviewer trying to break it. Confirm or refute each bypass the review claims with the real renderer
-  or command, not by argument; fix and review again until no claimed bypass stands.
-- If the design turns out to touch one or two files with no interface change, move to the bounded path and add a
-  `notes` line with the reason. Hidden complexity moves the work the other way, and the user is told the path changed.
-- On the bounded path there is no plan stage, so run its prerequisite checks here before build: declared dependencies
-  install, the tools exist, the check commands start and fail or pass as expected, and every needed effect is covered by
-  standing permission or an instruction. Then pick the run mode by the
-  router's Execution modes table and record `runMode`.
+**Input:** adopted intent, delivery scope, current contracts and relevant code. Compare at least two plausible approaches and explain the selected tradeoff. Resolve risky assumptions with focused evidence before making them prerequisites for implementation.
+
+## Do
+
+Define responsibilities, inputs/outputs, error behavior, compatibility, trust boundaries and acceptance proof. Preserve constraints outside the changed area. Update lasting contracts in their owning specifications and current decisions only where the decision changes; do not duplicate procedures or private planning history.
+
+Architectural designs receive fresh design review. Any path changing a trust boundary also receives fresh security review and an adversarial check: identify a concrete bypass input and have an authorized execution role test the real renderer/command boundary. Static reviewer predictions are not reproduced results. Resolve findings before using the design as an implementation contract.
+
+For bounded work that omits plan, still run prerequisites (declared dependencies, available tools and checks), map acceptance to proof, choose the run mode and confirm existing effect authority. Path changes need a reason and newly required exits, not a new approval for routine in-scope work.
+
+**Return:** invalid intent → start/discover; unresolved design assumption → focused investigation here; actionable architecture → plan; ready bounded design → build. Record destination, reason and affected evidence.

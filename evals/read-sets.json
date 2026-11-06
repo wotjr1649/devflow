@@ -1,0 +1,190 @@
+{
+  "base": {
+    "m0-build": [
+      "SKILL.md",
+      "references/build.md"
+    ],
+    "m1-verify-codex": [
+      "SKILL.md",
+      "references/verify.md",
+      "references/roles.md"
+    ],
+    "m1-verify-claude": [
+      "SKILL.md",
+      "references/verify.md",
+      "references/roles.md"
+    ],
+    "m2-build-codex": [
+      "SKILL.md",
+      "references/build.md",
+      "references/roles.md"
+    ],
+    "m2-build-claude": [
+      "SKILL.md",
+      "references/build.md",
+      "references/roles.md"
+    ],
+    "build-resume": [
+      "SKILL.md",
+      "references/sessions.md",
+      "references/build.md"
+    ],
+    "delivery-review-codex": [
+      "SKILL.md",
+      "references/review.md",
+      "references/roles.md"
+    ],
+    "delivery-review-claude": [
+      "SKILL.md",
+      "references/review.md",
+      "references/roles.md"
+    ],
+    "bounded-m0": [
+      "SKILL.md",
+      "references/start.md",
+      "references/design.md",
+      "references/build.md",
+      "references/verify.md",
+      "references/review.md",
+      "references/ship.md",
+      "references/cleanup.md"
+    ],
+    "bounded-m1-codex": [
+      "SKILL.md",
+      "references/start.md",
+      "references/design.md",
+      "references/build.md",
+      "references/verify.md",
+      "references/review.md",
+      "references/ship.md",
+      "references/cleanup.md",
+      "references/roles.md"
+    ],
+    "bounded-m1-claude": [
+      "SKILL.md",
+      "references/start.md",
+      "references/design.md",
+      "references/build.md",
+      "references/verify.md",
+      "references/review.md",
+      "references/ship.md",
+      "references/cleanup.md",
+      "references/roles.md"
+    ],
+    "new-tracked-task": [
+      "SKILL.md",
+      "references/start.md"
+    ]
+  },
+  "candidate": {
+    "m0-build": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/build.md"
+    ],
+    "m1-verify-codex": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/verify.md",
+      "references/delegation.md",
+      "references/role-explorer.md",
+      "references/host-codex.md"
+    ],
+    "m1-verify-claude": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/verify.md",
+      "references/delegation.md",
+      "references/role-explorer.md",
+      "references/host-claude-code.md"
+    ],
+    "m2-build-codex": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/build.md",
+      "references/delegation.md",
+      "references/role-implementer.md",
+      "references/host-codex.md"
+    ],
+    "m2-build-claude": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/build.md",
+      "references/delegation.md",
+      "references/role-implementer.md",
+      "references/host-claude-code.md"
+    ],
+    "build-resume": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/sessions.md",
+      "references/build.md"
+    ],
+    "delivery-review-codex": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/review.md",
+      "references/delegation.md",
+      "references/role-reviewer.md",
+      "references/host-codex.md"
+    ],
+    "delivery-review-claude": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/review.md",
+      "references/delegation.md",
+      "references/role-reviewer.md",
+      "references/host-claude-code.md"
+    ],
+    "bounded-m0": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/start.md",
+      "references/design.md",
+      "references/build.md",
+      "references/verify.md",
+      "references/review.md",
+      "references/ship.md",
+      "references/cleanup.md",
+      "references/sessions.md"
+    ],
+    "bounded-m1-codex": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/start.md",
+      "references/design.md",
+      "references/build.md",
+      "references/verify.md",
+      "references/review.md",
+      "references/ship.md",
+      "references/cleanup.md",
+      "references/delegation.md",
+      "references/role-explorer.md",
+      "references/role-reviewer.md",
+      "references/host-codex.md",
+      "references/sessions.md"
+    ],
+    "bounded-m1-claude": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/start.md",
+      "references/design.md",
+      "references/build.md",
+      "references/verify.md",
+      "references/review.md",
+      "references/ship.md",
+      "references/cleanup.md",
+      "references/delegation.md",
+      "references/role-explorer.md",
+      "references/role-reviewer.md",
+      "references/host-claude-code.md",
+      "references/sessions.md"
+    ],
+    "new-tracked-task": [
+      "SKILL.md",
+      "references/contracts.md",
+      "references/start.md",
+      "references/sessions.md"
+    ]
+  }
+}

@@ -403,7 +403,7 @@ test('mode changes under the ledger lock, keeping its reason and ISO time (#32)'
   const write = fs.writeFileSync
   t.mock.method(fs, 'writeFileSync', (p, ...args) => {
     const result = write(p, ...args)
-    if (p === path.join(root, '.work/devflow/i1/ledger.lock')) {
+    if (p === path.join(root, '.work/devflow/i1/ledger.lock/owner.json')) {
       write(file, JSON.stringify({ ...ledger(), notes: [...ledger().notes, 'concurrent'] }))
     }
     return result
@@ -468,7 +468,7 @@ test('mode follows ledger scope, append and lock refusals (#32)', () => {
   fs.mkdirSync(lock)
   const unsafe = change(env(root))
   assert.equal(unsafe.code, 1)
-  assert.match(unsafe.out, /not a plain folder/)
+  assert.match(unsafe.out, /another write holds the ledger/)
   fs.rmdirSync(lock)
   assert.equal(change(env(root, { branch: 'main' })).code, 0, 'a named non-Issue branch may change an existing ledger')
   assert.equal(change(env(empty)).code, 0, 'the Issue branch may start its own ledger, like running and tests')
@@ -480,7 +480,7 @@ test('mode rechecks a ledger removed after the gate, under the lock (#32)', t =>
   const write = fs.writeFileSync
   t.mock.method(fs, 'writeFileSync', (p, ...args) => {
     const result = write(p, ...args)
-    if (p === path.join(root, '.work/devflow/i1/ledger.lock')) fs.rmSync(file)
+    if (p === path.join(root, '.work/devflow/i1/ledger.lock/owner.json')) fs.rmSync(file)
     return result
   })
   const r = state.main(['mode', '1', 'autonomous'], () => 'person is away', env(root, { branch: 'main' }), '.')
@@ -525,20 +525,20 @@ test('the ledger spec and unattended skill describe the mode command (#32)', () 
   const row = spec.split('\n').find(line => line.startsWith('| `mode` |'))
   assert.match(row, /devflow-state mode/)
   const autonomous = spec.split('## Unattended runs')[1].split('## Concurrent sessions')[0]
-  assert.match(autonomous, /devflow-state mode <n> autonomous < reason/)
-  assert.match(autonomous, /devflow-state mode <n> interactive < reason/)
+  assert.match(autonomous, /devflow-state mode <n> autonomous --expect <revision> < reason/)
+  assert.match(autonomous, /devflow-state mode <n> interactive --expect <revision> < reason/)
   assert.match(autonomous, /first line of stdin/)
   // #150: the skill may say it anywhere, but it gives both switches with the reason on stdin, as the command takes it.
   const dir = path.join(__dirname, '../skills/devflow')
   const skill = [path.join(dir, 'SKILL.md'), ...fs.readdirSync(path.join(dir, 'references')).map(n => path.join(dir, 'references', n))]
     .map(f => fs.readFileSync(f, 'utf8')).join('\n')
-  assert.match(skill, /mode <(?:n|issue)> autonomous < reason/)
-  assert.match(skill, /mode <(?:n|issue)> interactive < reason/)
-  assert.match(skill, /stdin/)
+  assert.match(skill, /mode <(?:n|issue)> autonomous --expect <revision> < reason/)
+  assert.match(skill, /mode <(?:n|issue)> interactive --expect <revision> < reason/)
+  assert.match(skill, /< reason\.txt/)
 })
 
 test('mode is in usage and records successful session activity (#32)', () => {
-  assert.match(state.main([], () => '').out, /mode <n> autonomous\|interactive < reason/)
+  assert.match(state.main([], () => '').out, /mode <issue> interactive\|autonomous --expect <revision> < reason/)
   const root = repo({ ledger: { mode: 'interactive' } })
   const e = env(root)
   e.vars = { CODEX_THREAD_ID: 'mode-session' }
@@ -1505,8 +1505,10 @@ test('N2 A13: a private file name cannot add a Tool line', { skip: process.platf
 // may come from. The wording is the skill's; these are the facts it must state.
 test('N2 A14: the router says what a card without a Tool line allows', () => {
   const text = fs.readFileSync(path.join(__dirname, '../skills/devflow/SKILL.md'), 'utf8')
-  assert.match(text, /last line is not a `Tool:` line/)
-  assert.match(text, /never search the repository/)
+  assert.match(text, /`Tool:` command supplied by the user or trusted host/)
+  assert.match(text, /missing trusted card\/path before dependent tracked writes or implementation/)
+  assert.match(text, /Analysis, discover, static review, and brief drafting can continue/)
+  assert.match(text, /never search the repository/i)
 })
 
 test('N2 A7b: next or blocker text after a line separator inside one state line is not taken for a state line', () => {

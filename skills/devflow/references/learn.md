@@ -1,16 +1,9 @@
 # Learn
 
-Done when each lesson sits in one place and nothing it replaces is left behind. Learn runs only when there is a lesson:
-something that went wrong twice, cost real time, or was measured.
+**Exit:** a new reusable lesson lives in its owning artifact, or no update is needed. This stage is conditional on repeated, costly, or measured learning; completing a task alone does not require a lesson.
 
-- A rule a test can check goes into a test, and its prose leaves AGENTS.md; a safety floor stays as prose. Otherwise
-  one area's lesson goes to that area's document plus a row in the AGENTS.md document map, a repository-wide lesson
-  seen twice to AGENTS.md Gotchas, and a procedure shared across repositories to a skill. Remove Gotchas that machinery
-  now blocks, safety floors aside.
-- In a file an agent loads (AGENTS.md, a skill, an agent definition), give each rule its reason, put done conditions
-  first, and use no emphasis words except for safety floors. AGENTS.md has a one-page budget, so a new line usually
-  displaces an old one; move less-used items to documents.
-- A lesson about one machine stays in private notes. One about the owner's habits across projects is proposed for the
-  user's global instructions, not written there.
-- The story behind a lesson stays in the Issue checkpoint and git. Update the project's
-  `docs/design/current-decisions.md` only when the lasting choice or its reason changes.
+Prefer an executable regression test for a reproducible rule. Remove redundant prose after the test covers it, while retaining critical trust/authority reminders. Put area-specific facts in the area's documentation and its AGENTS map; repeated repository surprises in a concise Gotcha; a general lifecycle procedure in the owning skill reference; machine-specific evidence in private records. Propose a global personal preference instead of silently editing global instructions.
+
+Record the condition, reason and useful action. Keep task history in Issue checkpoints/Git; update a current decision only when the choice changes. Avoid adding generic advice, escalating emphasis or another checklist for a one-off incident. Keep AGENTS within its project budget.
+
+**Return:** a lesson exposing unfinished acceptance → the affected build/verify/review gate with reason and evidence; an optional improvement outside scope → proposal, not a silent successor or scope expansion.

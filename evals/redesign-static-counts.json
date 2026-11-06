@@ -1,0 +1,544 @@
+{
+  "kind": "static-file-counts",
+  "method": "Sum complete UTF-8 files once per read set; tokenizer counts each file separately.",
+  "limits": "Excludes requests, tools, responses, children, caches and host framing; not billed usage or an exact Claude token count.",
+  "tokenizer": {
+    "package": "tiktoken",
+    "version": "0.14.0",
+    "encoding": "o200k_base"
+  },
+  "base_revision": "b2feffee464ce9c7b26a7f6142db8695f1ec39c0",
+  "candidate_revision": "WORKTREE",
+  "base": {
+    "snapshot_sha256": "438e47a30e6440d3689ef87041853905724b43c9942872697cee74dc3c9327d1",
+    "file_count": 13,
+    "files": {
+      "SKILL.md": {
+        "bytes": 18879,
+        "lines": 229,
+        "tokens": 4424,
+        "sha256": "f031f8ea453f7e43c40b6c193af3c2be9f8083d69ed15924de3f416189e52ec0"
+      },
+      "references/build.md": {
+        "bytes": 6810,
+        "lines": 88,
+        "tokens": 1573,
+        "sha256": "f1887bf2688216a988a73320c3efbc04f7ffe43636fb96bfc47914de384ca903"
+      },
+      "references/cleanup.md": {
+        "bytes": 6555,
+        "lines": 94,
+        "tokens": 1417,
+        "sha256": "aba0b94715d7365a743e7ca6c2eaa13645440ab532e77f1104c9cda9f89796c7"
+      },
+      "references/design.md": {
+        "bytes": 2119,
+        "lines": 23,
+        "tokens": 452,
+        "sha256": "5b82ea1b1a7dd496ead213bbb2b1fe4aa4e79023984668e409eec9842c739fd1"
+      },
+      "references/discover.md": {
+        "bytes": 2611,
+        "lines": 32,
+        "tokens": 573,
+        "sha256": "9dc2436078726abff2cd44dbc7ad082044b88e858a6d56612b06a73e2a1dfde4"
+      },
+      "references/learn.md": {
+        "bytes": 1220,
+        "lines": 16,
+        "tokens": 270,
+        "sha256": "aa22d8c51fce137d3c1d2610483927d69be8a332caf67f3567e5cc2cdd7835c3"
+      },
+      "references/plan.md": {
+        "bytes": 2513,
+        "lines": 37,
+        "tokens": 568,
+        "sha256": "e07cb645a1c5db3d907e07d17c86b33c1b9bb2d1071d9c01a8ab01c7c014a107"
+      },
+      "references/review.md": {
+        "bytes": 6181,
+        "lines": 83,
+        "tokens": 1309,
+        "sha256": "f84f09c878c62949dbe50a2066bd41672fb21caaa76b3d686c0934fa474db051"
+      },
+      "references/roles.md": {
+        "bytes": 10613,
+        "lines": 172,
+        "tokens": 2366,
+        "sha256": "648e4f9b5e7176a631f1b8a7452cd9a70a54d9017f65f048e74e32bb0cfc8c15"
+      },
+      "references/sessions.md": {
+        "bytes": 7750,
+        "lines": 102,
+        "tokens": 1690,
+        "sha256": "d11bd6514b568ec82f4e389778d79814cd31562b83c95c24c2a27ac177472ece"
+      },
+      "references/ship.md": {
+        "bytes": 9896,
+        "lines": 131,
+        "tokens": 2198,
+        "sha256": "e38ad4173e6c91c5d573d7118e428384bbd7ce0b7846966877197c3c5d04a1d6"
+      },
+      "references/start.md": {
+        "bytes": 7568,
+        "lines": 111,
+        "tokens": 1635,
+        "sha256": "c85995fa486cf4576de412feff7a5d94a2e537fc03945049b864a89d3fe30b33"
+      },
+      "references/verify.md": {
+        "bytes": 2254,
+        "lines": 27,
+        "tokens": 497,
+        "sha256": "3955fff0bdf50ccc61db0a978719f89a90e7779063b6328f2cab05a8089d71f5"
+      }
+    },
+    "total": {
+      "files": [
+        "SKILL.md",
+        "references/build.md",
+        "references/cleanup.md",
+        "references/design.md",
+        "references/discover.md",
+        "references/learn.md",
+        "references/plan.md",
+        "references/review.md",
+        "references/roles.md",
+        "references/sessions.md",
+        "references/ship.md",
+        "references/start.md",
+        "references/verify.md"
+      ],
+      "bytes": 84969,
+      "tokens": 18972
+    },
+    "read_sets": {
+      "m0-build": {
+        "files": [
+          "SKILL.md",
+          "references/build.md"
+        ],
+        "bytes": 25689,
+        "tokens": 5997
+      },
+      "m1-verify-codex": {
+        "files": [
+          "SKILL.md",
+          "references/verify.md",
+          "references/roles.md"
+        ],
+        "bytes": 31746,
+        "tokens": 7287
+      },
+      "m1-verify-claude": {
+        "files": [
+          "SKILL.md",
+          "references/verify.md",
+          "references/roles.md"
+        ],
+        "bytes": 31746,
+        "tokens": 7287
+      },
+      "m2-build-codex": {
+        "files": [
+          "SKILL.md",
+          "references/build.md",
+          "references/roles.md"
+        ],
+        "bytes": 36302,
+        "tokens": 8363
+      },
+      "m2-build-claude": {
+        "files": [
+          "SKILL.md",
+          "references/build.md",
+          "references/roles.md"
+        ],
+        "bytes": 36302,
+        "tokens": 8363
+      },
+      "build-resume": {
+        "files": [
+          "SKILL.md",
+          "references/sessions.md",
+          "references/build.md"
+        ],
+        "bytes": 33439,
+        "tokens": 7687
+      },
+      "delivery-review-codex": {
+        "files": [
+          "SKILL.md",
+          "references/review.md",
+          "references/roles.md"
+        ],
+        "bytes": 35673,
+        "tokens": 8099
+      },
+      "delivery-review-claude": {
+        "files": [
+          "SKILL.md",
+          "references/review.md",
+          "references/roles.md"
+        ],
+        "bytes": 35673,
+        "tokens": 8099
+      },
+      "bounded-m0": {
+        "files": [
+          "SKILL.md",
+          "references/start.md",
+          "references/design.md",
+          "references/build.md",
+          "references/verify.md",
+          "references/review.md",
+          "references/ship.md",
+          "references/cleanup.md"
+        ],
+        "bytes": 60262,
+        "tokens": 13505
+      },
+      "bounded-m1-codex": {
+        "files": [
+          "SKILL.md",
+          "references/start.md",
+          "references/design.md",
+          "references/build.md",
+          "references/verify.md",
+          "references/review.md",
+          "references/ship.md",
+          "references/cleanup.md",
+          "references/roles.md"
+        ],
+        "bytes": 70875,
+        "tokens": 15871
+      },
+      "bounded-m1-claude": {
+        "files": [
+          "SKILL.md",
+          "references/start.md",
+          "references/design.md",
+          "references/build.md",
+          "references/verify.md",
+          "references/review.md",
+          "references/ship.md",
+          "references/cleanup.md",
+          "references/roles.md"
+        ],
+        "bytes": 70875,
+        "tokens": 15871
+      },
+      "new-tracked-task": {
+        "files": [
+          "SKILL.md",
+          "references/start.md"
+        ],
+        "bytes": 26447,
+        "tokens": 6059
+      }
+    }
+  },
+  "candidate": {
+    "snapshot_sha256": "28acb67e21c990ef7b704b93e9c451a8e4f8d4e572ce31aaf1766e509bd513c5",
+    "file_count": 19,
+    "files": {
+      "SKILL.md": {
+        "bytes": 8189,
+        "lines": 80,
+        "tokens": 1607,
+        "sha256": "0fce72cd128dcf9e0b7acb46a638b0b037beaea83563da81c42974461d7fd94e"
+      },
+      "references/build.md": {
+        "bytes": 4005,
+        "lines": 29,
+        "tokens": 729,
+        "sha256": "b2680dae4cbe3d51f3038e86dad07f93eae5ec8cb521930cab1eda861f58f11b"
+      },
+      "references/cleanup.md": {
+        "bytes": 3875,
+        "lines": 17,
+        "tokens": 727,
+        "sha256": "8864c1dbf09d29cfe58119ca07ed880e69f0e85299a0bbde2c93e5b5b7716456"
+      },
+      "references/contracts.md": {
+        "bytes": 8449,
+        "lines": 70,
+        "tokens": 1596,
+        "sha256": "19a36093462be08de35dde2289a0fffc7f7aa4c91e617faed8e7389f9147aec7"
+      },
+      "references/delegation.md": {
+        "bytes": 4441,
+        "lines": 39,
+        "tokens": 793,
+        "sha256": "222e84dfea563ff78d334e2ec13a79f5b1588259247938e9ccad39ddb46d1ff3"
+      },
+      "references/design.md": {
+        "bytes": 1722,
+        "lines": 15,
+        "tokens": 293,
+        "sha256": "45cf0dd55c73d0abc4ead385b9ce00a7854f2ddf9c31bfe177bc2a2210d3326e"
+      },
+      "references/discover.md": {
+        "bytes": 2108,
+        "lines": 17,
+        "tokens": 358,
+        "sha256": "8c72a89f825db48cfa565eb78a5ae6d733a1f9bf1ab5c52dce8fb12fd21f01d9"
+      },
+      "references/host-claude-code.md": {
+        "bytes": 2355,
+        "lines": 17,
+        "tokens": 412,
+        "sha256": "c119bd48dc26cd474bca23442be44c5c042059a0ba0ef93541695fb46f3c3285"
+      },
+      "references/host-codex.md": {
+        "bytes": 2286,
+        "lines": 17,
+        "tokens": 417,
+        "sha256": "d0ef9093e6d1e5721496f064b07c3e2b135855a5a40ca364155a3c433158cd3f"
+      },
+      "references/learn.md": {
+        "bytes": 1193,
+        "lines": 9,
+        "tokens": 216,
+        "sha256": "e2372102835d73ba61055b123bee2f8aa34874fb5bb0b4c95697159a493cb9f3"
+      },
+      "references/plan.md": {
+        "bytes": 2044,
+        "lines": 17,
+        "tokens": 385,
+        "sha256": "a7ea10154b5d858d3b14f7517ff05675182070801c0af08d5576f4e612a7f6aa"
+      },
+      "references/review.md": {
+        "bytes": 4329,
+        "lines": 27,
+        "tokens": 774,
+        "sha256": "28967544c2c87301c13d9676cdc5a5f66705a6001a9cc12a815032e7e4490ae7"
+      },
+      "references/role-explorer.md": {
+        "bytes": 2103,
+        "lines": 21,
+        "tokens": 395,
+        "sha256": "40664067a9d0e573ed62871723ee69f23828c7e6078d05a00005865b8cf0391c"
+      },
+      "references/role-implementer.md": {
+        "bytes": 1899,
+        "lines": 11,
+        "tokens": 343,
+        "sha256": "70b20cd6d8696eb94b0fca7f751bdee5faecedfc6b1ed6ef7e15d565daed5921"
+      },
+      "references/role-reviewer.md": {
+        "bytes": 2202,
+        "lines": 19,
+        "tokens": 392,
+        "sha256": "21812f0b9560931cb620d940839f1f2112a150d2e4799740c06b1402cae766eb"
+      },
+      "references/sessions.md": {
+        "bytes": 7656,
+        "lines": 51,
+        "tokens": 1543,
+        "sha256": "dcbd60f726b1a15fe2bfc84f631f77101ab3a11408f843f067437b34b0ac94ea"
+      },
+      "references/ship.md": {
+        "bytes": 5690,
+        "lines": 27,
+        "tokens": 1057,
+        "sha256": "3dbcca30406fcaf8ba1de03bb90f171ae62c7870d0d0592826610779da1a507d"
+      },
+      "references/start.md": {
+        "bytes": 4371,
+        "lines": 20,
+        "tokens": 834,
+        "sha256": "3f680f94b4652539d866517365f8b3c020b5be8552a3902e494d18ccde479d11"
+      },
+      "references/verify.md": {
+        "bytes": 2277,
+        "lines": 17,
+        "tokens": 401,
+        "sha256": "db31d162edf9ee24b135e9aa189a38a539702db0748edfebf82154fc5f541933"
+      }
+    },
+    "total": {
+      "files": [
+        "SKILL.md",
+        "references/build.md",
+        "references/cleanup.md",
+        "references/contracts.md",
+        "references/delegation.md",
+        "references/design.md",
+        "references/discover.md",
+        "references/host-claude-code.md",
+        "references/host-codex.md",
+        "references/learn.md",
+        "references/plan.md",
+        "references/review.md",
+        "references/role-explorer.md",
+        "references/role-implementer.md",
+        "references/role-reviewer.md",
+        "references/sessions.md",
+        "references/ship.md",
+        "references/start.md",
+        "references/verify.md"
+      ],
+      "bytes": 71194,
+      "tokens": 13272
+    },
+    "read_sets": {
+      "m0-build": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/build.md"
+        ],
+        "bytes": 20643,
+        "tokens": 3932
+      },
+      "m1-verify-codex": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/verify.md",
+          "references/delegation.md",
+          "references/role-explorer.md",
+          "references/host-codex.md"
+        ],
+        "bytes": 27745,
+        "tokens": 5209
+      },
+      "m1-verify-claude": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/verify.md",
+          "references/delegation.md",
+          "references/role-explorer.md",
+          "references/host-claude-code.md"
+        ],
+        "bytes": 27814,
+        "tokens": 5204
+      },
+      "m2-build-codex": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/build.md",
+          "references/delegation.md",
+          "references/role-implementer.md",
+          "references/host-codex.md"
+        ],
+        "bytes": 29269,
+        "tokens": 5485
+      },
+      "m2-build-claude": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/build.md",
+          "references/delegation.md",
+          "references/role-implementer.md",
+          "references/host-claude-code.md"
+        ],
+        "bytes": 29338,
+        "tokens": 5480
+      },
+      "build-resume": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/sessions.md",
+          "references/build.md"
+        ],
+        "bytes": 28299,
+        "tokens": 5475
+      },
+      "delivery-review-codex": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/review.md",
+          "references/delegation.md",
+          "references/role-reviewer.md",
+          "references/host-codex.md"
+        ],
+        "bytes": 29896,
+        "tokens": 5579
+      },
+      "delivery-review-claude": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/review.md",
+          "references/delegation.md",
+          "references/role-reviewer.md",
+          "references/host-claude-code.md"
+        ],
+        "bytes": 29965,
+        "tokens": 5574
+      },
+      "bounded-m0": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/start.md",
+          "references/design.md",
+          "references/build.md",
+          "references/verify.md",
+          "references/review.md",
+          "references/ship.md",
+          "references/cleanup.md",
+          "references/sessions.md"
+        ],
+        "bytes": 50563,
+        "tokens": 9561
+      },
+      "bounded-m1-codex": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/start.md",
+          "references/design.md",
+          "references/build.md",
+          "references/verify.md",
+          "references/review.md",
+          "references/ship.md",
+          "references/cleanup.md",
+          "references/delegation.md",
+          "references/role-explorer.md",
+          "references/role-reviewer.md",
+          "references/host-codex.md",
+          "references/sessions.md"
+        ],
+        "bytes": 61595,
+        "tokens": 11558
+      },
+      "bounded-m1-claude": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/start.md",
+          "references/design.md",
+          "references/build.md",
+          "references/verify.md",
+          "references/review.md",
+          "references/ship.md",
+          "references/cleanup.md",
+          "references/delegation.md",
+          "references/role-explorer.md",
+          "references/role-reviewer.md",
+          "references/host-claude-code.md",
+          "references/sessions.md"
+        ],
+        "bytes": 61664,
+        "tokens": 11553
+      },
+      "new-tracked-task": {
+        "files": [
+          "SKILL.md",
+          "references/contracts.md",
+          "references/start.md",
+          "references/sessions.md"
+        ],
+        "bytes": 28665,
+        "tokens": 5580
+      }
+    }
+  }
+}

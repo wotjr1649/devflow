@@ -1,27 +1,17 @@
 # Verify
 
-Done when each acceptance criterion in scope has execution evidence - the command, the revision it ran on, its
-strength and the result - on the current HEAD, and none of them failed. For a task, the scope is that task's checks;
-after the last task, every acceptance criterion in the Issue.
+**Exit:** each criterion/gate in the selected verification scope has applicable execution evidence or an explicit failed/not-run result; none is silently omitted.
 
-- Run each criterion against the built result. Reading the code is review, not verification.
-- From M1 up, a fresh context runs the behaviour: Claude Code, `explorer`; Codex, a worker told to report only. Either
-  way the brief carries the explorer body and its verification perspective as the router's Delegation section says,
-  on the model of the router's Roles table. Give it the criteria, the commands and
-  BASE..HEAD, never the verdict you expect, because a verifier told the answer confirms it. Report the agent, model
-  and effort it ran with from its run record, or unconfirmed. In M0 the main session runs
-  the checks itself.
-- Report each criterion's evidence strength: a behaviour run (the feature or command used as a user would), a targeted
-  test, or build or static only. Only a behaviour run or a targeted test that exercises the criterion verifies it; a
-  passing build or a broad suite that never reaches the criterion leaves it open.
-- Evidence holds for the revision it ran on. When HEAD moved after a check ran, re-run it on the current HEAD before
-  counting it, since the new commits may change the result.
-- For a reported bug, first reproduce the symptom the report describes and record how, then verify the fix against that
-  same reproduction; a fix checked only by a test written afterwards can pass while the reported symptom stays.
-- A criterion that cannot be executed stays open: name it, the reason, and the evidence that stands in for it.
-- A failure goes back to build without asking the user; after the fix, verify the affected criteria again.
+**Input:** task or delivery scope, criterion IDs/definition revision, actual subject and consumed inputs, exact checks, baseline results and expected project gates. Task verification does not stand in for final delivery verification; final delivery verification does not require implementing Issue criteria intentionally outside that delivery.
 
-Record the evidence in the ledger as `notes` lines. When a task's verify passes, `ledger-update` moves `task` current to
-the next task, or past total after the last one, since an open task is what lets unattended work continue. At the
-stage boundary after the last task, the checkpoint's `- 검증:`
-line lists what ran and what did not, then the work moves to review.
+## Do
+
+M1–M3 use a fresh explorer with the verification perspective; M0 may use the main session unless a project gate requires independence. Give scope and checks without an expected verdict. Apply the delegation tripwire around read/execute roles and allow only named controlled test byproducts.
+
+Execute the actual behavioral/targeted tests. Reproduce a reported bug using its observed command/conditions. Capture whether each command started, its exit, meaningful counts/errors and private raw evidence. Build/lint/syntax evidence supports only what it checks. Failed exits cannot be overridden by success markers; absent/skipped/cancelled/wrong-subject checks remain not verified.
+
+Bind evidence to the subject and relevant configuration/environment/inputs. Required ignored fixtures must be present and stable. Reassess affected proof if source, acceptance meaning, inputs, environment, required checks or target basis changes, including changes at the same HEAD. Preserve unrelated valid proof. If the consumed input cannot be identified, record unknown applicability rather than passing the criterion.
+
+For final verification, cover the authorized delivery criteria, affected regressions and required integration profile. Record per-criterion VERIFIED, FAILED or NOT_RUN with command/revision/strength/reason; the report lifecycle may be completed with failures. The coordinator adjudicates results before accepting a task or moving to review.
+
+**Return:** failed behavior → build with reproduction and affected evidence; invalid validation plan → plan/design; unavailable prerequisite → hold dependent verification with exact missing input and usable fallback evidence. No new permission is needed for an already authorized in-scope repair.

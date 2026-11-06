@@ -1,0 +1,18 @@
+{
+  "sourceCommit": "b2feffee464ce9c7b26a7f6142db8695f1ec39c0",
+  "purpose": "Exact obsolete writer source for migration regression tests, available in shallow checkouts.",
+  "files": [
+    {
+      "path": "bin/devflow-state",
+      "fixture": "devflow-state.gz",
+      "sha256": "062ced62e445f143ef8d13f1052296a723b6da0c0510f53866415aeacabda6e2",
+      "bytes": 139208
+    },
+    {
+      "path": "hooks/devflow-hook.js",
+      "fixture": "devflow-hook.js.gz",
+      "sha256": "56ed8932c9ab73b61d88cc51242bcd0cb3f6993bcbd076390b3182ec84995b5a",
+      "bytes": 8756
+    }
+  ]
+}

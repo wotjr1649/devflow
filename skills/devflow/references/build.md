@@ -1,88 +1,29 @@
 # Build
 
-Done when every task in the plan (on the bounded path, the one change) is committed with the checks that execute it
-passing, and the ledger holds the last commit and the open task. On an Issue-free spike, done is the throwaway
-experiment and its evidence in chat; the Issue, ledger, commit and mode steps below apply only to tracked work.
+**Exit:** the selected task's authorized edits are committed, real checks are recorded, and its next verify/review/acceptance action is explicit. A spike exits with findings in its throwaway scope, without tracked delivery or production completion claims.
 
-## Before the first change of a task
+**Input:** accepted design/plan, current task and attempt, task start head, delivery base, allowed files/interfaces, criteria revision and available inputs. Inspect actual HEAD and prior partial effects before editing or relaunching.
 
-- Work in the ledger's `runMode`. Needing another mode goes back to where it was picked: plan, or design on the
-  bounded path.
-- At the first task, record `task {current: 1, total: N}` in the ledger, N from the plan (1 on the bounded path).
-- Record `base` (`git rev-parse HEAD`) in the ledger before the change or the delegation. Reviews read BASE..HEAD;
-  `HEAD~1` drops the first commits of a multi-commit task.
+## Do
 
-## The change
+For new behavior show a failing test first or equivalent controlled before/after proof. For a bug reproduce the reported failure and retain its regression test. Do not weaken, skip or delete a failing test unless changed requirements or a demonstrably wrong expectation justify it; record the reason and resulting acceptance proof.
 
-- New behaviour: see its test fail before the change, or with the change reverted. A bug fix starts from a reproduction
-  test that fails, and the fix leaves that test as it is. A test never seen failing proves nothing.
-- Fix the code, not the test. Change a test only when the requirement changed or its expectation is wrong, and say
-  which in the commit or the checkpoint, because review reads test changes for this.
-- Run the checks that execute the change and the behaviour it affects: the project's tests for the paths touched and
-  their callers. When nothing justifies a narrower set (shared code, configuration, test tooling), run the full
-  `verify` locally now.
-- The full `verify` that gates integration belongs to ship, by the `.devflow.json` integration profile.
-- Syntax checks and checks that never started are not verification; name any check that could not run and why.
-- A missing dependency the project already declares is installed with the project's package manager and lockfile, not
-  with sudo or a system package manager.
+Implement within the task contract. Run affected tests and callers; use the full verification set when no defensible narrow set exists or shared code/config/tooling makes it necessary. Build/syntax-only results do not prove behavior. Install declared dependencies using project conventions/lockfiles; do not use sudo, change system setup, or bypass project hooks to hide missing prerequisites.
 
-## Delegating (M2, M3)
+The coordinator owns decisions, Issue/ledger writes and integration. Before delegating, load delegation plus only the selected implementer role and host adapter. A complete draft brief can be produced even without a worker-launch tool. Launch only after the required execution identities/inputs and authority exist.
 
-- The main session keeps decisions, Issue writes, integration and the ledger, so unstated choices of several writers do
-  not collide. A subagent gets one task through a brief, in English, that opens with the role text the router's
-  Delegation section names, then starts `TASK k/N · Issue #i · BASE <sha>` and gives the goal, acceptance, files it may change, interfaces, constraints, git-ignored inputs (plan, specs) by path and
-  part, and the check with healthy output. It puts push, Issue writes, spawning subagents, deleting or weakening tests
-  and adding dependencies out of scope; a test change, dependency, or scope or interface change the brief does not
-  settle ends the task with `NEEDS_DECISION`. It asks for one end status (`DONE`, `DONE_WITH_CONCERNS`,
-  `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not, and ends: keep working until done, stopping early only with `NEEDS_DECISION` or `BLOCKED`; once the checks pass, stop and
-  report, with no extra rounds or changes outside the listed files.
-- Delegate to `implementer`. Model and effort come from the router's Roles table: mechanical work runs on the
-  role's default, work that needs judgment across files on a stronger model; settle design decisions before
-  delegating it. Report the model and effort a run used from its records, or unconfirmed.
-- In interactive M2, the main session may make a one- or two-line edit describable in one sentence and record it in the
-  ledger; a delegation costs more. Unattended work keeps a fresh context per task, so it has no such exception.
-- In M2 and M3 each task gets a narrow review before the next starts: `reviewer` (Claude Code, with `model: sonnet`;
-  Codex, the per-task review worker of the router's Roles table), given that task's BASE..HEAD. A mechanical change
-  inside one file that touches no trust boundary skips it; the final review covers it. A change to a trust boundary gets one
-  separate review with the security perspective. Each of these briefs, and the root-cause one under Failures, carries
-  its role text the same way.
-- A subagent that ends with `NEEDS_DECISION` is resumed after the main session decides what lies within existing
-  permissions and the brief (Claude Code: `SendMessage` to the same agent; Codex: a follow-up task to the same agent).
-  Messages during its run are notifications; do not act on a guessed decision.
+- **M0/M1:** main implements. M0 self-review is identified honestly; project-required independent review overrides it.
+- **M2:** one task at a time. Verify, review where required, and accept its current result before starting any next task. An interactive coordinator may perform a truly tiny planned edit instead of delegation; record the exception. An unattended stretch uses fresh task workers to control context.
+- **M3:** launch ready independent tasks together in verified-base worktrees. Review each returned result before selecting it for serial integration. After each integration, accept the task only with proof applicable to that integrated subject, and revalidate remaining results against the advancing head. Final delivery verification/review still covers all changes.
 
-M3 (Claude Code only; files do not overlap and interfaces are fixed in the plan, two or three at once):
+Mechanical single-file work without contract/trust effects may omit an extra task review when final review covers it and no project gate requires it. Trust-boundary changes receive a separate security perspective. Worker NEEDS_DECISION returns a concrete choice; the coordinator resolves in-grant choices or asks the user, then resumes that same task. Do not infer a decision from silence or a completion notification.
 
-- Launch implementers in the background with the Agent tool's `isolation: "worktree"` on each call, so only M3 runs in
-  worktrees.
-- Record each launch with `running <n> add <label>`. Run `running <n> done <label>` only once the result is recovered and
-  the exit confirmed; after a failure, timeout or interruption, confirm child processes and partial effects too, and if
-  you cannot, leave the entry, continue only independent work and do not launch it again. Confirming an exit does not
-  permit terminating it.
-- A task worktree writes no ledger and posts no Issue text. Task worktrees start from the remote default branch, so a
-  brief whose BASE is not on it begins with `git merge --ff-only <BASE>` in its worktree, and every M3 brief asks for a
-  commit there.
-- Merge one result at a time into the Issue branch (fast-forward, then cherry-pick) and run the checks the merged result
-  affects after each merge. The task worktrees and their branches stay until cleanup.
+After edits, reconcile intended dirty changes and required inputs, commit within authority, and record the actual head and receipts through the supported helper. Task acceptance is separate from worker completion and from whole-delivery acceptance.
 
-## Failures
+## Repairs
 
-The fix loop separates finding a cause from fixing it, so fixes do not cover symptoms:
+Recover a failed attempt's evidence and cause before trying again. Use focused root-cause exploration when needed. Allow two unsuccessful repairs for the same task, then at most one recorded promotion/escalation; if still unresolved, the coordinator changes the approach, takes over within scope, or records a blocker. Three failures at the same goal require an approach review, not another equivalent loop. Budgets persist across worker replacement, phase changes and resume; a new agent cannot reset them.
 
-1. A check or CI failure with an unclear cause goes first to `explorer` with the root-cause perspective, which reports
-   the cause and evidence without changing files. If it finds none, run it once more on a stronger model (Claude Code:
-   `model: opus`).
-2. The implementer fixes a task at most twice, counted in fix delegations; one that ends `BLOCKED` after its own two
-   fixes uses up both.
-3. Then one promotion, one step to the promotion column of the router's Roles table, tried once.
-4. Then the main session takes the task over or reports where it is blocked.
+A running/interrupted worker is not safe to duplicate. Recover its result, establish exit including child processes and partial effects, and retain unknown activity until reconciled. Exit confirmation does not authorize termination.
 
-Record each fix attempt and each promotion as one ledger `notes` line with its reason; `counts` is not for these, since
-unattended continuation counts there. After three failures toward the same goal, change the approach or stop and report. A plan that
-turns out wrong goes back to plan, fixed on the spot; a build that departs from the plan fixes the private plan before
-the task ends and notes a changed public summary in the next checkpoint. A broken design assumption goes back to design.
-
-## After the task
-
-Commit, then `ledger-update` with `lastCommit`; `task` keeps this task until its verify passes (verify moves it on).
-The task moves to verify; after its verify the next task starts here again, and after the last one
-verify covers every acceptance criterion.
+**Return:** code/test defect → build; wrong task ordering/interface → plan; failed assumption → design; changed intent → start/discover. Record destination, reason, affected evidence and the retained attempt budget before continuing.

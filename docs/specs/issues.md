@@ -32,8 +32,8 @@ no Issue text.
   defects; propose the rest as a list at ship. When requirements or acceptance criteria change, after the user confirms
   the new intent, replace the part above the state block with `intent` (the title is optional). Leave everything from the
   state block to the end as it is, do not trust check marks in the input, re-check one by one only the old checked
-  criteria visible in the body written by a user with write access whose whitespace-normalized sentence is the same, and
-  print the old numbers that could not be carried over. Before sending, check for local absolute paths, secret-shaped
+  criteria visible in the body written by a user with write access whose identity and definition meet the
+  [criteria evidence rules](#criteria-identity-and-evidence-api), and print the old numbers that could not be carried over. Before sending, check for local absolute paths, secret-shaped
   values, HTML comments, invisible characters and the length limit; if any is caught, do not send. Even when gh reports a
   failure, comments and new Issues may have been posted, so read again to confirm, and treat what is there as posted. If
   it cannot be read, or gh was cut off by a timeout and the post is not yet visible, report "posting state unknown" (an
@@ -88,6 +88,43 @@ no Issue text.
   repository there.
 - The premises of `gh` authentication, the credential boundary and OS isolation are set by
   [credentials](credentials.md).
+
+## Criteria identity and evidence API
+
+`bin/lib/evidence.js` wraps the existing plain-criteria parser; it does not introduce another Markdown parser.
+`criteriaSnapshot({body, parsed, intentEnd})` receives that parser's result and the start of the current-state block
+(or the body length when absent). Each criterion has an ID, definition revision, ordinal, checkbox position and checked
+state. Prefer an explicit `AC-<identifier>: <definition>` or `[AC-<identifier>] <definition>` prefix. IDs are unique;
+changing an ID or its raw definition invalidates that criterion's prior evidence. The parser supplies `raw` and `end`
+for each criterion: `raw === body.slice(box.at + 2, box.end)`. Definition revisions retain literal spaces and internal
+line breaks; only the list separator and trailing blank separator lines are excluded. Thus `"a  b"` and `"a b"` have
+different revisions even when the display text is normalized. A parser without raw spans conservatively binds each
+definition revision to the whole intent, so a changed intent cannot silently retain evidence.
+
+The snapshot's `intentRevision` hashes the exact intent prefix with only its acceptance checkbox characters reset.
+Reordering criteria or editing intent changes this revision. Checking a box or updating current state does not.
+`bodyRevision` hashes the exact full body for observation and reconciliation. Legacy criteria receive IDs derived from
+the intent revision and their whitespace-normalized text; duplicate legacy text is refused. These generated IDs are
+valid only within that observed intent revision, never a permanent ordinal identity.
+
+`criteriaSelection` requires `expectedIntentRevision` for every ID or ordinal selector. `criteriaGate` additionally
+requires `{id, definitionRevision}` references and can require checked coverage of every criterion. The caller builds a
+fresh snapshot before `check`, `intent`, and `close`: check validates its selected evidence references; intent validates
+the old approved revision before replacing it; close validates all current references and checked status. Merely storing
+IDs in the ledger does not satisfy these gates. Repository and Issue identity, approval, and evidence provenance remain
+caller responsibilities.
+
+`carryCriteriaChecks` returns the old-to-new checkbox mapping and dropped old ordinals. Stable IDs carry checks only
+when both ID and definition revision are unchanged. Legacy text carries only through a unique unchanged raw-text match
+or ordinary prose line rewrapping with unchanged horizontal spaces during the approved intent edit. Quoted text, code,
+and other non-prose syntax require exact raw text. Supplied input checkmarks are still reset, and untrusted old bodies
+carry none.
+A carried checkbox is not a new execution receipt: old intent-bound receipts must be rebound or replaced under the
+workflow's evidence rules. When the old section cannot be parsed safely, keep the existing refusal/count behavior.
+
+These are local guards around observations. GitHub Issue body edits and closing do not provide a conditional write in
+this API. A fresh read reduces stale selections but does not make the subsequent network write atomic; reconcile its
+outcome and report concurrent changes or uncertainty rather than claiming server compare-and-swap protection.
 
 ## Issue template
 

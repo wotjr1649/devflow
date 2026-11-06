@@ -1,5 +1,5 @@
 'use strict'
-// Issue #10: every ledger write holds a short lock, so two sessions (or a session and the Stop hook) keep each other's
+// Issue #10: every ledger write holds a non-expiring lock, so two sessions (or a session and the Stop hook) keep each other's
 // changes.
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -103,30 +103,50 @@ test('a stale lock that cannot be moved aside still ends at the wait limit', () 
   assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'old-token', 'the lock it could not move is left as it was')
 })
 
-test('a stale lock is moved aside and the write goes on; a fresh one is waited for, then refused', () => {
+test('aged and fresh legacy locks are never stolen automatically', () => {
   const root = repo({ a: 1 })
   fs.writeFileSync(lockFile(root), 'old-token')
-  const old = (Date.now() - 11000) / 1000
+  const old = (Date.now() - 60000) / 1000
   fs.utimesSync(lockFile(root), old, old)
-  assert.equal(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } })).ok, true)
-  assert.deepEqual(ledgerOf(root), { a: 1, b: 2 })
-  assert.ok(!fs.existsSync(lockFile(root)))
+  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } }), { waitMs: 30 }), { ok: false, why: 'busy' })
+  assert.deepEqual(ledgerOf(root), { a: 1 })
+  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'old-token')
   fs.writeFileSync(lockFile(root), 'live-token')
-  const t = Date.now()
-  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, c: 3 } }), { waitMs: 200 }), { ok: false, why: 'busy' })
-  assert.ok(Date.now() - t >= 150, 'it waited')
-  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'live-token', 'another holder keeps its lock')
-  assert.deepEqual(ledgerOf(root), { a: 1, b: 2 })
+  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, c: 3 } }), { waitMs: 30 }), { ok: false, why: 'busy' })
+  assert.deepEqual(ledgerOf(root), { a: 1 })
 })
 
-test('a lock is released only by the holder whose token it carries', () => {
+test('lost ownership refuses commit and does not release another owner', () => {
   const root = repo({ a: 1 })
-  const r = state.updateLedger(root, 1, l => {
-    fs.writeFileSync(lockFile(root), 'someone-else')
+  assert.throws(() => state.updateLedger(root, 1, l => {
+    const ownerFile = path.join(lockFile(root), 'owner.json')
+    const owner = JSON.parse(fs.readFileSync(ownerFile))
+    fs.writeFileSync(ownerFile, JSON.stringify({ ...owner, token: 'f'.repeat(16) }))
     return { ledger: { ...l, b: 2 }, result: 'done' }
-  })
-  assert.deepEqual(r, { ok: true, ledger: { a: 1, b: 2 }, result: 'done' })
-  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'someone-else')
+  }), /ownership was lost before commit/)
+  assert.deepEqual(ledgerOf(root), { a: 1 })
+  assert.equal(state.lockOwner(lockFile(root)).token, 'f'.repeat(16))
+})
+
+test('a live paused writer keeps exclusion regardless of lock age', { timeout: 30000 }, async () => {
+  const root = repo({ a: 1 }), ready = path.join(root, 'ready'), release = path.join(root, 'release')
+  const script = `const s = require(${JSON.stringify(path.resolve(__dirname, '../bin/devflow-state'))}); const fs = require('fs');` +
+    `const r = s.updateLedger(${JSON.stringify(root)}, 1, l => { fs.writeFileSync(${JSON.stringify(ready)}, '');` +
+    `const deadline = Date.now() + 20000; while (!fs.existsSync(${JSON.stringify(release)})) { if (Date.now() > deadline) process.exit(4); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10) } return { ledger: { ...l, first: true } } }); process.exit(r.ok ? 0 : 5)`
+  const child = spawn(process.execPath, ['-e', script], { stdio: 'ignore' }), done = exitOf(child)
+  try {
+    const until = Date.now() + 10000
+    while (!fs.existsSync(ready) && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 10))
+    assert.ok(fs.existsSync(ready), 'first writer acquired its lock')
+    const owner = state.lockOwner(lockFile(root)), old = (Date.now() - 86400000) / 1000
+    fs.utimesSync(lockFile(root), old, old)
+    assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, second: true } }), { waitMs: 30 }), { ok: false, why: 'busy' })
+    assert.deepEqual(state.lockOwner(lockFile(root)), owner)
+    assert.throws(() => state.recoverLock(root, 1, owner, true), /still alive/)
+    assert.deepEqual(ledgerOf(root), { a: 1 })
+  } finally { fs.writeFileSync(release, '') }
+  assert.equal(await done, 0)
+  assert.deepEqual(ledgerOf(root), { a: 1, first: true })
 })
 
 test('nothing is written when fn returns no ledger, and the result comes back', () => {
@@ -481,28 +501,33 @@ test('a linked Issue folder is not followed, and its unknown mode refuses Issue 
   assert.deepEqual(fs.readdirSync(outside), ['ledger.json'])
 })
 
-test('a lock that is not a file is refused as unsafe; a lock from the future is stale', () => {
+test('an unowned directory and a future-dated legacy lock both fail closed', () => {
   const root = repo({ a: 1 })
   fs.mkdirSync(lockFile(root))
-  const r = state.note(env(root), '.', 1, 'x')
-  assert.match(r.out, /not a plain folder/)
-  fs.rmSync(lockFile(root), { recursive: true })
+  assert.deepEqual(state.withLock(root, 1, () => 'ran', { waitMs: 30 }), { ok: false, why: 'busy' })
+  assert.throws(() => state.recoverLock(root, 1, {}, true), /cannot be proven/)
+  fs.rmdirSync(lockFile(root))
   fs.writeFileSync(lockFile(root), 'from-the-future')
   const later = (Date.now() + 3600000) / 1000
   fs.utimesSync(lockFile(root), later, later)
-  assert.equal(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } })).ok, true)
-  const text = '### Checkpoint build — x\n- y'
+  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } }), { waitMs: 30 }), { ok: false, why: 'busy' })
+  assert.deepEqual(ledgerOf(root), { a: 1 })
 })
 
-test('dropStale restores a fresh lock that replaced the stale one it judged', () => {
+test('recovery requires quiescence, exact owner version and confirmed process exit', () => {
   const root = repo({ a: 1 })
-  fs.writeFileSync(lockFile(root), 'fresh-other')
-  assert.equal(state.dropStale(lockFile(root), 'old-one'), false)
-  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'fresh-other')
-  assert.deepEqual(fs.readdirSync(dir(root)).filter(f => f.includes('.stale')), [])
-  fs.writeFileSync(lockFile(root), 'old-one')
-  assert.equal(state.dropStale(lockFile(root), 'old-one'), true)
-  assert.ok(!fs.existsSync(lockFile(root)))
+  const child = spawnSync(process.execPath, ['-e', ''], { encoding: 'utf8' })
+  assert.equal(child.status, 0)
+  const owner = { version: 1, token: 'a'.repeat(16), pid: child.pid, host: require('os').hostname() }
+  fs.mkdirSync(lockFile(root))
+  fs.writeFileSync(path.join(lockFile(root), 'owner.json'), JSON.stringify(owner))
+  assert.throws(() => state.recoverLock(root, 1, owner, false), /requires --quiescent/)
+  assert.throws(() => state.recoverLock(root, 1, { ...owner, token: 'b'.repeat(16) }, true), /changed/)
+  assert.deepEqual(state.lockOwner(lockFile(root)), owner)
+  state.recoverLock(root, 1, owner, true)
+  assert.equal(fs.existsSync(lockFile(root)), false)
+  assert.equal(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } })).ok, true)
+  assert.deepEqual(ledgerOf(root), { a: 1, b: 2 })
 })
 
 test('session entries are validated, and warnings are capped', () => {

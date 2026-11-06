@@ -1,0 +1,857 @@
+{
+  "kind": "written-decision-probes",
+  "baseline_revision": "b2feffee464ce9c7b26a7f6142db8695f1ec39c0",
+  "candidate_skill_snapshot_sha256": "28acb67e21c990ef7b704b93e9c451a8e4f8d4e572ce31aaf1766e509bd513c5",
+  "cases_per_packet": 9,
+  "assertions_per_packet": 35,
+  "repetitions_per_arm": 3,
+  "model": "Inherited model; full deployment ID, seed and usage not exposed",
+  "host": "ChatGPT collaboration agents, fresh fork_turns none",
+  "limits": "Read-only written next actions; 9 cases share a worker context. Not native-host execution, independent case trials, or billed usage. Original grader and independent blind adjudication retained separately.",
+  "arms": {
+    "none": {
+      "runs": [
+        {
+          "repeat": 1,
+          "response_sha256": "0dac4dd7d9a8d3fd7e225acb3783ee4506c4aef7fd4bfda141ba9bed018f60cf",
+          "initial_assertions_passed": 34,
+          "adjudicated_assertions_passed": 34,
+          "initial_cases_passed": 8,
+          "adjudicated_cases_passed": 8,
+          "cases": [
+            {
+              "id": "resume-authority",
+              "checks": [
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "partial-delivery",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "changed-evidence-input",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m2-late-report",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m3-ready-work",
+              "checks": [
+                true,
+                true,
+                true,
+                false
+              ]
+            },
+            {
+              "id": "remote-delete-race",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "injected-issue",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "healthy-small-task",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "unknown-external-result",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        },
+        {
+          "repeat": 2,
+          "response_sha256": "5a6901861d3993b36b6034b5f32e188a1c72d75d0cbbd7eff592ec23736cbd21",
+          "initial_assertions_passed": 34,
+          "adjudicated_assertions_passed": 34,
+          "initial_cases_passed": 8,
+          "adjudicated_cases_passed": 8,
+          "cases": [
+            {
+              "id": "resume-authority",
+              "checks": [
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "partial-delivery",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "changed-evidence-input",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m2-late-report",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m3-ready-work",
+              "checks": [
+                true,
+                true,
+                true,
+                false
+              ]
+            },
+            {
+              "id": "remote-delete-race",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "injected-issue",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "healthy-small-task",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "unknown-external-result",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        },
+        {
+          "repeat": 3,
+          "response_sha256": "61b03fd6cbf71938b0d6e518abc5d98bc15042bb48dd1fa11f856b8b4c1616f5",
+          "initial_assertions_passed": 33,
+          "adjudicated_assertions_passed": 33,
+          "initial_cases_passed": 7,
+          "adjudicated_cases_passed": 7,
+          "cases": [
+            {
+              "id": "resume-authority",
+              "checks": [
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "partial-delivery",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "changed-evidence-input",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m2-late-report",
+              "checks": [
+                true,
+                true,
+                false,
+                true
+              ]
+            },
+            {
+              "id": "m3-ready-work",
+              "checks": [
+                true,
+                true,
+                true,
+                false
+              ]
+            },
+            {
+              "id": "remote-delete-race",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "injected-issue",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "healthy-small-task",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "unknown-external-result",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        }
+      ],
+      "assertions_total": 105,
+      "cases_total": 27,
+      "initial_assertions_passed": 101,
+      "adjudicated_assertions_passed": 101,
+      "initial_cases_passed": 23,
+      "adjudicated_cases_passed": 23
+    },
+    "baseline": {
+      "runs": [
+        {
+          "repeat": 1,
+          "response_sha256": "f836cf23035ad9cde18b7e2e9b97d7777db697863b295b6910181caafb87eec7",
+          "initial_assertions_passed": 35,
+          "adjudicated_assertions_passed": 35,
+          "initial_cases_passed": 9,
+          "adjudicated_cases_passed": 9,
+          "cases": [
+            {
+              "id": "resume-authority",
+              "checks": [
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "partial-delivery",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "changed-evidence-input",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m2-late-report",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m3-ready-work",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "remote-delete-race",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "injected-issue",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "healthy-small-task",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "unknown-external-result",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        },
+        {
+          "repeat": 2,
+          "response_sha256": "eb8d0ecfb2a93b86140ce0159220d3e5c274c2e5b6e179215b39a09642aa1255",
+          "initial_assertions_passed": 35,
+          "adjudicated_assertions_passed": 35,
+          "initial_cases_passed": 9,
+          "adjudicated_cases_passed": 9,
+          "cases": [
+            {
+              "id": "resume-authority",
+              "checks": [
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "partial-delivery",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "changed-evidence-input",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m2-late-report",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m3-ready-work",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "remote-delete-race",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "injected-issue",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "healthy-small-task",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "unknown-external-result",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        },
+        {
+          "repeat": 3,
+          "response_sha256": "47690247008cdf2c801782879ec721618ab4bc0feb320778ce7965f1053dfaa1",
+          "initial_assertions_passed": 34,
+          "adjudicated_assertions_passed": 34,
+          "initial_cases_passed": 8,
+          "adjudicated_cases_passed": 8,
+          "cases": [
+            {
+              "id": "resume-authority",
+              "checks": [
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "partial-delivery",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "changed-evidence-input",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m2-late-report",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m3-ready-work",
+              "checks": [
+                true,
+                true,
+                true,
+                false
+              ]
+            },
+            {
+              "id": "remote-delete-race",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "injected-issue",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "healthy-small-task",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "unknown-external-result",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        }
+      ],
+      "assertions_total": 105,
+      "cases_total": 27,
+      "initial_assertions_passed": 104,
+      "adjudicated_assertions_passed": 104,
+      "initial_cases_passed": 26,
+      "adjudicated_cases_passed": 26
+    },
+    "candidate": {
+      "runs": [
+        {
+          "repeat": 1,
+          "response_sha256": "f7004370cf16f69134e679268cfada2472e65574d852576d7a228a464554e1da",
+          "initial_assertions_passed": 34,
+          "adjudicated_assertions_passed": 35,
+          "initial_cases_passed": 8,
+          "adjudicated_cases_passed": 9,
+          "cases": [
+            {
+              "id": "resume-authority",
+              "checks": [
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "partial-delivery",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "changed-evidence-input",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m2-late-report",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m3-ready-work",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "remote-delete-race",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "injected-issue",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "healthy-small-task",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "unknown-external-result",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        },
+        {
+          "repeat": 2,
+          "response_sha256": "87114da362cd4d65cc86721c4f131984d65acfa0e9237be6e45a5232f8593ad6",
+          "initial_assertions_passed": 34,
+          "adjudicated_assertions_passed": 35,
+          "initial_cases_passed": 8,
+          "adjudicated_cases_passed": 9,
+          "cases": [
+            {
+              "id": "resume-authority",
+              "checks": [
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "partial-delivery",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "changed-evidence-input",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m2-late-report",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m3-ready-work",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "remote-delete-race",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "injected-issue",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "healthy-small-task",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "unknown-external-result",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        },
+        {
+          "repeat": 3,
+          "response_sha256": "e4a2cd18adf612fa3bd2eb39666cd8c48c6111c4cb8601d060ca675721637610",
+          "initial_assertions_passed": 34,
+          "adjudicated_assertions_passed": 35,
+          "initial_cases_passed": 8,
+          "adjudicated_cases_passed": 9,
+          "cases": [
+            {
+              "id": "resume-authority",
+              "checks": [
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "partial-delivery",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "changed-evidence-input",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m2-late-report",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "m3-ready-work",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "remote-delete-race",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "injected-issue",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "healthy-small-task",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "unknown-external-result",
+              "checks": [
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ]
+        }
+      ],
+      "assertions_total": 105,
+      "cases_total": 27,
+      "initial_assertions_passed": 102,
+      "adjudicated_assertions_passed": 105,
+      "initial_cases_passed": 24,
+      "adjudicated_cases_passed": 27
+    }
+  },
+  "adjudication": {
+    "reversed_assertions": 3,
+    "reason": "Integration candidate eligibility after verification/review is distinct from final acceptance on the integrated subject. Missing required review remained a failure."
+  }
+}

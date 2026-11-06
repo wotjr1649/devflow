@@ -17,6 +17,7 @@ function devflowRoot(dir) {
 // Autonomous work continues while a task is open and nothing waits on a person; at most twice per task.
 const MAX_CONTINUES = 2
 function continueWork(env, cwd) {
+  if (env.vars?.DEVFLOW_REVIEW_ONLY === '1') return ''
   // Only the session's own Issue continues: a task worktree writes no ledger (#73 G1).
   const ctx = state.repoContext(env, cwd, { session: eventSession })
   if (!ctx || ctx.bind !== 'own' || state.legacyOf(ctx, ctx.issue)) return ''
@@ -26,6 +27,11 @@ function continueWork(env, cwd) {
   // that cannot be taken lets the session stop.
   const r = state.updateLedger(ctx.store, ctx.issue, ledger => {
     // Unattended means the ledger says so: approval settings such as bypass or yolo say nothing about who is present.
+    if (state.workflow.protectedRecord(ledger)) {
+      state.workflow.contextMatches(state.workflow.validate(ledger), state.workflowContext(ctx, ctx.issue, { head: false }))
+      const next = state.workflow.continued(ledger, eventSession)
+      return next ? { ledger: next, result: { task: next.workflow.task } } : { result: null }
+    }
     const task = ledger.task || {}
     // The task loop is open while current has not passed total; the skill moves it past total on leaving the loop, so
     // stage names stay the skill's (#150).
@@ -124,7 +130,7 @@ function handle(raw, env = state.realEnv) {
   const cwd = input.cwd || process.cwd()
   eventSession = sessionHash(input.session_id)
   if (input.hook_event_name === 'SessionStart') {
-    shareSessionId(env.vars || {}, cwd, input.session_id)
+    if (env.vars?.DEVFLOW_REVIEW_ONLY !== '1') shareSessionId(env.vars || {}, cwd, input.session_id)
     let card
     try {
       card = state.card(env, cwd, { sessionId: input.session_id || null })
@@ -135,7 +141,7 @@ function handle(raw, env = state.realEnv) {
   }
   if (input.hook_event_name === 'SessionEnd') {
     try {
-      releaseEverywhere(cwd, input.session_id)
+      if (env.vars?.DEVFLOW_REVIEW_ONLY !== '1') releaseEverywhere(cwd, input.session_id)
     } catch {}
     return '' // SessionEnd cannot block, and its output is dropped
   }

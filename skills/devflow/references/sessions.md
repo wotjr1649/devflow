@@ -1,102 +1,51 @@
-# Sessions
+# Sessions and progress
 
-Done when the session operation at hand - a note, a progress report or return, a handoff, a mode switch or an intent
-change - is complete, with every ledger or Issue write (`note`, `mode`, `intent`, `release`) made through the card's
-`Tool:` command and nothing guessed.
+## Resume exit
 
-Contents: Notes and closed branches · Progress and returns · Handing off · Unattended work · Changed requirements
+Match repository/Issue/delivery/workspace, adopted scope revision, coordinator, phase/task/attempt, three baselines and pending effects before selecting the next action. Resume does not reset task budgets.
 
-## Notes and closed branches
+Read the trusted card, validated ledger, adopted intent and relevant checkpoint/plan/evidence. Recover missing/truncated detail through the helper; do not load all comments, old prompts or full conversation by default. Match identity, never newest timestamp, and do not repair warnings by guessing.
 
-After the Issue branch is gone (cleanup on main), `note` still takes the Issue's number, as long as its ledger exists.
+A valid ledger verify task with public stage build resumes verify. Stage lag alone does not block. Reconcile actual intent/criteria edits, closure/freeze, reassociation, Git subject and pending requests before dependent work. Closed proves neither completion nor cancellation. Preserve unbound evidence as history; recover a lost delivery base rather than relabeling the last task base. Unsupported state holds dependent writes/acceptance, while analysis and brief drafting continue.
 
-## Progress and returns
+## Supported operations
 
-For verified tracked work entering through devflow, explain the position by five milestones and their exit evidence:
+Prefix arguments with the exact trusted `Tool:` invocation. `help workflow` gives JSON shapes; placeholders are never guessed IDs/paths. `workflow read <issue>` returns compact control state and the active evidence subject; use `--full` for missing history. `criteria <issue>` returns actual intent and criterion definition revisions.
 
-- Direction (discover, start): confirmed intent and acceptance, linked Issue, working branch, baseline.
-- Preparation (design, plan): decisions settled, per-task plan with proof, prerequisites, go; bounded: the change, check
-  and `runMode` set in design, no plan or go.
-- Increment (build and verify per task): the task's user outcome, verified at the applied revision.
-- Acceptance (full verify, review): evidence for every criterion in scope; required reviews and findings handled.
-- Delivery (ship, cleanup, learn if needed): the integrated scope, the Issue closed, local cleanup confirmed.
+| Need | Arguments |
+|---|---|
+| Change control / add receipt | `workflow transition <issue> < request.json` / `workflow evidence <issue> < receipt.json` |
+| Prepare / reconcile effect | `workflow effect <issue> prepare < effect.json` / `workflow effect <issue> resolve < result.json` |
+| Select mode | `mode <issue> autonomous --expect <revision> < reason.txt` / `mode <issue> interactive --expect <revision> < reason.txt` |
+| Track worker | `running <issue> add <label> --expect <revision>`; after result recovery and confirmed exit, `running <issue> done <label> --expect <revision>` |
+| Append private context | `note <issue> < note.txt` |
 
-Status (in progress, met, blocked, unconfirmed) is shown apart from the name: met only with exit evidence, never because
-the stage was entered; blocked only for dependent actions. Report the goal, the increment's user result, milestone and
-status, observed evidence, remaining exits, the next action, blockers or open decisions, and the applicable revision;
-task k/N is a count, not a percentage. Refresh at resume, stage or increment completion, milestone changes, rollback,
-scope changes or blockers, not in every message. Pre-Issue entry and other skills' direct returns are outside this
-procedure.
+Mutation JSON uses current `expectedRevision`. A conflict requires read/reconciliation, not blindly incrementing it. Control changes use workflow actions, not arbitrary `ledger-update` fields. A backward move uses `action:"return"` with `stage` and a `reason` naming affected evidence; it advances `evidenceEpoch`, retaining old receipts as history until revalidated. M3 `launch-task` records parallel starts; `start-task`/`finish-task` serialize acceptance. `reconcile-target` preserves old head and records the new delivery base/target/reason after substantive reconciliation. `next-delivery` retains unfinished Issue scope. After confirmed integration, repairs start a new delivery instead of rewriting the integrated one. An already tracked spike can use `finish-spike` with `reportRef` and verdict after workers exit; it records experiment reporting, not delivery integration. Pre-Issue spikes need no ledger.
 
-Where each fact comes from:
-- Confirmed intent and coarse state: the card's Tool `read <issue>`. Task progress and blockers of the same Issue:
-  `ledger <issue>`. A missing or unreadable ledger means unknown progress and blockers, not none.
-- Verification evidence: the ledger's notes and the Issue's checkpoints; open the raw evidence they point to as needed.
-- Task and proof scope: the linked plan (bounded: the one change and checks set in design). Revision applicability: Git.
-  When HEAD differs from `lastCommit`, check the changed commits; a successful log alone proves no applicability.
-- Create no milestone fields, duplicate status records or routine public posts; keep private paths and logs local.
+Initialize/migrate with `workflow migrate <issue> --quiescent < migration.json` only after actual old/new writer quiescence, no running workers/pending legacy posts and a verified delivery base. The flag proves none of these and grants no termination authority. The helper owns `workflow.json`, preserves `ledger.v1.json`, and atomically replaces legacy `ledger.json` with a non-JSON tombstone; never hand-edit/delete them. Resume an interrupted migration with the same initialization JSON. Inspect with `ledger-lock inspect <issue>`; supported recovery is `ledger-lock recover <issue> --quiescent < owner.json` for the exact confirmed-exited owner, never an mtime takeover.
 
-Reconciling:
-- Issue `build` or `verify` with an open ledger task (current not past total) is the normal loop; Issue `done` with cleanup or learn is normal closeout.
-  Reconcile other differences by repository, Issue and branch identity, scope and applicable revision, not by the newest
-  timestamp.
-- Missing or stale evidence, or unclear task versus full verification, leaves acceptance unpassed. Keep warnings and
-  failed results.
-- Before relying on what a truncated card omits, recover the full Issue and ledger, then the local plan and evidence,
-  through their readers. Do not guess completion or repair state automatically.
-- If identity or a conflict stays unresolved, show the position as unverified, hold the dependent effect and name the
-  cheapest owner read or evidence comparison as the next step; continue independent covered work.
+Path or execution-mode changes use `action:"configure"` with changed `path`/`runMode` and a reason after workers settle. Preserve budgets and reopen the required exits; changing strategy cannot waive scope or acceptance.
 
-A return by the router's going-back rule reopens a milestone: a behaviour failure Increment, a plan error or broken
-assumption Preparation, changed intent or acceptance Direction (through the existing confirmation). Explain why, the
-evidence and decisions kept, the exits reopened and the next action; a fix in the same scope needs no new interview.
-Review-only stops at findings.
+## Progress
 
-Keep the delivered subset, the parent scope, Issue closure and local closeout apart. After branch deletion use the
-closed-branch rules above, without reopening an Issue to match a label. Issue `done` or a deleted branch alone proves
-neither integration nor completed cleanup; Delivery stays open until its scoped exits have evidence. Learning is
-optional.
+Report outcomes at stage/task changes, returns, blockers and resume, without repeating the whole plan every command. Milestones—direction, preparation, implementation increments, acceptance, delivery—project existing evidence, not a second stored state machine. Use in progress, met, blocked or unconfirmed; task counts are not percentages.
 
-## Handing off
+Name the goal, changed outcome, milestone evidence, remaining exits, next action and blocker. Every return includes destination, reason, affected/retained evidence and reopened exits. Task, delivery, Issue and cleanup completion stay distinct.
 
-Before handing off, including asking the user to `/clear`, finish the work's checks, commits and state updates, wait for
-its delegated work to finish, then run `release <issue>` as the last ledger action, unless this is Claude started from
-Codex (`CODEX_THREAD_ID` is set): that release would remove the Codex session. Report the next step and let the
-user clear: Codex may keep the old thread alive after `/clear`.
+Public state is at most 15 Korean lines using `단계`, `브랜치/PR`, `완료`, `남음`, `다음 행동`, `막힘`, `최신 체크포인트`. A checkpoint has its header plus at most nine field lines, including `변경`, `검증`, `결정`, `다음`. Publish sanitized summaries/safe evidence references, never local absolute paths or raw logs. State replaces its block; checkpoints append; approved intent changes use the intent operation and preserve affected history.
 
-The resume card already brings back the Issue, its latest checkpoint and the ledger, so a resume prompt or a brief for
-another session carries only what they lack: instructions and decisions made since the last checkpoint, under 500
-tokens, pointing at the Issue rather than restating it, which costs output now and input in every later session.
+Use per-key notes/running/mode operations, never replacing a running list to enable continuation. Retain unknown/interrupted workers until results, worker/descendant exits and partial effects are reconciled. A late report cannot accept the current task; do not duplicate conflicting work or infer permission to terminate.
 
-- A subagent brief, in English, opens with the role text the router's Delegation section names, then gives the task,
-  BASE, goal, acceptance, files it may change, git-ignored inputs by path and the check; puts push, Issue writes,
-  spawning subagents, deleting or weakening tests and new dependencies out of scope, a test, dependency, scope or
-  interface change it does not settle ending in `NEEDS_DECISION`; asks for one end status (`DONE`, `DONE_WITH_CONCERNS`,
-  `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not; ends: stop and report once checked, with no
-  extra rounds. One for another session (`codex exec`,
-  `claude -p`) ends with it running `release <issue>`, except `claude -p` from Codex: it has Codex's id and would release Codex.
-- A prompt file goes to `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, never under a name that already exists,
-  since concurrent sessions can pick the same name. Leave it uncommitted, and end the reply with `Read <absolute path>
-  and continue.`, because a relative path resolves only from where it was written.
-- Without a file, the reply carries the prompt in full. With one, the reply also carries the prompt up to about 2,000
-  characters; past that, only what counts as done and the closing line, unless a person will paste the reply instead of
-  opening the file.
+## Handoff
+
+Finish authorized checks/commits and preserve receipts/decisions/effects. Record the delta: completed work, current head/scope/baselines, remaining exits, failures/remaining budget and next action. Use Issue/plan pointers instead of repeated history; the resume prompt targets under 500 tokens without cutting essential evidence. One-off prompts may use private `docs/prompts/YYYY-MM-DD-i<issue>-<task>.prompt.md`; private trusted paths are not public text.
+
+For a planned transfer, use `handoff` while the current owner can act. Otherwise settle workers/effects, then make `release <issue> --expect <revision>` the session's last control action. The new session uses `workflow transition <issue>` with `action:"claim"`, current `expectedRevision`, exact `identity`, `expectedOwner` and a reason from the observed record. Claim preserves bases, evidence and budgets. Use the host's identity mapping so a child never releases its parent. Context clearing is a user action, not a completion requirement.
+
+If the owner vanished without release, establish actual coordinator/descendant quiescence and inspect partial effects. Use `workflow recover <issue> --quiescent` with the same identity/owner/revision fields, reason and private evidence `ref`. This grants reconciliation under a hold, preserving unknown effects and worker labels. Read back effects and recover worker results/exits before resolving effects or recording `running ... done`; then use `action:"resume-owner"` with current identity/owner/revision and reason. No age, short-lived CLI PID or flag proves quiescence. Recovery authorizes no replay or new external effect.
 
 ## Unattended work
 
-The ledger's `mode` becomes `autonomous` only when the user steps away or orders an unattended run, or a prompt launched
-non-interactively says so; bypass or yolo settings do not show whether a person is present. Set it with
-`mode <issue> autonomous < reason`, giving the reason on the first line of stdin; the command keeps the reason and time.
-While it is autonomous, nothing is posted to Issues, pushed or integrated: `devflow-state` refuses Issue writes, so keep
-what would have been posted in the ledger's notes for the next interactive turn. Unattended work continues
-only while `mode` is autonomous for this session, a task is open (`task` current not past total), and `decisions`,
-`blocked` and `running` are empty; to stop and wait for a person, record the reason in `blocked` or `decisions`. A new session taking over
-an autonomous task switches it to interactive when the user is present, or claims it with `mode <issue> autonomous` to
-continue unattended. When the user is back, run `mode <issue> interactive < reason`, show the notes, and post what the
-user approves.
+Explicit away/unattended intent alone selects autonomous mode. Record the switch and reason through the helper. Continue authorized local work only with a validated owner, open task and no blocking decision, conflicting running work or exhausted budget. Hook continuation limits differ from task repairs and total-cost budgets.
 
-## Changed requirements
-
-When the requirements or acceptance criteria change, show the user the new intent (the body above the state block) and,
-once they approve the text, post it with `intent`, never by hand: the command keeps the state block and unchecks
-criteria whose text changed, since their evidence no longer applies.
+Autonomous mode forbids Issue writes, push and integration. Keep public candidates/blockers private. On interactive return, show pending effects, reuse grants covering their exact targets, and ask only for missing authority; do not batch-post old notes automatically. A new coordinator reconciles outstanding requests/workers before competing effects. Lease expiry does not prove the prior writer stopped.

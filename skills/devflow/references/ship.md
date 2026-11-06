@@ -1,131 +1,27 @@
 # Ship
 
-Done when the integration and completion gates below pass and the resulting commit on the target branch and the Issue
-status are verified.
+**Exit:** the authorized integration result is observed at the intended destination, delivery evidence remains applicable, Issue completion is accurate, and cleanup has a separate readiness decision.
 
-Contents: Checklist · Sequence · Integration · Completion
+**Input:** explicit or existing effect-specific ship authority, accepted delivery scope, reconciled delivery base, current target/head, verification/review receipts and the project's integration profile. Review-only and autonomous mode do not enter integration or publication.
 
-Enter ship only for requested integration or completion work; a review-only request ends in review. Ship writes the
-Issue from the Issue branch, because `devflow-state` writes an Issue only from its branch. While the ledger's `mode` is
-`autonomous`, nothing is posted, pushed or integrated: record each in the ledger notes for the next interactive turn,
-because no one is present to approve the effect.
+## Integration checklist
 
-## Checklist
+1. **Reconcile scope and proof.** Compare current adopted intent/criteria with the delivery and remaining Issue scope. Reassess earlier accepted criteria affected by later changes. Do not shrink scope or infer completion from task count, all-checked text, or merged PR alone.
+2. **Apply the actual profile.** `pr-ci` authorizes a branch push only with its own grant and waits for required CI; local verification cannot replace required remote checks. `local-merge` and `push-on-request` run local verification; the latter leaves push pending until authorized. Respect project-required independent review, including M0.
+3. **Evaluate relevant changes.** If skill invocation/frontmatter, skill registration or trigger fixtures change, run the optional trigger evaluation when available/authorized. For semantic stage or description changes, compare matched representative behavior cases with fresh review and retain raw observations. Do not invent an unavailable or paid gate; an explicit acceptance/project requirement still applies.
+4. **Inspect current checks.** Bind required CI to the applicable current head or current target/head synthetic merge and actual workflow/run/attempt/source/event/checkout semantics. Old, cancelled, skipped, missing, wrong-source or wrong-subject results are NOT_VERIFIED. Zero checks is not a pass unless the project explicitly uses a local gate with applicable receipts. Do not mark merge-ready or offer integration while a required gate is missing.
+5. **Prepare the public summary.** State problem, changed behavior, scope/exclusions, acceptance proof, review scope/SHA and remaining work. Use `Refs #n`; exclude automatic closing keywords from title, body and commits. Publish only filtered summaries through the trusted helper for Issue operations.
+6. **Recheck the transaction.** Refresh head, target, required rules/checks, review disposition and threads. Use the provider's expected-head guard when available. That guard does not atomically freeze the target: if the required proof depends on the current combined target/head, use supported protection/merge-queue semantics that enforce it, or hold integration. An immediate re-fetch is not an atomic substitute. Do not change repository protection to make shipping possible.
+7. **Observe the result.** Record the intended target/ref and actual integration commit/provider state. Reconcile a timed-out push/create/merge/comment by readback before retrying; never duplicate an unknown effect. A failed or unknown integration leaves the delivery unfinished at the relevant gate.
+8. **Reconcile completion and successors.** Obtain `criteria <issue>` and use `check <issue> --receipt < receipt.json` for applicable criteria, with `expectedIntentRevision`, exact `{id, definitionRevision}` refs and applicable verifier `evidenceIds`. Approved intent changes use `intent <issue> --receipt` with all old criterion refs and the new `text`/optional `title`; then reconcile workflow scope. `close <issue> --receipt` names every current criterion, all checked. Prepare the matching protected effect before each write. A reordered or edited list must not turn an ordinal into a different accepted criterion. Read back writes; acknowledge provider concurrency limits. Closure requires every required Issue criterion/dependency and integration condition, including earlier deliveries whose proof still applies. A subset may ship while the Issue remains open with its next task.
+9. **Record and route.** Persist delivery outcome, exact remaining scope, unresolved effects and next action. Ask only for an effect/decision outside existing authority. Assess cleanup independently, and learn only when a reusable lesson exists.
 
-Copy this into the reply and tick each line, because a skipped step merges unverified code or closes an Issue early:
+## Completion boundaries
 
-```text
-- [ ] 1 verify gate passed for the current head (pr-ci: CI on that head; otherwise local)
-- [ ] 2 evals noted: trigger; behavior if the project has one and stage rules or the description changed: worth running, ran or not, result
-- [ ] 3 scope and criteria reconciled, evidenced criteria checked off
-- [ ] 4 ship checkpoint and state block written (closure timing by profile; partial ship stays open)
-- [ ] 5 PR drafted: summary, review evidence with reviewed SHA, `Refs #<n>`, no closing keyword
-- [ ] 6 each required check succeeded at the revision it must test for the current head
-- [ ] 7 base, head, rules, CI, approvals, threads refreshed; merged with an expected-head guard
-- [ ] 8 merge commit and required post-merge checks confirmed on the target branch
-- [ ] 9 pr-ci: `단계: done` and Issue closed after the merge is seen, every criterion checked
-- [ ] 10 successors created or proposed; next stage cleanup
-```
+For `pr-ci`, keep the Issue open through merge confirmation and then close only if its whole scope is complete. A local profile's pre-integration ship checkpoint is not final completion: retain pending integration/push explicitly and reopen a premature closure when unfinished work is established and authority applies. Do not auto-reopen merely because a public stage lags the ledger.
 
-## Sequence
+A linked Issue has its own criteria; closing one cannot stand in for another. Milestone completion requires the full paginated inventory, including moved, cancelled and unverified items, plus its stated completion policy. Unknown inventory remains unknown.
 
-1. Verify gate, on the Issue branch, by the `.devflow.json` profile. Under `pr-ci`, push the branch and take CI's
-   `verify` success on that exact head, bound as in Integration, as the evidence; when CI does not run `verify` or its
-   result cannot be verified, run `verify` locally and still wait for required CI. `local-merge` and `push-on-request`
-   run `verify` locally.
-2. Evals. The trigger eval is worth running when a skill was added, removed or
-   renamed, an invocation field in `skills/*/SKILL.md` frontmatter changed (`name`, `description`, `when_to_use`,
-   `paths`, `disable-model-invocation`, `user-invocable`), or `evals/trigger/` changed; changes to skill bodies,
-   references, hooks, agents or AGENTS.md do not change its result. It is optional, and the user runs it in an
-   authenticated terminal. The ship checkpoint's `- 검증:` line says whether it ran and its result. Where the project
-   has a behavior eval of its skills (for example `evals/behavior/`, `--tag behavior`) and the change alters what an
-   agent does in a stage (a rule moved, removed or added, a changed routing or safety step, a changed description),
-   running the cases that read the changed text three times each is worth it; wording, format and tool output changes
-   are left to tests and review. A fresh-context reviewer judges those runs by their final answers and tool records,
-   not the judge's score. Record whether it ran and its result, or why not. It is
-   a recommendation, not a merge gate; an Issue that names behavior runs as criterion evidence is reconciled like any
-   criterion, and paid runs need the user's approval.
-3. Reconcile the Issue's scope and criteria under Completion. Check off each evidenced criterion with the card's `Tool:`
-   command before any closing; unmet scope stays open.
-4. Record. Post the ship checkpoint, then write the state block by profile:
-   - `local-merge` and `push-on-request`, whole scope: `단계: done` and `남음: push 확인, 로컬 브랜치 정리`, then close
-     the Issue before integrating.
-   - `pr-ci`: `단계: ship` and `남음: PR 병합 확인`; the Issue stays open, because a merge is not done until it is seen.
-   - Partial ship: the Issue stays open with its remaining scope in the state block, and the work returns to build for
-     the remaining criteria (plan, when that work was not planned).
-5. Integrate under Integration. When a required check fails (CI after a successful push included) or the push is
-   refused, return to the Issue branch, reopen an Issue closed early and restore its state: build for a failed check,
-   ship otherwise.
-6. `pr-ci` after the merge: confirm the merge commit on the target branch and the checks the project requires there;
-   then, from the Issue branch, set `단계: done` and close the Issue only when every criterion is checked.
-7. Successors under Completion. Then cleanup, recorded in the ledger only, since a deleted branch can no longer write
-   its Issue. Cleanup proves integration (squash or rebase by change equivalence) and deletes with non-forcing commands;
-   a refused deletion keeps the branch.
+Create a successor only for an explicit user deferral or a reproduced defect that warrants follow-up within the user's tracking authority. Search open and closed Issues first; reuse a real match. Give the successor evidence, scope, criteria, dependencies, source link and known next owner/priority without inventing values. Confirm required successors exist before closing a split parent; unrelated optional follow-ups do not block this delivery. Other improvement ideas remain proposals.
 
-## Integration
-
-Follow the project's CI policy.
-
-PR. Draft it with the project template: problem and outcome, scope and exclusions, acceptance, checks and limits,
-links to the Issue and the completed subset, remnants left open; without remote metadata, draft it locally from the
-available diff. The body holds a public summary, review evidence with the reviewed SHA, and `Refs #<n>`. Check the
-platform's closing keywords while drafting: none goes in the PR body, its commits or the merge commit message, so the
-platform does not close the Issue before ship verifies it. Integration needs evidence that the review stage is complete;
-when the project requires independent review before integration, that covers M0 too and the author's re-read does not
-count; a readiness assessment checks that evidence and does not perform the review.
-
-Required checks. A merge needs each required check to have succeeded at the revision that check must test for the
-current head: the head itself on a branch push, the merge of the current base and head on a pull request run. Report
-each required check's supplied or observed state and revision, and mark it NOT_VERIFIED otherwise:
-
-- A green run on an older head does not count. Example: head 7e1f0a2, the only green run on 3b9c4d8: NOT_VERIFIED; the
-  next step is a successful run at the revision it must test for 7e1f0a2, then the merge.
-- A missing, cancelled or skipped run, a run on another commit, or one with the same name from another source is not a
-  pass. Assess supplied CI against the project's required checks; an unrequired check identifier stays unknown, not a
-  new gate.
-- Local checks and templates replace no required CI, protection, approval or review-thread gate. A PR with zero
-  checks reported stays NOT_VERIFIED until local checks pass with PR evidence. A project without CI passes its
-  documented local gate hook, or records the checks in the PR or the integration commit.
-
-Without that success, do not merge, call the PR ready, or offer to merge or to accept the gap, because a result for
-another revision says nothing about the code being merged.
-
-Failed required check. Investigate and fix its cause, then get a success at the revision it must test for the final
-head, and recheck; a code change makes a new head to verify. An assessment reports these steps without performing them.
-
-Merge. Before mutating, bind each live CI run to the repository, workflow, run, attempt, event, base, head and checkout,
-and to its type (synthetic merge, head or post-merge); reject unrelated runs. Right before merging, refresh base, head,
-rules, CI, approvals and threads. Merge by the project's method without bypass and with an expected-head guard in the
-merge command itself (for example `gh pr merge <n> --merge --match-head-commit <sha>`); a head that moved holds the
-merge. Then verify the result and the required post-merge checks.
-
-## Completion
-
-Start's record carries the Issue, its scope and authority; verify it, or establish the repository, linked Issues,
-milestones, closure gate and tracker authority.
-
-- Assess each Issue against its own criteria and dependencies. Close only satisfied Issues and milestones, with reviewed
-  criteria and dependency evidence, resolving Issues as completed. State, checkboxes, a merge, successors or counts
-  prove nothing alone.
-- The working Issue closes when the Sequence says. Another Issue a supplied PR or commit links: verify full or partial
-  scope, and hold its closure until the applicable post-merge or release gates pass. Unlinked Issues keep their own
-  eligibility.
-- Reconcile findings and linked work. Paginate all of a milestone's Issues and PRs, moved, cancelled and unverified
-  work included, and report inventory completeness and counted scope from their own evidence.
-- Record evidence and remnants; other Issues stay open with a next action. Never weaken criteria; a rescope or deferral
-  needs authority and keeps its blockers. Report and reopen a premature closure; post no duplicate closure or comment.
-- Authorized local-only work passes the agreed install or artifact-identity gate.
-
-Successors:
-
-- Create them now only for user-decided deferrals and reproduced defects; propose other remnants, with the ledger's
-  `followups`, as one list at ship.
-- Search open and closed Issues for a match first; reuse an open one, or say why a new one or a reopen is needed.
-- Each holds the problem and evidence, scope and observable criteria, dependencies, source Issue or PR, next action,
-  and confirmed owner and priority or the unknowns; with authority, link both ways. Invent no backlog, private logs,
-  milestones, assignments or deadlines.
-- Verify that each required successor exists with its scope before closing the source; a failed or uncertain transfer
-  leaves the source incomplete. Unrelated follow-ups do not block completion.
-
-Report closed, open and unverified trackers, successor links and pending writes. A cleanup request that also asks for
-tracking readiness applies this section; deletion authority and tracker closure stay separate.
+**Return:** failing code/CI → build and reopen affected evidence; changed checks/target → verify or review as applicable; refused/missing push authority → ship pending; design/intent conflict → design/start. Name destination, reason and affected evidence. Preserve already applied effects during recovery.

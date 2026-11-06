@@ -3,19 +3,19 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
-const os = require('os')
 const crypto = require('crypto')
 const cp = require('child_process')
 const zlib = require('zlib')
 const tmpdir = require('./tmpdir')
 const { safeGitEnv, safeGitArgs, createReviewPackage, readOriginalHead, remoteDeletionDecision } = require('../lib/devflow-review')
+const gitNull = process.platform === 'win32' ? 'nul' : '/dev/null'
 
 function run(cmd, args, opts = {}) {
   const r = cp.spawnSync(cmd, args, { ...opts, encoding: 'utf8', timeout: opts.timeout || 10000, windowsHide: true })
   return { code: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || '' }
 }
 function git(cwd, ...args) {
-  const result = run('git', args, { cwd, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull, GIT_TERMINAL_PROMPT: '0' } })
+  const result = run('git', args, { cwd, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: gitNull, GIT_TERMINAL_PROMPT: '0' } })
   assert.equal(result.code, 0, `git ${args[0]} failed: ${result.stderr}`)
   return result.stdout.trim()
 }
@@ -68,7 +68,9 @@ test('the read profile strips executable, repository, tracing and config environ
     'GIT_CONFIG_VALUE_0', 'GIT_CONFIG_PARAMETERS', 'GIT_EXTERNAL_DIFF', 'GIT_DIFF_OPTS', 'GIT_PAGER', 'PAGER', 'GIT_TRACE',
     'GIT_REPLACE_REF_BASE', 'GIT_EXEC_PATH', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'LD_PRELOAD', 'NODE_OPTIONS']) assert.equal(env[key], undefined, key)
   assert.equal(env.GIT_NO_REPLACE_OBJECTS, '1')
-  assert.equal(env.GIT_CONFIG_GLOBAL, os.devNull)
+  assert.equal(env.GIT_CONFIG_GLOBAL, gitNull)
+  assert.equal(env.GIT_CONFIG_SYSTEM, gitNull)
+  assert.equal(env.GIT_CONFIG_NOSYSTEM, '1')
   assert.equal(input.GIT_DIR, '/wrong')
   const args = safeGitArgs(['--git-dir=/tmp/example', 'diff', 'a', 'b', '--'])
   assert.ok(args.includes('--no-pager'))
@@ -76,6 +78,32 @@ test('the read profile strips executable, repository, tracing and config environ
   assert.ok(args.includes('core.fsmonitor=false'))
   assert.ok(args.includes('--no-ext-diff'))
   assert.ok(args.includes('--no-textconv'))
+})
+
+test('Git null overrides are readable and block inherited system and global configuration', () => {
+  const f = fixture()
+  const configRoot = tmpdir('git-config-boundary-')
+  const configHome = path.join(configRoot, 'home')
+  const systemConfig = path.join(configRoot, 'system')
+  const globalConfig = path.join(configRoot, 'global')
+  write(configHome, '.gitconfig', '[devflow]\nciNullGuard = home\n')
+  write(configHome, '.config/git/config', '[devflow]\nciNullGuard = xdg\n')
+  write(configRoot, 'system', '[devflow]\nciNullGuard = system\n')
+  write(configRoot, 'global', '[devflow]\nciNullGuard = global\n')
+  const vars = { ...f.vars, HOME: configHome, USERPROFILE: configHome, GIT_CONFIG_NOSYSTEM: '0',
+    GIT_CONFIG_SYSTEM: systemConfig, GIT_CONFIG_GLOBAL: globalConfig }
+  const inherited = run('git', ['config', '--get-all', 'devflow.ciNullGuard'], { cwd: f.root, env: vars })
+  assert.equal(inherited.code, 0, inherited.stderr)
+  assert.deepEqual(inherited.stdout.trim().split(/\r?\n/), ['system', 'global'])
+  const env = safeGitEnv(vars)
+  for (const scope of ['--system', '--global']) {
+    const empty = run('git', ['config', scope, '--list'], { cwd: f.root, env })
+    assert.equal(empty.code, 0, empty.stderr)
+    assert.equal(empty.stdout, '')
+  }
+  const guarded = run('git', safeGitArgs(['config', '--get-all', 'devflow.ciNullGuard']), { cwd: f.root, env })
+  assert.equal(guarded.code, 1, guarded.stderr)
+  assert.equal(guarded.stdout, '')
 })
 
 test('delivery baseline survives two commits and preserves staged, unstaged and untracked byte evidence', () => {
@@ -428,10 +456,17 @@ test('raw symlink target bytes are preserved without UTF-8 replacement collision
   })
 })
 
-test('an unrepresentable symlink ancestor is rejected before any Git execution', { skip: process.platform === 'win32' ? 'raw POSIX pathname bytes require separate native Windows validation' : false }, () => {
+test('an unrepresentable symlink ancestor is rejected before any Git execution', { skip: process.platform === 'win32' ? 'raw POSIX pathname bytes require separate native Windows validation' : false }, t => {
   const f = fixture()
   const actual = Buffer.concat([Buffer.from(path.join(tmpdir('raw-root-'), 'repository-')), Buffer.from([0xff])])
-  fs.renameSync(f.root, actual)
+  try { fs.renameSync(f.root, actual) } catch (e) {
+    if (e.code !== 'EILSEQ') throw e
+    // Filesystems that reject the raw name cannot construct this fixture; other failures remain test failures.
+    assert.ok(fs.statSync(f.root).isDirectory())
+    assert.equal(git(f.root, 'rev-parse', 'HEAD'), f.baseOid)
+    t.skip('Filesystem rejects raw non-UTF-8 pathnames with EILSEQ before the symlink fixture can exist')
+    return
+  }
   const alias = path.join(tmpdir('raw-alias-'), 'checkout')
   fs.symlinkSync(actual, alias)
   let calls = 0

@@ -1,158 +1,235 @@
 # Ledger contract
 
-Sets the ledger's keys, unattended runs, and what happens when several sessions write to the same Issue. Where the ledger
-lives is set by [repository](repository.md#issue-folder).
+The ledger owns execution state for one repository, Issue and worktree binding. The Issue owns approved intent; its
+state block is a projection, not a competing execution clock. A missing, malformed, mismatched or partly migrated ledger
+means unresolved state, never a reason to infer a stage from a stale projection.
+
+## Contents
+
+- [Storage and identity](#storage-and-identity)
+- [Ledger keys](#ledger-keys)
+- [Control operations](#control-operations)
+- [Scope and evidence](#scope-and-evidence)
+- [Execution profile](#execution-profile)
+- [External effects](#external-effects)
+- [Unattended runs](#unattended-runs)
+- [task worktree](#task-worktree)
+- [Concurrent sessions](#concurrent-sessions)
+- [Migration and recovery](#migration-and-recovery)
+- [Legacy compatibility](#legacy-compatibility)
+
+## Storage and identity
+
+New tracked execution uses schema 2. Its private store is `.work/devflow-v2/i<n>/` under the verified main worktree:
+
+| File | Purpose |
+|---|---|
+| `ledger.json` | Execution identity, current control version, task, delivery and evidence receipts |
+| `control.lock` | Exclusive short control section; no network or verification command runs under it |
+| `evidence/<id>.input.json` | Full input manifest, review diff and executable argument array, retained by hash |
+| `evidence/<id>.json` | Observed scope, subject, configuration, outcome and raw output; its hash is in the ledger |
+| `migration.json` | Prepared or active cutover and original backup hash |
+| `legacy-ledger.json` | Exact original v1 ledger backup when one existed |
+
+The old `.work/devflow/i<n>/ledger.json` becomes a **directory** containing `DEVFLOW_V2.json`, with the same migration ID
+as the new store. This is a compatibility fence: an old binary must encounter an unreadable ledger rather than silently
+write around `controlSeq` or `ownerEpoch`. New readers require both the v2 ledger and matching fence. The store is private;
+local paths, full logs and environment data do not belong in public Issue summaries.
+
+Readers require plain bounded files and directories. The ledger is capped at 1 MiB. Input and result evidence artifacts
+are separately capped at 64 MiB; oversized inputs prevent launch, while oversized results leave an unresolved reservation
+instead of inventing success. Ordinary state and command responses contain compact receipts and artifact hashes, not
+a fresh copy of every repository file or the full command output. The local controls protect cooperating processes,
+not an attacker with the same OS write permission. A hash detects a changed artifact relative to a receipt; it is not a
+signature or permission boundary.
 
 ## Ledger keys
 
-Written with `devflow-state ledger-update` and the per-key commands, and read by the resume card and the Stop hook.
-`ledger-update` checks the values of `stage`, `path`, `runMode`, `mode` and `task` against the definitions below and
-refuses wrong ones. The ledger is read only when it is a regular file of at most 1MiB, and a write that would make it
-larger is refused, leaving the ledger as it is. These keys cannot be cleared with `null` or an empty value. Stage and
-execution-mode names are the devflow skill's, so only their shape is checked: a stage is a lowercase word of letters and
-hyphens up to 30 characters, and `runMode` starts with `M` and a digit.
-
-| Key | Holds |
+| Key | Contract |
 |---|---|
-| `stage`, `path` | The lifecycle stage and path (spike, bounded, architectural). Stage records follow the post-ship exception in [lifecycle](lifecycle.md#stages) and the [task loop](lifecycle.md#loops) |
-| `mode` | `interactive` or `autonomous`. The only criterion for an unattended stretch. A new ledger may set it with `ledger-update`; an existing ledger switches only with `devflow-state mode <n> autonomous\|interactive < reason` ([unattended runs](#unattended-runs)) |
-| `modeChanged` | `{to, at, session}` of the last mode switch. The `mode` command (including a `ledger-update` that starts a new ledger as autonomous) records the ISO time and the id hash of the session that switched it, and reattribution changes only `session` ([unattended runs](#unattended-runs)). The resume card shows it as `Mode: <to> since <at>` |
-| `runMode` | Starts with `M` and the mode number of the skill's Execution modes (a description may follow) |
-| `task` | `{current, total}`, integers of 1 or more. Build opens it at the first task; verify moves current on when a task passes; a verify failure sent back to build keeps it open; leaving build and verify moves current past total; a return to build from review or ship reopens `{current: total, total: total}` and clears `counts`, so the fix gets its own continues. The Stop hook continues only while current is at most total |
-| `base`, `lastCommit` | The BASE before delegation, the last commit the ledger recorded |
-| `counts` | The Stop hook's per-task continue count `{continue}`. Old fix and promote values are neither read nor validated |
-| `notes` | Reasons for fixes, promotions and path changes, check evidence, and content not posted during unattended runs, one line each (appended with `note`) |
-| `decisions` | Open decisions only. Task decisions already made go in checkpoints; lasting choices and their reasons go in [current design decisions](../design/current-decisions.md) |
-| `blocked` | Blockers or reasons for waiting on a person (including confirming a remote write). When it is not empty, there is no unattended continuation |
-| `running` | Names of background delegations that are running. Added with `running <n> add <name>` and removed with `done` once the result is recovered and the exit confirmed. For failure, timeout or interruption, confirm the exit of child processes and partial effects too. If they cannot be confirmed, leave a record, continue only independent work and do not run it again. The duty to confirm the exit is not permission to terminate. Remaining entries block Stop's unattended continuation. `ledger-update` does not replace the running list |
-| `followups` | Follow-up candidates to propose at ship |
+| `schemaVersion`, `migrationId` | Supported schema and completed physical cutover identity |
+| `binding` | Repository, Issue, branch, canonical worktree and verified store root; all must match before execution is authoritative |
+| `controlSeq`, `ownerEpoch`, `owner.session` | Current control revision and explicitly claimed session ownership |
+| `stage`, `path`, `runMode`, `mode` | Named lifecycle stage; tracked path `bounded` or `architectural`; `M0`–`M3`; `interactive` or `autonomous` |
+| `intent` | Current observed intent revision, semantic `evidenceRevision`, stable criterion IDs, definition revisions and text |
+| `delivery` | Selected criterion references, unique ID/version, original and current review bases, baseline epoch, tasks and completion receipt |
+| `deliveries` | Earlier delivery records; their presence does not make their evidence applicable to a new subject |
+| `task`, `tasks` | Unique task IDs, current/total, task base, explicit local check definitions, contributing Issue criteria and completion status |
+| `workUnits` | Separately bound M3 writer units: worktree, base, literal assigned paths, local checks, result and proof |
+| `evidence`, `verification` | Completed execution receipts and any currently running or unresolved verification reservation |
+| `effects` | External operations with validated target/operation ID and `pending`, `unknown`, `succeeded` or proven-not-sent `failed` outcome |
+| `blocked`, `decisions`, `running` | Unresolved blockers, decisions and work whose result and process exit are not yet confirmed |
+| `notes`, `followups` | Private append-only notes and deferred candidates; neither grants permission to publish |
+| `counts`, `budget` | Per-task automatic continuation count and cumulative goal work budget |
 
-`sessions.json` and `ledger.lock` in the same folder are used for [concurrent sessions](#concurrent-sessions).
-`testsLocked`, `testsFailing`, `pendingPosts`, `metrics` and old aggregate values in old ledgers are ignored, and are not
-automatically removed or rewritten.
-`ledger-update` does not change `pendingPosts` either. Of the remaining post candidates, only those the user read and
-approved are posted.
-When the working Issue's ledger cannot be read (an Issue folder that is a link or a file, a ledger that does not parse),
-it may be in autonomous mode, so nothing is written to the Issue.
-Test locks, metrics commands, a post queue or signing keys, delegation binding and block logs are not provided.
+`task.baseOid` may advance at the next task; `delivery.reviewBaseOid` does not. The original delivery base is retained
+across an explicit rebaseline. A context reset, owner transfer, new task or new delivery does not reset the goal budget.
+The initial default limit is 20 counted starts/continuations; extending it is a distinct recorded decision, not a claim
+about tokens, elapsed time or model billing.
+
+## Control operations
+
+Read `ledger <n>` before constructing a mutation. Structured mutations include
+`"expected":{"controlSeq":<observed>,"ownerEpoch":<observed>}`. The helper compares both and the session owner while
+holding the lock; a stale request is refused before replacement. Rebuild a refused operation from the new state instead
+of substituting fresh numbers into an old decision.
+
+`control <n> < JSON` accepts semantic operations:
+
+| Operation | Preconditions and result |
+|---|---|
+| `claim` | Confirmed quiescent handoff plus reason; advances owner epoch and returns to interactive mode |
+| `update` | Only stage, tracked path, run mode, interaction mode, blockers and decisions; it cannot overwrite identities, receipts, scopes or counters |
+| `task-start` | Previous task finished, open delivery, unique task ID/current/total, explicit `checks` and selected-delivery `contributesTo`; no AC-to-check fallback; captures original current commit as task base |
+| `task-complete` | Applicable passing task evidence covers its local checks; a batch also requires all registered units stopped, verified and integrated |
+| `task-abandon` | Explicit reason for ending an obsolete open task; retains its history, does not assert completion or remove Issue requirements |
+| `delivery-start` | Previous delivery finished; unique delivery ID, current intent and explicit selection; opens a separate delivery without resetting cumulative budget |
+| `delivery-revise` | Explicit scope revision with current observed intent; revises the delivery and invalidates aggregate completion |
+| `intent-reconcile` | Adopts current observed intent; meaningful changes require no open task and invalidate aggregate completion. A supported pure AC reorder with identical semantic identity and selection preserves the open task, delivery and original proof |
+| `delivery-complete` | Applicable delivery evidence, selected criteria plus affected regressions, impact analysis, no unresolved task, blocker, decision or running work |
+| `rebaseline` | Full original commit OID and reason; retains original base, advances baseline epoch/version and reopens delivery acceptance |
+| `running-add`, `running-done` | Record unique work before launch; M3 writers bind worktree/base/paths/checks, readers use `kind: inspection`; completion needs recovered result, confirmed command/child exit and applicable unit proof |
+| `budget-extend` | Explicit higher limit and reason; records the old and new limits |
+| `verification-abandon` | Explicitly confirmed quiescence and reason; recovers an interrupted reservation without converting it to a pass |
+
+Named stage transitions follow [lifecycle](lifecycle.md#stages), including justified returns for new evidence or scope.
+A transition needs a reason and current intent. Review and ship require accepted delivery evidence at the current subject;
+cleanup and done cannot hide unfinished work. Architectural planning remains a separate stage; a bounded task does not
+acquire a plan stage merely by changing a number.
+
+`ledger-update`, `mode` and `running` on a v2 Issue are compatibility spellings for these structured operations, not the
+old unrestricted patch interface. `note <n> < text` appends under the same lock without replacing execution tokens or
+advancing `controlSeq`; independent observations may be retained while a verification or external effect is unresolved.
+Appending a note does not authorize control, publication or another writer's release.
+
+## Scope and evidence
+
+The [evidence contract](evidence.md) defines task, work-unit, delivery, Issue and integration subjects and their
+applicability rules. A task proves explicit local checks; a delivery proves only its selected acceptance criteria,
+with wider regression coverage recorded separately. Whole-Issue closure needs current target integration proof.
+A review package, task count or copied report never substitutes for executed proof. Scope, definitions, subject,
+configuration and provenance remain bound through the completion transition.
+
+## Execution profile
+
+The [execution adapter contract](execution.md) owns process-tree supervision, exact output and platform limits.
+Verification and v2 GitHub mutations require Linux, system Python 3 and a working child subreaper. Only a settled verification job with complete
+output, root exit 0, no observed failure and unchanged post-run inputs can pass. `not_started` is terminal unverified;
+`unknown` retains the reservation. Windows/macOS are unsupported and do not launch the target. A parent exit alone,
+missing job metadata or a remote job outside this process tree cannot establish completion.
+
+## External effects
+
+Stable criterion operations (`check`, `intent`, `close`) include expected control and observed intent revisions.
+Supported state projections, checkpoints, remarks, reopening, Issue creation and sub-Issue relations use the same local
+reservation/readback model through their compatibility entry points; a projection must match the ledger stage. Before
+the remote call the helper persists a pending operation and exact request digest. Its private transport artifact binds
+the operation, target, command, input, raw output and full job report. All mutation commands use the supported process
+supervisor; success requires both validated local termination and operation-specific remote readback.
+
+A local operation ID supports reconciliation but is not a server-side idempotency key. Comments and Issue creation
+capture the authenticated actor and complete bounded pre-send remote ID set. They require the **exact object URL
+returned by this operation's complete settled transport**, absent from that baseline, plus matching target, author and
+content. Another new object with the same actor/body/time cannot identify the request. An incomplete baseline prevents
+sending. Idempotent target updates instead require their exact target state. Preserve raw transport evidence.
+
+An unresolved local job, missing object correlator or mismatched remote observation remains `unknown`; a visible remote
+object never proves local termination. Only validated non-dispatch is terminal `failed`: a strict `not_started` report
+(including unsupported platform or executable launch failure), or settled GitHub authentication exit 4, bound to the
+retained request and transport. A missing remote result after timeout does not prove failure. `effect <n>` with
+`op: reconcile` revalidates that evidence and reads the target without redispatch. Settled known-URL operations can
+recover from delayed remote visibility. Unknown local execution or a missing object URL has no force-complete path;
+elapsed time, ownership claim and similar new remote content cannot release it. Unknown effects block dependent work
+and replay; confirmed non-dispatch permits subsequent control. Preserve independent notes.
+
+The helper does not provide a cross-machine GitHub transaction or compare-and-swap for Issue bodies. A local intent
+revision check narrows stale-write risk but cannot lock out a remote edit after the read. Remote deletion likewise
+requires an approved server-atomic expected-OID operation; the current no-lease policy leaves it held. A fresh lookup
+followed by unconditional deletion does not meet that condition.
 
 ## Unattended runs
 
-An unattended stretch exists only when the ledger's `mode` is `autonomous` (a user decision). When the user steps away or
-orders an unattended run, or when a prompt launched non-interactively says so, the router switches it with
-`devflow-state mode <n> autonomous < reason`.
-When the person returns, switch it back with `devflow-state mode <n> interactive < reason`, then show the user the post
-candidates in the notes. The reason is required as the first line of stdin, and the command changes the
-mode under the lock, appends `mode <value>: <reason>` to the notes and leaves the value and time in `modeChanged`.
-A switch to the same value is refused. But when `mode <n> autonomous` is run on a task another session already made
-autonomous, it is not refused and only `modeChanged.session` changes to this session (reattribution, with the reason in
-the notes). When a new session takes over an autonomous task, switch it to interactive if the user is present, and
-reattribute first if it continues unattended. Approval settings such as bypass (Claude) or yolo (Codex) do not say
-whether a person is present, so they are not used as the criterion. Only then does the Stop hook ask to continue, and it
-adds to the continue count under the ledger lock.
+Only the ledger's `mode: autonomous`, chosen by the user, starts an unattended stretch. Approval bypass settings do not
+mean the user is absent. Change mode with the structured control operation and a reason; return to interactive when the
+user resumes. The run belongs to the recorded session, not whichever process wrote most recently.
 
-- Condition: the run is this session's, there is an open task (`task` current at most total), and `blocked`, open
-  `decisions` and `running` are empty ([ledger keys](#ledger-keys)). The hook does not read stage names, which are the
-  skill's; the skill opens the task in build and closes it on leaving build and verify. Its message names the task and repeats
-  that nothing is pushed, integrated or written to the Issue, since only Issue writes are refused by the tool. Waiting to confirm a remote write is also recorded
-  in `blocked`.
-- The run is this session's when `modeChanged.session` names the Stop event's session, the one that switched or
-  reattributed it. A session whose id is unknown, or a switch recorded without one, does not continue, and neither does
-  a child started from the owner, though its environment carries the owner's id. Known limit: in a nested run the CLI
-  records the outer host's id ([concurrent sessions](#concurrent-sessions)), so Claude started inside Codex gets no
-  continuation; it works task by task until its own session records it.
-- A ledger written before this rule may hold an open task in review or later. Earlier versions also recorded
-  `modeChanged.session`, so Stop continues it for the session that owns the run as above: the one that switched it to
-  autonomous, without a new claim, or one that later claims it with `mode <n> autonomous`. It continues at most twice,
-  its message forbids push, integration and Issue writes, and setting current past total ends it.
-- At most 2 times for the same task (the ledger's continue count). After that, stop and get a review.
-- When a task ends, check, commit and update the ledger. Only the user can run `/clear`, so an unattended run uses a fresh
-  context per task through an implementer (M2), and the main session carries on through the ledger and commits.
-- In an unattended stretch, nothing is posted to Issues and there is no push or integration. They are recorded in the
-  ledger and done in the next interactive turn ([Issue I/O](issues.md#issue-io)). This is devflow's current
-  unattended run policy.
-  `devflow-state` refuses every Issue write in autonomous mode and directs the caller to leave the content to show the
-  user in the ledger notes.
-  It does not create pending posts or post automatically.
+Stop may continue only the bound owner's open task when no blocker, decision, running work, verification or unresolved
+external effect remains. It allows at most two automatic continuations for that task and also spends the cumulative goal
+budget. It never steals ownership, resets a budget, starts publication or turns an unsupported hook into an assumed event.
 
-The executor's rules for unattended work are in the
-[sessions reference](../../skills/devflow/references/sessions.md#unattended-work) and, for integration, the
-[ship reference](../../skills/devflow/references/ship.md). In interactive work this hook is off.
+During autonomous work, Issue writes, pushes and integration stay deferred. The CLI enforces its own Issue-write path;
+the hook is not a global shell, Git, HTTP or MCP firewall. Keep proposed content in private notes and publish only within
+the user's actual authorization in an interactive turn. Context refresh does not grant permission or transfer ownership.
 
 ## task worktree
 
-A worktree's Issue is only the Issue of that worktree's branch. A linked worktree that is not on an Issue branch is
-independent and does not write another Issue's ledger.
+The working Issue belongs to the worktree's branch. A linked worktree without an Issue binding cannot write another
+Issue's execution state. Claude isolation markers (`.claude/worktrees/agent-*` or `worktree-agent-*`) identify delegated
+task worktrees: the parent owns Issue and execution writes. Renaming both markers remains an identification limit.
 
-- When a Claude isolation marker (a `.claude/worktrees/agent-*` folder or a `worktree-agent-*` branch) is present, the
-  worktree is not bound to an Issue.
-  `devflow-state` refuses ledger writes, Issue writes, create, remark and release, and the main session records them. The
-  resume card shows only a notice that the main session handles the state and writes. An old `delegates.json` is neither
-  read nor changed.
-- A worktree without a marker is judged as being on its own Issue branch or as an independent worktree. The limit that
-  isolation cannot be determined when both the folder and the branch markers are changed remains. Stop reads the ledger
-  only on its own Issue branch.
-- create: a linked worktree that is not on an Issue branch has no working Issue ledger. It refuses when the main work
-  tree branch's Issue is autonomous; when there is an autonomous ledger this session switched on or took over
-  (`modeChanged.session`) or wrote within 30 minutes; an autonomous ledger whose switching session is unknown (including
-  when the session id is unknown); an autonomous ledger while the main work tree is in a detached HEAD (it may be in the
-  middle of a rebase); or an unreadable Issue folder list, Issue folder, ledger, or `sessions.json` of an autonomous
-  ledger. In a reftable repository the HEAD file is a stub, so the branch is asked of git, and when that cannot be asked
-  it is treated as detached. Entries are taken by their exact name in the list and not followed; treated as unreadable
-  are: a link or non-folder entry named `i<n>`, an entry differing from `i<n>` only in case that cannot be shown by file id
-  to be the same entry (including id 0), a link with another name, a folder that has a ledger or may have one, an entry
-  that does not open by its listed name or cannot be judged, a name that appears twice, two names that open the same file
-  id, and a number beyond the safe integer range. A Windows short name can open an entry with another name as `i<n>`, and
-  an unpaired surrogate name comes out as U+FFFD and may collide with another name. The ledgers read are those of the
-  Issues in the list it judged and, separately from the list, the main work tree branch's Issue through `i<n>`, and
-  `sessions.json` is read only once. create treats it as an Issue folder only when it is the same entry. A refusal names
-  that Issue or entry, but shows an entry name only when it consists solely of letters, digits, `_`, `.` and `-`; it
-  leaves confirmation and recovery to the session that owns that run or to the user, and does not suggest switching the
-  mode of another Issue or a path without this check. create in a detached HEAD is refused anywhere. The limit that create
-  in the main work tree without a working Issue is treated as interactive remains ([Issue I/O](issues.md#issue-io)).
-- `release <n>` removes an entry only when this session has one; otherwise it creates no folder, lock or file.
+After confirmed integration, the bound owner may execute integration verification, supported criterion checks/closure,
+and cleanup/learning/completion bookkeeping from the verified main worktree only when main contains the completed
+delivery. The retained Issue worktree may also direct integration checks to that actual main target. This narrow continuation does not authorize another Issue,
+worktree or session. A detached HEAD, ambiguous main-tree backlink or identity mismatch remains unresolved.
 
 ## Concurrent sessions
 
-This is when two sessions on the same machine (Claude and Claude, or Codex) take over one Issue through a handoff or a
-message.
+A control mutation holds an exclusive short file lock for its entire read/check/replace section. There is **no age-only
+lock reclamation**, PID guess or rename-away takeover. A paused old holder must not become a second writer when it wakes.
+Lock ownership is checked immediately before the atomic replacement, in addition to the fact that cooperating writers
+never steal the lock. A bounded wait fails closed. Process crashes require explicit quiescent recovery.
 
-- Ledger writes read, modify and replace through a temporary file under a short lock (`ledger.lock`). No network is used
-  inside the lock, so a lock older than 10 seconds is discarded, and a write that cannot take the lock within 2 seconds is
-  refused.
-- `ledger-update` changes the top-level keys it is sent, and appended records use `note` (to prevent losing concurrent
-  records).
-  On an Issue branch both write only their own ledger; on a branch with another name (such as main) they write the
-  ledger of the number, but `note` needs the ledger to exist. A detached HEAD (it may be in the middle of a rebase) and a
-  linked worktree not on an Issue branch are refused.
-- Writes (to the Issue and the ledger) leave the session in `sessions.json` (id hash and time). When another session
-  wrote within 30 minutes and did not release, the resume card and the write output warn. This does not refuse, and reads
-  are not counted. The warnings end with one line for the warned session: hold the Issue's state and ledger key writes
-  (`ledger-update`, `mode`, `running`) until the owner or that session confirms a handoff, since each replaces what the
-  other session may still write and a re-read only shows what it has written so far, while `note` appends under the
-  lock and may go on; hold other writes their work may touch until a re-read rules that out;
-  after a write, re-read the current state; keep independent work; and never release or end another session by
-  guessing, because the record is a recent unreleased write, not proof that the other session is running or has ended.
-- [Current session id passing](hooks.md#common-contract-of-both-hosts): the CLI uses the first non-empty value of
-  `CODEX_THREAD_ID` → `DEVFLOW_SESSION_ID` → `CLAUDE_CODE_SESSION_ID`. Nested hosts follow the same order. A subagent has
-  the parent's id; without an id, nothing is recorded or warned.
-- At a handoff, after finishing checks, commits, state records and delegated work, run `release <n>` as the last ledger
-  action. Follow this order when passing a unit of work on with `/clear` as well. Then report the next action to the user
-  and leave `/clear` to them. Writing again after the release registers the session again, so finish additional records
-  before releasing. A direct `/clear` in Codex does not end the previous thread right away and does not give the previous
-  id to the new hook, so automatic release is not guaranteed ([observation](../research/host-facts.md#codex)). Do not
-  remove another session by guessing. When a session ends, the SessionEnd hook of both hosts removes it from every Issue
-  (in Claude, including `/clear`). When the hook does not run (a Codex hook before it is trusted, an abnormal exit), it
-  is left to the 30-minute expiry. So a brief handed to another session (another host, a headless run) has that session
-  run `release <n>` at the end, unless it runs nested (Claude started inside Codex; see the last item). If that is missed and the hook does not run either, warnings about the ended session
-  continue for 30 minutes.
-- SessionEnd confirms the main work tree through the local back link without an external `git`, so lookup delays or
-  failures do not make it miss the release.
-  It does not release another repository through an unconfirmed link. It removes only that id from the JSON object it
-  read and preserves other values and locked ledgers.
-  A lock, read or rewrite failure of an explicit release is reported as a release failure, not assumed to be a lock
-  conflict.
-- Issue writes are not locked. Sessions on other machines are unknown, and another host launched inside a host (Claude
-  inside Codex) appears as the outer session. Known limit: its `release <n>` therefore removes the outer session's entry,
-  and other sessions are not warned about the outer one until it writes again. In a nested run, do not
-  run `release <n>`; the outer session releases at its own handoff, or its SessionEnd hook does when it ends.
+There is no automatic or generic force-break command. Offline recovery first establishes that every relevant writer
+and descendant stopped and cannot resume, preserves the store and lock bytes, and verifies the exact orphaned lock token
+before removing only that lock. Then reread the validated store and claim using current control tokens. A flag, old
+mtime, expired session warning or unrecognized PID cannot establish those premises; uncertain quiescence keeps the lock
+held. Removing a lock never authorizes editing ledger JSON or clearing unresolved execution/effects.
+
+Ownership and old session warnings serve different purposes. V2 ownership changes only through an explicit claim with
+current expected tokens after quiescence. A claim with interrupted work preserves those receipts and permits recovery;
+it does not clear unknown effects or establish that a prior command exited. Expiry of a warning, release of a session record, `/clear`, context compaction
+or another host's SessionEnd does not transfer v2 ownership. Explicit release is the last session bookkeeping action at
+handoff; subsequent work must reacquire the correct ownership before mutation.
+
+Current CLI session identity is the first nonempty `CODEX_THREAD_ID`, `DEVFLOW_SESSION_ID`, or
+`CLAUDE_CODE_SESSION_ID`. Nested hosts can therefore appear as their outer session; this is an observed implementation
+limit, not a proof that native host attribution is correct. Do not release an outer session from a nested delegate.
+Validate hook/CLI attribution on each target host as described in [hooks](hooks.md).
+
+## Migration and recovery
+
+Migration is an explicit operation, not a side effect of a card or read:
+
+1. Stop and confirm all old writers, delegated processes and in-flight effects. A flag records that confirmation; it
+   cannot establish quiescence by itself.
+2. Read the trusted Issue and recover stable criterion IDs, intended delivery scope and full original delivery base.
+   Do not infer a delivery base from v1 `base`, the latest task or the current HEAD when earlier work exists.
+3. Invoke `ledger-init <n> --quiescent` with observed intent, delivery and recovery information. A nonempty legacy ledger
+   requires `recoveryReason` and explicit `delivery.reviewBaseOid`; existing task progress requires an explicit
+   `recoveredTask`. Unknown completion is reopened, not inherited as a pass.
+4. Back up the original bytes, reserve the new store, create the old-path fence under the legacy lock, then finish the
+   new ledger. Unresolved blockers, decisions, notes and followups survive; existing running work prevents activation.
+5. Verify both stores' matching migration ID, new identity, budget and intended scope before resuming. A failure between
+   steps is an incomplete migration, never permission for an old writer to continue.
+
+Recovery must preserve backups, fence, evidence and unknown effects until their status is established. Never delete a
+busy lock because of its age, directly edit v2 JSON to manufacture completion, or run an old binary against an active v2
+Issue. A rollback is a separate quiescent recovery operation that preserves the v2 record and restores only a validated
+legacy backup; it does not replay posts, reset work budgets or assert that external effects were undone. The separate
+`.work/devflow-v2-continuity/i<n>.json` binds cumulative use and the explicitly approved limit to the archived ledger's
+SHA-256. Reactivation validates that record and preserves both values. `budgetLimit` cannot reset use or change an
+existing limit; only an active, recorded `budget-extend` may raise it. Missing or altered required archives hold recovery.
+
+## Legacy compatibility
+
+Unmigrated v1 ledgers retain their existing CLI and bounded resume behavior so a read-only upgrade does not rewrite user
+state. The v1 lock also no longer expires by age. Its stage and run-mode shape checks, per-task continue count and recent
+session warnings are legacy behavior, not v2 scope, evidence or ownership enforcement. They must not be advertised as
+passing the v2 contract.
+
+For v1, ledger writes append notes under the lock, session records warn for recent unreleased writers, and the warned
+session holds conflicting state mutations until handoff. Explicit release removes only its own existing session record;
+SessionEnd is a secondary path that preserves other sessions and locked ledgers. Warning expiry after 30 minutes is not
+proof that a writer ended. Issue writes remain unlocked across machines. V1 create/remark guards retain their existing
+branch, detached-HEAD, linked-worktree, unreadable-store and autonomous-ledger checks; an unbound main-worktree create
+cannot prove unattended mode and is a documented legacy limitation.

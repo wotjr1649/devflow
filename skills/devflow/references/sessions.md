@@ -1,102 +1,145 @@
 # Sessions
 
-Done when the session operation at hand - a note, a progress report or return, a handoff, a mode switch or an intent
-change - is complete, with every ledger or Issue write (`note`, `mode`, `intent`, `release`) made through the card's
-`Tool:` command and nothing guessed.
+Done when the requested note, resume, progress report, handoff, mode switch or intent update is recorded through the
+trusted Tool for the verified identity and current owner, with no guessed state or replayed uncertain effect.
 
-Contents: Notes and closed branches · Progress and returns · Handing off · Unattended work · Changed requirements
+Contents: Notes and closed branches · Ownership and migration · Progress and returns · Handing off · Unattended work · Changed requirements
 
 ## Notes and closed branches
 
-After the Issue branch is gone (cleanup on main), `note` still takes the Issue's number, as long as its ledger exists.
+Use the Tool's supported append operation for evidence and proposed public text. Never replace notes wholesale or use
+an append as an execution transition. After the branch is gone, a supported closed-branch note targets the existing
+Issue ledger from the surviving workspace; no new Issue or branch is needed. If that operation cannot verify the
+original identity/ownership, preserve the local evidence and report the gap without a direct-file workaround.
+
+## Ownership and migration
+
+Before execution mutation, read validated repository/Issue/branch binding, schema version, owner/epoch and control
+sequence. Use the exact expected identity returned by that read. A rejected stale writer reads again and reconciles;
+it does not blindly retry, reset sequence/epoch or copy old state over newer work. A lock remains owned through its
+write lifetime. Time since heartbeat, a paused process or a stale-looking file is not proof of release.
+
+Claim another session's execution only after a verified quiescent handoff: its relevant processes, children and unknown
+writes are accounted for, and authority permits transfer. A new epoch fences earlier writers; their notes or cached
+cards cannot restore authority. Never terminate or release another session to clear a warning. Maintain live-work and
+external-effect records until actual termination/readback; ending a wait is not ending the work.
+
+For old schema state, use the Tool's supported quiescent migration. Stop or retire every actual legacy CLI/hook writer
+through its owner's handoff, verify no in-flight mutation, retain the rollback snapshot and verify the cutover's writer
+fence. A new field preserved by an old writer is not compatibility. Incomplete activation/rollback, an unaccounted old
+writer or ambiguous ownership holds dependent writes; report the recovery state instead of hand-editing either ledger.
+Rollback is a supported quiescent procedure, not permission to reopen legacy writes against v2 state. Recover missing
+local task-check definitions and their AC contribution mapping from verified plans and actual checks; old task AC refs
+or checked boxes cannot be silently converted into local-check or full-AC passes. Preserve the old receipts as history.
 
 ## Progress and returns
 
-For verified tracked work entering through devflow, explain the position by five milestones and their exit evidence:
+For verified tracked work, explain five milestones with their exit evidence:
 
-- Direction (discover, start): confirmed intent and acceptance, linked Issue, working branch, baseline.
-- Preparation (design, plan): decisions settled, per-task plan with proof, prerequisites, go; bounded: the change, check
-  and `runMode` set in design, no plan or go.
-- Increment (build and verify per task): the task's user outcome, verified at the applied revision.
-- Acceptance (full verify, review): evidence for every criterion in scope; required reviews and findings handled.
-- Delivery (ship, cleanup, learn if needed): the integrated scope, the Issue closed, local cleanup confirmed.
+| Milestone | Exit evidence |
+|---|---|
+| Direction — discover/start | confirmed intent/ACs, linked Issue, working association, baseline and delivery scope |
+| Preparation — design/plan | decisions, task interfaces/checks, exercised prerequisites and go; bounded records these in design |
+| Increment — task build/verify | authorized final commit, current local proof and required task/combined-batch review; full ACs may remain unverified |
+| Acceptance — delivery verify/review | selected delivery ACs and affected regressions pass; required review and findings handled |
+| Delivery — ship/cleanup/optional learn | delivered scope integrated, applicable tracking disposition verified, local closeout accounted for |
 
-Status (in progress, met, blocked, unconfirmed) is shown apart from the name: met only with exit evidence, never because
-the stage was entered; blocked only for dependent actions. Report the goal, the increment's user result, milestone and
-status, observed evidence, remaining exits, the next action, blockers or open decisions, and the applicable revision;
-task k/N is a count, not a percentage. Refresh at resume, stage or increment completion, milestone changes, rollback,
-scope changes or blockers, not in every message. Pre-Issue entry and other skills' direct returns are outside this
-procedure.
+Show status separately: in progress, met, blocked or unconfirmed. Entering a stage is not exit evidence; blocked applies
+only to dependent actions. Report goal, increment's actual contribution, milestone/status, observed evidence and applicable
+subject, remaining exits, next action and blocker/decision. Task k/N is a count, not a percentage. Refresh at resume,
+boundary/increment completion, rollback, scope change or new blocker, not every message. Pre-Issue discussion and
+independent skills' direct returns do not create this tracking procedure.
 
-Where each fact comes from:
-- Confirmed intent and coarse state: the card's Tool `read <issue>`. Task progress and blockers of the same Issue:
-  `ledger <issue>`. A missing or unreadable ledger means unknown progress and blockers, not none.
-- Verification evidence: the ledger's notes and the Issue's checkpoints; open the raw evidence they point to as needed.
-- Task and proof scope: the linked plan (bounded: the one change and checks set in design). Revision applicability: Git.
-  When HEAD differs from `lastCommit`, check the changed commits; a successful log alone proves no applicability.
-- Create no milestone fields, duplicate status records or routine public posts; keep private paths and logs local.
+Sources of truth are distinct:
 
-Reconciling:
-- Issue `build` or `verify` with an open ledger task (current not past total) is the normal loop; Issue `done` with cleanup or learn is normal closeout.
-  Reconcile other differences by repository, Issue and branch identity, scope and applicable revision, not by the newest
-  timestamp.
-- Missing or stale evidence, or unclear task versus full verification, leaves acceptance unpassed. Keep warnings and
-  failed results.
-- Before relying on what a truncated card omits, recover the full Issue and ledger, then the local plan and evidence,
-  through their readers. Do not guess completion or repair state automatically.
-- If identity or a conflict stays unresolved, show the position as unverified, hold the dependent effect and name the
-  cheapest owner read or evidence comparison as the next step; continue independent covered work.
+- The approved Issue intent owns requirements. A current Tool read yields observed intent revision and stable AC
+  identities/definition revisions; its public state is a coarse projection, not the private execution authority.
+- The identity-valid ledger owns execution stage/task, delivery version/scope/baseline, current owner/sequence and
+  blockers/live work. An M3 batch is one active task with separately bound units: identity/base/worktree/files, actual
+  processes, returned proof and integration outcome. A finished worker does not complete the batch. Missing/unreadable/
+  mismatched state means unknown progress, not none.
+- Executed receipts, review packets/reports and referenced raw evidence establish proof. Notes/checkpoints locate and
+  explain it. The private plan or bounded design locates intended tasks/checks; neither proves execution.
+- Actual original Git objects and current refs, or actual artifact versions/hashes, establish applicability. Different
+  current HEAD from a recorded commit requires inspecting intervening work and reassessing proof. A successful old
+  log alone does not apply. Keep raw evidence/private paths local; public summaries use safe IDs or hashes.
 
-A return by the router's going-back rule reopens a milestone: a behaviour failure Increment, a plan error or broken
-assumption Preparation, changed intent or acceptance Direction (through the existing confirmation). Explain why, the
-evidence and decisions kept, the exits reopened and the next action; a fix in the same scope needs no new interview.
-Review-only stops at findings.
+Issue build with valid ledger verify is the normal local loop: resume verify. A closed Issue can retain its last
+ship projection while the ledger proceeds through cleanup, optional learn, then done. Close does not advance that
+ledger stage; do not force a public done projection before the supported close. Changed approved intent is reconciled
+separately while preserving the actual phase and history.
+For other discrepancies inspect identity, ownership, delivery scope, baseline and proof, not the latest timestamp.
+On another machine, the Issue's public projection cannot reconstruct missing private state: recover it or explicitly
+reconstruct from verified sources through the supported procedure before dependent mutation. Never start from a guessed
+phase, silently rebaseline, or treat absent evidence as completed work.
 
-Keep the delivered subset, the parent scope, Issue closure and local closeout apart. After branch deletion use the
-closed-branch rules above, without reopening an Issue to match a label. Issue `done` or a deleted branch alone proves
-neither integration nor completed cleanup; Delivery stays open until its scoped exits have evidence. Learning is
-optional.
+Expand truncated cards to the relevant full Issue, ledger, plan and evidence. Preserve warnings/failures. Missing/stale
+proof or unclear local-check versus full-AC scope leaves the affected acceptance open. A task contributes to an AC;
+its completion does not check the AC off. For M3, recover each unit by its actual binding, account for children/effects,
+then finish unit review, serial integration, combined-candidate checks and its separate Correctness review. Confirm
+the final authorized commit and current proof before advancing; never relaunch unknown work from a count alone.
+If reconciliation remains unresolved, report unconfirmed and the cheapest owner read/evidence comparison that resolves it, while continuing independent work.
+Create no duplicate milestone fields, routine public posts or parallel sources of truth.
+
+A behaviour failure reopens Increment; a bad plan/assumption reopens Preparation; changed intent/acceptance reopens
+Direction through the new user decision. Name why, evidence/decisions retained, exits reopened and next step; a same-scope
+fix needs no fresh interview and never resets attempt history. Review-only ends at findings. Keep delivered subset,
+parent scope, Issue closure and cleanup separate. A partial delivery does not close its parent; a done label or deleted
+branch proves neither integration nor cleanup. Do not reopen a closed Issue merely to match a local cleanup label.
 
 ## Handing off
 
-Before handing off, including asking the user to `/clear`, finish the work's checks, commits and state updates, wait for
-its delegated work to finish, then run `release <issue>` as the last ledger action, unless this is Claude started from
-Codex (`CODEX_THREAD_ID` is set): that release would remove the Codex session. Report the next step and let the
-user clear: Codex may keep the old thread alive after `/clear`.
+Finish the work's checks, commits and updates, account for delegated work/children/effects, then use the supported
+release/handoff operation as the last control action. Release only this session's identity. Claude launched from Codex
+may inherit CODEX_THREAD_ID; it must not release its parent's ownership. Ask the user to clear only after the handoff;
+Codex may keep the old thread alive after `/clear`, so clear alone is no ownership-transfer proof.
 
-The resume card already brings back the Issue, its latest checkpoint and the ledger, so a resume prompt or a brief for
-another session carries only what they lack: instructions and decisions made since the last checkpoint, under 500
-tokens, pointing at the Issue rather than restating it, which costs output now and input in every later session.
+A resume prompt carries only missing instructions/decision deltas, under 500 tokens, pointing to the Issue and private
+records instead of copying them. A new child still receives delegation's complete role boundaries and exact task
+contract; do not shorten those away to meet the resume-delta budget. Another-session prompt explicitly carries its
+identity/handoff responsibility and the inherited-parent release exception.
 
-- A subagent brief, in English, opens with the role text the router's Delegation section names, then gives the task,
-  BASE, goal, acceptance, files it may change, git-ignored inputs by path and the check; puts push, Issue writes,
-  spawning subagents, deleting or weakening tests and new dependencies out of scope, a test, dependency, scope or
-  interface change it does not settle ending in `NEEDS_DECISION`; asks for one end status (`DONE`, `DONE_WITH_CONCERNS`,
-  `NEEDS_DECISION`, `BLOCKED`) with files changed and checks run or not; ends: stop and report once checked, with no
-  extra rounds. One for another session (`codex exec`,
-  `claude -p`) ends with it running `release <issue>`, except `claude -p` from Codex: it has Codex's id and would release Codex.
-- A prompt file goes to `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, never under a name that already exists,
-  since concurrent sessions can pick the same name. Leave it uncommitted, and end the reply with `Read <absolute path>
-  and continue.`, because a relative path resolves only from where it was written.
-- Without a file, the reply carries the prompt in full. With one, the reply also carries the prompt up to about 2,000
-  characters; past that, only what counts as done and the closing line, unless a person will paste the reply instead of
-  opening the file.
+A prompt file goes to a unique `docs/prompts/YYYY-MM-DD-i<issue>-<slug>-prompt.md`, uncommitted and without overwriting an
+existing path. End the reply with `Read <absolute path> and continue.` so the next workspace resolves it. Without a
+file, include the complete prompt; with one, include it in chat up to about 2,000 characters, otherwise the done condition
+and closing line, unless the user will paste rather than open it. Those local paths belong only in the private handoff.
 
 ## Unattended work
 
-The ledger's `mode` becomes `autonomous` only when the user steps away or orders an unattended run, or a prompt launched
-non-interactively says so; bypass or yolo settings do not show whether a person is present. Set it with
-`mode <issue> autonomous < reason`, giving the reason on the first line of stdin; the command keeps the reason and time.
-While it is autonomous, nothing is posted to Issues, pushed or integrated: `devflow-state` refuses Issue writes, so keep
-what would have been posted in the ledger's notes for the next interactive turn. Unattended work continues
-only while `mode` is autonomous for this session, a task is open (`task` current not past total), and `decisions`,
-`blocked` and `running` are empty; to stop and wait for a person, record the reason in `blocked` or `decisions`. A new session taking over
-an autonomous task switches it to interactive when the user is present, or claims it with `mode <issue> autonomous` to
-continue unattended. When the user is back, run `mode <issue> interactive < reason`, show the notes, and post what the
-user approves.
+Set autonomous mode only for an explicit away/unattended instruction or a noninteractive prompt saying so, not from
+bypass/yolo settings. Use the supported guarded mode operation with reason and current owner identity. Autonomous mode
+authorizes no Issue posts, pushes or integration: keep candidates in append-only notes for interactive review.
+
+Continuation requires this session's current autonomous ownership, an actually open task, and no unresolved decisions,
+blockers, live work, verification reservation or unknown external effect. If any condition fails, record the reason
+and wait for its owner; do not fabricate completion or clear blockers to continue. A new session first reconciles and
+claims through a verified handoff, then records interactive presence or explicit autonomous instruction. When the user
+returns, switch mode with a reason, present pending candidates and apply only already-authorized/approved public effects.
 
 ## Changed requirements
 
-When the requirements or acceptance criteria change, show the user the new intent (the body above the state block) and,
-once they approve the text, post it with `intent`, never by hand: the command keeps the state block and unchecks
-criteria whose text changed, since their evidence no longer applies.
+Show the changed intent above the state block to the user and reuse any explicit approval already given. The guarded
+intent operation uses a fresh observed intent revision, stable AC IDs and explicit definition revisions. Display order
+alone cannot transfer checks, identical/duplicate legacy wording cannot supply missing identity, and changed definitions
+invalidate their proof. Preserve the state block and requirement history; never remove unresolved obligations merely
+because a delivery excludes them.
+
+Re-read the resulting intent and use supported `intent-reconcile` with the latest raw `observedIntentRevision` and
+current owner/control identity. Raw `intent.revision` remains the observation/CAS identity; `intent.evidenceRevision`
+identifies the evidence-relevant meaning. For a pure reorder of a supported contiguous single-line AC list, the Tool
+compares that fingerprint and the selected stable ID/definition-revision set. If both are unchanged, it updates raw
+intent metadata while preserving delivery version/status, the open task, budget and existing receipts/artifacts.
+A receipt keeps its original `subject.intentRevision` provenance and `subject.intentEvidenceRevision` applicability;
+do not edit it to claim another run. Reuse still requires the same applicable candidate, scope, inputs and environment.
+Subsequent check/write operations use the returned/read current control identity and raw revision, not cached
+pre-reconciliation sequence numbers.
+
+This preservation does not bypass pending verification/effects or stale owner/sequence/raw-revision checks. Changes to
+meaning, definition or scope follow normal invalidation. Multiline ACs, intervening prose or ambiguous rearrangement
+are outside the bounded reorder adapter: follow the Tool's actual result rather than declaring reuse or unnecessary
+reruns from display order alone. Preserve historical evidence, reconcile affected scope and obtain current proof when
+required. Never manufacture semantic fingerprints or replace evidence fields yourself.
+
+Later work reassesses evidence for subject, dependencies and environment changes. A local compare-and-swap protects
+local state, not GitHub's whole read/write window. A timed-out or conflicting external write stays unknown until
+supported effect reconciliation reads back the intended result; never redispatch a submitted write blindly.

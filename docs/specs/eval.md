@@ -1,5 +1,7 @@
 # Evaluation contract
 
+Contents: [eval](#eval), [redesign regressions](#redesign-regressions), [usage comparison](#usage-comparison).
+
 ## eval
 
 The eval is an optional tool run with `claude plugin eval`. A score alone is never an acceptance criterion or a release condition
@@ -52,3 +54,71 @@ cost went to its own case and judge defects.
   cases on the revisions before and after the change with the same model and compare.
 
 Write case files that contain backslashes with an edit tool, not a shell heredoc, and check the bytes.
+
+## Redesign regressions
+
+Run the deterministic Git, state, migration and Issue-write fixtures before judging a prose-only scenario. Read-only
+behavior cases show routing and decisions; they do not prove mutation, concurrency, native host integration or cost.
+
+The required failure/healthy pairs cover:
+
+- The final delivery review includes every task; a missing delivery baseline is not replaced by the last task base.
+- A valid ledger's phase wins over a stale Issue projection; a ledger bound to another repository/Issue is refused.
+- A successful partial delivery can advance; a failed in-scope criterion cannot. Whole-Issue requirements remain.
+- Reordering uniquely identified unchanged criteria preserves their identity; changed definitions invalidate old proof.
+- Local cleanup can proceed when eligible while unsupported atomic remote deletion remains held.
+- A successful intermediate task advances on its own local checks without falsely checking an unfinished end-to-end AC;
+  a failed prerequisite task blocks its dependent successor.
+- Local shipping keeps an Issue open before the agreed integration gate, then allows authorized closure after applicable
+  target-subject proof. Source-branch checks are not silently relabelled as merge-result checks.
+- Registered isolated M3 batch units can launch concurrently when independent; overlapping or unresolved dependent
+  units must be resequenced or given a fixed disjoint contract.
+
+Runtime fixtures additionally cover external diff/textconv/fsmonitor execution, original Git objects with replacement
+refs, dirty snapshot stability, stale writers, paused lock owners and actual archived-v1 writers during migration.
+Use temporary repositories and mocked Issue APIs; a real external write requires the applicable user authorization.
+Critical wrong deletion, unauthorized writing and false completion are separate failures, not weighted score penalties.
+
+## Usage comparison
+
+`node evals/measure.js instructions <skill-directory>` reports unique file bytes for selected loading paths, with
+hashes and a baseline-layout adapter. It does not count model tokens, observe that a file was loaded or estimate billing.
+
+For actual usage, keep the parent, child and separately invoked hook request records. Normalize each provider's counters
+into disjoint `uncachedInput`, `cacheRead`, `cacheWrite` and `output` buckets; do not sum an inclusive prompt counter with
+its cache subset. A subagent's final context footprint is not its run's request total. Unknown use stays unknown.
+For example, Claude Code documents `subagent_completed.total_tokens` as the final request footprint, not the sum of all
+child requests: [monitoring usage](https://code.claude.com/docs/en/monitoring-usage).
+
+Compare records with `node evals/measure.js compare <baseline.json> <candidate.json>`. Each input has this shape:
+
+```json
+{
+  "control": {
+    "fixture": "scenario-and-input-revision",
+    "host": "actual-host",
+    "hostVersion": "actual-version",
+    "model": "actual-full-model-id",
+    "effort": "actual-effort",
+    "permissions": "actual-permission-profile",
+    "cacheCondition": "cold-or-warm"
+  },
+  "outcome": "unknown",
+  "violations": [],
+  "oracleRef": "private-result-assessment",
+  "coverage": { "main": false, "subagent": false, "hook": false },
+  "elapsedSeconds": null,
+  "requests": []
+}
+```
+
+Each observed request adds `requestId`, `role` (`main`, `subagent`, `hook`), `sourceRef`,
+`counterBasis: "disjoint-request-usage"` and the four normalized token buckets. Use null for an unknown bucket.
+Coverage is true only after accounting for every request in that role, including confirming that a role made none.
+The comparison requires matching controls, independently assessed passing outcomes, no violations and complete usage.
+An early failure cannot qualify as a saving. Report unmatched outcomes and unknown measurements without a reduction
+percentage. A local JSON record is an evidence index, not proof its author performed the recorded checks.
+
+Keep hosted CI, native Windows execution, each real host's skill/hook loading, behavior scenarios and usage measurements
+as distinct results. A Linux unit test cannot substitute for a Windows host run. When a runner fails before the task
+starts, record the initialization failure and no task outcome or usage; do not silently change permissions or credentials.

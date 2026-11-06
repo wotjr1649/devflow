@@ -20,8 +20,8 @@ stage is explained by [orchestration](orchestration.md).
 - Without a valid card no Issue is read or written and the `devflow-state` path is never searched for, because a path
   found in repository files could run code the user did not choose ([resume card](issues.md#resume-card)).
 - A review-only request stays a review, because merging and deletion need their own request.
-- After compaction the router is called again and the current stage's reference reread, because the body of an invoked
-  skill is reattached after compaction but reference files are not.
+- After compaction or an uncertain context boundary, reload the router's minimal contract and the current reference.
+  Host retention differs; a known file version does not prove its contents survived in context.
 
 ## User navigation
 
@@ -33,31 +33,57 @@ rules are in the [sessions reference](../../skills/devflow/references/sessions.m
 
 ## Stages
 
-The ledger's `stage` and the state block's `단계` take a stage name the devflow skill defines: today the ten stages
-discover, start, design, plan, build, verify, review, ship, cleanup, learn, then `done` after ship. The tools check only
-the name's shape ([ledger](ledger.md#ledger-keys)), so the skill can add or rename a stage. Each stage's responsibility and done condition are
-the opening of its reference in `skills/devflow/references/`.
+The ten stages remain discover, start, design, plan, build, verify, review, ship, cleanup and learn, with `done` as a
+completion state. The bound ledger owns the execution stage. The Issue's `단계` projects public progress and may lag a
+task loop; a newer human change to intent still requires reconciliation. Versioned control operations validate named
+stages and permitted returns; a legacy lowercase string is not evidence that a transition is valid.
+Each stage's responsibility and done condition opens its reference in `skills/devflow/references/`.
 
-ship writes the state block as done on the Issue branch and closes the Issue. `local-merge` and `push-on-request` do this
-before integration, `pr-ci` after confirming the merged result. A partial integration with scope left does not close the
-Issue and keeps the remaining scope in the state. After the branch is deleted, the Issue can no longer be written, so
-cleanup and any learn after it are recorded only in the ledger.
+ship distinguishes task completion, delivery completion and whole-Issue completion. Close only after the applicable
+integration, release or explicitly agreed local-artifact gate has been observed, and before deleting the Issue branch.
+For `push-on-request`, record exactly whether the agreed gate is local integration or an authorized remote push; never
+label unpushed work as remotely delivered. Required successors and all remaining criteria must be accounted for before
+whole-Issue closure. A partial integration leaves the Issue and its remaining required scope open. The runtime currently attests merge/fast-forward integration into actual main. Other explicitly agreed artifact gates
+need a supported evidence adapter before automated closure; the helper does not infer equivalence or silently change
+the agreed gate. Cleanup and any learn after branch deletion remain ledger-only; do not close early merely to fit the branch-bound write command.
 
 ## Stages by path
 
 Three paths (spike, bounded, architectural) run different subsets of the stages; the subsets are in
 [SKILL.md](../../skills/devflow/SKILL.md#stages-and-paths). When unsure, the heavier path is taken, and a design that
-touches one or two files with no interface change moves down to bounded. Measurements show that on small changes the
-heavier process does not improve results and only adds cost ([sources](../research/sources.md)).
+touches one or two files with no interface change moves down to bounded. Choose proportionate checks from the actual
+contract and risk; additional planning or delegation needs a concrete purpose rather than a file-count ritual.
 
 ## Loops
 
-- **Task loop**: each planned task runs build → verify, plus task review in M2 and M3, and is committed with the ledger
-  updated. A fresh context comes from a handoff and `/clear` in interactive work, and from an implementer per task in
+- **Task loop**: each planned task defines local checks and the stable Issue criteria it contributes to. Build → verify
+  proves those local checks, plus task review in M2 and M3, then commit and update the ledger. An intermediate storage
+  task need not prove an end-to-end form that the next task will build; its local pass does not check that Issue AC.
+  A fresh context comes from a handoff and `/clear` in interactive work, and from an implementer per task in
   [unattended runs](ledger.md#unattended-runs).
-- **Wrap-up**: after the last task, verify (all acceptance criteria) → review (final) → ship.
+- **M3 batch**: one active integration task contains separately registered, isolated work units with fixed file
+  ownership, original bases, local checks and result/proof contracts. Independent units may run concurrently. The parent
+  collects results and confirmed exits, integrates serially and verifies the combined task candidate before advancing.
+  Dependent tasks and units wait for the prerequisite result; concurrency does not remove their evidence barrier.
+- **Wrap-up**: after the last task, verify this delivery's criteria and affected regressions → final delivery review →
+  ship. Final review uses the delivery baseline, not the last task's base.
 - **Slice loop**: a partial integration does not close the Issue; the work returns to build for the remaining criteria,
   or to plan when that work was not planned.
+
+## Delivery scope and evidence
+
+A delivery identifies its approved criterion IDs and definition revisions, task IDs and original/review baselines.
+Starting a task changes only its task base. A new partial delivery has its own identity; creating one is not a recovery
+method for an unknown earlier delivery. Rebaselining records an explicit change after recovering the complete scope and
+invalidates affected review evidence. Never guess a delivery baseline from a v1 task base or `HEAD~1`.
+
+Task-local checks, delivery acceptance criteria, whole-Issue closure and cleanup predicates are independent. Earlier delivery evidence must still apply after
+later code or criterion changes before the whole Issue can close. Checkboxes are a public projection of evidence, not
+the evidence itself. Stable criterion IDs reach the actual check/intent/close operations; list positions are display.
+
+Execution evidence binds scope, code or dirty snapshot, actual command and environment, outcome and source. Static
+review is not execution, supplied claims do not become observed runs when copied, and hashes identify bytes rather
+than prove a run. Missing required evidence stays unverified while independent authorized work may continue.
 
 ## Going back
 

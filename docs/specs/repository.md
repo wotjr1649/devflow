@@ -23,8 +23,10 @@ project. No runner checks them ([why](../design/current-decisions.md#instruction
 
 ### Issue folder
 
-The Issue folder (`.work/devflow/i<issue>/`: ledger, session records, locks) lives in the main work tree. It survives
-when a worktree is removed, and sessions in any worktree use the same ledger and locks.
+Issue execution storage lives in the main work tree. The legacy folder is `.work/devflow/i<issue>/`; the versioned
+control store and migration fence follow [ledger](ledger.md). They survive worktree removal, and sessions resolving the
+same main tree coordinate through the same versioned state and locks. An old ledger is not silently interpreted as a
+complete delivery record.
 
 - The main work tree is determined from git records. If the current work tree is a linked worktree, its gitdir sits
   directly under the repository's `.git/worktrees/`, and the back link there (the `gitdir` file) points to this
@@ -159,9 +161,11 @@ required is the project's choice. devflow's own standard follows [Integration an
 host configuration, but it turns a hook on, so it happens on the owner's instruction); in a clone with the hook off,
 write a check line in the integration commit.
 
-In a `pr-ci` repository the evidence for the full `verify` that is the integration gate is CI that actually checked the
-same revision. The project's `verify` step must succeed on HEAD for a branch push and on the latest merge result for a
-PR; how to confirm this follows the [integration](../../skills/devflow/references/ship.md#integration) part of the devflow ship reference. Locally, run only checks that exercise the
+In a `pr-ci` repository the evidence for the full `verify` integration gate is CI that actually checked the required
+revision and environment. Bind workflow/run/attempt/event, actual checkout OID and the applicable head/base policy.
+An event name alone does not establish what was checked; an explicit head-checkout workflow is valid only where that
+is the project's required check. This repository requires both the push head and latest PR merge result as below.
+Confirmation follows the [integration](../../skills/devflow/references/ship.md#integration) part of the devflow ship reference. Locally, run only checks that exercise the
 change and the behavior it affects (tests of the touched paths and their callers). When there is no basis for narrowing
 the scope (changes to shared code, configuration or test tooling), run the full `verify` locally then and there. When CI
 does not run `verify` or its result cannot be confirmed, run the full `verify` locally and wait for required CI
@@ -214,6 +218,9 @@ After the checks and records of [ship](../../skills/devflow/references/ship.md),
 again, and merge with the reviewed head as the expected head (`gh pr merge --match-head-commit <sha>`), so a push
 after the checks cannot slip in. If the branch is behind, merge main ([review](orchestration.md#review)). After the merge, confirm the actual main
 SHA and main CI before completing and cleaning up.
+
+The expected-head check protects the head, not an independently moving base. Current-base guarantees also rely on
+the applicable server protection or merge queue/atomic capability. A local reread alone is not an atomic merge guard.
 
 ### Reverting the self-integration policy
 

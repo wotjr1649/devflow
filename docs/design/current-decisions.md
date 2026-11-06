@@ -22,104 +22,60 @@ for instruction loading or packaging changes.
 
 ## State and resume
 
-**Choice and reason.** The Issue holds the state to continue across machines and hosts, and the local ledger holds task
-progress and private content. Not duplicating the same facts in prompts and handoffs reduces what is read on resume and
-state conflicts. Memory tools are a search layer.
-[Issue contract](../specs/issues.md), [ledger](../specs/ledger.md) and [documents](../specs/documents.md) own the rules.
-The resume card protects the next action, blockers, warnings and recovery means, and a truncated display is not treated
-as complete state.
-Handoff is done explicitly while the session knows itself, and SessionEnd is a secondary path.
-[Concurrent sessions](../specs/ledger.md#concurrent-sessions) sets the release order, and [hooks](../specs/hooks.md) sets the scope
-and limits of events, input reading and safe file reading.
+**Choice and reason.** The Issue owns approved intent, stable acceptance-criterion identities and public progress.
+The validated ledger owns execution phase and active work. Versioned delivery state owns the selected criteria, tasks
+and original/review baselines. Git and the external provider own actual code/ref and integration facts; execution
+records retain their source and applicability. A copied claim or content hash does not prove that a check ran.
+[Issue contract](../specs/issues.md), [ledger](../specs/ledger.md), [lifecycle](../specs/lifecycle.md) and
+[documents](../specs/documents.md) own these rules. A stale Issue phase cannot move a valid local run backwards, and the
+ledger cannot overwrite a newer human change to intent. Cross-machine recovery validates the missing private state.
 
-**Alternatives.** Local files alone cannot be continued on another machine, and writing all task progress to the Issue
-enlarges public edits and the input surface.
-Guessing that the most recent writer is the previous session and clearing it is not taken, because it can release
-another session that is in use.
+Control changes use validated transitions and exclusive storage commits. Appended notes do not become an independent
+control state. Time elapsed is not proof that a lock owner stopped; recovery must prevent the previous holder from
+committing. Migration must fence actual old CLI and hook writers before the new state is authoritative. An unknown
+baseline or ambiguous old criterion mapping is recovered rather than guessed.
 
-**Revisit when.** Review when needed information is repeatedly missing when continuing across machines, or when a host
-guarantees the previous session's identifier and its end.
+**Alternatives.** A single overloaded base for both task and delivery loses earlier changes at final review. Version
+checks only in the new reader do not constrain old code. Multiple mutable state machines increase reconciliation cost.
+A local lock is coordination among cooperating processes, not an OS or cross-machine security boundary.
+
+**Revisit when.** Revisit the storage mechanism when supported native hosts cannot provide the required exclusive commit,
+or when cross-machine writers need a server-enforced transaction. Keep actual host tests separate from local fixtures.
 
 ## Execution and delegation
 
-**Choice and reason.** Decisions and writes are gathered in the main session, and subagents serve context protection
-and verification from a separate viewpoint.
-Implementation is delegated when there is a reason to protect the main session's context, such as workload or an
-unattended run, and parallel writes are used only when files do not overlap and interfaces are fixed. The devflow
-skill's Execution modes set the conditions per mode ([why](../specs/orchestration.md#execution-modes)). Models and effort are chosen to fit the role and
-the evidence, but the user chooses the main model. Roles whose results the main session judges again, such as
-exploration and summarizing, go to the cheapest family (haiku, luna), and promotion within the same model is done
-through the call's effort. fable and astra are not used because their token cost is high. Codex mechanical
-implementation, execution verification and per-task review go to terra, which costs half of sol and is close to sol on
-coding-agent benchmarks; hard judgment and security review stay on sol.
-In side-by-side trials on past work, terra produced the same results as sol in all three roles at lower cost
-([host-facts](../research/host-facts.md)).
-With briefs missing decisions, both models silently filled unstated gaps, so that risk is prevented not by model
-promotion but by the main session settling the behavior in the brief.
-Role text and perspectives live in the skill's roles reference, and every brief carries the role's body and one
-perspective on both hosts, so the skill depends on no agent name or file (#157). The plugin ships no agent definitions
-(#159): Claude Code runs every role on `general-purpose`, Codex on `spawn_agent`, so each host has one delegation path.
-The owner accepted the loss of the controls only a Claude definition gave - the reviewer's read-only tools, the
-explorer's lack of Edit and Write, the implementer's `maxTurns` and spawn ban, the definitions' `BLOCKED` floor, and a
-`devflow:<role>` name another plugin's subagent rules could exclude - because a 30-run comparison found no difference in
-findings or integrity between plugin agents and `general-purpose`, a spike without definitions passed review,
-verification and implementation cases with injected and hidden side effects on both hosts, and Codex never had these
-limits. The roles state the limits; the main session's check before and after every explorer and reviewer is a tripwire
-for the effects it can see (local state, git config and hooks, remote refs, new posts in the repository), counts what it
-cannot check as the agent's, and after an outside effect leaves the review or verification open. Since #163 it is a
-devflow-state command: `before` runs git with fixed arguments to learn the git dir, hooks, config files of every scope
-with their include targets, the origin and the main work tree, because no agent has run yet (so git may already
-follow an include or pointer planted before the check; that is the main session's normal git use, not a new reach);
-`after` runs no git and opens only recorded paths and new entries beneath recorded folders, through a guard that
-follows no changed link and refuses network spellings, because git run after the agent could start what it planted (a
-signature program for a ref format, an fsmonitor for an index read, a network include). It lists every changed path,
-so the main session can tell a brief's byproduct from the agent's change, and starts gh, by its recorded path and hash,
-only when git, config, hooks and gh's own config are unchanged; a skipped remote check counts as one it could not make.
-Its snapshot sits in the OS temp folder, checked for owner and mode on POSIX and trusted to the per-user temp folder's
-access rights on Windows; a token digest catches an edited snapshot.
-In Codex both steps run outside the sandbox (#167): its Windows sandbox user could not inspect a global git config
-candidate's folder and had no network, and counting an unreadable path as absent would miss that path changing or
-becoming readable during the delegation, so an access error stays `UNVERIFIED` and prints the path and that hint.
-After the agent has run, the hint offers only `after` again with the same token, never a new `before`, whose baseline
-would include the agent's changes; and approval is asked for the `delegation-check` prefix only, because other
-devflow-state commands run git, which outside the sandbox could start a program an agent planted.
-It is not isolation, and the owner accepted what it does not see: host configuration, the plugin installation and the
-runtimes it starts (node, gh), which the agent's account can write, same-user races between a check and an open,
-mapped network drives or mounts that look local, a pull request review with no inline comment (seen only if GitHub
-updates the pull request's time, unverified), edits to existing Issues and PRs, repository settings, network
-traffic, posts in other repositories, effects of a background process or nested agent after the check, and an
-implementer's nested agents. Each delegation gets a new agent, so the
-lost turn limit only ever bounded one delegation; within one delegation the implementer makes at most two fixes after
-its first attempt and then ends with `BLOCKED`, by instruction only, which uses up the build reference's two fixes and
-leads to the promotion (#161). Out-of-scope decisions are gathered in the main session through stop and resume. The
-devflow skill sets execution modes, roles, promotion and the question procedure;
-[orchestration](../specs/orchestration.md)
-keeps their reasons, per-host support, authority to choose models and the isolation limits of reporting roles. Workflows are run directly outside
-devflow.
+**Choice and reason.** The parent owns shared state, decisions outside a brief, final verification and integration.
+It delegates bounded tasks when independent evidence or context savings justify dispatch cost. Role contracts are
+separate from the parent's delegation procedure, so a dispatch reads only its selected role. Fresh children receive
+necessary boundaries, exact criteria, scope, baseline and result provenance without the parent's whole conversation or
+an expected verdict. The lifecycle keeps M0-M3 and its three paths; parallel implementation requires independent file
+ownership, settled interfaces and a supported isolation path.
 
-**Alternatives.** Always delegating raises the cost of new contexts and reports, and the main session always doing the
-work lets large explorations take up its context.
-Adding definitions for every role or enforcing routes with hooks is not taken until the need is confirmed.
-Pinning the after-check's git arguments in the skill text was not taken: git still reads planted config and includes
-before it reports, and a model can drift from exact arguments (#163).
-Keeping the definitions as shells keeps those limits but a second delegation path on Claude Code, with its fallback
-report and redo route, for controls the comparison did not show to matter. Passing the subagent a path
-to its role text instead of the text would shrink briefs but put the role text below the brief, beside tool output.
+The main model remains the user's choice. Host capability and applicable preferences determine permitted overrides;
+otherwise the child inherits. The router does not hardcode model versions or prices. Existing findings about past model
+trials remain historical evidence, not promises about a later model or host. The plugin continues to use built-in
+agents rather than adding another set of agent definitions.
 
-**Revisit when.** Revisit routes beyond the table and promotion (hook enforcement, declarative routes) when promotion
-recurs in real cycles or the same role's lack of quality is confirmed by review evidence two or more times, or when in
-Codex the table's model is not applied and results differ. If terra mechanical implementation is repeatedly promoted to
-sol in the ledger, or the final review catches defects missed by terra per-task review two or more times, that role goes
-back to sol. Revisit whether to add Workflows to the execution modes when they are used repeatedly within devflow cycles
-and their results need to be recorded in the ledger. Revisit agent definitions when an after-check finds a delegated
-agent's change or outside effect, when an unattended implementer runs away within one task, or when a call or spawn can
-set tool limits.
+A role's instructions do not restrict tools or credentials by themselves. The existing delegation tripwire observes
+its recorded paths and selected remote effects; it is not isolation. The trusted Git reader constructs static review
+material without external diff/textconv/fsmonitor effects and without replacement-object interpretation. After an
+unverified or changed local state, keep the review open until the trusted state is recovered. Preserve the distinction
+between advisory roles, helper contract checks and real host permissions.
+[Orchestration](../specs/orchestration.md) owns the dispatch, host and evidence contracts.
+
+**Alternatives.** Always delegating duplicates contexts for small work. Passing all role manuals or full parent history
+increases load and biases independent review. Combining several all-in-one coordinators creates overlapping state,
+continuation and publication paths. Worktrees alone do not isolate remote refs or shared state.
+
+**Revisit when.** Add a role or host adapter only when observed task outcomes justify it. Evaluate model/effort changes
+with fixed controls, and repeat loading/permission cases when the host interface changes. Budget exhaustion and unknown
+child exit remain explicit unresolved outcomes rather than success or permission to relaunch.
 
 ## Entry points and stages
 
 **Choice and reason.** One lifecycle skill, `devflow`, is the only entry point. It takes new work, continuation, stage
 transitions, review, PR and merge, cleanup and handoff in repositories with `.devflow.json`, and its SKILL.md links
-each of the eleven stage references in `skills/devflow/references/` directly. Repositories without `.devflow.json`
+the ten stage references and the selected session/delegation/role contracts in `skills/devflow/references/` directly. Repositories without `.devflow.json`
 get no lifecycle skill at all; that compatibility loss is accepted.
 One description decides invocation, so no two lifecycle descriptions compete for the same request. Each reference is
 one level from SKILL.md and finishes its procedure without reading another, so no step depends on a second hop. After
@@ -130,9 +86,7 @@ The devflow skill sets routing, stages per path and going back ([why](../specs/l
 
 **Alternatives.** Keeping the start, review and cleanup skills as thin wrappers around the router keeps their
 descriptions overlapping. Nested references break the one-level rule. Separate integration and completion references
-linked from SKILL.md are not taken because ship needs both every time. Inlining the design and security perspective
-text in each stage reference duplicates it across references, while the agent that applies a perspective reads its own
-body anyway.
+linked from SKILL.md are not taken because ship needs both every time. Inlining every role and perspective in each stage duplicates unrelated context; each fresh child still needs its own essential contract.
 Applying the same stages to every path raises the cost of small changes.
 
 **Revisit when.** Review when requests are repeatedly routed to the wrong stage or reference, when the router outgrows
@@ -167,8 +121,9 @@ Even small changes are judged by meaning rather than file extension or line coun
 re-review is narrowed to fixes that changed behavior or permissions.
 The devflow skill's review reference owns the scope of checks and review ([why](../specs/orchestration.md#review)).
 devflow itself links the reviewed SHA to CI and the integration record through PRs, server protection and merge commits.
-CI must be evidence that the revision the event requires was actually checked, and it does not replace per-criterion
-execution evidence or independent review.
+CI binds the actual checkout revision and the project's required head/base policy, not the event name alone. It does not
+replace per-criterion execution evidence or independent review. Final delivery review retains the full delivery range;
+whole-Issue closure requires still-applicable evidence for all required criteria after subsequent deliveries.
 [repository](../specs/repository.md#integration-and-ci) and [check evidence](../specs/repository.md#devflowjson) set the conditions
 for widening or substituting local checks, independent review including M0, CI on the branch HEAD and the latest merge
 result, the recheck right before integration, and the post-integration check.
@@ -210,8 +165,8 @@ targets changes. Revisiting this decision is not authority to skip protections o
 
 ## Instructions and protections
 
-**Choice and reason.** Development judgment is handled by short instructions and review, and effects a test can decide
-are checked by tests and CI.
+**Choice and reason.** Development judgment is handled by concise instructions and review. The helper enforces deterministic
+identity, transition and I/O conditions on its own entry point, with regression tests and CI checking the implementation.
 Hooks handle resume, unattended continuation and session release. [hooks](../specs/hooks.md) sets the limits on input,
 session handling and real host evidence, and [ledger](../specs/ledger.md#unattended-runs) the continuation conditions. The Issue
 CLI's public filter and unattended write refusal are the behavior of that path.

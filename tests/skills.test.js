@@ -47,7 +47,7 @@ const lines = text => text.split('\n')
 const linkTargets = text => [...text.matchAll(/\]\(([^)\s]+)[^)]*\)/g)].map(m => m[1])
 const refLinks = text => linkTargets(text).filter(t => /(^|\/)references\//.test(t)).map(t => t.split('#')[0])
 const descriptionOf = text => text.split('---')[1].match(/^description: (.*)$/m)[1]
-const tokens = text => text.length / 4
+const editingUnits = text => text.length / 4
 // Sentence ends are ". " and a final ".".
 const sentenceCount = d => (d.match(/\. /g) || []).length + (d.endsWith('.') ? 1 : 0)
 // An unquoted ": " breaks a YAML plain scalar; backtick spans are not scanned and a quoted value is a different scalar.
@@ -127,11 +127,11 @@ test('devflow: a reference opens with "Done when" and a long one has Contents in
   assert.ok(!contentsOk('# T\n' + 'x\n'.repeat(120)), 'counterexample: no Contents')
 })
 
-test('size budgets: SKILL.md under 500 lines; SKILL.md, references and specs under 5,000 tokens (characters / 4)', () => {
+test('editing budgets: SKILL.md under 500 lines; documents below the character heuristic (not tokenizer usage)', () => {
   assert.ok(lines(read(`${SKILL}/SKILL.md`)).length < 500, 'SKILL.md has 500 lines or more')
   for (const rel of [...skillFiles(), ...files('docs/specs')])
-    assert.ok(tokens(read(rel)) < 5000, `${rel} is over 5,000 tokens (characters / 4)`)
-  assert.ok(tokens('x'.repeat(20000)) >= 5000, 'counterexample')
+    assert.ok(editingUnits(read(rel)) < 5000, `${rel} is over the 20,000-character editing budget`)
+  assert.ok(editingUnits('x'.repeat(20000)) >= 5000, 'counterexample')
 })
 
 test('skill descriptions: devflow has at most two sentences and names no independent skill; no plain scalar has ": "', () => {
@@ -200,8 +200,8 @@ test('devflow-state: every command a reference or SKILL.md names appears in the 
   assert.ok(!inUsage('never'), 'a prose word is not a command')
 })
 
-// SKILL.md owns the mode and role tables (#138); roles.md owns the roles and their defaults (#157). A Claude cell names
-// a role of roles.md, and a mode is M and a number, so a role or mode can be added without touching code.
+// The router owns modes and directly links separate role bodies; the delegation parent routes work to one role
+// and perspective. Host/model choices depend on actual available capabilities, not a fixed vendor model table.
 const tableRows = (texts, header) => {
   for (const text of texts) {
     const ls = lines(text)
@@ -212,23 +212,26 @@ const tableRows = (texts, header) => {
   }
   return []
 }
-const agentOf = cell => (cell.match(/^`([\w-]+)`/) || [])[1]
-// The roles reference (#157): `## <role>` sections, each with a Claude Code default line, a body up to its first `###`
-// and `###` perspectives. Every brief carries it; the plugin has no agent definitions (#159).
+// A role body runs from its ## role heading to its first ### perspective. Every carried body plus selected
+// perspective must contain the output status contract; the plugin has no agent definitions (#159).
 const roleSections = text => [...text.matchAll(/^## ([a-z][\w-]*)\n([\s\S]*?)(?=^## |(?![\s\S]))/gm)]
   .map(([, name, body]) => ({ name, body: body.split(/^### /m)[0], perspectives: body.split(/^### /m).slice(1) }))
-const ROLE_DEFAULT = /^Claude Code default: `model: ([\w.-]+)`, `effort: (\w+)`/m
+const ROLE_NAMES = ['explorer', 'reviewer', 'implementer']
+const roleDocuments = () => ROLE_NAMES.map(name => ({ name, sections: roleSections(read(`${REFS}/role-${name}.md`)) }))
 
-test('roles: each role states its Claude Code default, and every carried unit ends with a status line', () => {
-  const roles = roleSections(read(`${REFS}/roles.md`))
-  assert.ok(roles.length > 0, 'roles.md has no `## <role>` section')
-  for (const r of roles) {
-    assert.match(r.body, ROLE_DEFAULT, `${r.name}: no Claude Code default line`)
-    // A brief carries the body and one perspective; whichever it picks must say how the reply ends.
+test('roles: one independently carried role per file; every selectable unit ends with a status line', () => {
+  for (const doc of roleDocuments()) {
+    assert.equal(doc.sections.length, 1, `${doc.name}: expected one role body`)
+    const r = doc.sections[0]
+    assert.equal(r.name, doc.name, 'filename and copied role heading must agree')
     for (const unit of r.perspectives.length ? r.perspectives.map(p => r.body + p) : [r.body])
-      assert.match(unit, /End with/, `${r.name}: a body and perspective without a status line`)
+      assert.match(unit, /End with/, `${r.name}: a carried unit lacks its status contract`)
   }
-  const fake = roleSections('## x\nClaude Code default: `model: a`, `effort: b`\nbody\n### P\nno status\n')
+  const roles = roleDocuments().map(d => d.sections[0])
+  assert.ok(roles.find(r => r.name === 'explorer').perspectives.some(p => p.startsWith('Search\n')), 'explorer default')
+  assert.ok(roles.find(r => r.name === 'reviewer').perspectives.some(p => p.startsWith('Correctness\n')), 'reviewer default')
+  assert.equal(roles.find(r => r.name === 'implementer').perspectives.length, 0, 'implementer carries the whole body')
+  const fake = roleSections('## x\nbody\n### P\nno status\n')
   assert.equal(fake[0].perspectives.length, 1, 'counterexample: a perspective is found')
   assert.doesNotMatch(fake[0].body + fake[0].perspectives[0], /End with/, 'counterexample: a unit without a status line')
 })
@@ -240,16 +243,19 @@ test('Codex subagents start without the parent conversation in both the spec and
   assert.match(read(`${SKILL}/SKILL.md`), /`fork_turns: "none"`/)
 })
 
-test('router tables: each Roles row names a role of the roles reference, each execution mode is M and a number', () => {
-  const texts = skillFiles().map(read)
-  const names = roleSections(read(`${REFS}/roles.md`)).map(r => r.name)
-  const roles = tableRows(texts, '| Role |')
-  for (const row of roles) assert.ok(names.includes(agentOf(row[1])), `Roles row ${row[0]} names no role of roles.md`)
-  const namesRoles = texts.some(x => x.split('\n').some(l => l.startsWith('|') && names.some(a => l.includes('`' + a + '`'))))
-  assert.ok(!namesRoles || roles.length > 0, 'a table names roles but none has the "| Role |" header this check reads')
-  assert.equal(agentOf('`auditor` + `model: haiku`'), 'auditor')
-  assert.ok(!names.includes('auditor'), 'counterexample: a role that does not exist')
-  const modes = tableRows(texts, '| Mode |').map(r => r[0].replace(/\*/g, '').split(' ')[0])
-  assert.ok(modes.every(m => /^M\d+$/.test(m)), `modes: ${modes}`)
+test('delegation routing names existing roles and perspectives; the router retains M0–M3', () => {
+  const roles = roleDocuments().map(d => d.sections[0])
+  const rows = tableRows([read(`${REFS}/delegation.md`)], '| Work |')
+  assert.ok(rows.length > 0, 'delegation work routing is missing')
+  for (const row of rows) {
+    const [name, perspective] = row[1].split(' / ')
+    const r = roles.find(r => r.name === name)
+    assert.ok(r, `unknown role ${name}`)
+    assert.ok(perspective === 'no perspective' ? !r.perspectives.length : r.perspectives.some(p => p.startsWith(`${perspective}\n`)),
+      `${name}: unknown perspective ${perspective}`)
+  }
+  assert.ok(!roles.some(r => r.name === 'auditor'), 'counterexample: a role that does not exist')
+  const modes = tableRows([read(`${SKILL}/SKILL.md`)], '| Mode |').map(r => r[0].replace(/\*/g, '').split(' ')[0])
+  assert.deepEqual(modes, ['M0', 'M1', 'M2', 'M3'])
   assert.deepEqual(tableRows(['x\n| Mode | When |\n|---|---|\n| M7 | y |\n'], '| Mode |'), [['M7', 'y']], 'a table is found by its header')
 })

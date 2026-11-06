@@ -1,8 +1,8 @@
 # Document contract
 
 This spec sets the location, size, format and writing rules of the documents devflow creates and reads. Issue bodies,
-checkpoints and resume cards are set by [issues](issues.md), and the ledger by [ledger](ledger.md). Other documents do
-not restate these rules; they point to the relevant spec.
+checkpoints and resume cards are set by [issues](issues.md), state by [ledger](ledger.md), verification applicability
+by [evidence](evidence.md), and process supervision by [execution](execution.md). Other documents point to these owners.
 
 Each contract has one owner. The devflow skill (`skills/devflow/`) owns what the executor acts on: stage done
 conditions, paths, going back, milestones, execution modes, roles, the delegation brief, review and the fix loop, and
@@ -19,10 +19,10 @@ the skill a session reads. A conflict between the two kinds is a defect fixed in
 | intent | problem, desired outcome, affected users and systems, constraints, open questions, acceptance criteria | top of the Issue body | public | replaced only when the scope changes, after the user confirms |
 | state block | stage, branch and PR, done and remaining, next action, blockers, latest checkpoint | block at the bottom of the Issue body | public | **overwritten** |
 | checkpoint | changes, verification (run and not run), decisions, next | Issue comment | public | **append only** |
-| ledger | stage, task progress, decisions and blockers, content an unattended run could not post ([keys](ledger.md#ledger-keys)) | `.work/devflow/i<issue>/ledger.json` ([main work tree](repository.md#issue-folder)) | private | until the Issue closes |
+| ledger | stage, task progress, decisions and blockers, content an unattended run could not post ([keys](ledger.md#ledger-keys)) | `.work/devflow-v2/i<issue>/ledger.json` ([identity and migration](ledger.md#storage-and-identity)) | private | until the Issue closes |
 | product contracts | lasting rules code, tests and developers rely on, and the reasons for the skill's rules | `docs/specs/` | public | when a contract changes |
 | current design decisions | current choices and reasons, alternatives not taken, conditions for revisiting | `docs/design/current-decisions.md` | public | updated in place when a choice changes |
-| plan | files, order, risks, proof, per-task interfaces | `docs/plans/` | private | until the Issue closes |
+| plan | files, dependencies, risks, task-local checks, contributing Issue criteria and interfaces | `docs/plans/` | private | until the Issue closes |
 | plan summary | four lines: files, order, risks, proof | PR body or checkpoint | public | permanent |
 | prompt | only new instructions and the changed part of decisions | chat or `docs/prompts/` | private | one-off |
 | handoff | not written; the state block and checkpoints replace it. Only when private evidence is truly needed | `artifacts/handoff/` | private | as needed |
@@ -38,8 +38,9 @@ Superseded choices, change dates and work history do not pile up in the current 
 Do not create history decision files or archive folders.
 
 Write to the Issue only at stage boundaries, decisions and blockers; task-level progress goes to the ledger. This cuts
-public edits and gives content a place to stay when it cannot be posted, as in an unattended run. The ledger exists only
-on its machine, so another machine continues only from the Issue's state block.
+public edits and gives unattended work a private record. A validated local ledger owns execution phase; the Issue owns
+approved intent and carries a public progress projection. On another machine, recover and validate the delivery scope,
+baseline and execution state before dependent mutation. A public projection alone does not reconstruct private evidence.
 
 ## Memory tools
 
@@ -47,8 +48,8 @@ claude-mem, Claude auto memory and memory tools the user builds are a search lay
 git, specs, [current design decisions](../design/current-decisions.md) and AGENTS.md; when a memory tool's content
 conflicts with them, the source of truth wins. devflow does not write to memory tools directly. Memory tools work
 alongside devflow by collecting activity through hooks or indexing the sources of truth above. What a memory tool
-injects at session start shares the context with the resume card, so measure its size. When the Issue is in a public
-repository, write only a publishable summary in the Issue and point to private evidence by local file path or hash.
+injects at session start shares the context with the resume card, so measure its size. In a public Issue, write only a
+publishable summary and a safe evidence identifier or hash; keep local paths and private evidence in local records.
 
 ## Size budgets
 
@@ -64,8 +65,10 @@ repository, write only a publishable summary in the Issue and point to private e
 | prompt | 500 tokens | keep only the changed part |
 | resume card | under 1,000 tokens | [reduction order in issues](issues.md#budget-and-preserving-meaning) |
 
-Why: the amount reattached after compaction is limited ([host-facts](../research/host-facts.md)), and text that is
-always loaded costs every turn.
+These are editing budgets, not measured usage or permission to omit required scope, authority or evidence. Test-time
+character estimates do not establish billed token savings. Measure request input/output/cache use separately
+([eval](eval.md)). After context loss, load the minimal applicable contract again; a file hash identifies a version,
+not whether its contents remain in the model's context.
 
 ## Naming
 
@@ -80,7 +83,8 @@ always loaded costs every turn.
 - When continuing work, read only the Issue body, the one latest checkpoint written by someone with write access, and
   that Issue's ledger and private plan and handoff (if any). Do not read all comments, old prompts or other Issues'
   handoffs.
-- Subagents read large documents or many files and return only a summary.
+- Delegate large independent reads when the context saved justifies the brief and report. Carry exact requirements,
+  relevant source references and raw-result locations with summaries, so compression does not invent execution proof.
 - Do not rewrite Issue content into prompts and handoffs. Output costs more than input and is reread in every later
   session.
 - Always-loaded documents (AGENTS.md, skills, hook output formats) carry no dates or progress. They break the cache and
@@ -110,11 +114,11 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
    messages, test messages, hook output. The same content takes fewer input tokens and reads the same on both hosts.
    Issues, checkpoints, PR bodies and reports to the owner are written in Korean. Korean literals the Issue protocol
    parses and user prompts the eval simulates stay as they are.
-10. devflow has no blocking mechanisms. Effects a test can decide go in tests and CI; the rest is left to instructions
-    and review ([why the current choice](../design/current-decisions.md#instructions-and-protections)). Sentences moved into tests are
-    deleted (the devflow skill's [learn reference](../../skills/devflow/references/learn.md)), but the safety floor stays. Rules that need judgment stay in
-    documents and review. Host-specific means are marked as in rule 7, and their support follows
-    [host-facts](../research/host-facts.md).
+10. Deterministic identity, state-transition and publication conditions are checked by the CLI and regression tests;
+    semantic sufficiency remains judgment and review. These checks govern that entry point, not arbitrary processes
+    running as the same OS user. Hooks are not a general command firewall. Keep the safety floor and the recovery action
+    visible to the agent even when code checks a condition. Mark host-specific means as in rule 7 and distinguish
+    observed host support from a role's advisory instructions.
 
 ## Skill descriptions
 
@@ -132,10 +136,9 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
 - Each reference sits one level below its skill and is linked from SKILL.md with the situation that calls for it. A
   file linked from SKILL.md is read whole; a file reached through another file is often read only in part, and its
   rules are lost.
-- A reference links no other reference, and a procedure never needs a second reference. When a request spans two
-  procedures, SKILL.md names both, so every read stays one level deep. A stage that delegates also uses the roles
-  reference for the brief's role text; SKILL.md names it in its Delegation section and reading table, and the stage
-  reference points there rather than linking it.
+- A reference links no other reference. When a request needs several contracts, SKILL.md names each directly with its
+  read condition. Dispatch reads the parent delegation contract and the selected role contract; it does not read all
+  roles. A fresh child receives its role boundaries and exact task contract even when the parent has already read them.
 - Skill files link only inside the skill folder and cite no plugin spec, so a session needs no plugin document outside
   the skill to finish a step; specs may link to the skill. A test enforces this. The plugin's runtime parts are the
   exceptions the skill relies on: the card's `Tool:` (`bin/devflow-state`) and the hooks. The plugin ships no agent

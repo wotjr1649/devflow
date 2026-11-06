@@ -5,6 +5,12 @@ Claude Code loads the folder directly with `--plugin-dir`. The test profiles for
 This guide assumes PowerShell 7 and the root of the repository's main work tree. Real Windows backend tests are run only
 with PowerShell 7, and Windows PowerShell 5 is outside the verification scope.
 
+Schema-2 verification and GitHub mutations have a narrower supported execution profile than plugin loading: their process supervisor
+currently runs on Linux with Python 3 and child-subreaper support. A Windows or macOS session may load the plugin and
+exercise state or hook fixtures, but v2 verification is unverified and a mutation fails as not dispatched without launching the target.
+Do not replace that outcome with a manual parent-exit assertion. Record native loading, state tests and complete
+process-tree attestation separately; see the [execution profile](specs/ledger.md#execution-profile).
+
 ## Locations and labels
 
 | Target | Role | Loading method and label |
@@ -261,7 +267,7 @@ In each host, in a new test session in `smoke`:
 | Switch to a branch with the Issue's number but another name, start a new session, ask again; then switch back | The Issue's state names another branch, and no state is shown |
 | Ask: "Use the devflow skill's Delegation rule for this: delegate one read-only explorer that lists the top-level files of this repository and reports them. Run the delegation check exactly as the rule says, and show me the before and after output lines verbatim." Do not name the commands | The session loads the skill, runs `before` from the card's `Tool:`, starts the agent (Codex: `fork_turns: "none"`), then runs `after` with the printed token and no second `before`; `UNCHANGED` |
 | Codex only, during the step above | Both checks ask to run outside the sandbox from the start, and no offered prefix is wider than `devflow-state delegation-check`; approve each once |
-| Ask the session to pipe `{"stage":"done"}` to `ledger-update <n>` with its `Tool:`, then exit | `.work/devflow/i<n>/sessions.json` in `smoke` gains this session's entry, which is gone after the exit |
+| On a disposable unmigrated v1 fixture, ask the session to pipe `{"stage":"done"}` to `ledger-update <n>` with its `Tool:`, then exit | `.work/devflow/i<n>/sessions.json` in `smoke` gains this session's entry, which is gone after the exit |
 
 Once per candidate, with the source's `bin/devflow-state` in `smoke`:
 
@@ -272,7 +278,11 @@ Once per candidate, with the source's `bin/devflow-state` in `smoke`:
 
 Not yet run in a release smoke test (2026-11-05); run them, or record them as not run:
 
-- Stop continuing an unattended run, and the continuation count.
+- For a disposable v2 fixture, activate with explicit stable criteria, original review base and quiescence; read the
+  current tokens and exercise a legal control transition, append-only note, handoff/claim and evidence run. Compare the
+  loaded candidate SHA, hook and CLI session identity, ledger identity and recorded command outcome. Never run a v1
+  `ledger-update` payload against a v2 Issue.
+- Stop continuing an unattended run, the per-task continuation count and the cumulative goal budget.
 - A background delegation recorded with `running`, which the Stop hook waits for.
 - A reviewer delegation inside the check.
 - The remote part reporting a real new comment or ref, which needs a write in an approved test repository.

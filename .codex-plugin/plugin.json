@@ -1,7 +1,7 @@
 {
   "name": "devflow",
   "version": "0.4.0",
-  "description": "An Issue-driven development loop for Claude Code and Codex: one lifecycle skill, devflow, resumes from Issues, delegates reads and checks, and leaves checking to review and CI in repositories with a .devflow.json. Also ships four independent skills the loop does not call: decision-interview, write-prompts, audit-prompts and agent-instruction-design.",
+  "description": "An Issue-driven development loop for Claude Code and Codex: devflow follows approved Issue intent and validated local execution state, separates task checks from delivery acceptance, and guides review, integration and cleanup in repositories with a .devflow.json. Also ships four independent skills the loop does not call: decision-interview, write-prompts, audit-prompts and agent-instruction-design.",
   "author": {
     "name": "wotjr1649",
     "url": "https://github.com/wotjr1649"
@@ -14,9 +14,13 @@
   "interface": {
     "displayName": "devflow",
     "shortDescription": "Issue-driven development loop",
-    "longDescription": "devflow resumes Issue-tracked work from the Issue's state and checkpoints in repositories with a .devflow.json. One lifecycle skill, devflow, takes every stage from starting work through review, PR and merge to branch cleanup (discover, start, design, plan, build, verify, review, ship, cleanup, learn), reads that stage's reference, and delegates reads and checks to fresh-context agents; lifecycle hooks inject the resume card, continue autonomous work within task limits, and release sessions when they end. Four independent skills ship alongside and work in any repository without the loop: decision-interview, write-prompts, audit-prompts and agent-instruction-design.",
+    "longDescription": "devflow resumes tracked work from approved Issue requirements and validated local execution state in repositories with a .devflow.json. One lifecycle skill covers discover, start, design, plan, build, verify, review, ship, cleanup and learn, loading the relevant procedure and selected delegation role as needed. Task checks, delivery acceptance, whole-Issue completion and cleanup each retain their own scope and evidence. Lifecycle hooks restore context and bound unattended continuation; session handoff remains explicit. Four independent skills ship alongside and work in any repository without the loop: decision-interview, write-prompts, audit-prompts and agent-instruction-design.",
     "developerName": "wotjr1649",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Read", "Write"]
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ]
   }
 }

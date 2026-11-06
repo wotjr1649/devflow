@@ -1,5 +1,5 @@
 'use strict'
-// Every relative Markdown link in the tracked files resolves to a file and, when it names one, to a heading anchor as
+// Every relative Markdown link in the candidate files resolves to a file and, when it names one, to a heading anchor as
 // GitHub renders it. A moved file or a renamed heading otherwise fails silently: the agent reading the link gets nothing.
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -61,8 +61,10 @@ function links(file) {
   return found
 }
 
-const tracked = execFileSync('git', ['ls-files', '-z', '--', '*.md'], { cwd: root, encoding: 'utf8' })
-  .split('\0').filter(Boolean)
+// Include new candidate documents before staging and exclude files deleted by this patch; missing link targets
+// still fail below. A refactor must not skip checks for new role files or crash before inspecting their links.
+const candidateFiles = [...new Set(execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', '*.md'],
+  { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean))].filter(rel => fs.existsSync(path.join(root, rel)))
 
 test('GitHub heading anchors follow the observed slugs', () => {
   // Observed on github.com for headings in this repository (2026-11-01).
@@ -73,10 +75,10 @@ test('GitHub heading anchors follow the observed slugs', () => {
   assert.equal(slug('Issue 폴더'), 'issue-폴더')
 })
 
-test('every relative link in tracked Markdown resolves to a file and heading', () => {
+test('every relative link in candidate Markdown resolves to a file and heading', () => {
   const broken = []
   let checked = 0
-  for (const rel of tracked) {
+  for (const rel of candidateFiles) {
     const file = path.join(root, rel)
     for (const { line, target } of links(file)) {
       checked++

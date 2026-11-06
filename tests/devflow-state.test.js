@@ -520,21 +520,19 @@ test('card shows the last mode change and stays under budget (#32)', () => {
   assert.doesNotMatch(state.card(env(repo({ ledger: { mode: 'autonomous' } })), '.'), /Mode: .* since/)
 })
 
-test('the ledger spec and unattended skill describe the mode command (#32)', () => {
+test('the ledger spec and skill describe guarded mode changes with reasons (#32)', () => {
   const spec = fs.readFileSync(path.join(__dirname, '../docs/specs/ledger.md'), 'utf8')
-  const row = spec.split('\n').find(line => line.startsWith('| `mode` |'))
-  assert.match(row, /devflow-state mode/)
+  assert.match(spec, /`mode`.*compatibility spellings/)
   const autonomous = spec.split('## Unattended runs')[1].split('## Concurrent sessions')[0]
-  assert.match(autonomous, /devflow-state mode <n> autonomous < reason/)
-  assert.match(autonomous, /devflow-state mode <n> interactive < reason/)
-  assert.match(autonomous, /first line of stdin/)
-  // #150: the skill may say it anywhere, but it gives both switches with the reason on stdin, as the command takes it.
+  assert.match(autonomous, /mode: autonomous/)
+  assert.match(autonomous, /structured control operation and a reason/)
+  assert.match(autonomous, /interactive/)
   const dir = path.join(__dirname, '../skills/devflow')
   const skill = [path.join(dir, 'SKILL.md'), ...fs.readdirSync(path.join(dir, 'references')).map(n => path.join(dir, 'references', n))]
     .map(f => fs.readFileSync(f, 'utf8')).join('\n')
-  assert.match(skill, /mode <(?:n|issue)> autonomous < reason/)
-  assert.match(skill, /mode <(?:n|issue)> interactive < reason/)
-  assert.match(skill, /stdin/)
+  assert.match(skill, /mode <issue>.*reason/)
+  assert.match(skill, /autonomous mode only for an explicit/)
+  assert.match(skill, /returns, switch mode with a reason/)
 })
 
 test('mode is in usage and records successful session activity (#32)', () => {
@@ -1505,8 +1503,9 @@ test('N2 A13: a private file name cannot add a Tool line', { skip: process.platf
 // may come from. The wording is the skill's; these are the facts it must state.
 test('N2 A14: the router says what a card without a Tool line allows', () => {
   const text = fs.readFileSync(path.join(__dirname, '../skills/devflow/SKILL.md'), 'utf8')
-  assert.match(text, /last line is not a `Tool:` line/)
-  assert.match(text, /never search the repository/)
+  assert.match(text, /ends with `Tool:`/)
+  assert.match(text, /without a valid Tool permits discover\s+analysis only/)
+  assert.match(text, /never search for or substitute a helper/i)
 })
 
 test('N2 A7b: next or blocker text after a line separator inside one state line is not taken for a state line', () => {

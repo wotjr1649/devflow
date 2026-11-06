@@ -2,7 +2,7 @@
 
 Defines why work runs the way it does: who writes code, when to delegate, and which model and effort run it. The
 procedure the executor follows lives in the devflow skill, which owns it: [SKILL.md](../../skills/devflow/SKILL.md)
-(Delegation, Execution modes, Roles) and its [plan](../../skills/devflow/references/plan.md),
+and its [delegation](../../skills/devflow/references/delegation.md), [plan](../../skills/devflow/references/plan.md),
 [build](../../skills/devflow/references/build.md), [review](../../skills/devflow/references/review.md) and
 [design](../../skills/devflow/references/design.md) references. This spec keeps the reasons, the policy the skill does
 not apply at run time, and the host facts delegation and tests rely on.
@@ -20,10 +20,14 @@ carries their public summary. The procedure is the [plan reference](../../skills
 
 ## Build and verification
 
-A change is done only after a check that executes it, because a syntax check or a check that never started proves
-nothing. A test not seen failing does not prove the change, and a bug fix keeps its reproduction test as written. There
-is no test lock; review reads test changes instead ([rationale](../design/current-decisions.md#instructions-and-protections)).
-The procedure is the [build reference](../../skills/devflow/references/build.md).
+A changed behavior needs a check that exercises it; a syntax check or a command that never started does not prove that
+behavior. Preserve meaningful bug reproductions. Do not create a test solely to mirror a harmless wording edit; M0 uses
+proportionate contract and diff checks. Record execution, static review and supplied results separately with their scope
+and tested subject. There is no test-file lock; review examines changes to still-valid tests
+([rationale](../design/current-decisions.md#instructions-and-protections)).
+Task checks prove the task's own contract; its `contributesTo` links explain how it supports Issue acceptance criteria.
+A storage task can finish before the dependent UI exists, while the full user-facing criterion remains unchecked until
+delivery verification. The procedure is the [build reference](../../skills/devflow/references/build.md).
 
 ## Execution modes
 
@@ -36,7 +40,11 @@ revisit](../design/current-decisions.md#execution-and-delegation)).
 
 Interactive M2 lets the main session make a one- or two-line edit itself, because one delegation (brief, fresh context,
 report) costs more than the edit; unattended runs keep a fresh context per task instead. M3 passes `isolation:
-"worktree"` on each Claude Agent call, so M2 delegation stays out of worktrees.
+"worktree"` on each Claude Agent call, so M2 delegation stays out of worktrees. One M3 integration-batch task owns
+separate registered work units, each with a fixed original base, isolated worktree, file scope, local checks and evidence
+return contract. The singular active task is the batch; its independent units may launch together. Main collects their
+results and confirmed exits, serially reviews/integrates them and executes the combined task checks before advancing.
+Do not launch an unregistered second task to bypass the sequential task barrier.
 
 ## What the main session owns
 
@@ -52,17 +60,19 @@ written in English ([documents](documents.md#text-agents-read) item 9).
 
 ## Subagent questions
 
-Subagents do not ask the user directly (Claude Code removes `AskUserQuestion` from subagents), and neither host documents
-that a subagent can keep running while it waits for an answer, so it stops with `NEEDS_DECISION` and is resumed: Claude
-with `SendMessage`, keeping history and model settings; Codex with a follow-up task to the same agent. The subagent cache
-runs with a default 5-minute TTL; if waiting for user answers is frequent, consider raising `subagentPromptCacheTtl` to
-`1h`.
+Subagents return unresolved decisions to the parent with `NEEDS_DECISION`. Use the current host's supported follow-up
+or resume mechanism; do not invent a suspended waiting channel or assume unsupported model overrides. The parent asks
+the user only for a consequential decision or authority not already established. Cache settings and host configuration
+are not changed by the skill.
 
 ## Fix loop
 
 Analysis is split from fixing, because a fix made before the cause is known tends to cover only the symptom. Attempts
 and promotions are counted in ledger `notes`, not in `counts`, which holds only the Stop hook's `{continue}`. The
-procedure is the [build reference](../../skills/devflow/references/build.md#failures).
+procedure is the [build reference](../../skills/devflow/references/build.md#failures). Hook continuation, task fixes,
+verification retries and the goal's work budget are separate. Starting a new task, agent or session does not reset the
+goal budget. Exhaustion or non-progress is blocked/budget-exhausted, never success. Without complete token telemetry,
+report call/time/work limits rather than claim an enforced token budget.
 
 ## Review
 
@@ -79,39 +89,33 @@ injects into subagents reach devflow's agents too: they run as `general-purpose`
 
 ## Models and effort
 
-The user picks the main controller's model and effort. devflow does not set `effort` on skills that run in the main
-session, because changing the main session's effort invalidates the prompt cache; effort differences belong only on
-subagents, which use their own cache. The Claude columns of the Roles table in
-[SKILL.md](../../skills/devflow/SKILL.md#roles) are family aliases; the Codex column, which has no aliases, is updated
-when a new version ships. fable and astra are not used.
+The user chooses the main model and effort. The router carries no fixed model-version or price table. A dispatch may
+use an applicable user preference only when the actual tool schema and higher-priority instructions allow it; otherwise
+inherit and report that fact. A requested model name in prose does not configure the call. Benchmark comparisons pin
+the actual model and effort that ran, not a drifting alias.
 
-In Claude Code, the `model` (aliases only) and `effort` given at call time take precedence over the session's model and
-effort, except that `CLAUDE_CODE_EFFORT_LEVEL` overrides the call's `effort` ([host-facts](../research/host-facts.md)).
-In Codex, the model and effort given at spawn take precedence over the defaults, but the host's current tool
-instructions may limit what can be set. Read-only roles in Codex are kept only by instruction: a custom agent's
-`sandbox_mode` cannot narrow the parent sandbox ([host-facts](../research/host-facts.md#codex)).
+The skill has [explorer](../../skills/devflow/references/role-explorer.md),
+[reviewer](../../skills/devflow/references/role-reviewer.md) and
+[implementer](../../skills/devflow/references/role-implementer.md) contracts. The parent loads only the selected role and
+gives its essential boundaries and one relevant perspective to each fresh child. It does not pass the expected verdict,
+the parent's whole conversation or all other roles. Codex dispatch uses `fork_turns: "none"` for independent work;
+available model/effort overrides remain subject to the host's current instructions.
 
-The skill's [roles reference](../../skills/devflow/references/roles.md) holds three roles: `explorer`, which only reads
-and runs commands; `reviewer`, which only reads; and `implementer`, which edits files. Every brief carries the role's
-body and at most one perspective verbatim, on both hosts, so one text serves both and the skill needs nothing outside
-its folder ([rationale](../design/current-decisions.md#execution-and-delegation)).
+The plugin ships no agent definitions. Use the host's supported general-purpose delegation path with the task contract.
+Actual tool, filesystem and network restrictions are separate from advisory role limits; do not claim that naming a
+reviewer changes its permissions. M3 stays within the supported, tested isolation path until another host passes the
+same ownership and integration cases. Worktrees do not isolate shared ledger, remote or process effects.
 
-The plugin ships no agent definitions. Claude Code runs every role on `general-purpose` with the brief and the Roles
-table's model and effort, and Codex on `spawn_agent`, so each host has one delegation path. Explore and Plan are not
-used: they start without the project instructions. Tool lists, `disallowedTools` and `maxTurns` exist only in a Claude
-agent definition and no Codex spawn sets a tool or sandbox limit, so the roles' limits (the reviewer reads only, the
-explorer changes no files, the implementer spawns no agents) hold by instruction. The main session's check before and
-after every explorer and reviewer, `devflow-state delegation-check`, catches the effects it can see: `before` reads the
-git layout with git while no agent has run, and `after` runs no git and opens only recorded paths and new entries
-beneath recorded folders, through a guard that follows no changed link and refuses network paths, because git run after
-the agent could start a program the agent planted. It is a tripwire, not isolation
-([rationale](../design/current-decisions.md#execution-and-delegation)).
+The before/after `devflow-state delegation-check` remains an observational tripwire. `after` reads recorded paths
+without invoking Git, because an agent may have changed executable configuration. It does not cover arbitrary same-user
+effects. Generate static review material through the trusted reader, preserving original publishable Git objects and
+disabling configured diff/text conversion effects. When a changed or unverified local state invalidates a report, keep
+that review open and recover the trusted state before executing repository programs again.
 
 ### Perspectives
 
-Each role's perspectives are `###` sections of the roles reference, so no stage reads a separate perspectives file
-and both hosts apply one text. A brief carries at most one, because a reviewer given two does neither well; the main
-session reads one there when it applies it itself (a Codex design review).
+Perspectives belong to their role's file; they are not separate always-loaded documents. Select one coherent review or
+exploration assignment. Broader work can use independent assignments when the additional evidence justifies their cost.
 
 ### Promotion
 
@@ -124,8 +128,9 @@ Workflow](../design/current-decisions.md#execution-and-delegation).
 
 | Mechanism | Claude Code | Codex |
 |---|---|---|
-| Delegated agents | `general-purpose` with the brief and a set model and effort; role limits by instruction | `spawn_agent` with the brief, `fork_turns: "none"`, and the model and effort set where the host and its instructions allow, else inherited and reported; an agent type only where the spawn tool offers one ([host-facts](../research/host-facts.md#codex)). The default `"all"` passes on the parent conversation |
+| Delegated agents | Supported general-purpose call with the brief; overrides only when available and permitted | `spawn_agent` with the brief and `fork_turns: "none"`; overrides only when available and permitted, otherwise inherit. The default `"all"` passes the parent conversation |
 | Resume card, unattended continuation, session release | [hooks](hooks.md#registered-events) | same file |
 
-Codex's SessionEnd does not run in subagents. A session that ended without the hook running expires after 30 minutes
-([concurrent sessions](ledger.md#concurrent-sessions)).
+Do not rely on a child's SessionEnd or on automatic clear-time release without observing that host path. Explicit
+handoff and confirmed child exit remain required. Legacy session-warning expiry is described in
+[concurrent sessions](ledger.md#concurrent-sessions); expiry does not transfer v2 execution ownership.

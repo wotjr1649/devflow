@@ -8,12 +8,14 @@ GitHub Issues track work.
 
 | When you are… | Read |
 |---|---|
-| resuming an Issue | its body, latest checkpoint, `.work/devflow/i<issue>/`, and matching files in `docs/plans/` and `artifacts/handoff/` |
+| resuming an Issue | its body, latest checkpoint, validated matching v2 or unmigrated v1 ledger, and matching files in `docs/plans/` and `artifacts/handoff/` |
 | changing the product's purpose, layers or components | `docs/design/overview.md` |
 | writing or reviewing plans, prompts, instructions or agent outputs | `docs/specs/documents.md` |
 | writing Issues or checkpoints, or changing I/O or resume cards | `docs/specs/issues.md` |
 | relying on gh credentials or a credential boundary | `docs/specs/credentials.md` |
 | changing the ledger, unattended work or concurrent sessions | `docs/specs/ledger.md` |
+| changing verification scope or proof applicability | `docs/specs/evidence.md` |
+| changing process supervision or verification execution | `docs/specs/execution.md` |
 | changing layout, installation or hooks | `docs/specs/repository.md`, `docs/specs/hooks.md` |
 | preparing or testing a development plugin | `docs/local-development.md` |
 | clarifying intent or changing stage transitions | `skills/devflow/SKILL.md`, then `docs/specs/lifecycle.md` for why |

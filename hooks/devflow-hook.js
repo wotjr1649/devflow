@@ -20,6 +20,11 @@ function continueWork(env, cwd) {
   // Only the session's own Issue continues: a task worktree writes no ledger (#73 G1).
   const ctx = state.repoContext(env, cwd, { session: eventSession })
   if (!ctx || ctx.bind !== 'own' || state.legacyOf(ctx, ctx.issue)) return ''
+  if (state.v2.managed(ctx.store, ctx.issue)) {
+    const task = state.v2.continuation(ctx, ctx.issue)
+    return task ? JSON.stringify({ decision: 'block', reason: `devflow: task ${task.current}/${task.total} is open in autonomous mode. ` +
+      'Continue the current task using the v2 control sequence. Do not push, integrate or write the Issue while autonomous.' }) : ''
+  }
   // No ledger, no lock: the lock would create the Issue's folder in every repository branch the hook runs in.
   if (!state.readLedger(ctx.store, ctx.issue)) return ''
   // Decided and counted under the ledger lock, so a write another session makes meanwhile is kept (Issue #10). A lock

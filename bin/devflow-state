@@ -233,7 +233,79 @@ Issue text writes go only to the branch's Issue (create and remark excepted); su
 under the working Issue. Commands do not grant authority. Text with local paths, secrets, hidden
 characters or HTML comments is refused. While the ledger's mode is autonomous, Issue writes are refused; keep the content in ledger notes for the user.
 Ledger writes off an Issue branch (cleanup on main) take the Issue number; note needs its ledger
-to exist. A detached HEAD writes no ledger.`
+to exist. A detached HEAD writes no ledger.
+
+V2 scoped execution (opt in with ledger-init; legacy spellings above apply only before migration):
+  intent-snapshot <issue>     read stable criteria and observedIntentRevision from approved Issue intent
+  ledger-init <issue> --quiescent < JSON
+    {"observedIntentRevision":"<snapshot revision>","delivery":{"id":"delivery-1","criteria":[{"id":"AC-1","definitionRevision":1}],"reviewBaseOid":"<full original commit OID>"},"budgetLimit":20}
+    Stop all old/new writers first. Existing state also needs recoveryReason, and recoveredTask if a task exists.
+    recoveredTask requires id,current,total,baseOid,checks,contributesTo; prior checkboxes never become local proof.
+    Reactivation restores the verified archived goal budget. budgetLimit cannot replace an existing limit; use budget-extend.
+    Criteria in the Issue use plain - [ ] [AC:AC-1@1] definition. Preserve IDs; increment the revision on definition changes.
+  ledger [issue]              read authoritative stage, scopes, owner, compact receipts and current controlSeq/ownerEpoch
+  read [issue]                read approved intent plus execution stage and mismatch; does not infer execution from Issue hints
+  control <issue> < JSON      guarded control operation; expected must come from the latest ledger
+    {"expected":{"controlSeq":1,"ownerEpoch":1},"op":"update","patch":{"stage":"design"},"reason":"approved bounded design"}
+    Ops: update, claim, note, running-add, running-done, budget-extend, intent-reconcile, delivery-revise,
+         delivery-start, task-start, task-complete, task-abandon, delivery-complete, rebaseline, verification-abandon.
+    task-start: id,current,total,checks:[{id,definitionRevision,text}],contributesTo:[{id,definitionRevision}],optional kind:"integration-batch".
+      Example: {"expected":{"controlSeq":2,"ownerEpoch":1},"op":"task-start","id":"storage","current":1,"total":2,"checks":[{"id":"round-trip","definitionRevision":1,"text":"Storage round-trips the value"}],"contributesTo":[{"id":"AC-1","definitionRevision":1}]}.
+      Both checks and contributesTo are required; contributions must be selected by the delivery. Task-local passes never check Issue criteria.
+    task-complete: evidenceIds; task-abandon: reason; both require confirmed exits for running work.
+    delivery-complete: evidenceIds,impactAnalysis,optional regressionCriteria; selected criteria do not close the whole Issue.
+    delivery-start: new id,criteria,optional reviewBaseOid; rebaseline: reviewBaseOid,reason.
+    intent-reconcile/delivery-revise: observedIntentRevision,optional criteria.
+      Changed meaning/definitions/selection requires no open task and invalidates aggregate proof.
+      intent-reconcile preserves open tasks, delivery version/status and original receipts only for a supported pure display reorder:
+      contiguous single-line AC definitions and selected ID/revision set unchanged. Raw observedIntentRevision must still be current.
+      intent.evidenceRevision and receipt.subject.intentEvidenceRevision identify semantic proof; the original raw provenance is retained.
+    claim/verification-abandon: quiescent:true,reason after all commands and descendants have stopped.
+    running-add: id,label; batch writers also supply worktreeRoot,baseOid,assignedPaths:["literal/path"],checks:[{id,definitionRevision,text}].
+      Register two or three isolated same-repository worktrees before launch; assigned path prefixes must not overlap.
+      Read-only explorers/reviewers use kind:"inspection" instead of a writing work unit.
+    running-done: id,exitConfirmed:true,result; bound units also need outcome:"passed",evidenceIds (or explicit failed|abandoned).
+      Retain completed unit checkouts, merge their actual commits sequentially, then verify the parent task aggregate.
+    budget-extend: limit,reason.
+  review-package <issue> < JSON {"scope":"delivery"}
+    Protected original-Git review inputs for task|work-unit|delivery|issue|integration; returns private manifest/diff paths.
+    work-unit also needs unitId; integration also needs targetWorktreeRoot, with the same target rules as verify-run.
+    Delivery review uses the cumulative delivery base. A package always says NOT_VERIFIED and creates no PASS receipt.
+  verify-run <issue> < JSON
+    {"expected":{"controlSeq":2,"ownerEpoch":1},"scope":"task","criteria":[{"id":"AC-1","definitionRevision":1}],"command":{"file":"node","args":["--test"]},"configFiles":["package.json"]}
+    Waits for the command job (120s bound); binds actual outcome, original source, configuration, environment and runtime.
+    Current job adapter: Linux with a trusted Python 3 subreaper. Unsupported hosts do not launch and return not_verified.
+    A parent exit alone is not completion. Unknown descendants keep the reservation; explicit verified recovery is required.
+    task accepts captured dirty inputs and uses task-local checks. Other scopes require a clean committed candidate.
+    delivery criteria must stay within the selected delivery. Optional regressionCriteria records wider checks without accepting those ACs.
+    work-unit also needs unitId and verifies its local checks in the bound worktree after the worker exits and commits.
+    integration also needs targetWorktreeRoot; executes in the actual same-repository main checkout after the completed
+      delivery source is an ancestor. Retain the source Issue worktree, or use its bound owner on integrated main at ship/cleanup.
+    Receipts remain private. Parent proof cannot replace a work-unit proof; source proof cannot replace integration proof.
+  check <issue> < JSON
+    {"expected":{"controlSeq":3,"ownerEpoch":1},"observedIntentRevision":"<snapshot revision>","criteria":[{"id":"AC-1","definitionRevision":1}],"evidenceIds":["<passed delivery receipt>"]}
+    Optional scope is delivery (default), issue or integration. A delivery check cannot accept an unselected AC, even if it ran as a regression.
+  intent <issue> [--title <title>] < JSON {"expected":{"controlSeq":4,"ownerEpoch":1},"observedIntentRevision":"<revision>","body":"<approved body above current-state section>"}
+  close <issue> < JSON {"expected":{"controlSeq":5,"ownerEpoch":1},"observedIntentRevision":"<revision>","evidenceIds":["<passed integration-scope receipt>"]}
+    Whole-Issue close requires every current criterion checked plus passing integration evidence for all current criteria; delivery completion is separate.
+  effect <issue> < JSON {"expected":{"controlSeq":6,"ownerEpoch":1},"op":"reconcile","id":"<operation ID>"}
+    Outcomes: pending|unknown|succeeded|failed. V2 mutations use the Linux/Python job adapter with a 10s bound; unsupported hosts do not send.
+    transport.localState is settled|not_started|unknown. Validated authentication/launch non-dispatch is failed; uncertain transport remains unknown.
+    Comments/creation require this transport's returned object URL, authenticated author, matching content and a pre-send identity baseline.
+    A new identical object without an operation-bound returned URL cannot confirm the request. Remote state cannot prove local descendants stopped.
+    Unknown outcomes block dependent work. Reconciliation validates the original execution artifact and only reads remote state; it never redispatches.
+    A settled request with a returned URL may reconcile delayed visibility. Missing/unknown local exit proof remains held; there is no force-complete API.
+  ledger-rollback <issue> --quiescent < JSON {"expected":{"controlSeq":7,"ownerEpoch":1},"reason":"approved rollback"}
+    Restores backed-up legacy bytes and archives v2 history after unresolved work is settled; separate budget continuity survives rollback.
+  note <issue> < text         appends with attribution even while effects/verification are pending; does not change controlSeq
+  ledger-update [issue] < JSON {"expected":{"controlSeq":8,"ownerEpoch":1},"patch":{"blocked":[]}}
+  mode <issue> interactive|autonomous < JSON {"expected":{"controlSeq":8,"ownerEpoch":1},"reason":"user returned"}
+  running <issue> add|done <id> < JSON {"expected":{"controlSeq":8,"ownerEpoch":1},"exitConfirmed":true}
+    Structured compatibility spellings; read fresh counters before each command. Mode/task/owner changes keep the goal budget.
+V2 does not reclaim locks by age. A crashed lock needs an offline operator: stop all writers and descendants, back up
+state and the exact plain lock file, verify its token has not changed, remove only that observed control.lock, then
+restart one writer, read current counters, claim quiescent ownership and settle pending receipts. Never remove a live,
+unknown or replaced lock. Repository configuration and hooks are not an OS sandbox; commands still need authority.`
 // Checked before anything is posted. Only the rule name is ever printed, never the match.
 const LEAKS = [
   // Any separator may come before the path: an equals sign, a bracket or a colon. /Volumes and /srv name a private volume
@@ -261,10 +333,11 @@ const LEAKS = [
 const realEnv = {
   vars: process.env,
   run(cmd, args, opts = {}) {
+    if (opts.settleJob === true) return require('../lib/devflow-execution.js').runJob(cmd, args, opts)
     const r = spawnSync(cmd, args, {
-      cwd: opts.cwd, input: opts.input, env: opts.env, encoding: 'utf8', timeout: opts.timeout || RUN_TIMEOUT_MS, windowsHide: true,
+      cwd: opts.cwd, input: opts.input, env: opts.env, encoding: 'utf8', timeout: opts.timeout || RUN_TIMEOUT_MS, maxBuffer: opts.maxBuffer || (1 << 20), windowsHide: true,
     })
-    return { code: r.status ?? (r.error ? r.error.code : 1), stdout: r.stdout || '', stderr: r.stderr || '' }
+    return { code: r.status ?? r.error?.code ?? r.signal ?? 'unknown', stdout: r.stdout || '', stderr: r.stderr || '' }
   },
 }
 
@@ -486,30 +559,13 @@ function writeJson(p, value) {
   }
 }
 
-// Every ledger write holds one short lock (Issue #10): sessions, devflow-state and the Stop hook each read, change and
-// write the whole file, so without it a later write drops an earlier one. Nothing slow runs under the lock, no network
-// in particular, so a lock older than LOCK_STALE_MS was left by an exit mid-write.
-const LOCK_STALE_MS = 10000
+// Cooperative writers never take over a lock by elapsed time. A paused owner is still an owner.
+// Recovery after a crash requires an explicitly quiescent repository; no automatic stealing is provided.
 const LOCK_WAIT_MS = 2000
-// The folders up to the Issue's own must be real folders: through a link the lock and the files would land outside .work.
 const issueDirOk = (root, n) =>
   ![path.join(root, '.work'), path.join(root, '.work', 'devflow'), path.join(root, '.work', 'devflow', `i${n}`)].some(isLinkOrOther)
-
-// Drops a lock judged stale by moving it aside under a unique name. If what was moved is not the lock that was judged
-// (another waiter dropped it and took a new one in between), the new one is put back; link fails if the name is taken.
-function dropStale(lock, judged) {
-  const aside = `${lock}.${token()}.stale`
-  try {
-    fs.renameSync(lock, aside)
-  } catch {
-    return false
-  }
-  let moved = null
-  try { moved = fs.readFileSync(aside, 'utf8') } catch {}
-  if (moved !== judged) try { fs.linkSync(aside, lock) } catch {}
-  fs.rmSync(aside, { force: true })
-  return moved === judged
-}
+// Compatibility export: historical callers may probe this, but age is not proof of termination.
+function dropStale() { return false }
 
 // { ok: true, value } or { ok: false, why: 'busy' | 'unsafe' }.
 function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
@@ -527,28 +583,19 @@ function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
       // Windows answers EPERM for a name whose file is still being deleted: wait as for a held lock.
       if (!['EEXIST', ...TRANSIENT].includes(e.code)) return { ok: false, why: 'unsafe' }
     }
-    let judged = null
     try {
-      if (!fs.lstatSync(lock).isFile()) return { ok: false, why: 'unsafe' }
-      // Time and token come from one open file, so the lock judged stale is the lock whose time was read. A time far
-      // ahead of now is as wrong as one far behind it: an archive can carry any mtime.
-      const fd = fs.openSync(lock, 'r')
-      try {
-        if (Math.abs(Date.now() - fs.fstatSync(fd).mtimeMs) > LOCK_STALE_MS) judged = fs.readFileSync(fd, 'utf8')
-      } finally {
-        fs.closeSync(fd)
-      }
+      if (!fs.lstatSync(lock).isFile() || fs.lstatSync(lock).isSymbolicLink()) return { ok: false, why: 'unsafe' }
     } catch {}
-    // A stale lock moved aside is retried at once. One that cannot be moved (Windows refuses to rename a file another
-    // process holds open) is waited on like a held lock, so the wait limit still ends the loop (Issue #15).
-    if (judged !== null && dropStale(lock, judged)) continue
     if (Date.now() >= until) return { ok: false, why: 'busy' }
     sleep(10)
   }
   try {
-    return { ok: true, value: fn() }
+    const held = () => {
+      if (fs.readFileSync(lock, 'utf8') !== mine) throw new Error('ledger lock ownership lost')
+    }
+    return { ok: true, value: fn(held) }
   } finally {
-    // Only the holder releases: a lock taken over after it went stale belongs to someone else now.
+    // Only the holder releases its own lock; foreign tokens require quiescent inspection.
     try { if (fs.readFileSync(lock, 'utf8') === mine) fs.rmSync(lock) } catch {}
   }
 }
@@ -556,9 +603,9 @@ function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
 // Reads, changes and writes the ledger under the lock. fn gets the ledger ({} when there is none) and returns
 // { ledger, result }; without a ledger nothing is written.
 function updateLedger(root, n, fn, opts) {
-  const r = withLock(root, n, () => {
+  const r = withLock(root, n, held => {
     const { ledger, result } = fn(readLedger(root, n) || {})
-    if (ledger) writeLedger(root, n, ledger)
+    if (ledger) { held(); writeLedger(root, n, ledger) }
     return { ledger, result }
   }, opts)
   return r.ok ? { ok: true, ...r.value } : r
@@ -743,7 +790,7 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
   if (!ctx) return ''
   const head = typeof ctx.head === 'string' && COMMIT_HASH.test(ctx.head) ? ctx.head : '?'
   seen.top = oneLine(`[devflow] ${ctx.repo ? clip(ctx.repo, MAX_SHOWN) : '?'} · ${ctx.branch ? clip(stripHidden(ctx.branch), MAX_SHOWN) : '(detached)'} · HEAD ${head}`)
-  if (legacyOf(ctx, ctx.issue)) seen.legacy.push(`Warning: ${legacyText(ctx.issue)}`)
+  if (!(ctx.issue && v2.managed(ctx.store, ctx.issue)) && legacyOf(ctx, ctx.issue)) seen.legacy.push(`Warning: ${legacyText(ctx.issue)}`)
   seen.checked.add('legacy ledger')
   const stop = reason => minimal(`${reason}; no Issue state shown.`)
   if (!ctx.repo) return stop('No GitHub origin')
@@ -765,6 +812,10 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
   seen.checked.add('token scope')
   const { body, checkpoint } = filtered(got.issue)
   if (body === null) return stop(`Issue #${ctx.issue} body author is not a writer`)
+  if (v2.managed(ctx.store, ctx.issue)) {
+    const content = [seen.top, ...warnings(), v2.card(ctx, ctx.issue, v2deps(), got.issue), toolLine].join('\n')
+    return fits(content) ? content : minimal('v2 state exceeds the card budget; read the ledger before acting.', false)
+  }
   const block = stateBlock(body)
   if (!block) return stop(`Issue #${ctx.issue} has no state block`)
   const linked = BRANCH_LINE.exec(block)
@@ -805,7 +856,7 @@ function cardBody(env, cwd, hookSession, seen, warnings, minimal, toolLine) {
       const hasLc = Object.hasOwn(ledger, 'lastCommit')
       if (hasLc && (typeof lc !== 'string' || !COMMIT_HASH.test(lc))) ledgerLines.push('Ledger lastCommit is not a commit hash')
       else if (hasLc) {
-        const log = env.run('git', ['log', '--format=%h %s', '-n', String(MAX_CARD_COMMITS), `${lc}..HEAD`], { cwd: ctx.root })
+        const log = env.run('git', ['log', '--no-show-signature', '--format=%h %s', '-n', String(MAX_CARD_COMMITS), `${lc}..HEAD`], { cwd: ctx.root })
         if (log.code !== 0) ledgerLines.push(`Ledger commit ${lc} is not in this history`)
         else if (log.stdout.trim()) {
           // Subjects can come from anyone's commits after a merge: hidden text goes as it does from Issue text (#149).
@@ -1482,7 +1533,7 @@ function remark(ctx, n, text) {
   if (ctx.issue) {
     let own
     try {
-      own = issueDirOk(ctx.store, ctx.issue) ? readLedger(ctx.store, ctx.issue) || {} : null
+      own = v2.managed(ctx.store, ctx.issue) ? v2.read(ctx.store, ctx.issue, ctx) : issueDirOk(ctx.store, ctx.issue) ? readLedger(ctx.store, ctx.issue) || {} : null
     } catch {
       own = null
     }
@@ -1497,7 +1548,8 @@ function remark(ctx, n, text) {
   if (!String(got.issue.url || '').toLowerCase().startsWith(`https://github.com/${ctx.repo.toLowerCase()}/issues/`)) {
     return { code: 1, out: `refused: Issue #${n} does not resolve to an Issue of ${ctx.repo}`, guard: 'state-remark-repo' }
   }
-  const r = post(ctx, 'remark', n, text)
+  const r = ctx.issue && v2.managed(ctx.store, ctx.issue)
+    ? v2.compat(ctx, ctx.issue, 'remark', n, text, undefined, v2deps()) : post(ctx, 'remark', n, text)
   if (r.code !== 0) return r
   const title = WRITERS.has(got.issue.authorAssociation) ? clip(stripHidden(got.issue.title || ''), 80) : '(title withheld)'
   return { code: 0, out: `${ctx.repo}#${n} (${String(got.issue.state || '').toLowerCase()}) ${title}: ${r.out}` }
@@ -1575,12 +1627,15 @@ function unattendedRun(ctx) {
     if (!issueDirOk(ctx.store, n)) return unknown(`Issue #${n}'s folder is not a plain folder`, `.work/devflow/i${n}`)
     let ledger
     try {
-      ledger = readLedger(ctx.store, n)
+      ledger = v2.managed(ctx.store, n) ? v2.read(ctx.store, n) : readLedger(ctx.store, n)
+      if (ledger?.schemaVersion === 2 && (ledger.binding.repo !== ctx.repo.toLowerCase() || ledger.binding.issue !== n || ledger.binding.storeRoot !== fs.realpathSync(ctx.store))) {
+        return unknown(`Issue #${n}'s v2 ledger has a different repository identity`, `.work/devflow-v2/i${n}/ledger.json`)
+      }
     } catch {
       return unknown(`Issue #${n}'s ledger cannot be read`, `.work/devflow/i${n}/ledger.json`)
     }
     if (!ledger || ledger.mode !== 'autonomous') continue
-    const by = ledger.modeChanged && typeof ledger.modeChanged.session === 'string' ? ledger.modeChanged.session : null
+    const by = ledger.schemaVersion === 2 ? ledger.owner.session : ledger.modeChanged && typeof ledger.modeChanged.session === 'string' ? ledger.modeChanged.session : null
     // A detached main work tree may be its Issue branch mid-rebase, so any unattended ledger may be its Issue's.
     if (n === ctx.mainIssue || ctx.mainDetached || !ctx.session || !by || by === ctx.session) {
       return busy(`Issue #${n} runs unattended`, 'confirm whether that run is over')
@@ -1630,6 +1685,7 @@ function attempt(ctx, op, n, text, title) {
   const why = refusal(op, text, title)
   if (why) return { code: 1, ...why }
   const owner = ctx.issue || n
+  if (owner && v2.managed(ctx.store, owner)) return v2.compat(ctx, owner, op, n, text, title, v2deps())
   // Reading the mode does not mutate old ledgers or create a queue, signing key or lock. A mode that cannot be read
   // (a linked or odd Issue folder, a ledger that does not parse) may be autonomous, so nothing is posted.
   if (owner && !issueDirOk(ctx.store, owner)) return LOCKED(owner, 'unsafe')
@@ -2288,6 +2344,9 @@ function delegationAfter(cwd, token, remoteRun) {
   }
 }
 
+const v2 = require('../lib/devflow-state-v2.js')
+const v2deps = () => ({ repoContext, criteria, stateSpan, fetchIssue, filtered, refusal, replaceIntent, ledgerValueError, withLock, post, postedAlready, nextBody, relationOf, relationLookup, sameRepo, stripHidden })
+
 const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'sub-issue', 'ledger-update', 'note', 'running', 'mode'])
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
   const r = command(argv, stdin, env, cwd)
@@ -2302,8 +2361,10 @@ function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
 }
 
 function command(argv, stdin, env, cwd) {
+  const routed = v2.route(argv, stdin, env, cwd, v2deps())
+  if (routed) return routed
   const [cmd, ...rest] = argv
-  const num = s => (s && /^\d+$/.test(s) ? Number(s) : undefined)
+  const num = s => (s && /^[1-9]\d*$/.test(s) && positiveInt(Number(s)) ? Number(s) : undefined)
   const input = () => stdin()
   switch (cmd) {
     case 'delegation-check':
@@ -2330,7 +2391,7 @@ function command(argv, stdin, env, cwd) {
     }
     case 'state':
     case 'comment':
-      return num(rest[0]) ? write(env, cwd, cmd, num(rest[0]), input()) : { code: 2, out: `usage: devflow-state ${cmd} <issue> < text` }
+      return num(rest[0]) && rest.length === 1 ? write(env, cwd, cmd, num(rest[0]), input()) : { code: 2, out: `usage: devflow-state ${cmd} <issue> < text` }
     case 'remark':
       return num(rest[0]) && rest.length === 1 ? write(env, cwd, 'remark', num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state remark <issue> < text' }
     case 'check': {
@@ -2345,9 +2406,9 @@ function command(argv, stdin, env, cwd) {
     }
     case 'close':
     case 'reopen':
-      return num(rest[0]) ? write(env, cwd, cmd, num(rest[0])) : { code: 2, out: `usage: devflow-state ${cmd} <issue>` }
+      return num(rest[0]) && rest.length === 1 ? write(env, cwd, cmd, num(rest[0])) : { code: 2, out: `usage: devflow-state ${cmd} <issue>` }
     case 'create':
-      return rest[0] === '--title' && rest[1] ? write(env, cwd, 'create', undefined, input(), rest[1])
+      return rest.length === 2 && rest[0] === '--title' && rest[1] ? write(env, cwd, 'create', undefined, input(), rest[1])
         : { code: 2, out: 'usage: devflow-state create --title <title> < body' }
     case 'ledger':
     case 'ledger-update': {
@@ -2393,7 +2454,7 @@ function command(argv, stdin, env, cwd) {
       return r.ok ? { code: 0, out: 'ledger updated' } : guarded(ctx, LOCKED(n, r.why), n)
     }
     case 'note':
-      return num(rest[0]) ? note(env, cwd, num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state note <issue> < line' }
+      return num(rest[0]) && rest.length === 1 ? note(env, cwd, num(rest[0]), input()) : { code: 2, out: 'usage: devflow-state note <issue> < line' }
     case 'running':
       return num(rest[0]) && rest.length === 3
         ? running(env, cwd, num(rest[0]), rest[1], rest[2]) : { code: 2, out: RUNNING_USAGE }
@@ -2401,7 +2462,7 @@ function command(argv, stdin, env, cwd) {
       return num(rest[0]) && rest.length === 2 ? mode(env, cwd, num(rest[0]), rest[1], input()) : { code: 2, out: MODE_USAGE }
     case 'release': {
       const n = num(rest[0])
-      if (!n) return { code: 2, out: 'usage: devflow-state release <issue>' }
+      if (!n || rest.length !== 1) return { code: 2, out: 'usage: devflow-state release <issue>' }
       const ctx = repoContext(env, cwd)
       if (legacyOf(ctx, n)) return LEGACY(n)
       const me = sessionId(env.vars)
@@ -2434,4 +2495,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, isNetwork, localPath, strictLocalPath, smallFile, hashFile, provenMain, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, isNetwork, localPath, strictLocalPath, smallFile, hashFile, provenMain, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens, v2, v2deps }

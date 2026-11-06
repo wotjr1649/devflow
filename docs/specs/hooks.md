@@ -43,14 +43,17 @@ the target host's nested scenario.
 | Event | Action |
 |---|---|
 | SessionStart (`startup`, `resume`, `clear`, `compact`) | Injects the resume card and shares the session id. A card failure shows as a reason, and no state is inferred |
-| Stop | When its own Issue's unattended work is open, this session switched or reattributed it, and nothing is waiting, asks to continue at most 2 times per task. The count is added under the ledger lock, and it stops on an error or a lock conflict |
-| SessionEnd | Releases only the input session from the session records of every Issue. It does not wait for the lock and preserves other sessions' records |
+| Stop | For v2, only the bound owner's open autonomous task, with no unresolved work or effect, at most 2 times per task and within the cumulative goal budget. Uses current control tokens and the exclusive lock. Unmigrated v1 retains its owner-attributed per-task rule. Errors, stale tokens and lock conflicts stop continuation |
+| SessionEnd | Releases only the input session from legacy warning records when the host emits the event. It does not wait for the lock, preserves other sessions' records and does not transfer v2 ownership |
 
 PreToolUse and PostToolUse are not registered. The hooks do not block Issue writes or edits to test files, profiles or
 the ledger, do not analyze shell commands or HTTP, GraphQL or MCP input, and create no block records or post-edit doctor
 audits.
 The Issue public filter and the refusal of writes in autonomous mode through `devflow-state` are that CLI's behavior, not
-enforcement by the hooks.
+enforcement by the hooks. A v2 migration fence keeps archived old hooks from continuing through the legacy ledger path.
+A code test of this fence is not evidence that a particular host loaded the candidate hook. Unsupported SessionEnd, a
+hook that never fired, a loading mismatch and a failed hook are separate outcomes. Explicit release and quiescent claim
+remain the handoff path; no event name or timeout silently transfers execution ownership.
 
 ## Input and safe file reads
 

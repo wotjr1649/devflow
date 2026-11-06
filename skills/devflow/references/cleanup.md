@@ -16,7 +16,7 @@ Copy this into the reply and tick each line, because a skipped step loses unique
 - [ ] 3 nonreproducible material preserved and restoration verified, or the target held
 - [ ] 4 source, tips and active use rechecked right before each deletion
 - [ ] 5 worktree removed without `--force`; local branch deleted with `git branch -d`
-- [ ] 6 remote tip reread with `git ls-remote`, equal to the reviewed SHA, then `git push <remote> --delete <branch>`
+- [ ] 6 remote removal atomically guarded by the reviewed object ID at mutation, or held as unsupported
 - [ ] 7 removed and held targets reported, ledger note written
 ```
 
@@ -33,10 +33,12 @@ Copy this into the reply and tick each line, because a skipped step loses unique
 
 ## Inventory and proof
 
-1. Before selecting, inventory every tip, the PR head and result, worktree occupancy and locks, users and processes,
+1. Before selecting, inventory every full original tip, the PR head and result, worktree occupancy and locks, users and processes,
    submodules and settings, staged, unstaged, untracked and ignored bytes, and post-merge or detached history.
-2. Prove integration into the intended base, not into the upstream. A squash or rebase merge needs a change-equivalence
-   review and preservation of any unique history.
+2. Prove integration into the intended base using original Git objects. Preserve local replacement mappings; do not
+   let them substitute history for the proof or remove them to make a check pass. A squash or rebase merge needs a
+   change-equivalence review and preservation of any unique history. Use the complete delivery range, including earlier
+   tasks, when assessing which history and evidence must survive; the last task base is not the delivery baseline.
 3. Uncertain ownership, use or integration holds the target. Count, age or disk pressure is a reason to review, not to
    delete.
 
@@ -72,17 +74,21 @@ result before any retry, and record partial success without repeating it.
    No `--force`, `-D`, clean, reset or manual-delete bypass, because forcing loses unique history. Residual files, once
    verified, need exact-file authority and fresh preservation before removal. `git worktree prune` removes stale
    administrative records, not workspaces.
-3. Remote, under the same integration, preservation and active-use checks: read the tip with
-   `git ls-remote <remote> <full-ref>` and delete with `git push <remote> --delete <branch>` only while it still equals
-   the reviewed SHA. Each deletion needs its own nonempty reviewed SHA. Verify the push destination. No `--force`, lease,
-   `+refspec`, mirror, ref overwrite or hook or protection bypass. A moved tip or a refusal holds the target; no fallback
-   and no retry on an unreviewed tip.
+3. Remote, under the same integration, preservation and active-use checks: require a supported mutation that checks
+   the target's nonempty reviewed full object ID atomically when deleting that exact remote ref. Verify the destination
+   and authorization. A prior `git ls-remote` followed by `git push <remote> --delete <branch>` has a race and does not
+   satisfy this contract. When no supported non-forcing atomic deletion API is available, hold the remote branch and
+   report that capability limit. No `--force`, force-with-lease, `+refspec`, mirror, ref overwrite or protection/hook
+   bypass. A moved tip or refusal holds the target; no fallback and no retry against an unreviewed tip.
 4. When a command this needs is unavailable, keep the targets and report it; install nothing and improvise no removal.
 
 ## Report
 
-Report removed and held targets with reasons, the archive path and size, checks observed and not run, remaining
-prerequisites and a revisit date. Record the result in the ledger with `note`.
+Report removed and held targets with reasons, preservation evidence and size, checks observed and not run, remaining
+prerequisites and a revisit date. Keep machine-local archive paths and hashes in private handoff/ledger evidence; public
+tracker comments use sanitized evidence IDs and outcomes. Record the result through the supported append-only `note`
+operation. Do not overwrite execution control fields to append a result, and do not claim cleanup completed for a
+held target. The delivery can be complete while cleanup retains targets safely.
 
 ## Readiness without deletion
 

@@ -103,29 +103,29 @@ test('a stale lock that cannot be moved aside still ends at the wait limit', () 
   assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'old-token', 'the lock it could not move is left as it was')
 })
 
-test('a stale lock is moved aside and the write goes on; a fresh one is waited for, then refused', () => {
+test('lock age never permits automatic takeover; old and fresh holders both exclude writes', () => {
   const root = repo({ a: 1 })
   fs.writeFileSync(lockFile(root), 'old-token')
   const old = (Date.now() - 11000) / 1000
   fs.utimesSync(lockFile(root), old, old)
-  assert.equal(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } })).ok, true)
-  assert.deepEqual(ledgerOf(root), { a: 1, b: 2 })
-  assert.ok(!fs.existsSync(lockFile(root)))
+  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } }), { waitMs: 0 }), { ok: false, why: 'busy' })
+  assert.deepEqual(ledgerOf(root), { a: 1 })
+  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'old-token')
   fs.writeFileSync(lockFile(root), 'live-token')
   const t = Date.now()
   assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, c: 3 } }), { waitMs: 200 }), { ok: false, why: 'busy' })
   assert.ok(Date.now() - t >= 150, 'it waited')
   assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'live-token', 'another holder keeps its lock')
-  assert.deepEqual(ledgerOf(root), { a: 1, b: 2 })
+  assert.deepEqual(ledgerOf(root), { a: 1 })
 })
 
-test('a lock is released only by the holder whose token it carries', () => {
+test('lost lock ownership refuses the write and does not release another token', () => {
   const root = repo({ a: 1 })
-  const r = state.updateLedger(root, 1, l => {
+  assert.throws(() => state.updateLedger(root, 1, l => {
     fs.writeFileSync(lockFile(root), 'someone-else')
     return { ledger: { ...l, b: 2 }, result: 'done' }
-  })
-  assert.deepEqual(r, { ok: true, ledger: { a: 1, b: 2 }, result: 'done' })
+  }), /ownership/)
+  assert.deepEqual(ledgerOf(root), { a: 1 })
   assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'someone-else')
 })
 
@@ -481,7 +481,7 @@ test('a linked Issue folder is not followed, and its unknown mode refuses Issue 
   assert.deepEqual(fs.readdirSync(outside), ['ledger.json'])
 })
 
-test('a lock that is not a file is refused as unsafe; a lock from the future is stale', () => {
+test('a non-file lock is unsafe; future timestamps cannot authorize takeover', () => {
   const root = repo({ a: 1 })
   fs.mkdirSync(lockFile(root))
   const r = state.note(env(root), '.', 1, 'x')
@@ -490,19 +490,19 @@ test('a lock that is not a file is refused as unsafe; a lock from the future is 
   fs.writeFileSync(lockFile(root), 'from-the-future')
   const later = (Date.now() + 3600000) / 1000
   fs.utimesSync(lockFile(root), later, later)
-  assert.equal(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } })).ok, true)
-  const text = '### Checkpoint build — x\n- y'
+  assert.deepEqual(state.updateLedger(root, 1, l => ({ ledger: { ...l, b: 2 } }), { waitMs: 0 }), { ok: false, why: 'busy' })
+  assert.deepEqual(ledgerOf(root), { a: 1 })
 })
 
-test('dropStale restores a fresh lock that replaced the stale one it judged', () => {
+test('dropStale cannot remove any lock, including a matching old token', () => {
   const root = repo({ a: 1 })
   fs.writeFileSync(lockFile(root), 'fresh-other')
   assert.equal(state.dropStale(lockFile(root), 'old-one'), false)
   assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'fresh-other')
   assert.deepEqual(fs.readdirSync(dir(root)).filter(f => f.includes('.stale')), [])
   fs.writeFileSync(lockFile(root), 'old-one')
-  assert.equal(state.dropStale(lockFile(root), 'old-one'), true)
-  assert.ok(!fs.existsSync(lockFile(root)))
+  assert.equal(state.dropStale(lockFile(root), 'old-one'), false)
+  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'old-one')
 })
 
 test('session entries are validated, and warnings are capped', () => {

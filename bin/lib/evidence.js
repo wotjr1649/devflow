@@ -187,26 +187,34 @@ function gitBinary(gitPath) {
   }
   throw error('evidence-git', 'no Git executable was found on an absolute PATH entry')
 }
-function readEnvironment() {
+function readEnvironment(emptyFile) {
   const env = {}
   for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP', 'TMPDIR']) if (process.env[key]) env[key] = process.env[key]
-  Object.assign(env, { LC_ALL: 'C', LANG: 'C', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: os.devNull,
-    GIT_CONFIG_GLOBAL: os.devNull, GIT_ATTR_NOSYSTEM: '1', GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1',
+  Object.assign(env, { LC_ALL: 'C', LANG: 'C', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: emptyFile,
+    GIT_CONFIG_GLOBAL: emptyFile, GIT_ATTR_NOSYSTEM: '1', GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1',
     GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat', GIT_PROTOCOL_FROM_USER: '0' })
   return env
 }
 function isolatedReader(layout, width, gitPath, limits) {
+  const git = gitBinary(gitPath)
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'devflow-read-'))
-  fs.chmodSync(temporary, 0o700)
-  for (const name of ['objects', 'refs', 'hooks']) fs.mkdirSync(path.join(temporary, name))
-  fs.writeFileSync(path.join(temporary, 'HEAD'), 'ref: refs/heads/unused\n')
-  fs.writeFileSync(path.join(temporary, 'config'), `[core]\n\tbare = true\n\trepositoryformatversion = ${width === 64 ? 1 : 0}\n${width === 64 ? '[extensions]\n\tobjectFormat = sha256\n' : ''}`)
-  const env = { ...readEnvironment(), GIT_DIR: temporary, GIT_OBJECT_DIRECTORY: layout.objects }
+  const emptyFile = path.join(temporary, 'empty')
+  try {
+    fs.chmodSync(temporary, 0o700)
+    for (const name of ['objects', 'refs', 'hooks']) fs.mkdirSync(path.join(temporary, name))
+    fs.writeFileSync(path.join(temporary, 'HEAD'), 'ref: refs/heads/unused\n')
+    fs.writeFileSync(path.join(temporary, 'config'), `[core]\n\tbare = true\n\trepositoryformatversion = ${width === 64 ? 1 : 0}\n${width === 64 ? '[extensions]\n\tobjectFormat = sha256\n' : ''}`)
+    // Git for Windows cannot read Node's null-device path as a config file.
+    fs.writeFileSync(emptyFile, '', { flag: 'wx', mode: 0o600 })
+  } catch (failure) {
+    fs.rmSync(temporary, { recursive: true, force: true })
+    throw failure
+  }
+  const env = { ...readEnvironment(emptyFile), GIT_DIR: temporary, GIT_OBJECT_DIRECTORY: layout.objects }
   const prefix = ['--no-pager', '--no-replace-objects', '--no-lazy-fetch', '-c', 'core.fsmonitor=false',
     '-c', 'core.commitGraph=false',
     '-c', 'core.untrackedCache=false', '-c', `core.hooksPath=${path.join(temporary, 'hooks')}`,
-    '-c', `core.attributesFile=${os.devNull}`, '-c', 'diff.external=', '-c', 'protocol.allow=never', '-c', 'submodule.recurse=false']
-  const git = gitBinary(gitPath)
+    '-c', `core.attributesFile=${emptyFile}`, '-c', 'diff.external=', '-c', 'protocol.allow=never', '-c', 'submodule.recurse=false']
   return {
     run(args, overrides = {}) {
       const result = spawnSync(git, [...prefix, ...args], { cwd: layout.root, env: { ...env, ...overrides }, shell: false,

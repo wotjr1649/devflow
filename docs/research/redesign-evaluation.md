@@ -30,20 +30,27 @@ node --test --test-timeout=120000 tests/*.test.js
 | Revision | Tests | Passed | Failed | Platform skips |
 |---|---:|---:|---:|---:|
 | Baseline | 382 | 354 | 0 | 28 |
-| Candidate | 477 | 449 | 0 | 28 |
+| Candidate | 478 | 450 | 0 | 28 |
 
-The candidate adds 95 test cases. This is preservation of existing coverage plus new regression coverage, not a claim
+The candidate adds 96 test cases. This is preservation of existing coverage plus new regression coverage, not a claim
 that the two revisions ran an identical set of test bodies. Existing wording expectations were changed only where
 templates moved to targeted help or the protected interface intentionally changed. Structure/link checks include
 newly tracked files; the skill validator also passes.
 
-Focused final suites include 32 evidence/IO cases, 38 actual CLI/migration/hook cases, and 24 pure acceptance cases.
+Focused final suites include 32 evidence/IO cases, 39 actual CLI/migration/hook cases, and 24 pure acceptance cases.
 They use isolated temporary repositories, controlled provider adapters and local bare remotes. No live Issue, PR,
 user transport, host installation, tag or release is exercised. Exact compressed baseline CLI/hook fixtures with
 source commit and SHA-256 provenance keep obsolete-writer regressions runnable in a shallow CI checkout.
 
-The existing CI workflow runs Node 22/24 on Ubuntu, macOS and Windows on branch pushes. Its observed run is reported
-separately after publication; a Linux result does not stand in for those jobs or for native Claude Code/Codex integration.
+The existing CI workflow runs Node 22/24 on Ubuntu, macOS and Windows on branch pushes. The
+[first six-job run](https://github.com/wotjr1649/devflow/actions/runs/42195557194) passed both Linux jobs but exposed
+Windows Git rejecting Node's null-device spelling as a configuration file, noncanonical macOS temporary fixture
+paths, and a noncanonical default CLI output path. Repairs use a controlled empty regular configuration/attributes
+file, prepare canonical fixture roots, and canonicalize only the host-selected default output directory. Explicit
+caller path rejection and the substantive test assertions remain intact. A new alias regression failed before the
+CLI fix and passed after it; the integrated Linux suite above includes that case. The 19 skill files remain byte-for-byte
+identical to the matched-probe snapshot. The subsequent CI result is reported separately with its exact commit;
+a Linux result does not stand in for those jobs or for native Claude Code/Codex integration.
 
 ## Independent review and repairs
 
@@ -61,6 +68,7 @@ introduced in intermediate candidates; the list does not imply every defect exis
 | Evidence | Task attempts, input/criterion revisions and full delivery bases remain bound; completed report updates follow completion order; later applicable failure supersedes prior success; integration reserves its result ID and collection capacity. |
 | Returns and integration | Backward transitions invalidate acceptance with a reason; retry/continuation budgets survive resumes; an integrated delivery cannot be reopened by target reconciliation; prior delivery provenance is retained. |
 | Original-object review | Verify commit/tree/blob hashes, disable replacement and commit-graph interpretation, avoid executable Git helpers, bound output artifacts, retain valid Unicode names and reject lossy index decoding. |
+| Portability | Replace null-device config paths with a private empty regular file; preserve strict canonical-path checks while resolving host-selected temporary aliases; clean up failed reader initialization. |
 | Deletion | Bind exact destination/ref/OID through preparation and execution; reject URL/remote aliases and drift; use exact expected-value deletion while retaining native hooks/authentication. |
 | Workflow preservation | Restore private advisory routing; retain partial-delivery scope, full-Issue closure conditions, independent-review overrides and unaffected-work continuation. |
 

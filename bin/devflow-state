@@ -2646,7 +2646,7 @@ function reviewPackageCommand(cwd, args) {
     const top = realEnv.run('git', ['rev-parse', '--show-toplevel'], { cwd })
     if (top.code !== 0 || !top.stdout.trim()) throw new Error('review package requires a Git worktree')
     const root = fs.realpathSync(top.stdout.trim())
-    const out = destination || path.join(os.tmpdir(), `devflow-review-${token()}.json`)
+    const out = destination || path.join(fs.realpathSync(os.tmpdir()), `devflow-review-${token()}.json`)
     if (!path.isAbsolute(out) || path.resolve(out) !== out) throw new Error('review package output must be a normalized absolute path')
     const parent = path.dirname(out)
     const realParent = fs.realpathSync(parent)

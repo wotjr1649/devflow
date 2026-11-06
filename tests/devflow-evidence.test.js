@@ -5,7 +5,9 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 const zlib = require('node:zlib')
-const tmpdir = require('./tmpdir')
+const makeTmpdir = require('./tmpdir')
+// Evidence callers supply canonical roots, including macOS /var aliases and linked-worktree parents.
+const tmpdir = prefix => fs.realpathSync(makeTmpdir(prefix))
 const { criteriaSnapshot, criteriaSelection, criteriaGate, carryCriteriaChecks, reviewPackage, resolveDeleteDestination, conditionalDelete } = require('../bin/lib/evidence')
 
 // This fixture supplies the existing criteria parser's small output contract. Markdown parsing stays in devflow-state.
@@ -120,7 +122,9 @@ test('snapshot refuses missing, unplain, and mismatched parser inputs', () => {
   assert.equal(criteriaSnapshot({ body: '- [ ] text', parsed: { plain: true, boxes: [{ at: 2, checked: false, text: 'text' }] } }).guard, 'criteria-input')
 })
 
-const fixtureEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: require('node:os').devNull,
+const fixtureConfig = path.join(tmpdir('evidence-config-'), 'empty')
+fs.writeFileSync(fixtureConfig, '', { flag: 'wx', mode: 0o600 })
+const fixtureEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: fixtureConfig, GIT_CONFIG_GLOBAL: fixtureConfig,
   GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: 'Evidence Test', GIT_AUTHOR_EMAIL: 'evidence@example.invalid',
   GIT_COMMITTER_NAME: 'Evidence Test', GIT_COMMITTER_EMAIL: 'evidence@example.invalid' }
 function git(cwd, args, expected = 0) {

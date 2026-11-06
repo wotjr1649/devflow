@@ -346,7 +346,8 @@ test('autonomous protected Issue effects remain refused before invoking the prov
 })
 
 test('review-package CLI creates one private bounded artifact outside the tree and prints no file blobs', () => {
-  const root = gitRepo(), head = git(root, ['rev-parse', 'HEAD']), output = path.join(tmpdir('devflow-review-output-'), 'package.json')
+  const root = gitRepo(), head = git(root, ['rev-parse', 'HEAD'])
+  const output = path.join(fs.realpathSync(tmpdir('devflow-review-output-')), 'package.json')
   const result = state.main(['review-package', head, head, '--owned-clean-snapshot', '--out', output], () => '', undefined, root)
   assert.equal(result.code, 0, result.out)
   const summary = JSON.parse(result.out), data = JSON.parse(fs.readFileSync(output))
@@ -360,6 +361,24 @@ test('review-package CLI creates one private bounded artifact outside the tree a
   const unsafe = state.main(['review-package', head, head, '--owned-clean-snapshot', '--out', path.join(root, 'package.json')], () => '', undefined, subdir)
   assert.equal(unsafe.code, 1); assert.match(unsafe.out, /outside the snapshot/)
   assert.equal(fs.existsSync(path.join(root, 'package.json')), false)
+})
+
+test('review-package default output resolves a host temporary-directory alias while explicit aliases remain refused', t => {
+  const root = gitRepo(), head = git(root, ['rev-parse', 'HEAD'])
+  const target = fs.realpathSync(tmpdir('devflow-review-target-'))
+  const alias = path.join(fs.realpathSync(tmpdir('devflow-review-parent-')), 'alias')
+  fs.symlinkSync(target, alias, process.platform === 'win32' ? 'junction' : 'dir')
+  t.mock.method(require('node:os'), 'tmpdir', () => alias)
+  const args = ['review-package', head, head, '--owned-clean-snapshot']
+  const result = state.main(args, () => '', undefined, root)
+  assert.equal(result.code, 0, result.out)
+  const summary = JSON.parse(result.out)
+  assert.equal(path.dirname(summary.artifact), target)
+  assert.equal(summary.sha256, digest(fs.readFileSync(summary.artifact)))
+  const explicit = state.main([...args, '--out', path.join(alias, 'explicit.json')], () => '', undefined, root)
+  assert.equal(explicit.code, 1)
+  assert.match(explicit.out, /plain directory/)
+  assert.equal(fs.existsSync(path.join(target, 'explicit.json')), false)
 })
 
 function ownershipRequest(f, extra = {}) {

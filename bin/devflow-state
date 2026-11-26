@@ -218,7 +218,7 @@ const USAGE = `usage: devflow-state <command>
   create --title <t> < body   a new Issue in the Issue template; "## 수용 기준" needs plain "- [ ]" criteria
   sub-issue add <parent> <child> | sub-issue list <parent>
                               add a same-repository relationship or list its numbers; never replace a parent
-  ledger [n]                  print the ledger
+  ledger [n] [--compact]      print the ledger (optional one-line JSON)
   ledger-update [n] < json    replace the top-level keys given in a JSON object
   note <n> < line             append one line to the ledger's notes
   mode <n> autonomous|interactive < reason
@@ -2352,9 +2352,14 @@ function command(argv, stdin, env, cwd) {
     case 'ledger':
     case 'ledger-update': {
       const ctx = repoContext(env, cwd)
-      const n = num(rest[0]) || (ctx && ctx.issue)
+      const explicit = num(rest[0])
+      const n = explicit || (ctx && ctx.issue)
       if (!ctx || !n) return { code: 1, out: 'refused: no devflow Issue' }
-      if (cmd === 'ledger') return { code: 0, out: JSON.stringify(readLedger(ctx.store, n), null, 2) }
+      if (cmd === 'ledger') {
+        const compact = (rest.length === 1 && rest[0] === '--compact') ||
+          (rest.length === 2 && explicit && rest[1] === '--compact')
+        return { code: 0, out: JSON.stringify(readLedger(ctx.store, n), null, compact ? 0 : 2) }
+      }
       const no = ledgerGate(ctx, n, 'ledger writes', { append: false })
       if (no) return no
       // Top-level keys are replaced as sent; a note goes through note, which appends under the lock.

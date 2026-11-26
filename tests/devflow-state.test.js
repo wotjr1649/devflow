@@ -1638,3 +1638,50 @@ test('ready ledgers remain readable, and stage names are the skill\'s to write (
   assert.equal(state.readLedger(root, 1).stage, 'ready')
   assert.equal(state.main(['ledger-update', '1'], () => '{"stage":"plan"}', e, '.').code, 0)
 })
+
+test('ledger --compact prints one-line JSON for the two approved forms only', () => {
+  const nested = { stage: 'build', task: { current: 1, total: 2 }, notes: ['a\nb', 'é'], legacyKey: [1, { x: null }] }
+  const root = repo({ ledger: nested })
+  fs.mkdirSync(path.join(root, '.work/devflow/i2'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.work/devflow/i2/ledger.json'), JSON.stringify({ stage: 'plan' }))
+  const e = env(root)
+  const call = argv => state.main(argv, () => '', e, '.')
+  const file = path.join(root, '.work/devflow/i1/ledger.json')
+  const bytes = fs.readFileSync(file)
+
+  // Default output is unchanged.
+  assert.deepEqual(call(['ledger']), { code: 0, out: JSON.stringify(nested, null, 2) })
+  assert.deepEqual(call(['ledger', '2']), { code: 0, out: JSON.stringify({ stage: 'plan' }, null, 2) })
+  // Compact: inferred and explicit selection.
+  assert.deepEqual(call(['ledger', '--compact']), { code: 0, out: JSON.stringify(nested) })
+  assert.deepEqual(call(['ledger', '2', '--compact']), { code: 0, out: '{"stage":"plan"}' })
+  assert.equal(call(['ledger', '--compact']).out.includes('\n'), false)
+  assert.deepEqual(JSON.parse(call(['ledger', '--compact']).out), JSON.parse(call(['ledger']).out))
+  // Every other combination keeps its legacy reading.
+  assert.deepEqual(call(['ledger', '--compact', '2']), call(['ledger']))
+  assert.deepEqual(call(['ledger', '0', '--compact']), call(['ledger']))
+  assert.deepEqual(call(['ledger', '2', '--compact', 'x']), call(['ledger', '2']))
+  assert.deepEqual(call(['ledger', '--bogus']), call(['ledger']))
+  assert.deepEqual(call(['ledger', '--compact', '--compact']), call(['ledger']))
+  // A missing ledger reads as null, and no file or folder is created.
+  assert.deepEqual(call(['ledger', '9', '--compact']), { code: 0, out: 'null' })
+  assert.deepEqual(call(['ledger', '9']), { code: 0, out: 'null' })
+  assert.equal(fs.existsSync(path.join(root, '.work/devflow/i9')), false)
+  assert.deepEqual(fs.readFileSync(file), bytes)
+})
+
+test('ledger --compact keeps selection and read failures of the ordinary read', () => {
+  const noIssue = env(repo(), { branch: 'main' })
+  const plain = state.main(['ledger'], () => '', noIssue, '.')
+  assert.deepEqual(plain, { code: 1, out: 'refused: no devflow Issue' })
+  assert.deepEqual(state.main(['ledger', '--compact'], () => '', noIssue, '.'), plain)
+  const bad = repo()
+  fs.mkdirSync(path.join(bad, '.work/devflow/i1'), { recursive: true })
+  fs.writeFileSync(path.join(bad, '.work/devflow/i1/ledger.json'), '{nope')
+  fs.mkdirSync(path.join(bad, '.work/devflow/i2/ledger.json'), { recursive: true })
+  for (const n of [[], ['2']]) {
+    const e = env(bad)
+    const outcome = argv => { try { return state.main(argv, () => '', e, '.') } catch (err) { return err.message } }
+    assert.equal(outcome(['ledger', ...n, '--compact']), outcome(['ledger', ...n]))
+  }
+})

@@ -36,6 +36,12 @@ When the working Issue's ledger cannot be read (an Issue folder that is a link o
 it may be in autonomous mode, so nothing is written to the Issue.
 Test locks, metrics commands, a post queue or signing keys, delegation binding and block logs are not provided.
 
+`devflow-state ledger [n]` prints the ledger as JSON indented by two spaces. For callers that parse the output, the
+complete operand lists `ledger --compact` (the Issue of the current branch) and `ledger <n> --compact` (an explicit
+Issue number) print the same value as one line of JSON followed by a newline. Issue selection, the safe reader, error
+messages and exit codes are the same in both formats, and no other operand combination is compact; the ledger file is
+never changed by a read.
+
 ## Unattended runs
 
 An unattended stretch exists only when the ledger's `mode` is `autonomous` (a user decision). When the user steps away or

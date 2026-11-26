@@ -56,7 +56,7 @@ In side-by-side trials on past work, terra produced the same results as sol in a
 ([host-facts](../research/host-facts.md)).
 With briefs missing decisions, both models silently filled unstated gaps, so that risk is prevented not by model
 promotion but by the main session settling the behavior in the brief.
-Role text and perspectives live in the skill's roles reference, and every brief carries the role's body and one
+Role text and perspectives live in the skill's Change reference, and every brief carries the role's body and one
 perspective on both hosts, so the skill depends on no agent name or file (#157). The plugin ships no agent definitions
 (#159): Claude Code runs every role on `general-purpose`, Codex on `spawn_agent`, so each host has one delegation path.
 The owner accepted the loss of the controls only a Claude definition gave - the reviewer's read-only tools, the
@@ -90,7 +90,7 @@ updates the pull request's time, unverified), edits to existing Issues and PRs, 
 traffic, posts in other repositories, effects of a background process or nested agent after the check, and an
 implementer's nested agents. Each delegation gets a new agent, so the
 lost turn limit only ever bounded one delegation; within one delegation the implementer makes at most two fixes after
-its first attempt and then ends with `BLOCKED`, by instruction only, which uses up the build reference's two fixes and
+its first attempt and then ends with `BLOCKED`, by instruction only, which uses up the Change reference's two fixes and
 leads to the promotion (#161). Out-of-scope decisions are gathered in the main session through stop and resume. The
 devflow skill sets execution modes, roles, promotion and the question procedure;
 [orchestration](../specs/orchestration.md)
@@ -118,21 +118,19 @@ set tool limits.
 ## Entry points and stages
 
 **Choice and reason.** One lifecycle skill, `devflow`, is the only entry point. It takes new work, continuation, stage
-transitions, review, PR and merge, cleanup and handoff in repositories with `.devflow.json`, and its SKILL.md links
-each of the eleven stage references in `skills/devflow/references/` directly. Repositories without `.devflow.json`
-get no lifecycle skill at all; that compatibility loss is accepted.
-One description decides invocation, so no two lifecycle descriptions compete for the same request. Each reference is
-one level from SKILL.md and finishes its procedure without reading another, so no step depends on a second hop. After
-compaction a host reattaches only the start of an invoked skill body, so the router puts scope, Issue I/O and the stop
-conditions first, and those survive while reference files do not.
+transitions, review, PR and merge, cleanup and handoff in repositories with `.devflow.json`. SKILL.md links three
+references directly. Resume reconciles sessions and evidence, Change owns preparation, execution and review, and
+Delivery owns integration and cleanup. An untracked handoff, consequential change or explicit invocation can use
+the same references without Issue or ledger operations.
+One description decides invocation. The three references sit one level from SKILL.md so the next relevant section is
+reachable without following nested links or loading the rest for a settled continuation. After compaction a host
+reattaches only the start of the invoked body, so the router keeps scope, card trust and the stop conditions there.
 The devflow skill sets routing, stages per path and going back ([why](../specs/lifecycle.md)), and
 [documents](../specs/documents.md) sets document size and progressive reading.
 
 **Alternatives.** Keeping the start, review and cleanup skills as thin wrappers around the router keeps their
-descriptions overlapping. Nested references break the one-level rule. Separate integration and completion references
-linked from SKILL.md are not taken because ship needs both every time. Inlining the design and security perspective
-text in each stage reference duplicates it across references, while the agent that applies a perspective reads its own
-body anyway.
+descriptions overlapping. Separate files for every stage add reference transitions during the same task. A single
+reference would load unrelated procedures on resume. Nested links make later references easier to miss.
 Applying the same stages to every path raises the cost of small changes.
 
 **Revisit when.** Review when requests are repeatedly routed to the wrong stage or reference, when the router outgrows
@@ -146,11 +144,11 @@ independent skills shipped with the plugin
 (list in [overview](overview.md#components)). Lifecycle references and specs do not invoke or point to these skills and state
 the needed actions directly, and the skill bodies do not mention devflow either. This keeps them usable as they are in
 repositories without `.devflow.json`, and changing one side does not change the other side's contract. Devflow-specific
-handoff rules are owned by [sessions](../../skills/devflow/references/sessions.md).
+handoff rules are owned by [Resume](../../skills/devflow/references/resume.md#handoff).
 Being in the same list, they can be invoked during the lifecycle through description matching, and this is not a
 contract. As an exception, a resume-prompt request in a devflow repository lets the router and the prompt-writing skill
 be invoked together. They complement each other: the writing skill writes the text, and the router adds the handoff
-rules from sessions (pointing to the Issue, budget, file name, releasing another session).
+rules from Resume (Issue identity, budget, file name and session release).
 
 **Alternatives.** A separate repository or global installation would need host configuration changes and could not be
 measured with the repository's trigger eval.
@@ -165,7 +163,7 @@ router, or when the independent skills need to ship outside devflow.
 evidence.
 Even small changes are judged by meaning rather than file extension or line count. Review reports are short prose, and
 re-review is narrowed to fixes that changed behavior or permissions.
-The devflow skill's review reference owns the scope of checks and review ([why](../specs/orchestration.md#review)).
+The devflow skill's Change reference owns the scope of checks and review ([why](../specs/orchestration.md#review)).
 devflow itself links the reviewed SHA to CI and the integration record through PRs, server protection and merge commits.
 CI must be evidence that the revision the event requires was actually checked, and it does not replace per-criterion
 execution evidence or independent review.

@@ -1,6 +1,6 @@
 ---
 name: audit-prompts
-description: Audits an existing model prompt or handoff brief against approval, evidence and recipient capabilities, including after drafting and before dispatch. Exclude routine record links, host-loaded instructions, drafting and execution.
+description: Audits model prompts and completed task briefs against approval and evidence before handing off or launching an agent, including review in a draft-and-dispatch request. Skip record links and host-loaded instructions.
 ---
 
 # Audit prompts

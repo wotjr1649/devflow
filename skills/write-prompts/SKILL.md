@@ -1,6 +1,6 @@
 ---
 name: write-prompts
-description: Writes or revises a prompt for another model or agent, including a handoff that needs an actual task brief. Exclude record-link continuations, host-loaded instructions and task execution.
+description: Drafts or revises model prompts and task briefs before handing off to a session or launching a worker, including mixed draft-and-launch requests. Skip record-link continuations and host-loaded instructions.
 ---
 
 # Write prompts

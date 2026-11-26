@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: "Use when continuing another session's work even from its records alone, changing a public contract, shared data, permissions or cross-component dependencies, checking PR or merge readiness, or advancing a tracked Issue from planning through cleanup. Leave routine edits and unrelated analysis to the normal workflow."
+description: "Resumes another session's approved work from its plan, checkpoint or handoff folder, even for immediate implementation. Handles public contracts, shared state, permissions, cross-component changes, tracked Issues and PR or merge readiness; skip unrelated analysis and routine edits."
 ---
 
 # Devflow

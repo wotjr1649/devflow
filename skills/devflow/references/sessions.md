@@ -64,7 +64,7 @@ its delegated work to finish, then run `release <issue>` as the last ledger acti
 Codex (`CODEX_THREAD_ID` is set): that release would remove the Codex session. Report the next step and let the
 user clear: Codex may keep the old thread alive after `/clear`.
 
-When asked to draft a resume prompt, use the available model-prompt writing skill with this handoff procedure.
+For a requested resume prompt, load the available skill for drafting model prompts alongside this procedure.
 The card brings the Issue, checkpoint and ledger. Point to them and give only missing instructions and decisions
 since the checkpoint, under 500 tokens. Use that same budget for a brief for another session.
 

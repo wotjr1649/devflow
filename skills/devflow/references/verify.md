@@ -15,14 +15,14 @@ after the last task, every acceptance criterion in the Issue.
   test, or build or static only. Only a behaviour run or a targeted test that exercises the criterion verifies it; a
   passing build or a broad suite that never reaches the criterion leaves it open.
 - Reuse only after reading the actual result and matching current HEAD, check scope, execution conditions and verifier.
-  Rerun on moved HEAD, unusable evidence or when the gate requires a fresh run.
+  Rerun on moved HEAD, missing scope or verifier evidence, an unusable result, or a required fresh run.
 - For a reported bug, first reproduce the symptom the report describes and record how, then verify the fix against that
   same reproduction; a fix checked only by a test written afterwards can pass while the reported symptom stays.
 - A criterion that cannot be executed stays open: name it, the reason, and the evidence that stands in for it.
 - A failure goes back to build without asking the user; after the fix, verify the affected criteria again.
 
-Record command, revision, conditions, result and local output location in the ledger's `notes`. When a task's verify
-passes, `ledger-update` moves `task` current to
+In ledger `notes`, link each criterion to its command, revision, conditions, verifier and run record, result and local
+output. When a task's verify passes, `ledger-update` moves `task` current to
 the next task, or past total after the last one, since an open task is what lets unattended work continue. At the
 stage boundary after the last task, the checkpoint's `- 검증:`
 line lists what ran and what did not, then the work moves to review.

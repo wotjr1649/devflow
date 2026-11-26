@@ -1,6 +1,6 @@
 ---
 name: write-prompts
-description: Use when asked to write or revise a model prompt, including a short resume or handoff prompt for another session and chat, API system, task, or delegation prompts. Excludes discussion, host instructions, prompt audits, and executing the task.
+description: Use when asked to draft or revise a model prompt, including chat, API, delegation, resume and handoff prompts even when a workflow skill is already active. Excludes discussion, agent instruction files, prompt audits, and task execution.
 ---
 
 # Write Prompts

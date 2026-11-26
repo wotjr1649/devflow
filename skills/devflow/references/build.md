@@ -54,7 +54,7 @@ M3 (Claude Code only; files do not overlap and interfaces are fixed in the plan,
 
 - Before starting a task, reserve `task-<k>` with `running <n> claim <label>`; a refusal holds its launch. Start the
   background Agent with `isolation: "worktree"`. Run `running <n> done <label>` after recovering its result and confirming
-  exit. After interruption or launch failure, also reconcile child processes and partial effects. If uncertain, keep the
+  exit. After failure, timeout or interruption, confirm child exit and reconcile partial effects. If uncertain, keep the
   entry and continue only independent work. Confirming an exit does not permit terminating it.
 - A task worktree writes no ledger and posts no Issue text. Task worktrees start from the remote default branch, so a
   brief whose BASE is not on it begins with `git merge --ff-only <BASE>` in its worktree, and every M3 brief asks for a

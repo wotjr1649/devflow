@@ -370,6 +370,12 @@ test('running adds and removes one delegation under the lock and keeps the other
   assert.deepEqual(run('add', 'implementer task 1'), { code: 0, out: 'running 1' })
   assert.deepEqual(run('add', 'reviewer'), { code: 0, out: 'running 2' })
   assert.deepEqual(run('add', 'reviewer'), { code: 0, out: 'running 2' }, 'the same label is listed once')
+  assert.match(run('claim', 'reviewer').out, /already running/)
+  assert.equal(run('claim', 'reviewer').code, 1)
+  assert.deepEqual(run('claim', 'next-task'), { code: 0, out: 'running 3' })
+  assert.deepEqual(run('done', 'next-task'), { code: 0, out: 'running 2' })
+  assert.deepEqual(run('claim', 'next-task'), { code: 0, out: 'running 3' }, 'confirmed release allows a new claim')
+  assert.deepEqual(run('done', 'next-task'), { code: 0, out: 'running 2' })
   // Moving the task on with ledger-update leaves running alone unless it is sent.
   assert.equal(state.main(['ledger-update', '1'], () => '{"task":{"current":2,"total":3}}', e, '.').code, 0)
   assert.deepEqual(ledger().running, ['implementer task 1', 'reviewer'])

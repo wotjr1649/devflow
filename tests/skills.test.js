@@ -217,23 +217,23 @@ const tableRows = (texts, header) => {
   return []
 }
 const agentOf = cell => (cell.match(/^`([\w-]+)`/) || [])[1]
-// Role text (#157): `## <role>` sections, each with a Claude Code default line, a body up to its first `###`
+// Role text (#157): `## <role>` sections with a body up to its first `###`
 // and `###` perspectives. Every brief carries it; the plugin has no agent definitions (#159).
 const roleSections = text => [...text.matchAll(/^## ([a-z][\w-]*)\n([\s\S]*?)(?=^## |(?![\s\S]))/gm)]
   .map(([, name, body]) => ({ name, body: body.split(/^### /m)[0], perspectives: body.split(/^### /m).slice(1) }))
-const ROLE_DEFAULT = /^Claude Code default: `model: ([\w.-]+)`, `effort: (\w+)`/m
-
-test('roles: each role states its Claude Code default, and every carried unit ends with a status line', () => {
-  const roles = roleSections(read(`${REFS}/change.md`))
+test('roles: delegate on host defaults and end every carried unit with a status line', () => {
+  const change = read(`${REFS}/change.md`)
+  assert.match(change, /host defaults for model and effort unless the user/)
+  assert.doesNotMatch(change, /(?:\bmodel:\s*(?!inherit\b)[\w.-]+|\bgpt-\d|\b(?:haiku|sonnet|opus)\b)/i)
+  const roles = roleSections(change)
   for (const name of ['explorer', 'reviewer', 'implementer'])
     assert.ok(roles.some(r => r.name === name), `the Change reference lacks the ${name} role`)
   for (const r of roles) {
-    assert.match(r.body, ROLE_DEFAULT, `${r.name}: no Claude Code default line`)
     // A brief carries the body and one perspective; whichever it picks must say how the reply ends.
     for (const unit of r.perspectives.length ? r.perspectives.map(p => r.body + p) : [r.body])
       assert.match(unit, /End with/, `${r.name}: a body and perspective without a status line`)
   }
-  const fake = roleSections('## x\nClaude Code default: `model: a`, `effort: b`\nbody\n### P\nno status\n')
+  const fake = roleSections('## x\nbody\n### P\nno status\n')
   assert.equal(fake[0].perspectives.length, 1, 'counterexample: a perspective is found')
   assert.doesNotMatch(fake[0].body + fake[0].perspectives[0], /End with/, 'counterexample: a unit without a status line')
 })

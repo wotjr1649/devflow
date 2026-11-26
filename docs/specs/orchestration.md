@@ -77,11 +77,9 @@ injects into subagents reach devflow's agents too: they run as `general-purpose`
 
 ## Models and effort
 
-The user picks the main controller's model and effort. devflow does not set `effort` on skills that run in the main
-session, because changing the main session's effort invalidates the prompt cache; effort differences belong only on
-subagents, which use their own cache. The Claude columns of the Roles table in
-[Change](../../skills/devflow/references/change.md#role-selection) are family aliases; the Codex column, which has no aliases, is updated
-when a new version ships. fable and astra are not used.
+The host supplies model and effort defaults for the main session and its workers. An explicit user choice can override
+those defaults when the runtime supports it. [Change](../../skills/devflow/references/change.md#role-selection) routes
+work by evidence and permissions and records only confirmed overrides.
 
 In Claude Code, the `model` (aliases only) and `effort` given at call time take precedence over the session's model and
 effort, except that `CLAUDE_CODE_EFFORT_LEVEL` overrides the call's `effort` ([host-facts](../research/host-facts.md)).
@@ -94,8 +92,8 @@ and runs commands; `reviewer`, which only reads; and `implementer`, which edits 
 body and at most one perspective verbatim, on both hosts, so one text serves both and the skill needs nothing outside
 its folder ([rationale](../design/current-decisions.md#execution-and-delegation)).
 
-The plugin ships no agent definitions. Claude Code runs every role on `general-purpose` with the brief and the Roles
-table's model and effort, and Codex on `spawn_agent`, so each host has one delegation path. Explore and Plan are not
+The plugin ships no agent definitions. Claude Code runs every role on `general-purpose` with the brief, and Codex on
+`spawn_agent`, so each host has one delegation path. Explore and Plan are not
 used: they start without the project instructions. Tool lists, `disallowedTools` and `maxTurns` exist only in a Claude
 agent definition and no Codex spawn sets a tool or sandbox limit, so the roles' limits (the reviewer reads only, the
 explorer changes no files, the implementer spawns no agents) hold by instruction. The main session's check before and

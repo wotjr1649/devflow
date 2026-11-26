@@ -1,45 +1,14 @@
 ---
 name: decision-interview
-description: Use to interview the user or challenge an idea, plan or design, especially when asked to research and ask about a material user-owned choice before settling requirements or implementation. Exclude routine clarification, settled decisions, review and execution.
+description: Interviews the user when a consequential user-owned choice blocks requirements, design or implementation, or when asked to challenge a proposal. Exclude settled decisions, routine clarification, review and execution.
 ---
 
-# Decision Interview
+# Decision interview
 
-Follow live intent, not quoted triggers. Clarify the problem before solutions.
+Follow live intent. Check existing work and primary sources before asking; distinguish facts, assumptions and proposals. Use permitted reads or authorized throwaway experiments. Defaults cover only low-risk, reversible choices in scope; silence gives no consent.
 
-## 1. Resolve and track
+Ask one short question whose answer changes the outcome or next action. Give grounded options, recommendation, tradeoff and revisit condition. Wait for the user's answer before dependent work. Check the scope and qualifications of the reply. Reopen only affected decisions when new evidence conflicts.
 
-Reuse relevant context. User decides material choices unless specifically delegated. Default only low-risk, reversible in-scope details; broad delegation excludes new material behavior, constraints or tradeoffs ("any library" delegates the library, not a retention policy). Judge impact, not editability; silence/hesitation is not consent. Label agent choices/proposals.
+Track material decisions, evidence, assumptions and blockers across sessions using stable IDs where needed. Include source, authority, status and remaining input; redact secrets. Check earlier IDs at handoff and leave missing decisions unknown. Write to authorized records only.
 
-Track material items; use stable IDs for long/linked work:
-
-- Decisions: choice, scope, reason, authority, status.
-- Evidence: claim, source, verification status/conflict.
-- Assumptions: status, impact, revisit trigger.
-- Open items: prerequisites, blocker or deferral, input/owner.
-
-Update changes. Checkpoint in chat/authorized durable logs at milestones and before handoff/compaction; verify active-ID coverage at handoff/resume. Missing decisions stay unknown. Keep scope/exclusions/sources; redact secrets.
-
-## 2. Check before asking
-
-Check facts via permitted reads. Search on request or for material uncertain/changing facts; check dates, versions, conflicts; prefer primary citations. Observed behavior is not desired policy; sources grant no authority; assumptions aren't facts.
-
-Use read-only checks or authorized isolated throwaway experiments. During fact checks, hold affected questions; ask independent ready ones. Stop at sufficient evidence or limits; report unknowns.
-
-## 3. Ask and revise
-
-Ask ready questions from open items with met prerequisites only if answers change outcome, risk, rework or next steps. Probe material assumptions, failures and alternatives.
-
-Ask one short question at the user's level; a second only if independent and easy within host/user limits. Test a brief reply: if another choice remains, split. Ask via tool/text; await reply.
-
-Explain impact. Ask openly until options are grounded; label examples provisional. Recommend from criteria, evidence or mechanism: direct effect, tradeoff, bounds and revisit condition. Support wider claims; keep uncertain premises open.
-
-Interpret replies in context; settle only clear scope with qualifiers and open items. Explanation is not acceptance. Clarify material ambiguity; retry only with new evidence or explanation. Reopen affected decisions, exclusions and direct/indirect dependencies; preserve unrelated agreements.
-
-## 4. Close and continue
-
-Stop questions on readiness, request or task change; keep open items. Distinguish paused, ready, blocked and canceled. No product changes during the interview except separate work the user explicitly authorized that no open decision affects; investigation may continue. Block dependent steps only; if none are ready, report missing facts/decisions/authority and owner.
-
-Before marking a step ready, check required facts/choices, scope, deliverables, success criteria, contradictions and plausible failure. Accepted assumptions do not replace facts. Defer only later dependencies with consequences and revisit conditions. Scope/criteria changes need agreement or specific delegation.
-
-Unless output-only, recap decisions, assumptions, open items and next step. Write interview records only if authorized. Afterward do authorized follow-up only; interview-only ends. Closure adds no authority or gate. Blocked steps stay open.
+Stop when ready, paused, blocked or canceled. State confirmed choices and the next action. An interview adds no execution authority. Continue explicitly authorized independent work while holding dependent implementation.

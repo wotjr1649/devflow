@@ -46,16 +46,9 @@ guarantees the previous session's identifier and its end.
 and verification from a separate viewpoint.
 Implementation is delegated when there is a reason to protect the main session's context, such as workload or an
 unattended run, and parallel writes are used only when files do not overlap and interfaces are fixed. The devflow
-skill's Execution modes set the conditions per mode ([why](../specs/orchestration.md#execution-modes)). Models and effort are chosen to fit the role and
-the evidence, but the user chooses the main model. Roles whose results the main session judges again, such as
-exploration and summarizing, go to the cheapest family (haiku, luna), and promotion within the same model is done
-through the call's effort. fable and astra are not used because their token cost is high. Codex mechanical
-implementation, execution verification and per-task review go to terra, which costs half of sol and is close to sol on
-coding-agent benchmarks; hard judgment and security review stay on sol.
-In side-by-side trials on past work, terra produced the same results as sol in all three roles at lower cost
-([host-facts](../research/host-facts.md)).
-With briefs missing decisions, both models silently filled unstated gaps, so that risk is prevented not by model
-promotion but by the main session settling the behavior in the brief.
+skill's Execution modes set the conditions per mode ([why](../specs/orchestration.md#execution-modes)). The host supplies
+model and effort defaults unless the user gives a supported override. A scoped brief and independent evidence carry
+across model changes. Past model comparisons are recorded in [host-facts](../research/host-facts.md).
 Role text and perspectives live in the skill's Change reference, and every brief carries the role's body and one
 perspective on both hosts, so the skill depends on no agent name or file (#157). The plugin ships no agent definitions
 (#159): Claude Code runs every role on `general-purpose`, Codex on `spawn_agent`, so each host has one delegation path.
@@ -106,11 +99,8 @@ Keeping the definitions as shells keeps those limits but a second delegation pat
 report and redo route, for controls the comparison did not show to matter. Passing the subagent a path
 to its role text instead of the text would shrink briefs but put the role text below the brief, beside tool output.
 
-**Revisit when.** Revisit routes beyond the table and promotion (hook enforcement, declarative routes) when promotion
-recurs in real cycles or the same role's lack of quality is confirmed by review evidence two or more times, or when in
-Codex the table's model is not applied and results differ. If terra mechanical implementation is repeatedly promoted to
-sol in the ledger, or the final review catches defects missed by terra per-task review two or more times, that role goes
-back to sol. Revisit whether to add Workflows to the execution modes when they are used repeatedly within devflow cycles
+**Revisit when.** Revisit routing when independent evidence confirms recurring gaps in a role or when the host cannot
+honour an explicit override. Revisit whether to add Workflows to the execution modes when they are used repeatedly within devflow cycles
 and their results need to be recorded in the ledger. Revisit agent definitions when an after-check finds a delegated
 agent's change or outside effect, when an unattended implementer runs away within one task, or when a call or spawn can
 set tool limits.

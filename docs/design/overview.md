@@ -65,7 +65,7 @@ Document format and budgets: [documents](../specs/documents.md).
   default, summary, root cause, verification. `reviewer` (reads only): correctness by default, design, security.
   `implementer` (edits). The plugin ships no agent definitions: Claude Code runs every role on `general-purpose`,
   Codex on `spawn_agent` ([why](current-decisions.md#execution-and-delegation)).
-  Models, effort, promotion: the devflow skill's Roles table ([why](../specs/orchestration.md#models-and-effort))
+  Models and effort follow the host or an explicit user override ([why](../specs/orchestration.md#models-and-effort)).
 - **Claude Workflows**: devflow does not ship them and does not keep them as an execution mode. The user runs them
   directly outside devflow ([execution modes](../specs/orchestration.md#execution-modes))
 - **Hooks**: resume card (SessionStart), continuation in unattended mode only (Stop), release when the session ends

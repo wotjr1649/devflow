@@ -78,6 +78,8 @@ release channel ([distribution contract](docs/specs/repository.md#distribution))
 
 ## Verify a local checkout
 
+When recording a local verification result, include the exact revision the command checked.
+
 Use this path to check a clone before installing anything. Steps 1 and 2 only read the repository and run its
 checks. Step 3 runs against a scratch Claude Code profile, so it leaves your default profile, plugins and trust
 choices alone.

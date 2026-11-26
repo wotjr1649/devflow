@@ -1,0 +1,37 @@
+name: v15 trial verification policy
+on:
+  pull_request:
+    branches: [trial/v15-enforced-20261127]
+permissions:
+  contents: read
+jobs:
+  preservation:
+    name: Devflow trial verification policy
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_REF: ${{ github.base_ref }}
+      HEAD_REF: ${{ github.head_ref }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+    steps:
+      - name: Compare the expected verification definition without checking out candidate code
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'wotjr1649/devflow' && "$HEAD_REPO" == "$GITHUB_REPOSITORY" ]]
+          [[ "$BASE_REF" == 'trial/v15-enforced-20261127' ]]
+          case "$HEAD_REF" in
+            test/175-v15-enforced-20261127-normal|test/175-v15-enforced-20261127-weak) ;;
+            *) exit 1 ;;
+          esac
+          for revision in "$BASE_SHA" "$HEAD_SHA" "$GITHUB_SHA"; do
+            [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+            actual=$(gh api "repos/$GITHUB_REPOSITORY/contents/.devflow.json?ref=$revision" --jq '.sha')
+            if [[ "$actual" != '6706bbb02a273ee908d1c960747c71abef0a7df5' ]]; then
+              printf 'Trial verification definition changed at %s\n' "$revision" >&2
+              exit 1
+            fi
+          done
+          printf 'TRIAL_VERIFY_DEFINITION=preserved\n'

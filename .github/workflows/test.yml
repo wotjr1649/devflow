@@ -4,7 +4,7 @@ name: test
 on:
   push:
   pull_request:
-    branches: [main, trial/v15-pr-ci-20261127]
+    branches: [main, trial/v15-enforced-20261127]
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,8 +33,8 @@ jobs:
   trial-publisher-boundary:
     if: >-
       github.event_name == 'pull_request' && github.repository == 'wotjr1649/devflow' &&
-      github.base_ref == 'trial/v15-pr-ci-20261127' &&
-      (github.head_ref == 'test/175-v15-pr-ci-20261127-normal' || github.head_ref == 'test/175-v15-pr-ci-20261127-weak') &&
+      github.base_ref == 'trial/v15-enforced-20261127' &&
+      (github.head_ref == 'test/175-v15-enforced-20261127-normal' || github.head_ref == 'test/175-v15-enforced-20261127-weak') &&
       github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
@@ -53,7 +53,7 @@ jobs:
               curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' \
                 --request POST --header @- \
                 --header 'Accept: application/vnd.github+json' --header 'Content-Type: application/json' \
-                --data '{"state":"success","context":"devflow-trial/v15-evidence","description":"Trial canary: CI publication must be denied"}' \
+                --data '{"state":"failure","context":"devflow-enforced/v15","description":"Trial canary: CI publication must be denied"}' \
                 "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$TRIAL_HEAD"
           )
           if [[ "$code" != 403 ]]; then

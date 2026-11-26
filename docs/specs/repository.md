@@ -161,8 +161,9 @@ write a check line in the integration commit.
 
 In a `pr-ci` repository the evidence for the full `verify` that is the integration gate is CI that actually checked the
 same revision. The project's `verify` step must succeed on HEAD for a branch push and on the latest merge result for a
-PR; how to confirm this follows the [integration](../../skills/devflow/references/ship.md#integration) part of the devflow ship reference. Locally, run only checks that exercise the
-change and the behavior it affects (tests of the touched paths and their callers). When there is no basis for narrowing
+PR, using the [Integration](../../skills/devflow/references/delivery.md#integration) section of the Delivery reference.
+Locally, run only checks that exercise the change and affected behavior (the touched paths and their callers). When
+there is no basis for narrowing
 the scope (changes to shared code, configuration or test tooling), run the full `verify` locally then and there. When CI
 does not run `verify` or its result cannot be confirmed, run the full `verify` locally and wait for required CI
 separately. CI success does not replace per-criterion run evidence or independent review.
@@ -210,8 +211,8 @@ The local pre-push is the integration gate for `local-merge`. In `pr-ci` the hoo
 it is on does it run as a check before branch pushes. The integration gate for `pr-ci` is the server's ruleset and PR
 checks.
 
-After the checks and records of [ship](../../skills/devflow/references/ship.md), just before integration, read base, head, rules and checks
-again, and merge with the reviewed head as the expected head (`gh pr merge --match-head-commit <sha>`), so a push
+After the checks and records of [Delivery](../../skills/devflow/references/delivery.md), read base, head, rules and
+checks again just before integration. Merge with the reviewed head as the expected head (`gh pr merge --match-head-commit <sha>`), so a push
 after the checks cannot slip in. If the branch is behind, merge main ([review](orchestration.md#review)). After the merge, confirm the actual main
 SHA and main CI before completing and cleaning up.
 

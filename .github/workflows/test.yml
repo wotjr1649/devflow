@@ -48,11 +48,14 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TRIAL_HEAD" =~ ^[0-9a-f]{40}$ ]]
-          code=$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' \
-            --request POST --header "Authorization: Bearer $TRIAL_CI_TOKEN" \
-            --header 'Accept: application/vnd.github+json' --header 'Content-Type: application/json' \
-            --data '{"state":"success","context":"devflow-trial/v15-evidence","description":"Trial canary: CI publication must be denied"}' \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$TRIAL_HEAD")
+          code=$(
+            printf 'Authorization: Bearer %s\n' "$TRIAL_CI_TOKEN" |
+              curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' \
+                --request POST --header @- \
+                --header 'Accept: application/vnd.github+json' --header 'Content-Type: application/json' \
+                --data '{"state":"success","context":"devflow-trial/v15-evidence","description":"Trial canary: CI publication must be denied"}' \
+                "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$TRIAL_HEAD"
+          )
           if [[ "$code" != 403 ]]; then
             printf 'Unexpected commit-status response: %s\n' "$code" >&2
             exit 1

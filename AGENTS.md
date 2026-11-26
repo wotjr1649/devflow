@@ -17,7 +17,7 @@ GitHub Issues track work.
 | changing layout, installation or hooks | `docs/specs/repository.md`, `docs/specs/hooks.md` |
 | preparing or testing a development plugin | `docs/local-development.md` |
 | clarifying intent or changing stage transitions | `skills/devflow/SKILL.md`, then `docs/specs/lifecycle.md` for why |
-| changing execution modes, delegation or models | `skills/devflow/SKILL.md` and its build reference, then `docs/specs/orchestration.md` for why |
+| changing execution modes, delegation or models | `skills/devflow/SKILL.md` and its Change reference, then `docs/specs/orchestration.md` for why |
 | changing the trigger eval | `docs/specs/eval.md` |
 | revisiting a design choice | `docs/design/current-decisions.md` |
 | relying on host behavior | `docs/research/host-facts.md`; if local behavior differs, `docs/research/sources.md` |
@@ -38,7 +38,7 @@ node --test --test-timeout=120000 tests/*.test.js
 
 Fix failing tests without weakening valid ones; change a test only when the requirement or its expectation changed.
 For setup and integration gates, follow `docs/specs/repository.md`; for branch and worktree cleanup,
-`skills/devflow/references/cleanup.md`.
+`skills/devflow/references/delivery.md#cleanup`.
 Hook setup requires explicit instruction.
 
 ## Language

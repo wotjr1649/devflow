@@ -18,18 +18,18 @@ verify, and leaves checking to review and CI rather than blocking hooks.
 
 ## Use
 
-devflow works in repositories that have a `.devflow.json` ([repository contract](docs/specs/repository.md)). Open a
+Tracked Devflow work uses a repository with `.devflow.json` ([repository contract](docs/specs/repository.md)). Open a
 session there and the SessionStart hook prints a `[devflow]` resume card with the Issue state, the ledger and the
 `Tool:` path for Issue I/O. Then ask in plain words (start new work, continue the Issue, review it, open or merge the
 PR, clean up merged branches, hand off to another session) or invoke the `devflow` skill. One skill, `devflow`, runs
-the whole lifecycle and reads the reference for the current stage.
+the lifecycle with three references: Resume, Change and Delivery. It opens only the needed procedure.
 
 The four independent skills (`decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`)
 work in any repository, devflow or not.
 
 **Compatibility:** `/development-start`, `/pr-review-workflow` and `/workspace-cleanup` are gone. In a devflow
-repository their requests go to `devflow`; repositories without `.devflow.json` no longer get starting, PR review or
-cleanup from this plugin.
+repository their requests go to `devflow`. Outside tracked work, Devflow can guide a consequential change or handoff
+without Issue or ledger access; routine work follows the project workflow.
 
 ## Install
 

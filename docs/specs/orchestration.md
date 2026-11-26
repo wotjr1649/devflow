@@ -1,11 +1,8 @@
 # Orchestration contract
 
 Defines why work runs the way it does: who writes code, when to delegate, and which model and effort run it. The
-procedure the executor follows lives in the devflow skill, which owns it: [SKILL.md](../../skills/devflow/SKILL.md)
-(Delegation, Execution modes, Roles) and its [plan](../../skills/devflow/references/plan.md),
-[build](../../skills/devflow/references/build.md), [review](../../skills/devflow/references/review.md) and
-[design](../../skills/devflow/references/design.md) references. This spec keeps the reasons, the policy the skill does
-not apply at run time, and the host facts delegation and tests rely on.
+procedure the executor follows lives in the devflow skill's [Change reference](../../skills/devflow/references/change.md).
+This spec keeps the reasons, the policy the skill does not apply at run time, and the host facts delegation and tests rely on.
 
 ## Stages and paths
 
@@ -16,20 +13,20 @@ path: a spike only runs a throwaway experiment, bounded work builds in M0 or M1,
 
 A plan is written so that an engineer who has not seen the conversation can build from it alone, because a wrong plan
 costs a page while a wrong build costs the work. Plans are private and not committed to git; the stage-boundary checkpoint
-carries their public summary. The procedure is the [plan reference](../../skills/devflow/references/plan.md).
+carries their public summary. The procedure is the [Design and plan](../../skills/devflow/references/change.md#design-and-plan) section.
 
 ## Build and verification
 
 A change is done only after a check that executes it, because a syntax check or a check that never started proves
 nothing. A test not seen failing does not prove the change, and a bug fix keeps its reproduction test as written. There
 is no test lock; review reads test changes instead ([rationale](../design/current-decisions.md#instructions-and-protections)).
-The procedure is the [build reference](../../skills/devflow/references/build.md).
+The procedure is the [Build](../../skills/devflow/references/change.md#build) section.
 
 ## Execution modes
 
 Decisions and writes happen in one place, the main session: when several agents write at once, the unstated decisions in
 each one's actions collide. Subagents protect context and verify with fresh eyes. The execution modes and how to choose
-by meaning are in [SKILL.md](../../skills/devflow/SKILL.md#execution-modes).
+by meaning are in [Change](../../skills/devflow/references/change.md#execution-modes).
 
 Workflow is not an execution mode. The user runs it directly, outside devflow ([conditions to
 revisit](../design/current-decisions.md#execution-and-delegation)).
@@ -47,7 +44,7 @@ checkpoints, and confirming permissions and targets with the user. Subagents rep
 
 A brief gives a subagent one task with its files, check, exclusions and an end status, so the subagent needs no
 conversation history and the main session can judge the report without rereading the work. Its shape is in the
-[build reference](../../skills/devflow/references/build.md#delegating-m2-m3). A brief is text agents read, so it is
+[Delegation](../../skills/devflow/references/change.md#delegation) section. A brief is text agents read, so it is
 written in English ([documents](documents.md#text-agents-read) item 9).
 
 ## Subagent questions
@@ -62,7 +59,7 @@ runs with a default 5-minute TTL; if waiting for user answers is frequent, consi
 
 Analysis is split from fixing, because a fix made before the cause is known tends to cover only the symptom. Attempts
 and promotions are counted in ledger `notes`, not in `counts`, which holds only the Stop hook's `{continue}`. The
-procedure is the [build reference](../../skills/devflow/references/build.md#failures).
+procedure is the [Failures](../../skills/devflow/references/change.md#failures) section.
 
 ## Review
 
@@ -74,15 +71,15 @@ reviewed before planning by a reviewer trying to break it, and a claimed bypass 
 command, not by argument. Reviewers only report; no simplification agent edits code during review. Rules another plugin
 injects into subagents reach devflow's agents too: they run as `general-purpose`, so no matcher can single them out
 ([rationale](../design/current-decisions.md#execution-and-delegation)). The procedure is the
-[review reference](../../skills/devflow/references/review.md) and, for designs, the
-[design reference](../../skills/devflow/references/design.md).
+[Verify and review](../../skills/devflow/references/change.md#verify-and-review) section and, for designs,
+[Design and plan](../../skills/devflow/references/change.md#design-and-plan).
 
 ## Models and effort
 
 The user picks the main controller's model and effort. devflow does not set `effort` on skills that run in the main
 session, because changing the main session's effort invalidates the prompt cache; effort differences belong only on
 subagents, which use their own cache. The Claude columns of the Roles table in
-[SKILL.md](../../skills/devflow/SKILL.md#roles) are family aliases; the Codex column, which has no aliases, is updated
+[Change](../../skills/devflow/references/change.md#roles) are family aliases; the Codex column, which has no aliases, is updated
 when a new version ships. fable and astra are not used.
 
 In Claude Code, the `model` (aliases only) and `effort` given at call time take precedence over the session's model and
@@ -91,7 +88,7 @@ In Codex, the model and effort given at spawn take precedence over the defaults,
 instructions may limit what can be set. Read-only roles in Codex are kept only by instruction: a custom agent's
 `sandbox_mode` cannot narrow the parent sandbox ([host-facts](../research/host-facts.md#codex)).
 
-The skill's [roles reference](../../skills/devflow/references/roles.md) holds three roles: `explorer`, which only reads
+The skill's [Roles section](../../skills/devflow/references/change.md#roles) holds three roles: `explorer`, which only reads
 and runs commands; `reviewer`, which only reads; and `implementer`, which edits files. Every brief carries the role's
 body and at most one perspective verbatim, on both hosts, so one text serves both and the skill needs nothing outside
 its folder ([rationale](../design/current-decisions.md#execution-and-delegation)).
@@ -109,14 +106,14 @@ the agent could start a program the agent planted. It is a tripwire, not isolati
 
 ### Perspectives
 
-Each role's perspectives are `###` sections of the roles reference, so no stage reads a separate perspectives file
+Role perspectives live in Change with the roles, so no stage reads a separate perspectives file
 and both hosts apply one text. A brief carries at most one, because a reviewer given two does neither well; the main
 session reads one there when it applies it itself (a Codex design review).
 
 ### Promotion
 
 Promotion goes one step per task, decided by the main session and recorded in one ledger line; its conditions are in the
-[build reference](../../skills/devflow/references/build.md#failures). Routes outside it (hook enforcement, declarative
+[Failures](../../skills/devflow/references/change.md#failures) section. Routes outside it (hook enforcement, declarative
 routes) are on hold; the conditions to revisit them follow [revisiting routes and
 Workflow](../design/current-decisions.md#execution-and-delegation).
 

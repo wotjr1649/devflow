@@ -21,8 +21,9 @@ verify, and leaves checking to review and CI rather than blocking hooks.
 devflow works in repositories that have a `.devflow.json` ([repository contract](docs/specs/repository.md)). Open a
 session there and the SessionStart hook prints a `[devflow]` resume card with the Issue state, the ledger and the
 `Tool:` path for Issue I/O. Then ask in plain words (start new work, continue the Issue, review it, open or merge the
-PR, clean up merged branches, hand off to another session) or invoke the `devflow` skill. One skill, `devflow`, runs
-the whole lifecycle and reads the reference for the current stage.
+PR, clean up merged branches, hand off to another session) or invoke the `devflow` skill. It routes each action to
+Change, Resume, or Delivery. Projects without this configuration can use the same skill for consequential changes and
+handoffs using their own records and checks.
 
 The four independent skills (`decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`)
 work in any repository, devflow or not.

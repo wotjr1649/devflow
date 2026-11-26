@@ -1,6 +1,6 @@
 ---
 name: audit-prompts
-description: Audits existing prompts passed to a model (chat, system, task, handoff, delegation) for material defects or regressions when asked; not for harness-loaded instruction files, drafting or execution.
+description: Use to review a model prompt or check an existing handoff or delegation message against approved scope, authority or evidence before it is sent, including a newly drafted brief. Exclude routine record links, host-loaded instructions, drafting and execution.
 ---
 
 # Audit Prompts

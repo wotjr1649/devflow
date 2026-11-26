@@ -56,7 +56,7 @@ In side-by-side trials on past work, terra produced the same results as sol in a
 ([host-facts](../research/host-facts.md)).
 With briefs missing decisions, both models silently filled unstated gaps, so that risk is prevented not by model
 promotion but by the main session settling the behavior in the brief.
-Role text and perspectives live in the skill's roles reference, and every brief carries the role's body and one
+Role text and perspectives live in the skill's Change reference, and every brief carries the role's body and one
 perspective on both hosts, so the skill depends on no agent name or file (#157). The plugin ships no agent definitions
 (#159): Claude Code runs every role on `general-purpose`, Codex on `spawn_agent`, so each host has one delegation path.
 The owner accepted the loss of the controls only a Claude definition gave - the reviewer's read-only tools, the
@@ -117,10 +117,9 @@ set tool limits.
 
 ## Entry points and stages
 
-**Choice and reason.** One lifecycle skill, `devflow`, is the only entry point. It takes new work, continuation, stage
-transitions, review, PR and merge, cleanup and handoff in repositories with `.devflow.json`, and its SKILL.md links
-each of the eleven stage references in `skills/devflow/references/` directly. Repositories without `.devflow.json`
-get no lifecycle skill at all; that compatibility loss is accepted.
+**Choice and reason.** One lifecycle skill, `devflow`, is the entry point for tracked work in repositories with
+`.devflow.json`. It also supports consequential changes and handoffs with local records in other repositories.
+SKILL.md links Change, Resume, and Delivery directly. Ordinary standalone edits follow the project's normal workflow.
 One description decides invocation, so no two lifecycle descriptions compete for the same request. Each reference is
 one level from SKILL.md and finishes its procedure without reading another, so no step depends on a second hop. After
 compaction a host reattaches only the start of an invoked skill body, so the router puts scope, Issue I/O and the stop
@@ -146,7 +145,7 @@ independent skills shipped with the plugin
 (list in [overview](overview.md#components)). Lifecycle references and specs do not invoke or point to these skills and state
 the needed actions directly, and the skill bodies do not mention devflow either. This keeps them usable as they are in
 repositories without `.devflow.json`, and changing one side does not change the other side's contract. Devflow-specific
-handoff rules are owned by [sessions](../../skills/devflow/references/sessions.md).
+handoff rules are owned by [sessions](../../skills/devflow/references/resume.md#handoff).
 Being in the same list, they can be invoked during the lifecycle through description matching, and this is not a
 contract. As an exception, a resume-prompt request in a devflow repository lets the router and the prompt-writing skill
 be invoked together. They complement each other: the writing skill writes the text, and the router adds the handoff

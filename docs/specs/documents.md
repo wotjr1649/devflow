@@ -27,7 +27,7 @@ the skill a session reads. A conflict between the two kinds is a defect fixed in
 | prompt | only new instructions and the changed part of decisions | chat or `docs/prompts/` | private | one-off |
 | handoff | not written; the state block and checkpoints replace it. Only when private evidence is truly needed | `artifacts/handoff/` | private | as needed |
 | evidence | raw logs, measurements | `artifacts/`, `.work/` | private | kept |
-| lessons | where they go depends on their kind (the devflow skill's [learn reference](../../skills/devflow/references/learn.md)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
+| lessons | where they go depends on their kind (the devflow skill's [learn reference](../../skills/devflow/references/change.md#learn)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
 
 Keep each fact in one place. Other places only link to it, except the test-pinned copies named at the top.
 
@@ -112,7 +112,7 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
    parses and user prompts the eval simulates stay as they are.
 10. devflow has no blocking mechanisms. Effects a test can decide go in tests and CI; the rest is left to instructions
     and review ([why the current choice](../design/current-decisions.md#instructions-and-protections)). Sentences moved into tests are
-    deleted (the devflow skill's [learn reference](../../skills/devflow/references/learn.md)), but the safety floor stays. Rules that need judgment stay in
+    deleted (the devflow skill's [learn reference](../../skills/devflow/references/change.md#learn)), but the safety floor stays. Rules that need judgment stay in
     documents and review. Host-specific means are marked as in rule 7, and their support follows
     [host-facts](../research/host-facts.md).
 
@@ -129,13 +129,11 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
 
 ## Skill references
 
-- Each reference sits one level below its skill and is linked from SKILL.md with the situation that calls for it. A
-  file linked from SKILL.md is read whole; a file reached through another file is often read only in part, and its
-  rules are lost.
-- A reference links no other reference, and a procedure never needs a second reference. When a request spans two
-  procedures, SKILL.md names both, so every read stays one level deep. A stage that delegates also uses the roles
-  reference for the brief's role text; SKILL.md names it in its Delegation section and reading table, and the stage
-  reference points there rather than linking it.
+- Each reference sits one level below its skill and is linked from SKILL.md with the situation that calls for it.
+  Devflow groups procedures in Change, Resume and Delivery so a session reads the applicable section at each
+  boundary. Read the complete applicable section, including its exit and guards.
+- A reference links no other reference. When a request spans procedures, return to SKILL.md for the next applicable
+  section so each read stays one level deep. Role text and delegation live together in Change.
 - Skill files link only inside the skill folder and cite no plugin spec, so a session needs no plugin document outside
   the skill to finish a step; specs may link to the skill. A test enforces this. The plugin's runtime parts are the
   exceptions the skill relies on: the card's `Tool:` (`bin/devflow-state`) and the hooks. The plugin ships no agent

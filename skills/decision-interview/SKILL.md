@@ -1,6 +1,6 @@
 ---
 name: decision-interview
-description: Interviews or grills the user on ideas, plans and implementation choices when asked, or when a user-only decision blocks work; not for reviews or execution.
+description: Use to interview the user or challenge an idea, plan or design, especially when asked to research and ask about a material user-owned choice before settling requirements or implementation. Exclude routine clarification, settled decisions, review and execution.
 ---
 
 # Decision Interview

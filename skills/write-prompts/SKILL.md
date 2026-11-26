@@ -1,6 +1,6 @@
 ---
 name: write-prompts
-description: Drafts or revises prompts passed to a model (chat, system, task, handoff, delegation) when asked; not for discussion-only requests, harness-loaded instruction files or task execution.
+description: Use to draft or revise instructions for a model, including a brief for a new or existing agent session when assignment or handoff needs a task message. Exclude record-link-only continuation, discussion, host-loaded instructions and task execution.
 ---
 
 # Write Prompts
@@ -30,6 +30,8 @@ When revising, preserve intent, essential rationale, constraints, identifiers, s
 ## Handoffs
 
 Carry completed and remaining work, next action, decisions and reasons, relevant files or revisions, and observed check results. Identify the tested state when known; distinguish proposed checks and results predating relevant changes. Reference accessible authoritative records and add missing updates to the handoff without duplicating the records.
+
+When an audit is requested, finish the draft and use the available prompt-auditing skill on that version as a separate read-only step. Before dispatch, do the same for a brief that delegates writes, carries a material decision or gate, or resumes an uncertain effect. Report if the audit is unavailable. A record link suffices when it already gives the recipient an authorized next action.
 
 ## Deliver
 

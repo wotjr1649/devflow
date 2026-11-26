@@ -14,7 +14,7 @@
   "interface": {
     "displayName": "devflow",
     "shortDescription": "Issue-driven development loop",
-    "longDescription": "devflow resumes Issue-tracked work from the Issue's state and checkpoints in repositories with a .devflow.json. One lifecycle skill, devflow, takes every stage from starting work through review, PR and merge to branch cleanup (discover, start, design, plan, build, verify, review, ship, cleanup, learn), reads that stage's reference, and delegates reads and checks to fresh-context agents; lifecycle hooks inject the resume card, continue autonomous work within task limits, and release sessions when they end. Four independent skills ship alongside and work in any repository without the loop: decision-interview, write-prompts, audit-prompts and agent-instruction-design.",
+    "longDescription": "devflow supports consequential changes and handoffs through Change, Resume, and Delivery. In repositories with a .devflow.json, it resumes Issue-tracked work, delegates reads and checks to fresh-context agents, and follows the lifecycle from discovery to branch cleanup. Lifecycle hooks inject the resume card, continue autonomous work within task limits, and release sessions when they end. Four independent skills ship alongside: decision-interview, write-prompts, audit-prompts and agent-instruction-design.",
     "developerName": "wotjr1649",
     "category": "Productivity",
     "capabilities": ["Interactive", "Read", "Write"]

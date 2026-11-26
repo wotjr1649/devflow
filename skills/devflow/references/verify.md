@@ -4,7 +4,7 @@ Done when each acceptance criterion in scope has execution evidence - the comman
 strength and the result - on the current HEAD, and none of them failed. For a task, the scope is that task's checks;
 after the last task, every acceptance criterion in the Issue.
 
-- Run each criterion against the built result. Reading the code is review, not verification.
+- Require execution for each criterion against the built result. Use matching evidence before running a check again.
 - From M1 up, a fresh context runs the behaviour: Claude Code, `explorer`; Codex, a worker told to report only. Either
   way the brief carries the explorer body and its verification perspective as the router's Delegation section says,
   on the model of the router's Roles table. Give it the criteria, the commands and
@@ -14,14 +14,15 @@ after the last task, every acceptance criterion in the Issue.
 - Report each criterion's evidence strength: a behaviour run (the feature or command used as a user would), a targeted
   test, or build or static only. Only a behaviour run or a targeted test that exercises the criterion verifies it; a
   passing build or a broad suite that never reaches the criterion leaves it open.
-- Evidence holds for the revision it ran on. When HEAD moved after a check ran, re-run it on the current HEAD before
-  counting it, since the new commits may change the result.
+- Reuse only after reading the actual result and matching current HEAD, check scope, execution conditions and verifier.
+  Rerun on moved HEAD, missing scope or verifier evidence, an unusable result, or a required fresh run.
 - For a reported bug, first reproduce the symptom the report describes and record how, then verify the fix against that
   same reproduction; a fix checked only by a test written afterwards can pass while the reported symptom stays.
 - A criterion that cannot be executed stays open: name it, the reason, and the evidence that stands in for it.
 - A failure goes back to build without asking the user; after the fix, verify the affected criteria again.
 
-Record the evidence in the ledger as `notes` lines. When a task's verify passes, `ledger-update` moves `task` current to
+In ledger `notes`, link each criterion to its command, revision, conditions, verifier and run record, result and local
+output. When a task's verify passes, `ledger-update` moves `task` current to
 the next task, or past total after the last one, since an open task is what lets unattended work continue. At the
 stage boundary after the last task, the checkpoint's `- 검증:`
 line lists what ran and what did not, then the work moves to review.

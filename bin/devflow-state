@@ -224,7 +224,7 @@ const USAGE = `usage: devflow-state <command>
   mode <n> autonomous|interactive < reason
                               change the ledger's mode, keeping the reason, time and session of the change; another
                               session taking over an unattended run claims it with mode <n> autonomous
-  running <n> add|done <label>
+  running <n> add|claim|done <label>
                               record a background delegation as it starts and ends; the Stop hook waits while any runs
   release <n>                 when handing the Issue to another session: stop warning it about this one
   delegation-check before | delegation-check after <token>
@@ -1643,10 +1643,11 @@ function attempt(ctx, op, n, text, title) {
   return post(ctx, op, n, text, title)
 }
 
-const RUNNING_USAGE = 'usage: devflow-state running <issue> add <label> | running <issue> done <label>'
+const RUNNING_USAGE = 'usage: devflow-state running <issue> add|claim|done <label>'
+const ALREADY_RUNNING = Symbol('already running')
 function running(env, cwd, n, op, label) {
   const name = String(label || '').trim()
-  if (!['add', 'done'].includes(op) || !name || /[\r\n]/.test(name)) return { code: 2, out: RUNNING_USAGE }
+  if (!['add', 'claim', 'done'].includes(op) || !name || /[\r\n]/.test(name)) return { code: 2, out: RUNNING_USAGE }
   const ctx = repoContext(env, cwd)
   const no = ledgerGate(ctx, n, 'running', { append: true })
   if (no) return no
@@ -1659,11 +1660,13 @@ function running(env, cwd, n, op, label) {
     const label = x => (typeof x === 'string' ? x.trim() : x === null || x === undefined || x === false ? '' : JSON.stringify(x))
     const now = [...new Set(items.map(label).filter(Boolean))]
     if (op === 'done' && !now.includes(name)) return { result: ZERO }
-    const next = op === 'add' ? (now.includes(name) ? now : [...now, name]) : now.filter(x => x !== name)
+    if (op === 'claim' && now.includes(name)) return { result: ALREADY_RUNNING }
+    const next = op === 'done' ? now.filter(x => x !== name) : (now.includes(name) ? now : [...now, name])
     return { ledger: { ...ledger, running: next }, result: next }
   })
   if (r.ok && r.result === MISSING) return NO_LEDGER(n)
   if (r.ok && r.result === ZERO) return { code: 1, out: `refused: "${name}" is not running for Issue #${n}` }
+  if (r.ok && r.result === ALREADY_RUNNING) return { code: 1, out: 'refused: this work label is already running; reconcile ownership and exit before another launch' }
   return r.ok ? { code: 0, out: `running ${r.result.length}` } : guarded(ctx, LOCKED(n, r.why), n)
 }
 

@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: Runs the Issue-tracked development lifecycle in repositories with a `.devflow.json`, whose sessions open with a [devflow] resume card - starting new work, resuming an Issue and moving it between stages, review, a PR's CI and merge readiness, merging, branch cleanup, and handing the Issue to another session. Use it for these requests there; not in other repositories, for reviews of code outside a tracked Issue, or for writing or auditing prompts and instructions or running decision interviews.
+description: Use when a repository has `.devflow.json` or a resume card and the request starts or resumes tracked work, designs or plans a feature, implements or verifies Issue tasks, reviews a tracked change, checks PR or CI readiness, merges, cleans up, or hands off an Issue. Excludes generic Git questions, untracked reviews, standalone prompt or instruction work, and decision interviews.
 ---
 
 # devflow
@@ -36,7 +36,7 @@ Write the Issue at stage boundaries, decisions and blockers. The state block (`#
 `### Checkpoint <stage> — <summary>` and up to nine lines: `- 변경:`, `- 검증:` (what ran; what did not, why),
 `- 결정:`, `- 다음:`. Progress inside a stage goes to the ledger (`decisions`: open ones only; `blocked`: waits on a
 person; `followups`: out-of-scope finds for ship; `notes`: path changes, evidence). Change `running` only with
-`running <issue> add|done <label>`, add notes only with `note`, and switch `mode` only with the `mode` command
+`running <issue> add|claim|done <label>`, add notes only with `note`, and switch `mode` only with the `mode` command
 ([sessions](references/sessions.md)): the first two keep other sessions' entries, which a whole-key write would lose,
 and `mode` records when and by whom it switched.
 

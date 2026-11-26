@@ -31,7 +31,7 @@ procedure.
 Where each fact comes from:
 - Confirmed intent and coarse state: the card's Tool `read <issue>`. Task progress and blockers of the same Issue:
   `ledger <issue>`. A missing or unreadable ledger means unknown progress and blockers, not none.
-- Verification evidence: the ledger's notes and the Issue's checkpoints; open the raw evidence they point to as needed.
+- Verification evidence: ledger notes and Issue checkpoints locate the actual results. Read them before reuse.
 - Task and proof scope: the linked plan (bounded: the one change and checks set in design). Revision applicability: Git.
   When HEAD differs from `lastCommit`, check the changed commits; a successful log alone proves no applicability.
 - Create no milestone fields, duplicate status records or routine public posts; keep private paths and logs local.
@@ -41,7 +41,7 @@ Reconciling:
   Reconcile other differences by repository, Issue and branch identity, scope and applicable revision, not by the newest
   timestamp.
 - Missing or stale evidence, or unclear task versus full verification, leaves acceptance unpassed. Keep warnings and
-  failed results.
+  failed results. When the current stage, scope and checks agree, continue the pending step in that stage.
 - Before relying on what a truncated card omits, recover the full Issue and ledger, then the local plan and evidence,
   through their readers. Do not guess completion or repair state automatically.
 - If identity or a conflict stays unresolved, show the position as unverified, hold the dependent effect and name the
@@ -64,9 +64,9 @@ its delegated work to finish, then run `release <issue>` as the last ledger acti
 Codex (`CODEX_THREAD_ID` is set): that release would remove the Codex session. Report the next step and let the
 user clear: Codex may keep the old thread alive after `/clear`.
 
-The resume card already brings back the Issue, its latest checkpoint and the ledger, so a resume prompt or a brief for
-another session carries only what they lack: instructions and decisions made since the last checkpoint, under 500
-tokens, pointing at the Issue rather than restating it, which costs output now and input in every later session.
+When asked to draft a resume prompt, use the available model-prompt writing skill with this handoff procedure.
+The card brings the Issue, checkpoint and ledger. Point to them and give only missing instructions and decisions
+since the checkpoint, under 500 tokens. Use that same budget for a brief for another session.
 
 - A subagent brief, in English, opens with the role text the router's Delegation section names, then gives the task,
   BASE, goal, acceptance, files it may change, git-ignored inputs by path and the check; puts push, Issue writes,

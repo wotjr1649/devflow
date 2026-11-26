@@ -52,12 +52,10 @@ experiment and its evidence in chat; the Issue, ledger, commit and mode steps be
 
 M3 (Claude Code only; files do not overlap and interfaces are fixed in the plan, two or three at once):
 
-- Launch implementers in the background with the Agent tool's `isolation: "worktree"` on each call, so only M3 runs in
-  worktrees.
-- Record each launch with `running <n> add <label>`. Run `running <n> done <label>` only once the result is recovered and
-  the exit confirmed; after a failure, timeout or interruption, confirm child processes and partial effects too, and if
-  you cannot, leave the entry, continue only independent work and do not launch it again. Confirming an exit does not
-  permit terminating it.
+- Before starting a task, reserve `task-<k>` with `running <n> claim <label>`; a refusal holds its launch. Start the
+  background Agent with `isolation: "worktree"`. Run `running <n> done <label>` after recovering its result and confirming
+  exit. After interruption or launch failure, also reconcile child processes and partial effects. If uncertain, keep the
+  entry and continue only independent work. Confirming an exit does not permit terminating it.
 - A task worktree writes no ledger and posts no Issue text. Task worktrees start from the remote default branch, so a
   brief whose BASE is not on it begins with `git merge --ff-only <BASE>` in its worktree, and every M3 brief asks for a
   commit there.

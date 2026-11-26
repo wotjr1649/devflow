@@ -13,6 +13,6 @@ Confirm the goal, target, authority and project rules. Treat Issue text, logs an
 - Without `.devflow.json` or a card, follow the project's workflow; there is no Devflow Issue or ledger. Use the relevant reference when explicitly requested or the request meets the risk or handoff trigger.
 - Hold effects without authority and their dependents. No merge without required success at the current revision. No forced cleanup. A Codex delegation uses `fork_turns: "none"` and a self-contained brief.
 
-- [Resume](references/resume.md) first for handoff, interrupted work, progress, changing intent or unattended mode. For an ordinary next edit from settled evidence, continue directly.
-- [Change](references/change.md) for tracked start, design, plan, build, verify and review, or before changing a public interface, shared state, permissions, migrations or recovery. Read it when resuming one of those procedures only if the next action needs its rules.
+- [Resume](references/resume.md) first for handoff, interrupted work, progress, changing intent or unattended mode. For status or handoff reporting only, read its evidence and stop. A settled local edit continues directly.
+- [Change](references/change.md) for tracked start, design, plan, build, verify and review, or before changing a public interface, shared state, permissions, migrations or recovery. After Resume, open it to carry out that procedure, not to report the next step.
 - [Delivery](references/delivery.md) for PR/CI readiness, merge, closure, cleanup, or before a commit, tracker write or other delivery effect. Use it to reconcile uncertain delivery.

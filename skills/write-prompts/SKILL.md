@@ -1,6 +1,6 @@
 ---
 name: write-prompts
-description: Drafts or revises model prompts and task briefs before handing off to a session or launching a worker, including mixed draft-and-launch requests. Skip record-link continuations and host-loaded instructions.
+description: Use when drafting or revising prompts and worker briefs, including requests to audit and launch in one turn. Skip record links and host-loaded instructions.
 ---
 
 # Write prompts
@@ -9,6 +9,6 @@ Separate authoring instructions from what the recipient should do. Preserve the 
 
 Write the goal, accessible inputs, scope, output, observable completion and what to do if blocked. Include only capabilities the recipient has. Runtime settings belong to the host. For an executable task specify checks and the stopping condition.
 
-For a handoff, carry current revision, completed and pending work, decisions, observed checks and next action. Link accessible authoritative records and add only missing information. For a requested audit, finish the draft and use the available prompt auditor on that version. Do the same before dispatching a brief that carries write authority, a material decision or gate, or an uncertain effect. Report an unavailable audit. A link suffices for routine continuation.
+For handoff, carry revision, progress, decisions, checks and next action. Link records and add missing facts. Audit the saved draft when asked or before delegating write authority, a material decision or gate, or uncertain effects. Require PASS on that revision. Report an unavailable audit. Send the audited text verbatim or pass the file and SHA-256 for the worker to verify. A link suffices for routine continuation.
 
 Check the draft against the original scope. Return the prompt or write to the authorized path, avoiding unrelated overwrites. Leave execution and dispatch to the authorized caller.

@@ -1,11 +1,9 @@
 # Common hook contract
 
-Sets SessionStart, Stop and SessionEnd shared by both hosts, along with input reading and session release.
-Issue I/O is set by [issues](issues.md), and the ledger and the continue and release conditions by [ledger](ledger.md).
+Shared events, input and release. See [issues](issues.md) for Issue I/O and [ledger](ledger.md) for continuation and release.
 
 ## Common contract of both hosts
 
-The following is a contract the product must meet; current session passing does not meet it yet.
 Claude Code and Codex share one definition in `hooks/hooks.json` and one entry point and policy in
 `hooks/devflow-hook.js`.
 There are no host-specific event registrations, card, continue or release policies, or file, setting or environment
@@ -38,11 +36,10 @@ the target host's nested scenario.
 
 ## Registered events
 
-`hooks/hooks.json` registers only the following three events.
-
 | Event | Action |
 |---|---|
 | SessionStart (`startup`, `resume`, `clear`, `compact`) | Injects the resume card and shares the session id. A card failure shows as a reason, and no state is inferred |
+| UserPromptSubmit | Advises saving, auditing and dispatching the same brief when a request combines all three. Adds no context for other requests |
 | Stop | When its own Issue's unattended work is open, this session switched or reattributed it, and nothing is waiting, asks to continue at most 2 times per task. The count is added under the ledger lock, and it stops on an error or a lock conflict |
 | SessionEnd | Releases only the input session from the session records of every Issue. It does not wait for the lock and preserves other sessions' records |
 

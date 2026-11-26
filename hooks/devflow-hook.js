@@ -1,6 +1,5 @@
 'use strict'
-// SessionStart prints the resume card, Stop continues autonomous work, and SessionEnd releases the session.
-// Rules: docs/specs/hooks.md, docs/specs/issues.md (resume card), docs/specs/ledger.md (continuation and release).
+// Shared hook contract: docs/specs/hooks.md.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -113,6 +112,19 @@ function gitLocation(root) {
 let eventSession = null
 const sessionHash = id => (typeof id === 'string' && id ? crypto.createHash('sha256').update(id).digest('hex').slice(0, 12) : null)
 
+function briefRoute(prompt) {
+  if (typeof prompt !== 'string') return ''
+  const task = prompt.replace(/```[\s\S]*?(?:```|$)/g, '').replace(/^[ \t]*>[^\n]*/gm, '')
+  const brief = /\b(?:brief|prompt|worker instructions?)\b|작업\s*지시문|프롬프트|브리프|문안/i
+  const write = /\b(?:draft|write|compose|revise|create)\b|작성|만들|초안/i
+  const audit = /\b(?:audit|review|check|validate|verify)\b|감사|검토|대조/i
+  const dispatch = /\b(?:delegate|dispatch|launch|(?:start|spawn|run)\s+.{0,45}\b(?:worker|agent|subagent)\b)\b|위임|띄워|넘겨|(?:작업자|에이전트).{0,25}(?:전달|시작|실행)/i
+  const excluded = /^\s*(?:how|why)\s+(?:do|does|should|can|would|to)\b|\b(?:do not|don't|never|without)\s+(?:delegate|dispatch|launch|(?:start|run)\b.{0,25}\b(?:worker|agent))\b|(?:위임|작업자\s*실행|에이전트\s*(?:실행|시작))(?:은|는|을|를)?\s*(?:하지\s*마|금지)|(?:링크|위치)만\s*(?:답|전달|공유|알려)|\b(?:only|just)\s+(?:share|send|return)\s+(?:the |a )?link\b/i
+  if (!brief.test(task) || !write.test(task) || !audit.test(task) || !dispatch.test(task) || excluded.test(task)) return ''
+  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit',
+    additionalContext: 'For the requested delegation brief, use write-prompts to save the draft, then audit-prompts on that version. Dispatch only after PASS. Pass the text verbatim or the audited file and SHA-256 for the worker to verify.' } })
+}
+
 function handle(raw, env = state.realEnv) {
   let input
   try {
@@ -120,6 +132,7 @@ function handle(raw, env = state.realEnv) {
   } catch {
     return ''
   }
+  if (input?.hook_event_name === 'UserPromptSubmit') return briefRoute(input.prompt)
   if (!input || !['SessionStart', 'Stop', 'SessionEnd'].includes(input.hook_event_name)) return ''
   const cwd = input.cwd || process.cwd()
   eventSession = sessionHash(input.session_id)

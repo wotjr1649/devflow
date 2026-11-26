@@ -331,10 +331,28 @@ test('the hooks.json command runs the hook through a shell', () => {
   assert.equal(out.trim(), '')
 })
 
-test('only the three lifecycle events are registered', () => {
+test('only the shared lifecycle and brief routing events are registered', () => {
   const shared = require('../hooks/hooks.json').hooks
-  assert.deepEqual(Object.keys(shared).sort(), ['SessionEnd', 'SessionStart', 'Stop'])
+  assert.deepEqual(Object.keys(shared).sort(), ['SessionEnd', 'SessionStart', 'Stop', 'UserPromptSubmit'])
   assert.equal(shared.SessionStart[0].matcher, 'startup|resume|clear|compact')
+  assert.equal(shared.UserPromptSubmit[0].hooks[0].command, shared.SessionStart[0].hooks[0].command)
+})
+
+test('brief routing advises ordered audit and dispatch only for a combined request', () => {
+  const route = prompt => hook.handle(event('UserPromptSubmit', '.', { prompt }))
+  const english = 'Draft a worker brief, audit it against the approval, then launch a native worker with it.'
+  for (const prompt of [english, '작업자에게 보낼 문안을 작성하고 승인 원본과 대조 검토한 뒤 작업자를 실행해 주세요.']) {
+    const out = JSON.parse(route(`${prompt} PRIVATE_FIXTURE`))
+    assert.equal(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit')
+    assert.match(out.hookSpecificOutput.additionalContext, /write-prompts.*then audit-prompts.*only after PASS.*verbatim.*SHA-256/)
+    assert.doesNotMatch(JSON.stringify(out), /PRIVATE_FIXTURE/)
+  }
+  for (const prompt of [null, 'Write a prompt.', 'Audit an existing task brief.', 'Start a worker to check seed.txt.',
+    'Write and audit the brief, but do not launch a worker.', '프롬프트를 작성하고 감사하되 위임은 하지 마세요.',
+    '초안 작성과 감사 뒤 위임한 기록은 링크만 알려 주세요.', `How should I ${english.toLowerCase()}`,
+    `Explain this example without doing it.\n\`\`\`\n${english}\n\`\`\``, `> ${english}\nSummarize the quote.`]) {
+    assert.equal(route(prompt), '', String(prompt))
+  }
 })
 
 test('removed tool events neither block writes nor audit edits, even with tests locked', () => {

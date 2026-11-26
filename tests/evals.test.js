@@ -7,7 +7,8 @@ const fs = require('fs')
 const path = require('path')
 
 const root = path.join(__dirname, '..')
-const LIFECYCLE = String.raw`"skill"\s*:\s*"devflow:(devflow|development-start|pr-review-workflow|workspace-cleanup)"`
+const CURRENT_LIFECYCLE = String.raw`"skill"\s*:\s*"devflow:devflow"`
+const LIFECYCLE_QUIET = String.raw`"skill"\s*:\s*"devflow:(devflow|development-start|pr-review-workflow|workspace-cleanup)"`
 
 const front = text => {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
@@ -62,12 +63,13 @@ test('should-not trigger cases have a zero-call grader and should cases a Skill 
   }
 })
 
-test('lifecycle trigger cases use exactly the lifecycle pattern', () => {
+test('lifecycle trigger cases require the current skill or reject all lifecycle calls', () => {
   const cases = trigger.filter(c => c.name.startsWith('devflow--'))
   assert.ok(cases.length > 0)
   for (const c of cases) {
     assert.ok(c.graders.length > 0, c.name)
-    for (const g of c.graders) assert.equal(inputMatch(g), LIFECYCLE, `${c.name}/${g.file}`)
+    const expected = c.tags.includes('should') ? CURRENT_LIFECYCLE : LIFECYCLE_QUIET
+    for (const g of c.graders) assert.equal(inputMatch(g), expected, `${c.name}/${g.file}`)
   }
 })
 
@@ -79,38 +81,56 @@ test('independent and none trigger cases carry a lifecycle-quiet grader', () => 
   for (const c of cases) {
     const g = c.graders.find(x => x.file === 'devflow-quiet.md')
     assert.ok(g, `${c.name} lacks devflow-quiet.md`)
-    assert.equal(inputMatch(g), LIFECYCLE, c.name)
+    assert.equal(inputMatch(g), LIFECYCLE_QUIET, c.name)
     assert.equal(field(g.fm, 'min'), '0', c.name)
     assert.equal(field(g.fm, 'max'), '0', c.name)
   }
 })
 
-test('the lifecycle pattern matches the four lifecycle skills and not decision-interview', () => {
-  const re = new RegExp(LIFECYCLE)
-  for (const n of ['devflow', 'development-start', 'pr-review-workflow', 'workspace-cleanup'])
-    assert.ok(re.test(JSON.stringify({ skill: `devflow:${n}` })), n)
-  assert.ok(!re.test(JSON.stringify({ skill: 'devflow:decision-interview' })))
+test('only the current lifecycle skill earns a positive trigger result', () => {
+  const current = new RegExp(CURRENT_LIFECYCLE)
+  const quiet = new RegExp(LIFECYCLE_QUIET)
+  const call = name => JSON.stringify({ skill: `devflow:${name}` })
+  assert.ok(current.test(call('devflow')))
+  assert.ok(quiet.test(call('devflow')))
+  for (const legacy of ['development-start', 'pr-review-workflow', 'workspace-cleanup']) {
+    assert.ok(!current.test(call(legacy)), legacy)
+    assert.ok(quiet.test(call(legacy)), legacy)
+  }
+  assert.ok(!current.test(call('decision-interview')))
+  assert.ok(!quiet.test(call('decision-interview')))
 })
 
 const paths = p => [p, p.replace(/\\/g, '/')].map(file_path => JSON.stringify({ file_path }))
 const matchesAll = (re, p) => paths(p).every(s => re.test(s))
 const matchesNone = (re, p) => paths(p).every(s => !re.test(s))
 
-test('new behavior routing patterns match the devflow references and not the old paths', () => {
+test('behavior routing patterns match the current reference and reject other or retired paths', () => {
   const cases = [
-    ['start-new-work', 'routing.md', 'start.md', String.raw`C:\w\skills\development-start\references\tracking.md`],
-    ['start-card-failed', 'routing.md', 'start.md', String.raw`C:\w\skills\development-start\references\tracking.md`],
-    ['cleanup-merged', 'routing.md', 'cleanup.md', String.raw`C:\w\skills\workspace-cleanup\references\remote-deletion.md`],
-    ['cleanup-unmerged', 'routing.md', 'cleanup.md', String.raw`C:\w\skills\workspace-cleanup\references\remote-deletion.md`],
-    ['review-only-no-inputs', 'routing.md', 'review.md', String.raw`C:\w\skills\pr-review-workflow\references\review.md`],
-    ['review-only-weakened-test', 'routing.md', 'review.md', String.raw`C:\w\skills\pr-review-workflow\references\review.md`],
-    ['ship-ci-wrong-revision', 'routing.md', 'ship.md', String.raw`C:\w\references\ship.md`],
-    ['ship-ready', 'routing.md', 'ship.md', String.raw`C:\w\references\ship.md`],
+    ['build-brief', 'change', 'build'],
+    ['build-brief-test-removal', 'change', 'build'],
+    ['design-acceptance-change', 'change', 'design'],
+    ['design-self-fix', 'change', 'design'],
+    ['start-new-work', 'change', 'start', String.raw`C:\w\skills\development-start\references\tracking.md`],
+    ['start-card-failed', 'change', 'start', String.raw`C:\w\skills\development-start\references\tracking.md`],
+    ['cleanup-merged', 'delivery', 'cleanup', String.raw`C:\w\skills\workspace-cleanup\references\remote-deletion.md`],
+    ['cleanup-unmerged', 'delivery', 'cleanup', String.raw`C:\w\skills\workspace-cleanup\references\remote-deletion.md`],
+    ['review-only-no-inputs', 'change', 'review', String.raw`C:\w\skills\pr-review-workflow\references\review.md`],
+    ['review-only-weakened-test', 'change', 'review', String.raw`C:\w\skills\pr-review-workflow\references\review.md`],
+    ['ship-autonomous', 'delivery', 'ship', String.raw`C:\w\references\ship.md`],
+    ['ship-ci-wrong-revision', 'delivery', 'ship', String.raw`C:\w\references\ship.md`],
+    ['ship-ready', 'delivery', 'ship', String.raw`C:\w\references\ship.md`],
   ]
-  for (const [name, file, ref, old] of cases) {
-    const re = behaviorRe(name, file)
-    assert.ok(matchesAll(re, String.raw`C:\w\skills\devflow\references` + '\\' + ref), `${name} new path`)
-    assert.ok(matchesNone(re, old), `${name} old path`)
+  const routed = behavior.filter(c => c.graders.some(g => g.file === 'routing.md')).map(c => c.name)
+  assert.deepEqual(routed.sort(), cases.map(([name]) => name).sort())
+  for (const [name, ref, old, legacy] of cases) {
+    const re = behaviorRe(name, 'routing.md')
+    const file = suffix => String.raw`C:\w\skills\devflow\references` + '\\' + suffix
+    assert.ok(matchesAll(re, file(ref + '.md')), `${name} new path`)
+    assert.ok(matchesNone(re, file(ref + '.md.bak')), `${name} suffix path`)
+    for (const other of ['change', 'delivery', 'resume', old].filter(other => other !== ref))
+      assert.ok(matchesNone(re, file(other + '.md')), `${name} incorrectly matches ${other}`)
+    if (legacy) assert.ok(matchesNone(re, legacy), `${name} legacy path`)
   }
 })
 
@@ -126,7 +146,7 @@ test('cleanup skill routing matches the devflow router and not other skills', ()
 test('old patterns behave as documented', () => {
   const tracking = /references[\\/]+tracking\.md/
   assert.ok(matchesAll(tracking, String.raw`C:\w\skills\development-start\references\tracking.md`))
-  assert.ok(matchesNone(tracking, String.raw`C:\w\skills\devflow\references\start.md`))
+  assert.ok(matchesNone(tracking, String.raw`C:\w\skills\devflow\references\change.md`))
 
   const cleanupSkill = /"skill"\s*:\s*"devflow:workspace-cleanup"/
   assert.ok(cleanupSkill.test(JSON.stringify({ skill: 'devflow:workspace-cleanup' })))

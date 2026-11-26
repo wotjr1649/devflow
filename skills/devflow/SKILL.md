@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: "Resumes another session's approved work from its plan, checkpoint or handoff folder, even for immediate implementation. Handles public contracts, shared state, permissions, cross-component changes, tracked Issues and PR or merge readiness; skip unrelated analysis and routine edits."
+description: "Prepares a handoff record for another session and resumes approved work from a plan, checkpoint or handoff folder. Covers public contracts, shared state, permissions, cross-component changes, tracked Issues and PR or merge readiness; skip analysis-only and routine edits."
 ---
 
 # Devflow
@@ -19,7 +19,7 @@ Without project configuration use authorized project records for a requested han
 
 ## Where to read
 
-Read only the section for the next action. Reapply this routing after compaction or `/clear`.
+From this skill's directory, read only the next action's section. Reapply after compaction or `/clear`.
 
 - [Resume](references/resume.md) first for a handoff, interruption, tracked work in progress, or a mode switch. If the approved plan covers the next action, follow it and its checks without opening Change.
 - [Change](references/change.md) for new work, a material decision, work outside the approved plan, an actual delegation, or a new review procedure. Start there for new tracked work.

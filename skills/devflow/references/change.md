@@ -35,7 +35,7 @@ Record `task` and `base` (actual HEAD) before any task or delegation. Reproduce 
 
 1. In the parent Issue checkout run `running <n> claim <label>` with stable `task-<k>` before each launch. A refusal holds that launch. Dispatch a background Claude `Agent` with `isolation: "worktree"` and `run_in_background: true`, returning its task ID, workspace, commit and checks. Launch the independent tasks before waiting.
 2. The child verifies its actual worktree HEAD equals the brief's BASE before edits. If needed it uses `git merge --ff-only <BASE>` and checks again; if exact alignment is impossible, it stops. It edits, tests and commits there. It neither writes Issue/ledger nor pushes. Parent links each reserve label to its worker and result.
-3. Confirm result and exit before `running <n> done <label>`. On failure, timeout or interruption corroborate child exit and partial effects before releasing or retrying; uncertainty keeps the entry and holds only dependent work. Confirming exit does not authorize termination. Recover first; do not launch twice.
+3. Confirm result and exit before `running <n> done <label>`. After failure, timeout or interruption, reconcile partial effects first; uncertainty keeps the entry and holds dependent work. An old claim never authorizes a replacement: confirm the old worker exited, run `done`, then obtain a fresh `claim` before launching. Confirming exit does not authorize termination.
 4. Integrate eligible results into the Issue branch one at a time (fast-forward when possible, otherwise cherry-pick) and rerun affected checks there. If an interface changes, stop affected integration, replan the dependent tasks and invalidate their old proof. Keep child worktrees until safe cleanup.
 
 ## Delegation

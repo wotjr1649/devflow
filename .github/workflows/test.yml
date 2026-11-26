@@ -4,7 +4,7 @@ name: test
 on:
   push:
   pull_request:
-    branches: [main]
+    branches: [main, trial/v15-pr-ci-20261127]
   workflow_dispatch:
 permissions:
   contents: read
@@ -30,3 +30,31 @@ jobs:
       # The project gate, read from .devflow.json as the pre-push hook reads it, so the two cannot drift apart.
       - run: eval "$(node -p "require('./.devflow.json').verify")"
         shell: bash
+  trial-publisher-boundary:
+    if: >-
+      github.event_name == 'pull_request' && github.repository == 'wotjr1649/devflow' &&
+      github.base_ref == 'trial/v15-pr-ci-20261127' &&
+      (github.head_ref == 'test/175-v15-pr-ci-20261127-normal' || github.head_ref == 'test/175-v15-pr-ci-20261127-weak') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      TRIAL_CI_TOKEN: ${{ github.token }}
+      TRIAL_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Confirm the trial CI token cannot publish the external verdict
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TRIAL_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          code=$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' \
+            --request POST --header "Authorization: Bearer $TRIAL_CI_TOKEN" \
+            --header 'Accept: application/vnd.github+json' --header 'Content-Type: application/json' \
+            --data '{"state":"success","context":"devflow-trial/v15-evidence","description":"Trial canary: CI publication must be denied"}' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$TRIAL_HEAD")
+          if [[ "$code" != 403 ]]; then
+            printf 'Unexpected commit-status response: %s\n' "$code" >&2
+            exit 1
+          fi
+          printf 'TRIAL_STATUS_WRITE=denied HTTP=403\n'

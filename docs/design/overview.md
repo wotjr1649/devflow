@@ -51,17 +51,17 @@ Document format and budgets: [documents](../specs/documents.md).
 ## Components
 
 - **5 skills**
-  - `devflow`: the one lifecycle skill. Its SKILL.md holds scope, Issue I/O, the stop conditions and a situation ->
-    reference table, and links its references in [`skills/devflow/references/`](../../skills/devflow/references/):
-    discover, start, design, plan, build, verify, review, ship, cleanup, learn, sessions and roles. Each stage reference
-    finishes its procedure without reading another; a brief also takes its role text from roles. It serves only repositories with `.devflow.json`. Choice and reason: [Entry
-    points and stages](current-decisions.md#entry-points-and-stages).
+  - `devflow`: the one lifecycle skill. SKILL.md holds scope, the card and safety floors, and links three references:
+    [Resume](../../skills/devflow/references/resume.md), [Change](../../skills/devflow/references/change.md) and
+    [Delivery](../../skills/devflow/references/delivery.md). These group the ten lifecycle stages without changing their
+    stored values. The tracked lifecycle requires a configured repository and a trusted card or tool path. Choice and
+    reason: [Entry points and stages](current-decisions.md#entry-points-and-stages).
   - Independent skills: `decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`. The lifecycle does not invoke them, and they are used on their own in any repository. Reason: [Independent skills](current-decisions.md#independent-skills).
   - Compatibility: the former `development-start`, `pr-review-workflow` and `workspace-cleanup` skills are gone, with
     their `/` commands. Their requests go to `devflow` in a devflow repository, and repositories without
     `.devflow.json` no longer get them.
-- **Roles**: the skill's roles reference holds three roles and their perspectives; every brief
-  carries the role's body and at most one perspective, on both hosts. `explorer` (reads and runs commands): search by
+- **Roles**: the [Change reference](../../skills/devflow/references/change.md#roles) holds three roles and their
+  perspectives. Every brief carries the role's body and at most one perspective, on both hosts. `explorer` (reads and runs commands): search by
   default, summary, root cause, verification. `reviewer` (reads only): correctness by default, design, security.
   `implementer` (edits). The plugin ships no agent definitions: Claude Code runs every role on `general-purpose`,
   Codex on `spawn_agent` ([why](current-decisions.md#execution-and-delegation)).
@@ -71,7 +71,8 @@ Document format and budgets: [documents](../specs/documents.md).
 - **Hooks**: resume card (SessionStart), continuation in unattended mode only (Stop), release when the session ends
   (SessionEnd; if it does not run, expiry after 30 minutes).
   Pre-integration verification follows the integration method in [repository](../specs/repository.md#integration-and-ci).
-- **Scripts**: `devflow-state` handles the ledger, Issue I/O and the resume card. The BASE..HEAD diff file passed to review (`review-package`) is made with `git diff` by the devflow review reference.
+- **Scripts**: `devflow-state` handles the ledger, Issue I/O and the resume card. The review package uses a
+  `git diff` from BASE to HEAD as described in the [Change reference](../../skills/devflow/references/change.md#verify-and-review).
 - **Templates and eval**: Issue intent, REVIEW.md, AGENTS.md, ignore and attributes blocks, trigger eval
 
 Reason for the layout and the single source: [Single source](current-decisions.md#single-source).

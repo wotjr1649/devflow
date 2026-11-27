@@ -1,10 +1,10 @@
 # Change
 
-Done when the requested outcome has proof. Review and analysis end at findings.
+Done when the outcome has proof. Review and analysis end at findings.
 
 ## Discover
 
-Inspect existing evidence. Compare material choices and ask about blocking user decisions. Bound a spike by its question and exit.
+Inspect evidence. Compare material choices and ask about blocking decisions. Bound spikes by question and exit.
 
 ## Start
 
@@ -12,7 +12,7 @@ Before tracked implementation find or create the authorized Issue through the To
 
 ## Design and plan
 
-Cross-component build needs approved `intent.md` → `spec.md` → `plan.md` with risks, decisions, contracts, order, dependencies and proof. Reapprove scope changes before edits. Run prerequisites. Review architecture, ≥5-task plans and trust boundaries before build. Claude delegates design. Codex reviews locally.
+For cross-component work approve intent (Issue body when tracked, local `intent.md` otherwise), then `spec.md` and `plan.md`. Cover risks, decisions, contracts, order, dependencies and proof. Reapprove changed scope before edits. Run prerequisites. Review architecture, ≥5-task plans and trust boundaries before build. Claude delegates design. Codex reviews locally.
 
 ## Execution modes
 

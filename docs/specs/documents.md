@@ -16,13 +16,14 @@ the skill a session reads. A conflict between the two kinds is a defect fixed in
 
 | Artifact | Holds | Location | Public | Lifetime |
 |---|---|---|---|---|
-| intent | problem, desired outcome, affected users and systems, constraints, open questions, acceptance criteria | top of the Issue body | public | replaced only when the scope changes, after the user confirms |
+| intent | problem, outcome, affected users and systems, constraints, open questions, acceptance criteria | top of the Issue body for tracked work, task-folder `intent.md` otherwise | public when tracked, local otherwise | replaced only when the scope changes, after the user confirms |
 | state block | stage, branch and PR, done and remaining, next action, blockers, latest checkpoint | block at the bottom of the Issue body | public | **overwritten** |
 | checkpoint | changes, verification (run and not run), decisions, next | Issue comment | public | **append only** |
 | ledger | stage, task progress, decisions and blockers, content an unattended run could not post ([keys](ledger.md#ledger-keys)) | `.work/devflow/i<issue>/ledger.json` ([main work tree](repository.md#issue-folder)) | private | until the Issue closes |
 | product contracts | lasting rules code, tests and developers rely on, and the reasons for the skill's rules | `docs/specs/` | public | when a contract changes |
 | current design decisions | current choices and reasons, alternatives not taken, conditions for revisiting | `docs/design/current-decisions.md` | public | updated in place when a choice changes |
-| plan | files, order, risks, proof, per-task interfaces | `docs/plans/` | private | until the Issue closes |
+| change specification | agreed scope and contracts for a cross-component change | `spec.md` beside the plan | private | same as the plan |
+| plan | files, order, risks, proof, per-task interfaces | `docs/plans/` for tracked work, task folder otherwise | private | until the Issue closes for tracked work, through delivery otherwise |
 | plan summary | four lines: files, order, risks, proof | PR body or checkpoint | public | permanent |
 | prompt | only new instructions and the changed part of decisions | chat or `docs/prompts/` | private | one-off |
 | handoff | not written; the state block and checkpoints replace it. Only when private evidence is truly needed | `artifacts/handoff/` | private | as needed |
@@ -30,6 +31,9 @@ the skill a session reads. A conflict between the two kinds is a defect fixed in
 | lessons | where they go depends on their kind (the devflow skill's [learn reference](../../skills/devflow/references/change.md#learn)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
 
 Keep each fact in one place. Other places only link to it, except the test-pinned copies named at the top.
+For cross-component work, the specification links to the approved intent, and the plan links to the approved specification.
+For local work, keep the three files together in the task folder and record the approved versions by hash.
+For Git-free delivery, use the reviewed artifact hashes as the approved delivery inputs and verify them again before and after writing.
 
 Current design decisions live by topic in `docs/design/current-decisions.md` alone; when a choice changes, update its
 section in place. Each section holds only the current choice and reason, alternatives not taken, and conditions for

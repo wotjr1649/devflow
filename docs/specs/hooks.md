@@ -38,7 +38,7 @@ the target host's nested scenario.
 
 | Event | Action |
 |---|---|
-| SessionStart (`startup`, `resume`, `clear`, `compact`) | For configured work, injects the resume card and shares the session id. Verified stages may include reference guidance. A card failure shows a reason and grants no Tool |
+| SessionStart (`startup`, `resume`, `clear`, `compact`) | For configured work, injects the resume card and shares the session id. The recorded stage is data, and the skill routes the request. A card failure shows a reason and grants no Tool |
 | UserPromptSubmit | Advises saving, auditing and dispatching the same brief when a request combines all three. Adds no context for other requests |
 | Stop | When its own Issue's unattended work is open, this session switched or reattributed it, and nothing is waiting, asks to continue at most 2 times per task. The count is added under the ledger lock, and it stops on an error or a lock conflict |
 | SessionEnd | Releases only the input session from the session records of every Issue. It does not wait for the lock and preserves other sessions' records |

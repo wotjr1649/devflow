@@ -344,11 +344,13 @@ test('brief routing advises ordered audit and dispatch only for a combined reque
   for (const prompt of [english, '작업자에게 보낼 문안을 작성하고 승인 원본과 대조 검토한 뒤 작업자를 실행해 주세요.']) {
     const out = JSON.parse(route(`${prompt} PRIVATE_FIXTURE`))
     assert.equal(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit')
-    assert.match(out.hookSpecificOutput.additionalContext, /write-prompts.*then audit-prompts.*only after PASS.*verbatim.*SHA-256/)
+    assert.match(out.hookSpecificOutput.additionalContext, /write-prompts.*audit-prompts to reopen.*only after PASS.*SHA-256.*verbatim without additions/)
     assert.doesNotMatch(JSON.stringify(out), /PRIVATE_FIXTURE/)
   }
   for (const prompt of [null, 'Write a prompt.', 'Audit an existing task brief.', 'Start a worker to check seed.txt.',
     'Write and audit the brief, but do not launch a worker.', '프롬프트를 작성하고 감사하되 위임은 하지 마세요.',
+    '작업자를 시작해 표시만 반환받아 주세요. 새 문안이나 감사 파일은 만들 필요가 없습니다.',
+    'Launch a worker now. Do not write a brief or audit anything.',
     '초안 작성과 감사 뒤 위임한 기록은 링크만 알려 주세요.', `How should I ${english.toLowerCase()}`,
     `Explain this example without doing it.\n\`\`\`\n${english}\n\`\`\``, `> ${english}\nSummarize the quote.`]) {
     assert.equal(route(prompt), '', String(prompt))

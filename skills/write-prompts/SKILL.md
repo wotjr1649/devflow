@@ -1,6 +1,6 @@
 ---
 name: write-prompts
-description: Use when drafting or revising prompts and worker briefs, including requests to audit and launch in one turn. Skip record links and host-loaded instructions.
+description: Use when drafting or revising prompts or worker briefs, including requests to audit and launch together. Skip record links, bare launches and host-loaded instructions.
 ---
 
 # Write prompts

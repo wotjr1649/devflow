@@ -92,6 +92,23 @@ test('refuses a reviewed commit after feature HEAD advances', () => {
   assert.equal(fs.existsSync(f.dest), false)
 })
 
+test('preserves a staged install source when its review becomes stale', () => {
+  const f = fixture()
+  const firstStage = stage(f)
+  assert.equal(firstStage.status, 0, firstStage.stderr)
+  const stagedFile = path.join(f.dest, tracked)
+  const stagedBytes = fs.readFileSync(stagedFile)
+
+  git(f.source, 'commit', '--quiet', '--allow-empty', '-m', 'Advance feature')
+  const actual = git(f.source, 'rev-parse', 'HEAD')
+  assertRefused(f, new RegExp('revision mismatch: expected ' + f.sha + ', actual HEAD ' + actual))
+
+  assert.equal(run(f.dest, 'git', ['symbolic-ref', '-q', 'HEAD']).status, 1)
+  assert.equal(git(f.dest, 'rev-parse', 'HEAD'), f.sha)
+  assert.deepEqual(fs.readFileSync(stagedFile), stagedBytes)
+  assert.equal(status(f.dest), '')
+})
+
 test('refuses destinations under Git metadata or an unignored source directory', () => {
   const f = fixture()
   for (const [relative, diagnostic] of [

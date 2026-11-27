@@ -7,7 +7,7 @@ const tmpdir = require('./tmpdir')
 const { main, hashFile } = require('../bin/devflow-state')
 
 function fixture(gitMode = true) {
-  const root = tmpdir('change-check-')
+  const root = fs.realpathSync(tmpdir('change-check-'))
   const branch = 'trial/example'
   const common = path.join(root, '.git')
   const directory = path.join(root, 'docs', 'changes', 'example')

@@ -43,9 +43,9 @@ Hook setup requires explicit instruction.
 
 ## Assigned handoffs
 
-For operator-assigned changes, run `node bin/devflow-state change-check <stage> [id]` from this checkout before
-opening work documents or the diff. Run approved commands individually. Use `resume` for status without rerunning
-tests and `plan` before writing or updating a plan.
+For operator-assigned changes, run `node bin/devflow-state change-check build` before opening work documents or the
+diff for implementation. Replace `build` with `review` for independent review, `resume` for status or `plan` before
+writing a plan. Run the command alone and pass a requested change ID. Status does not rerun tests.
 Use the development workflow skill for the status of assigned work or to check design approval before planning.
 Give routine answers directly.
 When a plan-only request hits an approval hold, report its reason without checking other stages or opening work

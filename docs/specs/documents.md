@@ -40,7 +40,7 @@ For Git-free delivery, use the reviewed artifact hashes as the approved delivery
 Projects that share approved artifacts in Git may use `docs/changes/<id>/`. Keep the existing Issue-led policy
 for tracked private records. Declared current product contracts remain in `docs/specs/`; completed change directories
 remain in place. A worktree uses its own operator-supplied, untracked `.work/devflow/change.json`. The record contains
-the change `id`, absolute `root`, `git` identity (`common` directory and `branch`, or `null` for Git-free work),
+the change `id`, canonical absolute `root`, `git` identity (`common` directory and `branch`, or `null` for Git-free work),
 `approvals` keyed by artifact kind with `by` and `sha256`, and `contracts` with relative `path` and `sha256`.
 
 Provide the exact trusted invocation in the handoff or project instructions loaded by both hosts. If Claude Code

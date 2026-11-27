@@ -215,7 +215,8 @@ const USAGE = `usage: devflow-state <command>
                               checkpoint, never read as state, interactive turns only
   check <n> <k>...            mark acceptance criteria k (1-based boxes GitHub renders under "## 수용 기준") as done
   close <n> | reopen <n>
-  create --title <t> < body   a new Issue in the Issue template; "## 수용 기준" needs plain "- [ ]" criteria
+  create --title <t> < body   a new Issue with headings "## 문제", "## 원하는 결과", "## 영향받는 사용자·시스템",
+                              "## 제약", "## 열린 질문", "## 수용 기준" (plain "- [ ]" criteria), and "## 범위 / 제외 / 의존·권한"
   sub-issue add <parent> <child> | sub-issue list <parent>
                               add a same-repository relationship or list its numbers; never replace a parent
   ledger [n]                  print the ledger

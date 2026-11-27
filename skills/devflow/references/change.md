@@ -12,7 +12,7 @@ Before tracked implementation find or create the authorized Issue through the To
 
 ## Design and plan
 
-Settle risks and acceptance. For cross-component work reuse or complete `intent.md`, `spec.md`, `plan.md` with decisions, contracts, order, dependencies and proof. Execute prerequisites. Review architecture, plans with ≥5 tasks and trust-boundary changes before build. Claude delegates design; Codex reviews in the main session.
+Settle risks and acceptance. For cross-component work reuse or complete `intent.md`, `spec.md`, `plan.md` with decisions, contracts, order, dependencies and proof. Execute prerequisites. Review architecture, plans with ≥5 tasks and trust-boundary changes before build. Claude delegates design. Codex reviews in the main session.
 
 ## Execution modes
 
@@ -27,7 +27,7 @@ Record `runMode`. Main owns decisions, Issue, ledger and integration. Review eac
 
 ## Build and verify
 
-Record `task {current,total}`, `base` and `lastCommit`. Advance after verification and commit. Outside build/verify set `current > total`; on later fixes reopen the task and clear counts. Prove reproduction before fixes and execute checks for changed and preserved behavior. Skipped, removed or weakened tests or commands need approved equivalent coverage. Reuse matching permitted proof. Record command, revision, scope and result. Rerun affected and required checks. After two failed fixes change approach or report a blocker.
+Record `task {current,total}`, `base` and `lastCommit`. Advance after verification and commit. Outside build/verify set `current > total`. For later fixes reopen the task and clear counts. Reproduce failures before fixes. Verify changed and preserved behavior. Skipped, removed or weakened tests or commands need approved equivalent coverage. Log command, revision, scope and result. Rerun affected and required checks. After two failed fixes change approach or report a blocker.
 
 ## Delegation
 

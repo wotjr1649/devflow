@@ -20,4 +20,4 @@ Finish checks, commits, records and workers. Preserve unresolved reservations. H
 
 ## Unattended work
 
-Use `mode <issue>` on explicit unattended intent. Claim unattended work or switch interactive when the user returns. Proceed only as owner with open task and no decisions, blockers or workers. Defer Issue writes, pushes and integration in notes. Approve new intent before updating criteria.
+Use `mode <issue> autonomous < reason` on explicit unattended intent and `mode <issue> interactive < reason` on return. Give reason on the first stdin line. Proceed only as owner with an open task and no decisions, blockers or workers. Defer Issue writes, pushes and integration in notes. Approve new intent before updating criteria.

@@ -81,6 +81,7 @@ if ($LASTEXITCODE -ne 0) { throw 'reviewed source staging failed' }
 The gate requires a clean feature worktree at the reviewed SHA and verifies that the install source is clean and
 detached at that same SHA. The destination parent must exist. Use an ignored location such as `.work/` when staging
 inside the feature worktree. If staging fails, stop before installation and inspect the diagnostic.
+If the feature branch advanced, review the new commit and use its full SHA for the next staging attempt.
 
 For a new environment, create the `codex-home`, `claude-home` and `smoke` folders outside the source. Prepare a
 separate Git repository and `.devflow.json` in `smoke`.

@@ -82,6 +82,5 @@ criteria from confirmed requirements.
 
 ## Gotchas
 
-- Project instructions live only here. A project or parent `CLAUDE.md`, `.claude/CLAUDE.md` or
-  `CLAUDE.local.md` suppresses AGENTS.md in Claude Code; global `~/.claude/CLAUDE.md` is exempt.
-  Codex still reads AGENTS.md.
+- Project instructions live here. `CLAUDE.md` imports this file so fresh Claude Code sessions receive the same rules.
+  Codex reads this file directly.

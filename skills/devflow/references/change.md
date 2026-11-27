@@ -12,7 +12,7 @@ Before tracked implementation find or create the authorized Issue through the To
 
 ## Design and plan
 
-For cross-component work approve intent (Issue body when tracked, local `intent.md` otherwise), then `spec.md` and `plan.md`. Cover risks, decisions, contracts, order, dependencies and proof. Reapprove changed scope before edits. Run prerequisites. Review architecture, ≥5-task plans and trust boundaries before build. Claude delegates design. Codex reviews locally.
+Approve cross-component intent (tracked Issue or assigned `intent.md`), then `spec.md` before drafting `plan.md`. Name affected contracts and order overlapping changes. Cover decisions, risks, dependencies and proof. Reapprove changed scope; run prerequisites. Review architecture, ≥5-task plans and trust boundaries before build. Claude delegates design; Codex reviews locally.
 
 ## Execution modes
 

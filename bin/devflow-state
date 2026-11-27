@@ -203,6 +203,7 @@ const MAX_CARD_COMMITS = 5
 const CRITERIA_HEADING = /^## 수용 기준[ \t]*$/m
 const USAGE = `usage: devflow-state <command>
   card                        the resume card (the SessionStart hook prints it)
+  change-check <stage> [id]    verify an operator's local change assignment and approved inputs
   read [n]                    Issue body and latest checkpoint, writers only, as data
   state <n> < block           replace the state block; stdin starts with "## 현재 상태", at most 15 lines below it
   intent <n> [--title <t>] < intent
@@ -2290,6 +2291,77 @@ function delegationAfter(cwd, token, remoteRun) {
 }
 
 const ACTIVITY = new Set(['state', 'intent', 'comment', 'check', 'close', 'reopen', 'sub-issue', 'ledger-update', 'note', 'running', 'mode'])
+const CHANGE_STAGES = new Map([
+  ['start', []], ['design', ['intent']], ['plan', ['intent', 'spec']],
+  ...['build', 'resume', 'review'].map(stage => [stage, ['intent', 'spec', 'plan']]),
+])
+const CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const CHANGE_HASH = /^[0-9a-f]{64}$/
+const CHANGE_USAGE = 'usage: devflow-state change-check <start|design|plan|build|resume|review> [change-id]'
+
+function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
+  const required = CHANGE_STAGES.get(stage)
+  if (!required || extra.length || (expectedId !== undefined && !CHANGE_ID.test(expectedId))) {
+    return { code: 2, out: CHANGE_USAGE }
+  }
+  const hold = reason => ({ code: 1, out: JSON.stringify({ status: 'hold', stage, reason }) })
+  const root = path.resolve(cwd)
+  function localAt(relative) {
+    const target = path.join(root, relative)
+    const local = strictLocalPath(target)
+    if (!local.ok || local.absent) return null
+    try { return differs(fs.realpathSync(target), target) ? null : target } catch { return null }
+  }
+  const recordPath = localAt('.work/devflow/change.json')
+  let record
+  try { record = JSON.parse(recordPath && smallFile(recordPath, 16384)) } catch {}
+  if (!record || typeof record.root !== 'string' || !path.isAbsolute(record.root) ||
+      differs(record.root, root) || typeof record.id !== 'string' || record.id.length > 80 ||
+      !CHANGE_ID.test(record.id) || (expectedId !== undefined && record.id !== expectedId)) {
+    return hold('missing or mismatched operator assignment')
+  }
+  const git = args => env.run('git', args, { cwd: root })
+  const top = git(['rev-parse', '--show-toplevel'])
+  if (record.git === null) {
+    if (top.code !== 128 || !/not a git repository/i.test(top.stderr || '')) return hold('Git-free assignment cannot be verified')
+  } else {
+    if (!record.git || typeof record.git.common !== 'string' || !path.isAbsolute(record.git.common) ||
+        typeof record.git.branch !== 'string' || !record.git.branch || top.code !== 0 ||
+        differs(top.stdout.trim(), root)) return hold('worktree does not match assignment')
+    const common = git(['rev-parse', '--path-format=absolute', '--git-common-dir'])
+    const branch = git(['symbolic-ref', '--quiet', '--short', 'HEAD'])
+    if (common.code !== 0 || differs(common.stdout.trim(), record.git.common) ||
+        branch.code !== 0 || branch.stdout.trim() !== record.git.branch) return hold('repository or branch changed')
+  }
+  const directory = `docs/changes/${record.id}`
+  const artifacts = Object.fromEntries(['intent', 'spec', 'plan'].map(kind => [kind, `${directory}/${kind}.md`]))
+  for (const relative of ['docs', 'docs/changes', directory, ...Object.values(artifacts)]) {
+    const target = path.join(root, relative)
+    const local = strictLocalPath(target)
+    if (!local.ok || (!local.absent && !localAt(relative))) return hold('unsafe change artifact path')
+  }
+  const verifies = (relative, hash) => {
+    const file = localAt(relative)
+    return typeof hash === 'string' && CHANGE_HASH.test(hash) && file && hashFile(file)?.sha256 === hash
+  }
+  for (const kind of required) {
+    const approval = record.approvals?.[kind]
+    if (typeof approval?.by !== 'string' || !approval.by.trim() || !verifies(artifacts[kind], approval.sha256)) {
+      return hold(`missing or stale ${kind} approval`)
+    }
+  }
+  if (!Array.isArray(record.contracts) || record.contracts.length > 32) return hold('invalid contract entries')
+  for (const contract of record.contracts) {
+    if (typeof contract?.path !== 'string' || !/^docs\/specs\/(?:[a-z0-9-]+\/)*[a-z0-9-]+\.md$/.test(contract.path)) {
+      return hold('invalid contract path')
+    }
+    if (!verifies(contract.path, contract.sha256)) return hold(`contract changed: ${contract.path}`)
+  }
+  return { code: 0, out: JSON.stringify({ status: 'ready', id: record.id, stage, artifacts,
+    intentExists: Boolean(localAt(artifacts.intent)),
+    contracts: record.contracts.map(entry => entry.path) }) }
+}
+
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
   const r = command(argv, stdin, env, cwd)
   const me = sessionId(env.vars)
@@ -2307,6 +2379,8 @@ function command(argv, stdin, env, cwd) {
   const num = s => (s && /^\d+$/.test(s) ? Number(s) : undefined)
   const input = () => stdin()
   switch (cmd) {
+    case 'change-check':
+      return changeCheck(env, cwd, rest)
     case 'delegation-check':
       if (rest.length === 1 && rest[0] === 'before') return delegationBefore(env, cwd)
       if (rest.length === 2 && rest[0] === 'after') return delegationAfter(cwd, rest[1], (...args) => env.run(...args))

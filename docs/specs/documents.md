@@ -35,6 +35,21 @@ For cross-component work, the specification links to the approved intent, and th
 For local work, keep the three files together in the task folder and record the approved versions by hash.
 For Git-free delivery, use the reviewed artifact hashes as the approved delivery inputs and verify them again before and after writing.
 
+### Assigned change directories
+
+Projects that share approved artifacts in Git may use `docs/changes/<id>/`. Keep the existing Issue-led policy
+for tracked private records. Declared current product contracts remain in `docs/specs/`; completed change directories
+remain in place. A worktree uses its own operator-supplied, untracked `.work/devflow/change.json`. The record contains
+the change `id`, absolute `root`, `git` identity (`common` directory and `branch`, or `null` for Git-free work),
+`approvals` keyed by artifact kind with `by` and `sha256`, and `contracts` with relative `path` and `sha256`.
+
+From that root, the trusted `devflow-state change-check <stage> [id]` returns ready paths or a hold. Start lists paths
+and existing intent; design verifies intent, plan verifies intent and spec, and build, resume and review verify all
+three. All stages check declared contracts. An explicit change ID must match the assignment. Git checks the checkout
+and branch without using its moving HEAD as the approval version. The operator establishes approval authority;
+the command only checks consistency against that supplied record. For a repeated operational event, reuse its
+assigned change ID and draft intent. A different event gets a separate assignment when follow-up is warranted.
+
 Current design decisions live by topic in `docs/design/current-decisions.md` alone; when a choice changes, update its
 section in place. Each section holds only the current choice and reason, alternatives not taken, and conditions for
 revisiting. The owner the top of this spec names (a spec or the devflow skill) holds the rules, and the summary points to it.

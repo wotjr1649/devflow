@@ -6,9 +6,10 @@ const crypto = require('crypto')
 const state = require('../bin/devflow-state')
 const { isNetwork, localPath, smallFile, provenMain } = state
 
-function devflowRoot(dir) {
+function devflowRoot(dir, stopAtGit = false) {
   for (let d = path.resolve(dir); ; d = path.dirname(d)) {
     try { fs.lstatSync(path.join(d, '.devflow.json')); return d } catch {}
+    if (stopAtGit && fs.existsSync(path.join(d, '.git'))) return null
     if (path.dirname(d) === d) return null
   }
 }
@@ -143,12 +144,15 @@ function handle(raw, env = state.realEnv) {
   if (input?.hook_event_name === 'UserPromptSubmit') return briefRoute(input.prompt)
   if (!input || !['SessionStart', 'Stop', 'SessionEnd'].includes(input.hook_event_name)) return ''
   const cwd = input.cwd || process.cwd()
+  const configured = input.hook_event_name === 'SessionEnd' ? null : devflowRoot(cwd, true)
+  if (!configured && input.hook_event_name !== 'SessionEnd') return ''
   eventSession = sessionHash(input.session_id)
   if (input.hook_event_name === 'SessionStart') {
     shareSessionId(env.vars || {}, cwd, input.session_id)
     let card
     try {
       card = state.card(env, cwd, { sessionId: input.session_id || null })
+      if (!card) card = state.terminalFailure('tracked workspace could not be verified')
     } catch (e) {
       card = state.terminalFailure(e)
     }

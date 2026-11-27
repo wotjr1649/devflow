@@ -4,7 +4,7 @@ Done when target, authority, evidence and the next action agree.
 
 ## Reconcile
 
-Status is read-only. Verify repository, worktree, branch, base/head and dirty/ignored inputs. Hold conflicts, stale proof and missing inputs. Start approved unblocked steps. Retry only permitted parts of refused calls. Reuse trusted runs only if allowed and command, assertions, inputs and conditions match. Rerun affected or required proof.
+Status is read-only. Verify Git worktree/branch/base/head or local hashes, plus dirty/ignored inputs. Hold conflicts, stale proof and missing inputs. Start approved unblocked steps. Retry permitted parts of refused calls. Reuse trusted runs when allowed and command, assertions, inputs and conditions match. Rerun affected or required proof.
 
 ### Tracked progress
 

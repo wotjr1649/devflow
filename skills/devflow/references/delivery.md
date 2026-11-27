@@ -8,9 +8,9 @@ Read-only readiness checks target, revision, authority, review and preserved beh
 
 ## Ship
 
-Run local verify for `local-merge`/`push-on-request`. `pr-ci` requires hosted head/merge proof. Require policy's independent review including M0. Check evidenced criteria only. Refresh base, head, rules, CI, approvals and threads. Use approved method, no bypass, expected-head guard. Use `Refs #n` without closing keywords. Close PR Issues after verified merge, passing post-merge checks and complete criteria. Full local ship closes before integration. Reopen failures. Keep partial scope open. Defer external effects unattended.
+Git-free delivery uses approved hashes and local verify. Verify locally for `local-merge` and `push-on-request`. `pr-ci` requires hosted head/merge proof. Require policy's independent review including M0. Check evidenced criteria only. For PRs refresh base, head, rules, CI, approvals and threads. Use approved method, no bypass, expected-head guard. Use `Refs #n` without closing keywords. Close PR Issues after verified merge, passing post-merge checks and complete criteria. Full local ship closes before integration. Reopen failures. Keep partial scope open. Defer external effects unattended.
 
-For external writes confirm authority, refresh targets and use conditional execution where possible. Read back writes and record partial effects. Retry only after proven exit without effect or verified same-effect idempotency. Check deployment artifact, environment, health and rollback.
+Confirm authority, refresh targets and use conditional external writes where possible. Read back delivery and record partial effects. Retry only after proven exit without effect or verified same-effect idempotency. Check artifact, environment, health and rollback.
 
 ## Cleanup
 

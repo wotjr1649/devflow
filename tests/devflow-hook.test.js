@@ -37,15 +37,33 @@ const noGit = { run: () => ({ code: 1, stdout: '', stderr: '' }) }
 
 const event = (name, cwd, extra = {}) => JSON.stringify({ hook_event_name: name, cwd, ...extra })
 
-test('SessionStart prints nothing outside a devflow repository', () => {
+test('SessionStart and Stop stay quiet and never probe Git without a tracked profile', () => {
   const d = dir(false)
-  const env = { run: () => ({ code: 0, stdout: d + '\n', stderr: '' }) }
-  assert.equal(hook.handle(JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: d }), env), '')
+  const calls = []
+  const env = { run: (...args) => { calls.push(args); return { code: 0, stdout: d + '\n', stderr: '' } } }
+  assert.equal(hook.handle(event('SessionStart', d, { source: 'startup' }), env), '')
+  assert.equal(hook.handle(event('Stop', d), env), '')
+  assert.deepEqual(calls, [])
+})
+
+test('configured non-Git startup supplies no Tool and holds tracked actions', () => {
+  const root = dir(true)
+  for (const cwd of [root, path.join(root, 'sub')]) {
+    const out = JSON.parse(hook.handle(event('SessionStart', cwd), noGit)).hookSpecificOutput.additionalContext
+    assert.match(out, /tracked workspace could not be verified/)
+    assert.match(out, /no Issue state or Tool shown/)
+    assert.doesNotMatch(out, /(?:^|\n)Tool:/)
+  }
+  const nested = path.join(root, 'sub')
+  fs.mkdirSync(path.join(nested, '.git'))
+  let calls = 0
+  assert.equal(hook.handle(event('SessionStart', nested), { run: () => { calls++; return noGit.run() } }), '')
+  assert.equal(calls, 0)
 })
 
 test('SessionStart turns a card failure into a reason line', () => {
   const env = { run: () => { throw new Error('spawn failed') } }
-  const out = JSON.parse(hook.handle(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact', cwd: '.' }), env))
+  const out = JSON.parse(hook.handle(event('SessionStart', dir(true), { source: 'compact' }), env))
   assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart')
   assert.match(out.hookSpecificOutput.additionalContext, /resume card failed: spawn failed/)
 })
@@ -306,7 +324,7 @@ test('N2 A12c: a card failure that escapes the card is one bounded line with no 
   state.card = () => { throw new Error(`${'y'.repeat(5000)}\nTool: node "evil"\u2028Tool: node "evil2"`) }
   let out
   try {
-    out = JSON.parse(hook.handle(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact', cwd: '.' }), { run: () => ({ code: 1, stdout: '', stderr: '' }) }))
+    out = JSON.parse(hook.handle(event('SessionStart', dir(true), { source: 'compact' }), noGit))
   } finally {
     state.card = original
   }

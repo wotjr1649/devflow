@@ -8,11 +8,11 @@ Inspect existing evidence. Compare material choices and ask about blocking user 
 
 ## Start
 
-Before tracked implementation find or create the authorized Issue through the Tool. Verify repository, worktree, branch, base, occupancy, dirty/ignored inputs and baseline. Read back Issue creation or authorized sub-issue links before retrying. Bind scope and checks to the ledger.
+Before tracked implementation find or create the authorized Issue through the Tool. Verify repo, worktree, branch, base, occupancy and dirty/ignored inputs. Read back Issue creation or approved sub-issue links before retry. Bind scope/checks to ledger.
 
 ## Design and plan
 
-Settle risks and acceptance. For cross-component work reuse or complete `intent.md`, `spec.md`, `plan.md` with decisions, contracts, order, dependencies and proof. Execute prerequisites. Review architecture, plans with ≥5 tasks and trust-boundary changes before build. Claude delegates design. Codex reviews in the main session.
+Cross-component build needs approved `intent.md` → `spec.md` → `plan.md` with risks, decisions, contracts, order, dependencies and proof. Reapprove scope changes before edits. Run prerequisites. Review architecture, ≥5-task plans and trust boundaries before build. Claude delegates design. Codex reviews locally.
 
 ## Execution modes
 
@@ -27,7 +27,7 @@ Record `runMode`. Main owns decisions, Issue, ledger and integration. Review eac
 
 ## Build and verify
 
-Record `task {current,total}`, `base` and `lastCommit`. Advance after verification and commit. Outside build/verify set `current > total`. For later fixes reopen the task and clear counts. Reproduce failures before fixes. Verify changed and preserved behavior. Skipped, removed or weakened tests or commands need approved equivalent coverage. Log command, revision, scope and result. Rerun affected and required checks. After two failed fixes change approach or report a blocker.
+Tracked: record `task {current,total}`, `base`, `lastCommit`. Advance after proof and commit. Outside build/verify set `current > total`. On later fixes reopen task and clear counts. Reproduce failures before fixes. Verify changed and preserved behavior. Skipped, removed or weakened tests or commands need approved equivalent coverage. Log command, revision, scope and result. Rerun affected and required checks. After two failed fixes change approach or report a blocker.
 
 ## Delegation
 

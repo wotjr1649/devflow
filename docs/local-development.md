@@ -43,11 +43,11 @@ user's changes.
 
 | What to do | When to repeat |
 |---|---|
-| Prepare the worktree and profiles | Once, the first time |
+| Prepare the test profiles and smoke project | Once, the first time |
 | Log in | Once, the first time, and again when authentication is cleared and a new login is required |
 | Review and trust Codex hooks | At first-time setup and when the host asks for a new review |
-| Update the `source` commit | When testing another development commit |
-| Reinstall the Codex cache | After updating `source` |
+| Stage a fresh install source | For each reviewed development commit |
+| Reinstall the Codex cache | After configuring the verified source |
 | Open a new test session | When checking the updated development build on the real host |
 
 Keeping the same profile reuses the saved login and settings. Do not reset the login or hook trust for every test.
@@ -60,19 +60,31 @@ Follow this procedure when the owner has instructed the creation and installatio
 environment already exists, do not recreate it; go on to the commit update in the next section. Why a worktree without
 private files is used, and the distribution path, follow the [distribution contract](specs/repository.md#distribution).
 
-Set the following variables in PowerShell. Put in `devflowRef` the full SHA of a commit that passed the repository
-checks.
+Set the following variables in PowerShell from the main work tree. Use the full commit SHA approved in independent
+review for `devflowRef`, and choose an unused install source path.
 
 ```powershell
 $devflowTestRoot = Join-Path (Get-Location).Path '.work/plugin-test'
 $devflowSource = Join-Path $devflowTestRoot 'source'
 $devflowSmoke = Join-Path $devflowTestRoot 'smoke'
-$devflowRef = '<full commit SHA to verify>'
+$devflowRef = '<full independently reviewed commit SHA>'
 ```
 
-For a new environment, prepare the source with `git worktree add --detach "$devflowSource" $devflowRef`, and create the
-`codex-home`, `claude-home` and `smoke` folders outside the source. Prepare a separate Git repository and `.devflow.json`
-in `smoke`.
+Prepare the test root once. Then run the staging gate from the feature worktree with the same variables.
+
+```powershell
+New-Item -ItemType Directory -Path $devflowTestRoot -Force | Out-Null
+node bin/devflow-stage $devflowRef "$devflowSource"
+if ($LASTEXITCODE -ne 0) { throw 'reviewed source staging failed' }
+```
+
+The gate requires a clean feature worktree at the reviewed SHA and verifies that the install source is clean and
+detached at that same SHA. The destination parent must exist. Use an ignored location such as `.work/` when staging
+inside the feature worktree. If staging fails, stop before installation and inspect the diagnostic.
+If the feature branch advanced, review the new commit and use its full SHA for the next staging attempt.
+
+For a new environment, create the `codex-home`, `claude-home` and `smoke` folders outside the source. Prepare a
+separate Git repository and `.devflow.json` in `smoke`.
 A minimal profile example for session hook tests is `{}`. A minimal test project without a remote origin can test
 session start and release, but does not verify the whole development cycle that uses GitHub Issues.
 
@@ -84,8 +96,8 @@ profile.
 
 The following block uses the test `CODEX_HOME` only in that PowerShell process and restores the previous value when it
 ends.
-Marketplace registration is done once, the first time, and `plugin add` is used for installation and later cache
-updates.
+Register the verified source for first-time setup. Later cache updates use `plugin add` after checking the marketplace
+source as described below.
 
 ```powershell
 $devflowPreviousCodexHome = $env:CODEX_HOME
@@ -129,28 +141,17 @@ installation of the `devflow-local` marketplace. After that, reuse a local launc
 
 1. On the Issue working branch, run the checks that fit the change and commit the change to test. Integration gates
    follow [Integration and CI](specs/repository.md#integration-and-ci).
-2. Set the variables above again and change `devflowRef` to this test commit. End the test sessions of both hosts.
-3. Check `source` for tracked changes, untracked files and ignored files. If there is extra work, preserve it and find
-   the cause before updating.
-
-   ```powershell
-   git -C "$devflowSource" status --short --untracked-files=all
-   git -C "$devflowSource" ls-files --others --ignored --exclude-standard
-   ```
-
-4. Move only a clean source, where both outputs are empty, to this commit. If a command fails, do not proceed with
-   installation.
-
-   ```powershell
-   git -C "$devflowSource" switch --detach $devflowRef
-   if ($LASTEXITCODE -ne 0) { throw 'test commit update failed' }
-   git -C "$devflowSource" rev-parse HEAD
-   ```
-
-5. For Codex, run `codex plugin add devflow@devflow-local` again under the test `CODEX_HOME` to update the cache.
-   Use the profile setup and restore scope of the Codex block above, and skip the first-time marketplace registration
-   command.
-   Claude reads the same source on the next `--plugin-dir` run.
+2. End the test sessions of both hosts. Set the variables above using the new independently reviewed SHA and a fresh,
+   unused `devflowSource` path such as `source-<reviewed-sha>` under `$devflowTestRoot`. Keep the previous source
+   available for inspection.
+3. Run the staging gate from the feature worktree as in first-time setup. Continue after it verifies the new source.
+4. Before reusing a launch script, read it and resolve its configured source, test profile and run directory. Run
+   `codex plugin marketplace list` within the test `CODEX_HOME` scope above and compare the registered local path for
+   `devflow-local` with `$devflowSource`. If a script or marketplace still points to the previous source, or its source
+   cannot be confirmed, stop before installation. Continue when the source references used for this run point to the
+   verified path and any required configuration changes have been authorized.
+5. For Codex, run `codex plugin add devflow@devflow-local` within the test `CODEX_HOME` scope above to refresh the cache.
+   For Claude, pass the verified `"$devflowSource"` to `--plugin-dir`.
 6. After checking the installed content and loading source, test the normal and failure paths of the changed feature in
    a new session.
 

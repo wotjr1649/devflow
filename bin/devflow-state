@@ -2299,6 +2299,50 @@ const CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const CHANGE_HASH = /^[0-9a-f]{64}$/
 const CHANGE_USAGE = 'usage: devflow-state change-check <start|design|plan|build|resume|review> [change-id]'
 
+function assignedEvidence(root, record, localAt, verifies) {
+  const relative = `artifacts/handoff/${record.id}.json`
+  const local = strictLocalPath(path.join(root, relative))
+  const file = localAt(relative)
+  if (!local.ok || (!local.absent && !file)) return { status: 'unknown' }
+  const approvals = ['intent', 'spec', 'plan'].map(kind => [kind, record.approvals[kind].by, record.approvals[kind].sha256])
+  const contracts = record.contracts.map(({ path, sha256 }) => JSON.stringify([path, sha256])).sort()
+  const binding = crypto.createHash('sha256').update(JSON.stringify([approvals, contracts])).digest('hex')
+  const unknown = { path: relative, binding, status: 'unknown' }
+  let receipt
+  try { receipt = file && JSON.parse(smallFile(file, 32768)) } catch {}
+  if (receipt?.id !== record.id || typeof receipt.binding !== 'string' || !CHANGE_HASH.test(receipt.binding) ||
+      !Array.isArray(receipt.checks) || receipt.checks.length > 16) return unknown
+  if (receipt.binding !== binding) return { ...unknown, status: 'stale' }
+
+  const validInputs = inputs => Array.isArray(inputs) && inputs.length > 0 && inputs.length <= 32 &&
+    inputs.every(input => typeof input?.path === 'string' &&
+      input.path.length <= 240 && /^[\p{L}\p{N}._ /-]+$/u.test(input.path) &&
+      input.path.split('/').every(part => part && !/[. ]$/.test(part) && !/^\.git$/i.test(part)) &&
+      typeof input.sha256 === 'string' && CHANGE_HASH.test(input.sha256))
+  const checkInputs = inputs => {
+    if (!validInputs(inputs)) return 'unknown'
+    return inputs.every(input => verifies(input.path, input.sha256)) ? 'current' : 'stale'
+  }
+  const ids = new Set()
+  const checks = []
+  for (const check of receipt.checks) {
+    if (typeof check?.id !== 'string' || check.id.length > 48 || !CHANGE_ID.test(check.id) || ids.has(check.id) ||
+        typeof check.command !== 'string' || !check.command.trim() || check.command.length > 240 ||
+        /[\r\n\x00]/.test(check.command) || leaks(check.command).length ||
+        !Number.isInteger(check.exitCode) || check.exitCode < 0 ||
+        [check.node, check.platform, check.arch].some(value => typeof value !== 'string')) return unknown
+    ids.add(check.id)
+    let status = checkInputs(check.inputs)
+    if (status === 'current' && (check.node !== process.version || check.platform !== process.platform ||
+        check.arch !== process.arch)) status = 'stale'
+    checks.push({ id: check.id, command: check.command, status, ...(status === 'current' ? { exitCode: check.exitCode } : {}) })
+  }
+  const review = receipt.review
+  const reviewStatus = ['no-findings', 'findings'].includes(review?.verdict) ? checkInputs(review.inputs) : 'unknown'
+  return { path: relative, binding, status: 'recorded', checks,
+    review: { status: reviewStatus, ...(reviewStatus === 'current' ? { verdict: review.verdict } : {}) } }
+}
+
 function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
   const required = CHANGE_STAGES.get(stage)
   if (!required || extra.length || (expectedId !== undefined && !CHANGE_ID.test(expectedId))) {
@@ -2359,7 +2403,9 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
   }
   return { code: 0, out: JSON.stringify({ status: 'ready', id: record.id, stage, artifacts,
     intentExists: Boolean(localAt(artifacts.intent)),
-    contracts: record.contracts.map(entry => entry.path) }) }
+    contracts: record.contracts.map(entry => entry.path),
+    ...(['build', 'resume', 'review'].includes(stage) ?
+      { evidence: assignedEvidence(root, record, localAt, verifies) } : {}) }) }
 }
 
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {

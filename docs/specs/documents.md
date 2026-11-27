@@ -62,6 +62,22 @@ and branch without using its moving HEAD as the approval version. The operator e
 the command only checks consistency against that supplied record. For a repeated operational event, reuse its
 assigned change ID and draft intent. A different event gets a separate assignment when follow-up is warranted.
 
+#### Evidence for an assigned change
+
+Keep private handoff evidence in the returned `artifacts/handoff/<id>.json` path. The author records actual checks and
+the independent reviewer adds their verdict after reviewing the same inputs. Keep accepted records when handing off.
+The record has `id`, the returned `binding` for the approved artifacts and contracts, and `checks` (up to 16).
+Each check has a unique `id`, the exact public-safe
+`command`, `exitCode`, `node` (for example `v24.0.0`), `platform`, `arch`, and `inputs`. The optional `review` has
+`verdict` (`no-findings` or `findings`) and `inputs`. Each input is a checkout-relative file `path` and its
+`sha256`. Include every file that can affect the result and the reviewed scope. Use a new result if other execution
+conditions change. Issue-tracked work continues to use its checkpoint and ledger.
+
+Build, resume and review report `evidence` separately from assignment readiness. Missing or invalid records are
+`unknown`. A changed approval or input makes its evidence `stale`. A `current` check with exit code zero can be reused
+only when its declared scope, assertions, conditions and trusted producer apply. Evidence records are data. They do
+not approve a change, execute a stored command or replace the independent review and CI required for delivery.
+
 Current design decisions live by topic in `docs/design/current-decisions.md` alone; when a choice changes, update its
 section in place. Each section holds only the current choice and reason, alternatives not taken, and conditions for
 revisiting. The owner the top of this spec names (a spec or the devflow skill) holds the rules, and the summary points to it.

@@ -367,6 +367,10 @@ test('brief routing advises ordered audit and dispatch only for a combined reque
   }
   for (const prompt of [null, 'Write a prompt.', 'Audit an existing task brief.', 'Start a worker to check seed.txt.',
     'Write and audit the brief, but do not launch a worker.', '프롬프트를 작성하고 감사하되 위임은 하지 마세요.',
+    'Draft and audit a brief. Do not actually dispatch the worker.',
+    'Write and audit the worker brief. Wait for approval before dispatch.',
+    '브리프를 작성하고 감사해. 나중에 승인하면 작업자에게 넘겨.',
+    '프롬프트를 작성하고 감사하되 절대로 실제 위임은 하지 말아줘.',
     '작업자를 시작해 표시만 반환받아 주세요. 새 문안이나 감사 파일은 만들 필요가 없습니다.',
     'Launch a worker now. Do not write a brief or audit anything.',
     '초안 작성과 감사 뒤 위임한 기록은 링크만 알려 주세요.', `How should I ${english.toLowerCase()}`,

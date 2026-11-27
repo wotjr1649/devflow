@@ -123,15 +123,17 @@ function briefRoute(prompt) {
   if (!brief.test(task) || !write.test(task) || !audit.test(task) || !dispatch.test(task)) return ''
   const excluded = [
     /^\s*(?:how|why)\s+(?:do|does|should|can|would|to)\b/i,
-    /\b(?:do not|don't|never|without)\s+(?:delegate|dispatch|launch|(?:start|run)\b.{0,25}\b(?:worker|agent))\b/i,
+    /\b(?:do not|don't|never|without)\s+(?:actually\s+)?(?:delegate|dispatch|launch|(?:start|run)\b.{0,25}\b(?:worker|agent))\b/i,
+    /\b(?:wait|ask)\b.{0,35}\bapproval\s+before\s+(?:delegat|dispatch|launch)/i,
     /\b(?:no (?:new )?(?:brief|draft|prompt|audit)|(?:do not|don't) (?:draft|write|audit) (?:a |the )?(?:brief|prompt))\b/i,
-    /(?:위임|작업자\s*실행|에이전트\s*(?:실행|시작))(?:은|는|을|를)?\s*(?:하지\s*마|금지)/,
+    /(?:위임|작업자\s*실행|에이전트\s*(?:실행|시작))(?:은|는|을|를)?\s*(?:실제로?\s*)?(?:하지\s*[마말]|금지)/,
+    /(?:나중에|별도|추가).{0,18}승인.{0,25}(?:위임|넘겨|실행)/,
     /(?:문안|지시문|브리프|프롬프트|감사).{0,30}(?:만들|작성|검토|감사)(?:할)?\s*(?:필요(?:가)?\s*없|하지\s*마)/,
     /(?:링크|위치)만\s*(?:답|전달|공유|알려)|\b(?:only|just)\s+(?:share|send|return)\s+(?:the |a )?link\b/i,
   ]
   if (excluded.some(rule => rule.test(task))) return ''
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit',
-    additionalContext: 'For the requested delegation brief, use write-prompts to save the draft. Then use audit-prompts to reopen and audit the saved file. Dispatch only after PASS. Prefer the file and SHA-256 for the worker to verify, or pass the text verbatim without additions.' } })
+    additionalContext: 'For the requested delegation brief, use write-prompts to save the draft. Then use audit-prompts to reopen and audit the saved file. Dispatch only after PASS and explicit authorization to dispatch now. Prefer the file and SHA-256 for the worker to verify, or pass the text verbatim without additions.' } })
 }
 
 function handle(raw, env = state.realEnv) {

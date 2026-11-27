@@ -56,6 +56,69 @@ test('a local assignment returns only its paths without tying approval to HEAD',
   assert.match(f.check('resume').reason, /repository or branch changed/)
 })
 
+test('resume classifies missing, current and stale handoff evidence without running the checks', () => {
+  const f = fixture()
+  const relative = 'artifacts/handoff/example.json'
+  const unknown = f.check('resume').evidence
+  assert.deepEqual(unknown, { path: relative, binding: unknown.binding, status: 'unknown' })
+  assert.match(unknown.binding, /^[0-9a-f]{64}$/)
+  assert.equal(f.check('plan').evidence, undefined)
+  const files = ['src/code.js', 'tests/check.js']
+  const inputs = files.map(name => {
+    const target = path.join(f.root, name)
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, name + '\n')
+    return { path: name, sha256: hashFile(target).sha256 }
+  })
+  const check = (id, values) => ({
+    id, command: 'node --test ' + id, exitCode: 0, node: process.version,
+    platform: process.platform, arch: process.arch, inputs: values,
+  })
+  const receipt = {
+    id: 'example', binding: unknown.binding,
+    checks: [check('code', [inputs[0]]), check('tests', [inputs[1]])],
+    review: { verdict: 'no-findings', inputs },
+  }
+  const file = path.join(f.root, relative)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const save = () => fs.writeFileSync(file, JSON.stringify(receipt))
+  save()
+  const current = f.check('resume').evidence
+  assert.equal(current.status, 'recorded')
+  assert.deepEqual(current.checks.map(entry => [entry.status, entry.exitCode]), [['current', 0], ['current', 0]])
+  assert.deepEqual(current.review, { status: 'current', verdict: 'no-findings' })
+
+  fs.appendFileSync(path.join(f.root, files[0]), 'changed\n')
+  const selective = f.check('resume').evidence
+  assert.deepEqual(selective.checks.map(entry => entry.status), ['stale', 'current'])
+  assert.deepEqual(selective.review, { status: 'stale' })
+  receipt.checks[1].node = 'other'
+  save()
+  assert.equal(f.check('resume').evidence.checks[1].status, 'stale')
+  receipt.checks[1].inputs[0].path = '../outside'
+  save()
+  assert.equal(f.check('resume').evidence.checks[1].status, 'unknown')
+  const spec = path.join(f.directory, 'spec.md')
+  fs.appendFileSync(spec, 'updated design\n')
+  f.record.approvals.spec.sha256 = hashFile(spec).sha256
+  f.persist()
+  const reapproved = f.check('resume').evidence
+  assert.equal(reapproved.status, 'stale')
+  assert.notEqual(reapproved.binding, unknown.binding)
+  receipt.binding = reapproved.binding
+  save()
+  assert.equal(f.check('resume').evidence.status, 'recorded')
+  fs.appendFileSync(f.contract, 'updated contract\n')
+  f.record.contracts[0].sha256 = hashFile(f.contract).sha256
+  f.persist()
+  const contractChanged = f.check('resume').evidence
+  assert.equal(contractChanged.status, 'stale')
+  assert.notEqual(contractChanged.binding, reapproved.binding)
+  receipt.id = 'different-assignment'
+  save()
+  assert.deepEqual(f.check('resume').evidence, { ...contractChanged, status: 'unknown' })
+})
+
 test('planning holds a stale specification while design only requires approved intent', () => {
   const f = fixture()
   fs.appendFileSync(path.join(f.directory, 'spec.md'), 'modified\n')

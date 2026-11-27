@@ -41,6 +41,16 @@ For setup and integration gates, follow `docs/specs/repository.md`; for branch a
 `skills/devflow/references/delivery.md#cleanup`.
 Hook setup requires explicit instruction.
 
+## Assigned handoffs
+
+For operator-assigned changes, run `node bin/devflow-state change-check <stage> [id]` from this checkout before
+opening work documents or the diff. Run approved commands individually. Use `resume` for status without rerunning
+tests and `plan` before writing or updating a plan.
+Use the development workflow skill for the status of assigned work or to check design approval before planning.
+Give routine answers directly.
+When a plan-only request hits an approval hold, report its reason without checking other stages or opening work
+documents.
+
 ## Language
 
 Committed text is English: instructions, skills, references, specs, design, research, plans,

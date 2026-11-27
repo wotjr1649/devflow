@@ -43,6 +43,18 @@ remain in place. A worktree uses its own operator-supplied, untracked `.work/dev
 the change `id`, absolute `root`, `git` identity (`common` directory and `branch`, or `null` for Git-free work),
 `approvals` keyed by artifact kind with `by` and `sha256`, and `contracts` with relative `path` and `sha256`.
 
+Provide the exact trusted invocation in the handoff or project instructions loaded by both hosts. If Claude Code
+does not load the shared `AGENTS.md`, import it with `@AGENTS.md` in the project's `CLAUDE.md`.
+Run approved commands separately when the host grants permission for individual commands. For status-only requests,
+use `resume` without rerunning verification. Use `plan` before writing or updating a plan.
+
+Projects that want the skill to load for these requests can add this scoped rule to their shared `AGENTS.md`:
+
+> Use the development workflow skill for the status of assigned work or to check design approval before planning.
+> Give routine answers directly.
+> When a plan-only request hits an approval hold, report its reason without checking other stages or opening work
+> documents.
+
 From that root, the trusted `devflow-state change-check <stage> [id]` returns ready paths or a hold. Start lists paths
 and existing intent; design verifies intent, plan verifies intent and spec, and build, resume and review verify all
 three. All stages check declared contracts. An explicit change ID must match the assignment. Git checks the checkout
@@ -75,6 +87,7 @@ repository, write only a publishable summary in the Issue and point to private e
 |---|---|---|
 | SKILL.md | under 5,000 tokens, rules to keep at the top | move branch-specific content to `references/` |
 | skill reference | under 5,000 tokens | split further |
+| Devflow SKILL.md and its three references combined | at most 2,000 `o200k_base` tokens, counted per file with LF line endings | remove duplication |
 | skill description | at most two sentences: what it does, then when | narrow the scope |
 | project AGENTS.md | one page (about 1,000 tokens) | move to situational pointers |
 | spec file | under 5,000 tokens | split by topic |

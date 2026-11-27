@@ -30,3 +30,8 @@ jobs:
       # The project gate, read from .devflow.json as the pre-push hook reads it, so the two cannot drift apart.
       - run: eval "$(node -p "require('./.devflow.json').verify")"
         shell: bash
+      - name: Check the Devflow token budget
+        shell: bash
+        run: |
+          npm ci --prefix tests --include=dev --ignore-scripts --no-audit --no-fund
+          node tests/devflow-token-budget.cjs

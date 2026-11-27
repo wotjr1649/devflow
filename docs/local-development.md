@@ -230,6 +230,13 @@ Run the final repository checks on the development working branch.
 node --test --test-timeout=120000 tests/*.test.js
 ```
 
+Run the separate Devflow token budget check when its skill or references change:
+
+```powershell
+npm ci --prefix tests --include=dev --ignore-scripts --no-audit --no-fund
+node tests/devflow-token-budget.cjs
+```
+
 The verification record holds the test commit, host versions, profile and loading source, the checks run and their
 results, and the paths not run.
 If only login and the plugin list were checked, do not record that hook behavior in real model conversations passed.

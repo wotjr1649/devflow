@@ -8,6 +8,6 @@ Verify versions/hashes/checks; M0 independent review. Mark proven criteria only.
 
 `local-merge`/`push-on-request`: local proof. `pr-ci`: refresh base/head/rules/CI/approvals/threads; verify hosted head/merge, guard head. Approved method only; partial Issue open; reopen failures.
 
-Conditional writes preferred; read back/log. Retry: exit proof + (no effect or verified idempotency). Deploy: artifact/env/health/rollback.
+Prefer conditional writes; read back/log. Retry: exit proof + (no effect or verified idempotency). Deploy: artifact/env/health/rollback.
 ## Cleanup
-Prove integration/identity/tip/owner/use/locks/submodules/index/worktree/untracked/ignored data. Keep protected/primary/active/uncertain targets + unique data/history; prove recovery. Readiness: list only. Recheck approved cleanup: normal worktree, branch `-d`, only reviewed remote SHA. No force/reset/clean/prune. Read back.
+Prove integration/identity/tip/owner/use/locks/submodules/index/worktree/untracked/ignored data. Keep protected/primary/active/uncertain, unique data/history; prove recovery. Readiness: list only. Recheck approved removal: normal worktree, branch `-d`, reviewed remote SHA only. No force/reset/clean/prune. Read back.

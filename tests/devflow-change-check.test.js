@@ -340,7 +340,7 @@ test('assigned review reuses only complete matching successful checks after a co
   save()
   assert.deepEqual(decide().reuse, ['http', 'syntax'])
   assert.match(f.check('review').next, /For a verification-only handoff, report the reused IDs and that no checks ran/)
-  assert.match(f.check('review').next, /wider request, known drift, or requested rerun/)
+  assert.match(f.check('review').next, /wider request, known check-input drift, or requested rerun/)
   fs.writeFileSync(path.join(f.root, 'tests/new.js'), 'another test')
   assert.deepEqual(decide().run, ['http'])
   assert.equal(f.check('review').next, undefined, 'a changed test requires normal routing')

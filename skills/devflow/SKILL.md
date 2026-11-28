@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: "Use when handling intent/spec/plan, change audits, tracked Issues, handoffs, assigned status, incidents, PR, merge or deployment readiness, cleanup or consequential changes. Skip routine or instruction-only work."
+description: "Use when handling intent/spec/plan, change audits, tracked Issues, handoffs, assigned status, incidents, recurring defects, PR, merge or deployment readiness, cleanup or consequential changes. Skip routine or instruction-only work."
 ---
 
 # Devflow
@@ -13,7 +13,7 @@ For assignments, run `change-check <stage> [id]` as authorized by project instru
 Evidence-only: recorded + ready + empty `evidence.verification.run` → report reuse/no checks. Stop. Honor source reads/drift/reruns/independent review.
 
 - [Resume](references/resume.md) alone for status/switch/interruption/unchanged work. Status ends here. Ready build: read first, approved edits only.
-- [Change](references/change.md) for work/docs/plans/branches/decisions/delegation/incidents/code review before assigned records.
+- [Change](references/change.md) for work/docs/plans/branches/decisions/delegation/incidents/debugging/code review before assigned records.
 - Read [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Before commits/external writes/cleanup. Reconcile uncertain effects.
 
 Scope change/compaction/restart: reopen first invalid stage/ref. Verify target/authority/rev/hashes/dirty+ignored inputs, preservation. Rerun affected/required checks except status. Approved equivalents for skips/weakening/removal.

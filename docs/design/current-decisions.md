@@ -49,9 +49,9 @@ unattended run, and parallel writes are used only when files do not overlap and 
 skill's Execution modes set the conditions per mode ([why](../specs/orchestration.md#execution-modes)). The host supplies
 model and effort defaults unless the user gives a supported override. A scoped brief and independent evidence carry
 across model changes. Past model comparisons are recorded in [host-facts](../research/host-facts.md).
-Role text and perspectives live in the skill's Change reference, and every brief carries the role's body and one
-perspective on both hosts, so the skill depends on no agent name or file (#157). The plugin ships no agent definitions
-(#159): Claude Code runs every role on `general-purpose`, Codex on `spawn_agent`, so each host has one delegation path.
+The Change reference defines what a task brief carries, including its permissions and evidence. Each brief can add a
+focused perspective when the work warrants it. The plugin ships no agent definitions (#159): Claude Code uses
+`general-purpose`, and Codex uses `spawn_agent`.
 The owner accepted the loss of the controls only a Claude definition gave - the reviewer's read-only tools, the
 explorer's lack of Edit and Write, the implementer's `maxTurns` and spawn ban, the definitions' `BLOCKED` floor, and a
 `devflow:<role>` name another plugin's subagent rules could exclude - because a 30-run comparison found no difference in

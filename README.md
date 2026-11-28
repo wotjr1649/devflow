@@ -29,9 +29,19 @@ handoffs using their own records and checks.
 The four independent skills (`decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`)
 work in any repository, devflow or not.
 
-**Compatibility:** `/development-start`, `/pr-review-workflow` and `/workspace-cleanup` are gone. In a devflow
-repository their requests go to `devflow`; repositories without `.devflow.json` no longer get starting, PR review or
-cleanup from this plugin.
+### Moving from v0.4.0
+
+Update any saved prompts or project instructions that use the old slash commands.
+
+| Previous command | Current route |
+| --- | --- |
+| `/development-start`, `/pr-review-workflow`, `/workspace-cleanup` | Ask for the same work in plain words. Devflow starts changes through Change and handles PR readiness or cleanup through Delivery. |
+| `/grilling` | `decision-interview` for unresolved decisions. |
+| `/prompt-generator` | `write-prompts` to draft a prompt. Ask for `audit-prompts` when the draft needs independent review. |
+| `/writing-for-agents` | `agent-instruction-design` for persistent agent instructions. |
+
+The repository configuration enables the Issue card and ledger. Without it, consequential local changes can use
+project records and local checks. A project without Git has no PR, branch cleanup, or hosted CI stage.
 
 ## Install
 

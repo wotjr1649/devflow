@@ -136,8 +136,11 @@ ledger behavior; see the [repository contract](docs/specs/repository.md).
 
 ## Prerequisites and limits
 
-- Node.js 22 or 24 (the CI matrix), Git and authenticated GitHub CLI (`gh`) must be available to hooks and commands.
-  Issue tracking expects a `github.com` origin and an account with write access to that repository.
+- The installed plugin's hooks and `devflow-state` commands require Node.js 22 or 24 (the CI matrix). The standalone
+  Markdown skills and unassigned local workflow can run without `devflow-state`.
+- Issue-tracked work also needs Git, an authenticated GitHub CLI (`gh`), a `github.com` origin and appropriate repository
+  access. Local assignment checks can run without Git or `gh`. Shared finding records require a Git repository with a
+  verifiable main worktree.
 - Installing the plugin does not configure a project. Add its `.devflow.json` and project files using the
   [repository contract](docs/specs/repository.md) for Issue tracking. Combined brief requests and valid local
   assignments can receive hook guidance without that file.

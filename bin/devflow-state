@@ -204,6 +204,7 @@ const CRITERIA_HEADING = /^## 수용 기준[ \t]*$/m
 const USAGE = `usage: devflow-state <command>
   card                        the resume card (the SessionStart hook prints it)
   change-check <stage> [id]    verify an operator's local change assignment and approved inputs
+  finding-attempt <id> <attempt> start|check|recover  manage a shared finding attempt
   read [n]                    Issue body and latest checkpoint, writers only, as data
   state <n> < block           replace the state block; stdin starts with "## 현재 상태", at most 15 lines below it
   intent <n> [--title <t>] < intent
@@ -266,7 +267,8 @@ const realEnv = {
     const r = spawnSync(cmd, args, {
       cwd: opts.cwd, input: opts.input, env: opts.env, encoding: 'utf8', timeout: opts.timeout || RUN_TIMEOUT_MS, windowsHide: true,
     })
-    return { code: r.status ?? (r.error ? r.error.code : 1), stdout: r.stdout || '', stderr: r.stderr || '' }
+    const code = r.status ?? (r.error ? r.error.code : opts.requireExit ? (r.signal || 'NO_EXIT') : 1)
+    return { code, stdout: r.stdout || '', stderr: r.stderr || '' }
   },
 }
 
@@ -517,8 +519,12 @@ function dropStale(lock, judged) {
 function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
   if (!issueDirOk(root, n)) return { ok: false, why: 'unsafe' }
   const dir = path.join(root, '.work', 'devflow', `i${n}`)
+  return withDirectoryLock(dir, 'ledger.lock', fn, waitMs)
+}
+
+function withDirectoryLock(dir, name, fn, waitMs = LOCK_WAIT_MS, staleMs = LOCK_STALE_MS) {
   fs.mkdirSync(dir, { recursive: true })
-  const lock = path.join(dir, 'ledger.lock')
+  const lock = path.join(dir, name)
   const mine = token()
   const until = Date.now() + waitMs
   for (;;) {
@@ -536,7 +542,7 @@ function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
       // ahead of now is as wrong as one far behind it: an archive can carry any mtime.
       const fd = fs.openSync(lock, 'r')
       try {
-        if (Math.abs(Date.now() - fs.fstatSync(fd).mtimeMs) > LOCK_STALE_MS) judged = fs.readFileSync(fd, 'utf8')
+        if (Math.abs(Date.now() - fs.fstatSync(fd).mtimeMs) > staleMs) judged = fs.readFileSync(fd, 'utf8')
       } finally {
         fs.closeSync(fd)
       }
@@ -2299,6 +2305,7 @@ const CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const CHANGE_HASH = /^[0-9a-f]{64}$/
 const CHECK_ENVIRONMENT = new Set(['CI', 'LANG', 'LC_ALL', 'LC_CTYPE', 'NODE_ENV', 'NODE_OPTIONS', 'TZ'])
 const CHANGE_USAGE = 'usage: devflow-state change-check <start|design|plan|build|resume|review> [change-id]'
+const FINDING_USAGE = 'usage: devflow-state finding-attempt <change-id> <attempt-id> start|check|recover'
 const DOCUMENT_STAGES = new Map([['intent', 'start'], ['spec', 'design'], ['plan', 'plan']])
 
 function changeRecord(root) {
@@ -2374,6 +2381,251 @@ function evidenceId(value) {
   return typeof value === 'string' && value.length <= 48 && CHANGE_ID.test(value)
 }
 
+function findingProgress(finding, approvedPlan) {
+  if (finding === undefined) return {}
+  const invalid = reason => ({ reason: `invalid finding ${reason}` })
+  if (!evidenceId(finding?.id) || !Array.isArray(finding.attempts) || finding.attempts.length > 64) {
+    return invalid('history')
+  }
+  const unique = new Map()
+  for (const attempt of finding.attempts) {
+    if (!evidenceId(attempt?.id) || typeof attempt.planSha256 !== 'string' || !CHANGE_HASH.test(attempt.planSha256) ||
+        (attempt.exitCode !== null && (!Number.isInteger(attempt.exitCode) || attempt.exitCode < 0 || attempt.exitCode > 255))) {
+      return invalid('attempt')
+    }
+    const previous = unique.get(attempt.id)
+    if (previous && (previous.planSha256 !== attempt.planSha256 ||
+        (previous.exitCode !== null && attempt.exitCode !== null && previous.exitCode !== attempt.exitCode))) {
+      return { reason: 'conflicting finding attempt results' }
+    }
+    if (!previous || previous.exitCode === null) unique.set(attempt.id, attempt)
+  }
+  let active = [...unique.values()]
+  if (finding.reopen !== undefined) {
+    const boundary = active.findIndex(attempt => attempt.id === finding.reopen?.after)
+    if (boundary < 0 || !(active[boundary].exitCode > 0) || finding.reopen.planSha256 !== approvedPlan) return invalid('reopen')
+    const earlier = active.slice(0, boundary + 1)
+    if (earlier.some(attempt => attempt.exitCode === null || attempt.planSha256 === approvedPlan) ||
+        earlier.filter(attempt => attempt.exitCode > 0).length < 2) return invalid('reopen')
+    active = active.slice(boundary + 1)
+  }
+  const pending = active.filter(attempt => attempt.exitCode === null).map(attempt => attempt.id)
+  const failedAttempts = active.filter(attempt => attempt.exitCode > 0).length
+  return { active, finding: { id: finding.id, failedAttempts, pending },
+    reason: pending.length ? 'unresolved finding attempt' : failedAttempts >= 2 ? 'two failed finding attempts; replan or hold' : null }
+}
+
+function sharedFindingPath(root, record, git) {
+  const common = record.git?.common
+  if (!common || !strictLocalPath(common).ok || !evidenceId(record.finding.id) || record.git.branch.length > 240 ||
+      !Array.isArray(record.finding.attempts) || record.finding.attempts.length !== 0) return null
+  const own = git(['rev-parse', '--absolute-git-dir'])
+  if (own.code !== 0 || !path.isAbsolute(own.stdout.trim()) || !strictLocalPath(own.stdout.trim()).ok) return null
+  const ownDir = own.stdout.trim()
+  const main = differs(common, path.join(root, '.git')) || differs(ownDir, common)
+    ? provenMain(root, ownDir, common) : root
+  return main && path.join(main, '.work', 'devflow', 'findings', `${record.id}.json`)
+}
+
+function validFindingRecovery(recovery) {
+  return ['rebind', 'retry', 'abandon'].includes(recovery?.action) &&
+    typeof recovery.fromWorktree === 'string' && CHANGE_HASH.test(recovery.fromWorktree) &&
+    typeof recovery.toWorktree === 'string' && CHANGE_HASH.test(recovery.toWorktree) &&
+    (recovery.execution === undefined || (typeof recovery.execution === 'string' && /^[0-9a-f]{16}$/.test(recovery.execution))) &&
+    (recovery.action !== 'retry' || (recovery.execution !== undefined && recovery.fromWorktree === recovery.toWorktree)) &&
+    (recovery.action !== 'rebind' || recovery.fromWorktree !== recovery.toWorktree) &&
+    typeof recovery.by === 'string' && recovery.by.trim() && recovery.by.length <= 80 &&
+    typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 240 &&
+    !/[\p{Cc}]/u.test(recovery.by + recovery.reason) && !leaks(recovery.by + '\n' + recovery.reason).length
+}
+
+function validFindingRecoveries(attempt) {
+  const recoveries = attempt.recoveries
+  if (recoveries === undefined) return true
+  return Array.isArray(recoveries) && recoveries.length > 0 && recoveries.at(-1)?.toWorktree === attempt.worktree &&
+    recoveries.every((step, i) => validFindingRecovery(step) &&
+      (i === 0 || recoveries[i - 1]?.toWorktree === step.fromWorktree) &&
+      (step.action !== 'abandon' || (i === recoveries.length - 1 && attempt.exitCode === null && attempt.execution === undefined)))
+}
+
+function readSharedFinding(file, marker) {
+  if (!file || !strictLocalPath(file).ok) return null
+  try {
+    if (fs.lstatSync(file).nlink !== 1) return null
+    const stored = JSON.parse(smallFile(file, 16384))
+    if (stored?.id === marker.id && Array.isArray(stored.attempts) && stored.attempts.every(attempt =>
+      typeof attempt?.branch === 'string' && attempt.branch.length > 0 && attempt.branch.length <= 240 &&
+      !/[\p{Cc}]/u.test(attempt.branch) && typeof attempt.worktree === 'string' && CHANGE_HASH.test(attempt.worktree) &&
+      (attempt.reproductionBinding === undefined ? attempt.exitCode === null :
+        typeof attempt.reproductionBinding === 'string' && CHANGE_HASH.test(attempt.reproductionBinding)) &&
+      (attempt.execution === undefined || (attempt.exitCode === null && typeof attempt.execution === 'string' &&
+        /^[0-9a-f]{16}$/.test(attempt.execution))) &&
+      (attempt.environmentSha256 === undefined || (typeof attempt.environmentSha256 === 'string' &&
+        CHANGE_HASH.test(attempt.environmentSha256))) &&
+      (attempt.exitCode === null || ([0, 1].includes(attempt.exitCode) && evidenceId(attempt.proof?.check) &&
+        typeof attempt.proof.inputsSha256 === 'string' && CHANGE_HASH.test(attempt.proof.inputsSha256) &&
+        attempt.proof.environmentSha256 === attempt.environmentSha256)) &&
+      validFindingRecoveries(attempt)) &&
+      new Set(stored.attempts.map(attempt => attempt.id)).size === stored.attempts.length) {
+      return { id: marker.id, attempts: stored.attempts, reopen: marker.reopen }
+    }
+  } catch {}
+  return null
+}
+
+const abandonment = attempt => attempt.recoveries?.at(-1)?.action === 'abandon'
+
+function sharedProgress(history, plan, environment) {
+  const progress = findingProgress({ ...history, attempts: history.attempts.map(attempt =>
+    abandonment(attempt) ? { ...attempt, exitCode: 0 } : attempt) }, plan)
+  if (!progress.finding) return progress
+  const executions = progress.active.filter(attempt => attempt.execution !== undefined)
+  if (executions.length) {
+    progress.finding.executions = Object.fromEntries(executions.map(({ id, execution }) => [id, execution]))
+    progress.reason = 'previous reproduction execution must be reconciled'
+  }
+  if (progress.active.some(attempt => !abandonment(attempt) && attempt.environmentSha256 !== environment)) {
+    progress.environmentChanged = true
+    progress.reason = 'declared reproduction environment changed or is unverified'
+  }
+  return progress
+}
+
+function reproductionPolicy(record) {
+  const approved = record.finding.reproduction
+  if (!evidenceId(approved?.check) || typeof approved.sha256 !== 'string' || !CHANGE_HASH.test(approved.sha256) ||
+      !Array.isArray(record.verification) || record.verification.length > 16) return null
+  const policies = record.verification.filter(entry => entry?.id === approved.check)
+  if (policies.length !== 1) return null
+  const policy = policies[0]
+  const match = typeof policy.command === 'string' && /^node ([a-zA-Z0-9._/-]+\.(?:cjs|mjs|js))$/.exec(policy.command)
+  if (!match || !evidencePath(match[1]) || !validEvidencePaths(policy.paths)) return null
+  const environment = policy.environment ?? []
+  if (!Array.isArray(environment) || environment.length > CHECK_ENVIRONMENT.size ||
+      !environment.every(name => CHECK_ENVIRONMENT.has(name) && name !== 'NODE_OPTIONS') ||
+      new Set(environment).size !== environment.length) return null
+  const binding = crypto.createHash('sha256').update(JSON.stringify([approved.check, policy.command, approved.sha256,
+    [...policy.paths].sort(), [...environment].sort()])).digest('hex')
+  return { id: approved.check, relative: match[1], sha256: approved.sha256, paths: policy.paths, environment, binding }
+}
+
+function reproductionInputs(policy, localAt) {
+  const { files } = verificationInputs(policy.paths, localAt)
+  if (!files?.has(policy.relative)) return null
+  const values = []
+  for (const relative of [...files].sort()) {
+    const file = localAt(relative)
+    const hash = file && hashFile(file)
+    if (!hash || (relative === policy.relative && hash.sha256 !== policy.sha256)) return null
+    values.push([relative, hash.sha256, hash.mode])
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(values)).digest('hex')
+}
+
+function runFindingReproduction(env, root, record, policy, localAt, before) {
+  const vars = Object.fromEntries(Object.entries(env.vars || {}).filter(([name]) =>
+    /^(?:PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TMP|TEMP|TMPDIR)$/i.test(name)))
+  for (const name of policy.environment) if (env.vars?.[name] !== undefined) vars[name] = env.vars[name]
+  const run = env.run(process.execPath, [path.join(root, policy.relative)], { cwd: root, env: vars, requireExit: true })
+  if (run.code !== 0 || run.stdout.length > 4096 || !run.stdout.trim()) return null
+  let result
+  try { result = JSON.parse(run.stdout) } catch { return null }
+  if (result?.finding !== record.finding.id || Object.keys(result).length !== 2 ||
+      !['reproduced', 'passed'].includes(result.outcome) ||
+      before !== reproductionInputs(policy, localAt)) return null
+  return { exitCode: result.outcome === 'reproduced' ? 1 : 0, proof: { check: policy.id, inputsSha256: before } }
+}
+
+function applyFindingRecovery(record, previous, worktree, id) {
+  const grant = record.finding.recovery
+  if (grant?.attempt !== id || !validFindingRecovery(grant) || grant.toWorktree !== worktree) return null
+  const latest = previous.recoveries?.at(-1)
+  if (latest && latest.action === grant.action && latest.fromWorktree === grant.fromWorktree &&
+      latest.toWorktree === worktree && latest.by === grant.by && latest.reason === grant.reason &&
+      latest.execution === grant.execution) return 'already-recovered'
+  if (previous.exitCode !== null || abandonment(previous) || previous.worktree !== grant.fromWorktree ||
+      previous.branch !== record.git.branch || previous.execution !== grant.execution) return null
+  previous.recoveries = [...(previous.recoveries || []), { action: grant.action, fromWorktree: grant.fromWorktree,
+    toWorktree: worktree, by: grant.by, reason: grant.reason, ...(grant.execution !== undefined ? { execution: grant.execution } : {}) }]
+  previous.worktree = worktree
+  delete previous.execution
+  return grant.action === 'abandon' ? 'abandoned' : 'recovered'
+}
+
+function updateSharedFinding(file, root, record, action, hold, env, policy, localAt) {
+  if (!file || !readSharedFinding(file, record.finding)) return hold('missing or unsafe shared finding history')
+  try {
+    const result = withDirectoryLock(path.dirname(file), `${record.id}.lock`, () => {
+      const deadline = Date.now() + RUN_TIMEOUT_MS * 2
+      const history = readSharedFinding(file, record.finding)
+      if (!history) return hold('missing or unsafe shared finding history')
+      const plan = record.approvals.plan.sha256
+      const environment = environmentDigest(policy.environment, env.vars)
+      const progress = sharedProgress(history, plan, environment)
+      const detail = progress.finding ? { finding: progress.finding } : {}
+      const previous = history.attempts.find(attempt => attempt.id === action.id)
+      const saved = status => ({ code: 0, out: JSON.stringify({ status, attempt: action.id, ...detail }) })
+      const persist = () => {
+        if (Date.now() >= deadline) return 'shared finding update exceeded its lock budget'
+        const value = { id: history.id, attempts: history.attempts }
+        if (Buffer.byteLength(JSON.stringify(value, null, 2) + '\n') > 16384) return 'shared finding history is full'
+        writeJson(file, value)
+        return null
+      }
+      const worktree = crypto.createHash('sha256').update(samePathKey(root)).digest('hex')
+      if (!progress.finding) return hold(progress.reason)
+      if (previous && previous.planSha256 !== plan) return hold('finding attempt belongs to another plan', detail)
+      let status
+      if (action.kind === 'start') {
+        if (previous) return saved(abandonment(previous) ? 'already-abandoned' :
+          previous.exitCode === null ? 'already-pending' : 'already-recorded')
+        if (progress.reason) return hold(progress.reason, detail)
+        if (history.attempts.length === 64) return hold('shared finding history is full', detail)
+        if (!reproductionInputs(policy, localAt)) return hold('approved reproduction inputs are missing or changed', detail)
+        history.attempts.push({ id: action.id, exitCode: null, planSha256: plan, branch: record.git.branch, worktree,
+          reproductionBinding: policy.binding, ...(environment !== undefined ? { environmentSha256: environment } : {}) })
+        status = 'reserved'
+      } else {
+        if (!previous) return hold('finding attempt has no reservation', detail)
+        if (action.kind === 'recover') {
+          if (record.finding.recovery?.action !== 'abandon' && previous.reproductionBinding !== undefined &&
+              previous.reproductionBinding !== policy.binding) return hold('reserved reproduction policy changed', detail)
+          status = applyFindingRecovery(record, previous, worktree, action.id)
+          if (!status) return hold('missing or mismatched operator finding recovery', detail)
+          if (status === 'already-recovered') return saved(status)
+          if (status === 'recovered') previous.reproductionBinding = policy.binding
+        } else {
+          if (abandonment(previous)) return saved('already-abandoned')
+          if (previous.exitCode !== null) return saved('already-recorded')
+          if (previous.branch !== record.git.branch || previous.worktree !== worktree) {
+            return hold('resolve pending attempt in its original worktree or obtain operator recovery', detail)
+          }
+          if (previous.reproductionBinding !== policy.binding) return hold('reserved reproduction policy changed', detail)
+          if (progress.environmentChanged) return hold(progress.reason, detail)
+          if (progress.finding.executions) return hold('previous reproduction execution must be reconciled', detail)
+          const inputs = reproductionInputs(policy, localAt)
+          if (!inputs) return hold('approved reproduction inputs are missing or changed', detail)
+          previous.execution = token()
+          const startError = persist()
+          if (startError) return hold(startError, detail)
+          const outcome = runFindingReproduction(env, root, record, policy, localAt, inputs)
+          if (!outcome) return hold('approved reproduction did not establish a result; reconcile its execution before retry',
+            { finding: sharedProgress(history, plan, environment).finding })
+          if (environment !== undefined) outcome.proof.environmentSha256 = environment
+          Object.assign(previous, outcome)
+          delete previous.execution
+          status = 'recorded'
+        }
+      }
+      const updated = sharedProgress(history, plan, environment)
+      const error = persist()
+      if (error) return hold(error, detail)
+      return { code: 0, out: JSON.stringify({ status, attempt: action.id, finding: updated.finding }) }
+    }, LOCK_WAIT_MS, LOCK_STALE_MS + RUN_TIMEOUT_MS * 2)
+    return result.ok ? result.value : hold(`shared finding history is ${result.why}`)
+  } catch { return hold('could not update shared finding history') }
+}
+
 function verificationInputs(scope, localAt) {
   const files = new Set()
   let visited = 0
@@ -2412,20 +2664,28 @@ function validReceiptInputs(inputs) {
     new Set(inputs.map(input => input.path)).size === inputs.length
 }
 
+function validEvidencePaths(paths) {
+  return Array.isArray(paths) && paths.length > 0 && paths.length <= 32 &&
+    paths.every(input => typeof input === 'string' && evidencePath(input.replace(/\/$/, '')))
+}
+
+function environmentDigest(names, vars = {}) {
+  return names?.length ? crypto.createHash('sha256').update(JSON.stringify(
+    [...names].sort().map(name => [name, vars[name] ?? null]))).digest('hex') : undefined
+}
+
 function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
   if (!Array.isArray(required) || !required.length || required.length > 16) return { status: 'invalid' }
   const ids = new Set()
   const reuse = [], run = [], fresh = new Set(), directoryScopes = new Map(), environments = {}, runReasons = {}
   for (const policy of required) {
     if (!evidenceId(policy?.id) || ids.has(policy.id) || !evidenceCommand(policy.command) ||
-        !Array.isArray(policy.paths) || !policy.paths.length || policy.paths.length > 32 ||
-        !policy.paths.every(input => typeof input === 'string' && evidencePath(input.replace(/\/$/, '')))) return { status: 'invalid' }
+        !validEvidencePaths(policy.paths)) return { status: 'invalid' }
     const names = policy.environment
     if (names !== undefined && (!Array.isArray(names) || !names.length || names.length > CHECK_ENVIRONMENT.size ||
         new Set(names).size !== names.length || !names.every(name => CHECK_ENVIRONMENT.has(name)))) return { status: 'invalid' }
     ids.add(policy.id)
-    const environment = names && crypto.createHash('sha256').update(JSON.stringify(
-      [...names].sort().map(name => [name, vars[name] ?? null]))).digest('hex')
+    const environment = environmentDigest(names, vars)
     if (environment) environments[policy.id] = environment
     const matches = receipt?.verificationBasis === basis ? receipt.checks.filter(check => check?.id === policy.id) : []
     const check = matches.length === 1 ? matches[0] : null
@@ -2473,22 +2733,34 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
   const { fresh, directoryScopes, ...verification } = record.verification !== undefined ?
     verificationPlan(record.verification, validReceipt ? receipt : null, basis, localAt, verifies, vars) : {}
   const recorded = validReceipt && receipt.binding === binding
-  const checkInputs = (inputs, requireMode = false) => {
+  const checkInputs = inputs => {
     if (!validReceiptInputs(inputs)) return 'unknown'
-    return inputs.every(input => (!requireMode || input.mode !== undefined) &&
+    return inputs.every(input => input.mode !== undefined &&
       verifies(input.path, input.sha256, input.mode)) ? 'current' : 'stale'
   }
   const checks = []
   for (const check of validReceipt ? receipt.checks : []) {
     if (!recorded && !fresh?.has(check.id)) continue
-    let status = checkInputs(check.inputs, true)
+    let status = checkInputs(check.inputs)
     if (status === 'current' && (check.node !== process.version || check.platform !== process.platform ||
         check.arch !== process.arch || (verification.status && !fresh?.has(check.id)))) status = 'stale'
     checks.push({ id: check.id, command: check.command, status, ...(status === 'current' ? { exitCode: check.exitCode } : {}) })
   }
+  const reviewPaths = record.reviewPaths
+  const reviewBinding = validEvidencePaths(reviewPaths) && new Set(reviewPaths).size === reviewPaths.length ?
+    crypto.createHash('sha256').update(JSON.stringify(['review', binding, [...reviewPaths].sort()])).digest('hex') : null
   const review = recorded ? receipt.review : null
-  const reviewStatus = ['no-findings', 'findings'].includes(review?.verdict) ? checkInputs(review.inputs) : 'unknown'
-  // Recorded paths catch content changes. Directory scopes can also gain previously unrecorded files.
+  const matchesReviewScope = () => {
+    const { files } = verificationInputs(reviewPaths, localAt)
+    return files?.size === review.inputs.length && review.inputs.every(input => files.has(input.path))
+  }
+  let reviewStatus = 'unknown'
+  if (reviewBinding && ['no-findings', 'findings'].includes(review?.verdict) &&
+      typeof review.binding === 'string' && CHANGE_HASH.test(review.binding) && validReceiptInputs(review.inputs)) {
+    reviewStatus = review.binding === reviewBinding && matchesReviewScope() ? checkInputs(review.inputs) : 'stale'
+  }
+  // Finish hashing both scopes before the final directory checks, so review reads cannot hide test input changes.
+  if (reviewStatus === 'current' && reviewPaths.some(input => input.endsWith('/')) && !matchesReviewScope()) reviewStatus = 'stale'
   const invalidated = new Set(checks.filter(check => check.status !== 'current').map(check => check.id))
   for (const [id, scope] of directoryScopes ?? []) {
     if (invalidated.has(id)) continue
@@ -2507,7 +2779,7 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
     verification.reuse = verification.reuse.filter(id => !invalidated.has(id))
     verification.run = record.verification.map(({ id }) => id).filter(id => !verification.reuse.includes(id))
   }
-  return { ...(local.ok && (local.absent || file) ? { path: relative, binding } : {}),
+  return { ...(local.ok && (local.absent || file) ? { path: relative, binding, ...(reviewBinding ? { reviewBinding } : {}) } : {}),
     status: !validReceipt ? 'unknown' : recorded ? 'recorded' : 'stale',
     ...(verification.status ? { verification } : {}),
     ...(recorded ? { checks,
@@ -2524,12 +2796,12 @@ function noGitRepositoryOnDisk(root, vars = {}) {
   } catch { return false }
 }
 
-function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
+function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
   const required = CHANGE_STAGES.get(stage)
   if (!required || extra.length || (expectedId !== undefined && !CHANGE_ID.test(expectedId))) {
     return { code: 2, out: CHANGE_USAGE }
   }
-  const hold = reason => ({ code: 1, out: JSON.stringify({ status: 'hold', stage, reason }) })
+  const hold = (reason, detail = {}) => ({ code: 1, out: JSON.stringify({ status: 'hold', stage, reason, ...detail }) })
   const location = assignmentLocation(cwd)
   if (!location) {
     const local = changeRecord(path.resolve(cwd))
@@ -2605,6 +2877,31 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     }
   }
   if (stage === 'build' && buildReason) return hold(buildReason)
+  let progress = {}
+  if (['build', 'resume'].includes(stage)) {
+    if (record.finding?.shared !== undefined && typeof record.finding.shared !== 'boolean') {
+      if (findingAction) return hold('invalid shared finding assignment')
+      progress = { reason: 'invalid shared finding assignment' }
+    } else if (record.finding?.shared === true) {
+      const file = sharedFindingPath(root, record, git)
+      const policy = reproductionPolicy(record)
+      if (!policy) {
+        if (findingAction) return hold('missing or invalid approved finding reproduction')
+        progress = { reason: 'missing or invalid approved finding reproduction' }
+      } else {
+        if (findingAction) return updateSharedFinding(file, root, record, findingAction, hold, env, policy, localAt)
+        const history = readSharedFinding(file, record.finding)
+        progress = history ? sharedProgress(history, record.approvals.plan.sha256, environmentDigest(policy.environment, env.vars)) :
+          { reason: 'missing, unverified or unsafe shared finding history' }
+      }
+    } else {
+      if (findingAction) return hold('shared finding recording is not assigned')
+      progress = findingProgress(record.finding, record.approvals.plan.sha256)
+    }
+  }
+  const { finding, reason: findingReason } = progress
+  if (!buildReason) buildReason = findingReason
+  if (stage === 'build' && buildReason) return hold(buildReason, finding ? { finding } : {})
   const planFile = stage === 'plan' ? localAt(artifacts.plan) : null
   const draftPlanHash = planFile ? hashFile(planFile)?.sha256 : null
   const evidence = ['build', 'resume', 'review'].includes(stage)
@@ -2613,16 +2910,22 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     ...(root !== location.cwd ? { assignmentRoot: path.relative(location.cwd, root) } : {}),
     ...(['start', 'design', 'plan'].includes(stage) ?
       { next: 'Load the development workflow skill if needed, then read its references/change.md before opening any returned work record. Read the reference in a separate call.' } : {}),
-    ...(stage === 'build' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening any returned work record or editing.' } : {}),
+    ...(stage === 'build' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening any returned work record or editing.' +
+      (record.finding?.shared === true ? ' Run finding-attempt <change-id> <attempt-id> start. Only reserved allows a new edit. Then use check with that command and ID to run and record the approved reproduction.' : '') } : {}),
     ...(stage === 'resume' ? { buildStatus: buildReason ? 'hold' : 'ready', ...(buildReason ? { buildReason } : {}),
       next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),
     ...(stage === 'review' && evidence.status === 'recorded' && evidence.verification?.status === 'ready' &&
       evidence.verification.run.length === 0 ? {
-        next: 'The requested comparison of assignment and receipt against current declared inputs is complete. For a verification-only handoff, report the reused IDs and that no checks ran, then stop. Do not reopen references or repeat the comparison. Continue normal review for any wider request, known drift, or requested rerun.',
+        next: 'The requested comparison of assignment and receipt against current declared inputs is complete. For a verification-only handoff, report the reused IDs and that no checks ran, then stop. Do not reopen references or repeat the comparison. Continue normal review for any wider request, known check-input drift, or requested rerun.',
+      } : {}),
+    ...(stage === 'review' && evidence.status !== 'unknown' && evidence.verification?.status === 'ready' &&
+      evidence.verification.run.length > 0 ? {
+        verificationAction: 'For verification-only handoff, execute only authorized checks in evidence.verification.run and report results and reuse. The declared input comparison is already done. For independent review, drift outside declared inputs, or a wider request, continue normal review. Honor requested reruns.',
       } : {}),
     artifacts, intentExists: Boolean(localAt(artifacts.intent)),
     ...(draftPlanHash ? { auditBinding: documentAuditBinding(record, draftPlanHash) } : {}),
     contracts: record.contracts.map(entry => entry.path),
+    ...(finding ? { finding } : {}),
     ...(evidence ? { evidence } : {}) }) }
 }
 
@@ -2645,6 +2948,14 @@ function command(argv, stdin, env, cwd) {
   switch (cmd) {
     case 'change-check':
       return changeCheck(env, cwd, rest)
+    case 'finding-attempt': {
+      const [change, id, outcome] = rest
+      if (rest.length !== 3 || change.length > 80 || !CHANGE_ID.test(change) || !evidenceId(id) ||
+          !['start', 'check', 'recover'].includes(outcome)) {
+        return { code: 2, out: FINDING_USAGE }
+      }
+      return changeCheck(env, cwd, ['build', change], { id, kind: outcome })
+    }
     case 'delegation-check':
       if (rest.length === 1 && rest[0] === 'before') return delegationBefore(env, cwd)
       if (rest.length === 2 && rest[0] === 'after') return delegationAfter(cwd, rest[1], (...args) => env.run(...args))

@@ -174,7 +174,7 @@ function assignedChangeContext(cwd, source) {
   const location = state.assignmentLocation(cwd)
   if (!location) return ''
   const additionalContext = source === 'startup'
-    ? 'For assigned documents or implementation, load the devflow skill before selecting a stage. For drafting, revising or auditing documents, run its trusted stage check and read Change before opening records. For implementation, run the trusted build check before any edits.'
+    ? 'For assigned documents, implementation, status or independent review, load the devflow skill before selecting a stage. For drafting, revising or auditing documents, run its trusted stage check and read Change before opening records. For implementation, run the trusted build check before any edits.'
     : 'For a request about the local assignment, verify its current stage and reread the routed reference. For status, run the trusted resume check and read Resume before answering. Earlier results are history.'
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart',
     additionalContext: additionalContext + assignmentRootHint(location) } })

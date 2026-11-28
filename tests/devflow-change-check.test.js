@@ -140,6 +140,63 @@ test('a local assignment returns its own paths and the required next read withou
   assert.match(f.check('resume').reason, /repository or branch changed/)
 })
 
+test('finding history counts unique failed attempts across resumes and holds pending or conflicting results', () => {
+  for (const gitMode of [true, false]) {
+    const f = fixture(gitMode)
+    const planSha256 = f.record.approvals.plan.sha256
+    const failed = { id: 'retry-1', exitCode: 1, planSha256 }
+    const pending = { id: 'timeout-2', exitCode: null, planSha256 }
+    f.record.finding = { id: 'r-17', attempts: [failed, { ...failed }] }
+    f.persist()
+    assert.deepEqual(f.check('build').finding, { id: 'r-17', failedAttempts: 1, pending: [] })
+    assert.equal(f.check('build').status, 'ready')
+    f.record.finding.attempts.push(pending)
+    f.persist()
+    assert.equal(f.check('resume').buildStatus, 'hold')
+    assert.deepEqual(f.check('resume').finding, { id: 'r-17', failedAttempts: 1, pending: ['timeout-2'] })
+    assert.match(f.check('build').reason, /unresolved finding attempt/)
+    f.record.finding.attempts.push({ ...pending, exitCode: 1 }, { ...pending })
+    f.persist()
+    assert.deepEqual(f.check('build').finding, { id: 'r-17', failedAttempts: 2, pending: [] })
+    assert.match(f.check('build').reason, /two failed finding attempts/)
+    assert.equal(f.check('resume').buildStatus, 'hold')
+    assert.equal(f.check('plan').status, 'ready')
+    f.record.finding.attempts.push({ ...pending, exitCode: 0 })
+    f.persist()
+    assert.match(f.check('build').reason, /conflicting finding attempt/)
+    delete f.record.finding.attempts
+    f.persist()
+    assert.match(f.check('build').reason, /invalid finding history/)
+  }
+})
+
+test('only an explicit finding reopen with a newly approved approach resets the active count', () => {
+  const f = fixture(false)
+  const planSha256 = f.record.approvals.plan.sha256
+  f.record.finding = { id: 'r-17', attempts: [
+    { id: 'one', exitCode: 1, planSha256 }, { id: 'two', exitCode: 1, planSha256 },
+  ] }
+  f.persist()
+  f.record.finding.reopen = { after: 'two', planSha256 }
+  f.persist()
+  assert.match(f.check('build').reason, /invalid finding reopen/)
+  const plan = path.join(f.directory, 'plan.md')
+  fs.appendFileSync(plan, 'approved new approach\n')
+  const newHash = hashFile(plan).sha256
+  f.record.approvals.plan.sha256 = newHash
+  f.record.audit.binding = f.check('plan').auditBinding
+  delete f.record.finding.reopen
+  f.persist()
+  assert.match(f.check('build').reason, /two failed finding attempts/)
+  f.record.finding.reopen = { after: 'two', planSha256: newHash }
+  f.persist()
+  assert.deepEqual(f.check('build').finding, { id: 'r-17', failedAttempts: 0, pending: [] })
+  assert.equal(f.check('build').status, 'ready')
+  f.record.finding.attempts.push({ id: 'new-1', exitCode: 1, planSha256: newHash })
+  f.persist()
+  assert.equal(f.check('build').finding.failedAttempts, 1)
+})
+
 test('resume classifies missing, current and stale handoff evidence without running the checks', () => {
   const f = fixture()
   const relative = 'artifacts/handoff/example.json'
@@ -158,10 +215,14 @@ test('resume classifies missing, current and stale handoff evidence without runn
     id, command: 'node --test ' + id, exitCode: 0, node: process.version,
     platform: process.platform, arch: process.arch, inputs: values,
   })
+  f.record.reviewPaths = ['src/', 'tests/']
+  f.persist()
+  const { reviewBinding } = f.check('review').evidence
+  assert.match(reviewBinding, /^[0-9a-f]{64}$/)
   const receipt = {
     id: 'example', binding: unknown.binding,
     checks: [check('code', [inputs[0]]), check('tests', [inputs[1]])],
-    review: { verdict: 'no-findings', inputs: inputs.map(({ path, sha256 }) => ({ path, sha256 })) },
+    review: { binding: reviewBinding, verdict: 'no-findings', inputs },
   }
   const file = path.join(f.root, relative)
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -203,6 +264,100 @@ test('resume classifies missing, current and stale handoff evidence without runn
   assert.deepEqual(f.check('resume').evidence, { ...contractChanged, status: 'unknown' })
 })
 
+test('review evidence covers its declared file set independently of verification reuse', t => {
+  for (const gitMode of [true, false]) {
+    const f = fixture(gitMode)
+    const source = 'src/code.js'
+    const check = 'tests/check.js'
+    const write = (file, content) => {
+      const target = path.join(f.root, file)
+      fs.mkdirSync(path.dirname(target), { recursive: true })
+      fs.writeFileSync(target, content)
+    }
+    write(source, 'source\n')
+    write(check, 'check\n')
+    f.record.verification = [{ id: 'suite', command: 'node --test tests/check.js', paths: ['tests/'] }]
+    f.persist()
+    const before = f.check('review').evidence
+    const receipt = {
+      id: f.record.id,
+      binding: before.binding,
+      verificationBasis: before.verification.basis,
+      checks: [{ id: 'suite', command: f.record.verification[0].command, exitCode: 0, node: process.version,
+        platform: process.platform, arch: process.arch, inputs: [checkInput(f.root, check)] }],
+      review: { verdict: 'no-findings', inputs: [checkInput(f.root, source), checkInput(f.root, check)] },
+    }
+    const save = () => write(before.path, JSON.stringify(receipt))
+    const decide = () => f.check('review')
+    save()
+    assert.deepEqual(decide().evidence.review, { status: 'unknown' }, 'old receipts do not prove the file set')
+    f.record.reviewPaths = ['src/', check]
+    f.persist()
+    const { reviewBinding } = decide().evidence
+    assert.match(reviewBinding, /^[0-9a-f]{64}$/)
+    assert.deepEqual(decide().evidence.review, { status: 'unknown' }, 'declaring a scope does not promote a legacy review')
+    receipt.review.binding = reviewBinding
+    save()
+    const expectReview = (status, verdict) => {
+      const result = decide()
+      assert.deepEqual(result.evidence.review, verdict ? { status, verdict } : { status }, `${gitMode}: ${status}`)
+      assert.deepEqual(result.evidence.verification.reuse, ['suite'])
+      assert.deepEqual(result.evidence.verification.run, [])
+      assert.match(result.next, /For a verification-only handoff/)
+    }
+    expectReview('current', 'no-findings')
+    write('outside/other.js', 'outside review\n')
+    expectReview('current', 'no-findings')
+    f.record.reviewPaths.reverse()
+    f.persist()
+    expectReview('current', 'no-findings')
+    write('src/added.js', 'unreviewed file\n')
+    expectReview('stale')
+    fs.unlinkSync(path.join(f.root, 'src/added.js'))
+    fs.renameSync(path.join(f.root, source), path.join(f.root, 'src/moved.js'))
+    expectReview('stale')
+    fs.unlinkSync(path.join(f.root, 'src/moved.js'))
+    expectReview('stale')
+    write(source, 'source\n')
+    expectReview('current', 'no-findings')
+    let injected = false
+    const open = fs.openSync
+    const mock = t.mock.method(fs, 'openSync', (file, flags, ...args) => {
+      if (!injected && file === path.join(f.root, source) && typeof flags === 'number') {
+        injected = true
+        write('src/during.js', 'added while hashing review inputs\n')
+      }
+      return open(file, flags, ...args)
+    })
+    try { expectReview('stale') } finally { mock.mock.restore() }
+    assert.equal(injected, true)
+    fs.unlinkSync(path.join(f.root, 'src/during.js'))
+    injected = false
+    const cross = t.mock.method(fs, 'openSync', (file, flags, ...args) => {
+      if (!injected && file === path.join(f.root, source) && typeof flags === 'number') {
+        injected = true
+        write('tests/during.js', 'added while hashing the separate review scope\n')
+      }
+      return open(file, flags, ...args)
+    })
+    let result
+    try { result = decide() } finally { cross.mock.restore() }
+    assert.equal(injected, true)
+    assert.deepEqual(result.evidence.review, { status: 'current', verdict: 'no-findings' })
+    assert.deepEqual(result.evidence.verification.reuse, [])
+    assert.deepEqual(result.evidence.verification.run, ['suite'])
+    assert.equal(result.next, undefined, 'review reads must not hide check drift')
+    fs.unlinkSync(path.join(f.root, 'tests/during.js'))
+    f.record.reviewPaths = [source, check]
+    f.persist()
+    expectReview('stale')
+    f.record.reviewPaths = ['../outside']
+    f.persist()
+    assert.equal(decide().evidence.reviewBinding, undefined)
+    expectReview('unknown')
+  }
+})
+
 test('planning holds a stale specification while design only requires approved intent', () => {
   const f = fixture()
   fs.appendFileSync(path.join(f.directory, 'spec.md'), 'modified\n')
@@ -230,6 +385,7 @@ test('assigned review reuses only complete matching successful checks after a co
   const decide = () => f.check('review').evidence.verification
   assert.deepEqual(before.verification.run, ['http', 'syntax'])
   assert.equal(f.check('review').next, undefined, 'missing evidence cannot finish a handoff')
+  assert.equal(f.check('review').verificationAction, undefined, 'missing evidence does not give a reuse shortcut')
   assert.deepEqual(f.check('resume').evidence.verification, before.verification)
   const proof = { id: f.record.id, binding: before.binding, verificationBasis: before.verification.basis,
     checks: f.record.verification.map((policy, index) => ({
@@ -242,10 +398,12 @@ test('assigned review reuses only complete matching successful checks after a co
   save()
   assert.deepEqual(decide().reuse, ['http', 'syntax'])
   assert.match(f.check('review').next, /For a verification-only handoff, report the reused IDs and that no checks ran/)
-  assert.match(f.check('review').next, /wider request, known drift, or requested rerun/)
+  assert.match(f.check('review').next, /wider request, known check-input drift, or requested rerun/)
   fs.writeFileSync(path.join(f.root, 'tests/new.js'), 'another test')
   assert.deepEqual(decide().run, ['http'])
   assert.equal(f.check('review').next, undefined, 'a changed test requires normal routing')
+  assert.match(f.check('review').verificationAction, /execute only authorized checks in evidence\.verification\.run/)
+  assert.match(f.check('review').verificationAction, /independent review, drift outside declared inputs/)
   fs.unlinkSync(path.join(f.root, 'tests/new.js'))
   assert.deepEqual(decide().run, [])
   proof.checks[0].command += ' --test-only'

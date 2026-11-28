@@ -272,8 +272,16 @@ A user-instructed release follows this order.
    Compare a new session's components, hook trust and installed files with the tag. The user sets up automatic updates
    separately on the host.
 
-If there is a problem, revert both catalogs' references to the previous verified tag together and publish, and the user
-updates the marketplace and plugin again.
+Before mixing versions across hosts or rolling back either host, stop work on affected assignments, confirm their
+processes have exited, and reconcile any partial effects with a compatible host. Preserve the assignments, reviews,
+check evidence and finding history. Keep those workspaces read-only, record the hold in instructions both hosts
+read, and pause unattended workers and delivery. An older host can ignore newer evidence fields or lack the
+assignment check entirely. Resume affected assignments only on a compatible host after it revalidates the
+preserved work and the operator authorizes resumption.
+
+Revert both catalogs' references to the previous verified tag together and publish, then the user updates the
+marketplace and plugin again. Verify both installed versions and hook activation from fresh sessions. Keep the
+workspace hold in force wherever the previous version cannot verify the preserved work.
 On a host that refuses an older version by comparing versions, remove and reinstall only that plugin. Keep other
 plugins and existing tags.
 Rollback also changes the shared catalog and hosts, so it runs on a user instruction that names its targets and effects.

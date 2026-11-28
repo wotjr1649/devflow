@@ -241,8 +241,8 @@ test('delegation specifies scoped edits, independent review and reported outcome
 
 test('delegated implementation reports a blocked check after at most two fixes (#161)', () => {
   const change = read(`${REFS}/change.md`)
-  assert.match(change, /Implementer brief:.*≤2 fixes\/check\/delegation after first failure; then `BLOCKED` if failing/)
-  assert.match(change, /Report attempts, executed proof and limits/)
+  assert.match(change, /Implementer brief:.*≤2 total fixes\/delegation after first failure\. `BLOCKED` if failing; out of scope: `NEEDS_DECISION`/)
+  assert.match(change, /attempts, executed proof and limits/)
 })
 
 test('Codex subagents start without the parent conversation in both the spec and the delegation reference (#126)', () => {

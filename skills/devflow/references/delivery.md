@@ -9,6 +9,6 @@ Review versions/hashes/checks; independent M0 review. Mark proven criteria only.
 
 `local-merge`/`push-on-request`: local proof. `pr-ci`: refresh base/head/rules/CI/approvals/threads; verify hosted head/merge, guard head. Approved method only. Partial Issue open; reopen failures.
 
-Prefer conditional writes; read back/log partial effects. Retry: prove exit and no effect/idempotency. Deploy: check artifact/env/health/rollback.
+Prefer conditional writes; read back/log effects. Retry: proven exit + (no effect or verified idempotency). Deploy: artifact/env/health/rollback.
 ## Cleanup
 Prove integration/identity/tip/owner/use/locks/submodules/staged+unstaged+untracked+ignored data. Keep protected/primary/active/uncertain targets and unique history/data; prove recovery. Readiness: list only. Recheck approved removal: normal worktree, branch `-d`, remote reviewed SHA only. No force/reset/clean/prune. Read back.

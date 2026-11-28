@@ -58,7 +58,7 @@ runs with a default 5-minute TTL; if waiting for user answers is frequent, consi
 
 ## Fix loop
 
-Reproduce a failure before fixing it. The implementation brief caps repeated fixes for the same failing check. The
+Reproduce a failure before fixing it. The implementation brief caps fixes at two total per delegation. The
 main session records attempts in ledger `notes` and decides whether to change approach or report the blocker. The
 Stop hook tracks unattended continuations in `counts`. See [Build and
 verify](../../skills/devflow/references/change.md#build-and-verify) and [Delegation](../../skills/devflow/references/change.md#delegation).
@@ -110,7 +110,7 @@ the ledger. Model and effort still follow the host or a supported user override.
 
 | Mechanism | Claude Code | Codex |
 |---|---|---|
-| Delegated agents | `general-purpose` with the brief and a set model and effort; role limits by instruction | `spawn_agent` with the brief, `fork_turns: "none"`, and the model and effort set where the host and its instructions allow, else inherited and reported; an agent type only where the spawn tool offers one ([host-facts](../research/host-facts.md#codex)). The default `"all"` passes on the parent conversation |
+| Delegated agents | `general-purpose` with the brief; role limits by instruction; use host model and effort defaults unless the user requests a supported override | `spawn_agent` with the brief and `fork_turns: "none"`; use host model and effort defaults unless the user requests a supported override. Choose an agent type only when the tool offers it ([host-facts](../research/host-facts.md#codex)). The default `"all"` passes on the parent conversation |
 | Resume card, unattended continuation, session release | [hooks](hooks.md#registered-events) | same file |
 
 Codex's SessionEnd does not run in subagents. A session that ended without the hook running expires after 30 minutes

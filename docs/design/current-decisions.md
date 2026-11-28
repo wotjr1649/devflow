@@ -81,8 +81,8 @@ runtimes it starts (node, gh), which the agent's account can write, same-user ra
 mapped network drives or mounts that look local, a pull request review with no inline comment (seen only if GitHub
 updates the pull request's time, unverified), edits to existing Issues and PRs, repository settings, network
 traffic, posts in other repositories, effects of a background process or nested agent after the check, and an
-implementer's nested agents. The brief caps a failing check at two fixes after the first attempt in one delegation
-and tells the implementer to return `BLOCKED` with the attempts (#161). The limit is an instruction in the brief.
+implementer's nested agents. The brief caps all fixes after the first failed check at two per delegation and
+tells the implementer to return `BLOCKED` with the attempts (#161). The limit is an instruction in the brief.
 The main session receives `BLOCKED` or an out-of-scope decision before deciding how to resume. The devflow skill
 sets execution modes and scoped delegation;
 [orchestration](../specs/orchestration.md)

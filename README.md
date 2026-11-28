@@ -35,7 +35,7 @@ Update any saved prompts or project instructions that use the old slash commands
 
 | Previous command | Current route |
 | --- | --- |
-| `/development-start`, `/pr-review-workflow`, `/workspace-cleanup` | In a repository with `.devflow.json`, ask in plain words to start work, review a PR, or clean up. |
+| `/development-start`, `/pr-review-workflow`, `/workspace-cleanup` | In a repository with `.devflow.json`, ask in plain words to start work, check PR readiness, or clean up. |
 | `/grilling` | `decision-interview` for unresolved decisions. |
 | `/prompt-generator` | `write-prompts` to draft a prompt. Ask for `audit-prompts` when the draft needs independent review. |
 | `/writing-for-agents` | `agent-instruction-design` for persistent agent instructions. |

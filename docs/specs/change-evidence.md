@@ -40,3 +40,26 @@ Include dependency locks and test configuration in the relevant paths. A check m
 `NODE_OPTIONS`, and `TZ`. Copy its returned `environments[id]` digest to
 `environmentSha256` only when recording the result from the same execution environment.
 Environment values stay out of the result. An older receipt missing the declared digest requires a new run.
+
+## Repeated findings on an assignment
+
+The operator can set `finding: { id, attempts }` in the root-bound assignment. A result is
+`{ id, exitCode, planSha256 }`, with a stable attempt ID, `null` while the outcome is unknown and a terminal
+reproduction exit code from 0 to 255 when observed. Bind it to the approved plan in force for that attempt.
+Keep the reproduction and result details in the existing private evidence. An interrupted or unverified
+execution stays pending. Reconcile its process and file effects before recording a terminal result or removing
+a reservation for an attempt that never ran.
+
+The operator or its authorized coordinator publishes the records in attempt order with an atomic replacement
+of the assignment file. Serialize writers. Workers report their results and do not edit the operator's assignment.
+Only the first occurrence of an attempt ID establishes its order. A terminal result supersedes a reservation with
+the same ID and plan. Repeated equivalent results count once. Conflicting terminal results or plan identities hold.
+Keep the active finding marker during handoff. `attempts` is mandatory, even when empty, and holds at most 64 rows.
+An assignment with no finding marker continues to use its existing workflow.
+
+`change-check build` holds for a pending attempt or two failed attempts. `resume` reports the same reason, the
+unique failure count and pending IDs without running tests. Neither command writes the history or changes approvals.
+An approved plan change alone does not clear the count. To authorize a new approach for the same finding, keep the
+history and set `reopen: { after, planSha256 }` to the last failed attempt in the closed series and the newly approved
+plan hash. The closed prefix needs two failures, completed outcomes and a plan different from the approved one.
+Tracked Issue work still carries its finding history through the existing ledger notes and checkpoints.

@@ -140,6 +140,63 @@ test('a local assignment returns its own paths and the required next read withou
   assert.match(f.check('resume').reason, /repository or branch changed/)
 })
 
+test('finding history counts unique failed attempts across resumes and holds pending or conflicting results', () => {
+  for (const gitMode of [true, false]) {
+    const f = fixture(gitMode)
+    const planSha256 = f.record.approvals.plan.sha256
+    const failed = { id: 'retry-1', exitCode: 1, planSha256 }
+    const pending = { id: 'timeout-2', exitCode: null, planSha256 }
+    f.record.finding = { id: 'r-17', attempts: [failed, { ...failed }] }
+    f.persist()
+    assert.deepEqual(f.check('build').finding, { id: 'r-17', failedAttempts: 1, pending: [] })
+    assert.equal(f.check('build').status, 'ready')
+    f.record.finding.attempts.push(pending)
+    f.persist()
+    assert.equal(f.check('resume').buildStatus, 'hold')
+    assert.deepEqual(f.check('resume').finding, { id: 'r-17', failedAttempts: 1, pending: ['timeout-2'] })
+    assert.match(f.check('build').reason, /unresolved finding attempt/)
+    f.record.finding.attempts.push({ ...pending, exitCode: 1 }, { ...pending })
+    f.persist()
+    assert.deepEqual(f.check('build').finding, { id: 'r-17', failedAttempts: 2, pending: [] })
+    assert.match(f.check('build').reason, /two failed finding attempts/)
+    assert.equal(f.check('resume').buildStatus, 'hold')
+    assert.equal(f.check('plan').status, 'ready')
+    f.record.finding.attempts.push({ ...pending, exitCode: 0 })
+    f.persist()
+    assert.match(f.check('build').reason, /conflicting finding attempt/)
+    delete f.record.finding.attempts
+    f.persist()
+    assert.match(f.check('build').reason, /invalid finding history/)
+  }
+})
+
+test('only an explicit finding reopen with a newly approved approach resets the active count', () => {
+  const f = fixture(false)
+  const planSha256 = f.record.approvals.plan.sha256
+  f.record.finding = { id: 'r-17', attempts: [
+    { id: 'one', exitCode: 1, planSha256 }, { id: 'two', exitCode: 1, planSha256 },
+  ] }
+  f.persist()
+  f.record.finding.reopen = { after: 'two', planSha256 }
+  f.persist()
+  assert.match(f.check('build').reason, /invalid finding reopen/)
+  const plan = path.join(f.directory, 'plan.md')
+  fs.appendFileSync(plan, 'approved new approach\n')
+  const newHash = hashFile(plan).sha256
+  f.record.approvals.plan.sha256 = newHash
+  f.record.audit.binding = f.check('plan').auditBinding
+  delete f.record.finding.reopen
+  f.persist()
+  assert.match(f.check('build').reason, /two failed finding attempts/)
+  f.record.finding.reopen = { after: 'two', planSha256: newHash }
+  f.persist()
+  assert.deepEqual(f.check('build').finding, { id: 'r-17', failedAttempts: 0, pending: [] })
+  assert.equal(f.check('build').status, 'ready')
+  f.record.finding.attempts.push({ id: 'new-1', exitCode: 1, planSha256: newHash })
+  f.persist()
+  assert.equal(f.check('build').finding.failedAttempts, 1)
+})
+
 test('resume classifies missing, current and stale handoff evidence without running the checks', () => {
   const f = fixture()
   const relative = 'artifacts/handoff/example.json'

@@ -2374,6 +2374,40 @@ function evidenceId(value) {
   return typeof value === 'string' && value.length <= 48 && CHANGE_ID.test(value)
 }
 
+function findingProgress(finding, approvedPlan) {
+  if (finding === undefined) return {}
+  const invalid = reason => ({ reason: `invalid finding ${reason}` })
+  if (!evidenceId(finding?.id) || !Array.isArray(finding.attempts) || finding.attempts.length > 64) {
+    return invalid('history')
+  }
+  const unique = new Map()
+  for (const attempt of finding.attempts) {
+    if (!evidenceId(attempt?.id) || typeof attempt.planSha256 !== 'string' || !CHANGE_HASH.test(attempt.planSha256) ||
+        (attempt.exitCode !== null && (!Number.isInteger(attempt.exitCode) || attempt.exitCode < 0 || attempt.exitCode > 255))) {
+      return invalid('attempt')
+    }
+    const previous = unique.get(attempt.id)
+    if (previous && (previous.planSha256 !== attempt.planSha256 ||
+        (previous.exitCode !== null && attempt.exitCode !== null && previous.exitCode !== attempt.exitCode))) {
+      return { reason: 'conflicting finding attempt results' }
+    }
+    if (!previous || previous.exitCode === null) unique.set(attempt.id, attempt)
+  }
+  let active = [...unique.values()]
+  if (finding.reopen !== undefined) {
+    const boundary = active.findIndex(attempt => attempt.id === finding.reopen?.after)
+    if (boundary < 0 || !(active[boundary].exitCode > 0) || finding.reopen.planSha256 !== approvedPlan) return invalid('reopen')
+    const earlier = active.slice(0, boundary + 1)
+    if (earlier.some(attempt => attempt.exitCode === null || attempt.planSha256 === approvedPlan) ||
+        earlier.filter(attempt => attempt.exitCode > 0).length < 2) return invalid('reopen')
+    active = active.slice(boundary + 1)
+  }
+  const pending = active.filter(attempt => attempt.exitCode === null).map(attempt => attempt.id)
+  const failedAttempts = active.filter(attempt => attempt.exitCode > 0).length
+  return { finding: { id: finding.id, failedAttempts, pending },
+    reason: pending.length ? 'unresolved finding attempt' : failedAttempts >= 2 ? 'two failed finding attempts; replan or hold' : null }
+}
+
 function verificationInputs(scope, localAt) {
   const files = new Set()
   let visited = 0
@@ -2545,7 +2579,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
   if (!required || extra.length || (expectedId !== undefined && !CHANGE_ID.test(expectedId))) {
     return { code: 2, out: CHANGE_USAGE }
   }
-  const hold = reason => ({ code: 1, out: JSON.stringify({ status: 'hold', stage, reason }) })
+  const hold = (reason, detail = {}) => ({ code: 1, out: JSON.stringify({ status: 'hold', stage, reason, ...detail }) })
   const location = assignmentLocation(cwd)
   if (!location) {
     const local = changeRecord(path.resolve(cwd))
@@ -2621,6 +2655,10 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     }
   }
   if (stage === 'build' && buildReason) return hold(buildReason)
+  const { finding, reason: findingReason } = ['build', 'resume'].includes(stage)
+    ? findingProgress(record.finding, record.approvals.plan.sha256) : {}
+  if (!buildReason) buildReason = findingReason
+  if (stage === 'build' && buildReason) return hold(buildReason, finding ? { finding } : {})
   const planFile = stage === 'plan' ? localAt(artifacts.plan) : null
   const draftPlanHash = planFile ? hashFile(planFile)?.sha256 : null
   const evidence = ['build', 'resume', 'review'].includes(stage)
@@ -2639,6 +2677,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     artifacts, intentExists: Boolean(localAt(artifacts.intent)),
     ...(draftPlanHash ? { auditBinding: documentAuditBinding(record, draftPlanHash) } : {}),
     contracts: record.contracts.map(entry => entry.path),
+    ...(finding ? { finding } : {}),
     ...(evidence ? { evidence } : {}) }) }
 }
 

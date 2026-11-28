@@ -67,14 +67,14 @@ test('assigned worktrees share reserved finding attempts without changing approv
     fs.writeFileSync(path.join(root, 'input.txt'), 'pass')
     const body = JSON.stringify({ root, id: 'example', approvals, contracts: [],
       git: { common: path.join(main, '.git'), branch: git(root, 'branch', '--show-current') },
-      verification: [{ id: 'repro', command: 'node repro.cjs', paths: ['repro.cjs', 'input.txt'] }],
+      verification: [{ id: 'repro', command: 'node repro.cjs', paths: ['repro.cjs', 'input.txt'], environment: ['NODE_ENV'] }],
       finding: { id: 'r-17', shared: true, attempts: [],
         reproduction: { check: 'repro', sha256: state.hashFile(path.join(root, 'repro.cjs')).sha256 } } })
     fs.writeFileSync(file, body)
     assignments.push({ file, body })
   }
   const e = env('trial/finding')
-  e.vars = { FIXTURE_PRIVATE: 'synthetic', NODE_OPTIONS: '--invalid-test-option' }
+  e.vars = { FIXTURE_PRIVATE: 'synthetic', NODE_OPTIONS: '--invalid-test-option', NODE_ENV: 'test' }
   function call(root, ...args) {
     return JSON.parse(state.main(args, () => assert.fail('No stdin'), e, root).out)
   }
@@ -83,7 +83,7 @@ test('assigned worktrees share reserved finding attempts without changing approv
   const contenders = [{ root: wt, id: 'race-one' }, { root: third, id: 'race-two' }]
   const started = await Promise.all(contenders.map(({ root, id }) => new Promise((resolve, reject) => {
     execFile(process.execPath, [path.join(__dirname, '../bin/devflow-state'), 'finding-attempt', 'example', id, 'start'],
-      { cwd: root, env: cleanEnv, timeout: 30000 }, (error, stdout, stderr) => {
+      { cwd: root, env: { ...cleanEnv, NODE_ENV: 'test' }, timeout: 30000 }, (error, stdout, stderr) => {
         if (error && error.code !== 1) return reject(error)
         try { resolve(JSON.parse(stdout || stderr)) } catch (parseError) { reject(parseError) }
       })
@@ -113,16 +113,41 @@ test('assigned worktrees share reserved finding attempts without changing approv
   fs.writeFileSync(assignments[0].file, JSON.stringify(alternate))
   assert.match(write(wt, 'one', 'check').reason, /reproduction policy changed/)
   fs.writeFileSync(assignments[0].file, assignments[0].body)
+  const executions = () => e.calls.filter(({ cmd }) => cmd === process.execPath).length
+  const beforeMismatch = executions()
+  e.vars.NODE_ENV = 'changed'
+  assert.match(write(wt, 'one', 'check').reason, /reproduction environment changed/)
+  assert.equal(executions(), beforeMismatch)
+  assert.equal(fs.readFileSync(store, 'utf8'), pending)
+  e.vars.NODE_ENV = 'test'
   fs.writeFileSync(path.join(wt, 'input.txt'), 'setup-error')
   assert.match(write(wt, 'one', 'check').reason, /did not establish/)
   assert.equal(status(third).finding.failedAttempts, 0)
-  assert.equal(fs.readFileSync(store, 'utf8'), pending)
+  const unresolved = status(wt).finding.executions.one
+  const previousBytes = fs.readFileSync(store, 'utf8')
+  const beforeRetry = executions()
+  assert.match(write(wt, 'one', 'check').reason, /execution must be reconciled/)
+  assert.equal(executions(), beforeRetry)
+  assert.equal(fs.readFileSync(store, 'utf8'), previousBytes)
+
+  const fingerprint = root => crypto.createHash('sha256').update(process.platform === 'win32' ? root.toLowerCase() : root).digest('hex')
+  const retry = JSON.parse(assignments[0].body)
+  retry.finding.recovery = { attempt: 'one', fromWorktree: fingerprint(wt), toWorktree: fingerprint(wt),
+    action: 'retry', execution: 'b'.repeat(16), by: 'operator', reason: 'process tree and file effects checked' }
+  fs.writeFileSync(assignments[0].file, JSON.stringify(retry))
+  assert.match(write(wt, 'one', 'recover').reason, /operator finding recovery/)
+  retry.finding.recovery.execution = unresolved
+  fs.writeFileSync(assignments[0].file, JSON.stringify(retry))
+  assert.equal(write(wt, 'one', 'recover').status, 'recovered')
   fs.writeFileSync(path.join(wt, 'input.txt'), 'interrupted')
   const interrupted = spawnSync(process.execPath, [path.join(__dirname, '../bin/devflow-state'),
-    'finding-attempt', 'example', 'one', 'check'], { cwd: wt, env: cleanEnv, encoding: 'utf8', timeout: 10000 })
+    'finding-attempt', 'example', 'one', 'check'], { cwd: wt, env: { ...cleanEnv, NODE_ENV: 'test' }, encoding: 'utf8', timeout: 10000 })
   assert.equal(interrupted.status, 1)
   assert.match(JSON.parse(interrupted.stderr).reason, /did not establish/)
-  assert.equal(fs.readFileSync(store, 'utf8'), pending)
+  const interruptedExecution = status(wt).finding.executions.one
+  assert.notEqual(interruptedExecution, unresolved)
+  assert.equal(write(wt, 'one', 'recover').status, 'already-recovered')
+  assert.equal(status(wt).finding.executions.one, interruptedExecution)
 
   const moved = path.join(base, 'moved')
   git(main, 'worktree', 'move', wt, moved)
@@ -132,9 +157,8 @@ test('assigned worktrees share reserved finding attempts without changing approv
   fs.writeFileSync(movedFile, JSON.stringify(movedRecord))
   assert.match(write(moved, 'one', 'check').reason, /original worktree/)
   assert.match(write(moved, 'one', 'recover').reason, /operator finding recovery/)
-  const fingerprint = root => crypto.createHash('sha256').update(process.platform === 'win32' ? root.toLowerCase() : root).digest('hex')
   movedRecord.finding.recovery = { attempt: 'one', fromWorktree: fingerprint(wt), toWorktree: fingerprint(third),
-    action: 'rebind', by: 'operator', reason: 'previous process and partial changes checked' }
+    action: 'rebind', execution: interruptedExecution, by: 'operator', reason: 'previous process and partial changes checked' }
   fs.writeFileSync(movedFile, JSON.stringify(movedRecord))
   assert.match(write(moved, 'one', 'recover').reason, /operator finding recovery/)
   movedRecord.finding.recovery.toWorktree = fingerprint(moved)
@@ -149,6 +173,13 @@ test('assigned worktrees share reserved finding attempts without changing approv
   assert.equal(run(e, third, ['finding-attempt', 'example', 'one', '0']).code, 2)
   assert.equal(fs.readFileSync(store, 'utf8'), saved)
   assert.equal(status(third).finding.failedAttempts, 1)
+  const recorded = JSON.parse(saved).attempts.find(attempt => attempt.id === 'one')
+  assert.equal(recorded.proof.environmentSha256, recorded.environmentSha256)
+  assert.match(recorded.environmentSha256, /^[0-9a-f]{64}$/)
+  e.vars.NODE_ENV = 'changed'
+  assert.match(write(third, 'different-environment', 'start').reason, /reproduction environment changed/)
+  assert.equal(fs.readFileSync(store, 'utf8'), saved)
+  e.vars.NODE_ENV = 'test'
   assert.equal(write(third, 'cancelled', 'start').status, 'reserved')
   const abandon = JSON.parse(assignments[1].body)
   abandon.finding.recovery = { attempt: 'cancelled', fromWorktree: fingerprint(third), toWorktree: fingerprint(third),

@@ -83,19 +83,27 @@ errors, missing assertions, unrelated failures and interruption leave the attemp
 the approved Node file directly with the system execution environment and explicitly declared verification variables,
 excluding Node preload variables and unrelated credentials. The runner uses the command timeout. The declared input
 hashes and file set must match before and after the check. Logs stay private; only the check ID and input digest are
-kept with the result in the shared file. A legacy shared exit code without evidence holds for operator review.
+kept with the result in the shared file. If verification declares environment variables, their digest is bound at
+reservation and included in the proof. A changed or unverified environment holds before execution. Restore the
+recorded environment before continuing the same retry series. Environment values are never stored in the finding.
+A legacy shared exit code without evidence, or legacy history without a required environment digest, holds for
+operator review.
 
 Workers use `finding-attempt <change-id> <attempt-id> start` before edits and `check` afterward. Only `reserved` starts
 a new edit. Reusing a terminal ID does not rerun the check. Completing a pending attempt requires its assigned
-worktree path, branch, approved plan and reproduction policy bound at reservation. If a run is inconclusive it stays
-pending without increasing the failure
-count. Only reserve a new ID when the build check permits it. The shared lock serializes the bounded check and file
-update. A passed reproduction does not approve a change or close a review finding.
+worktree path, branch, approved plan and reproduction policy bound at reservation. The CLI saves an execution ID
+before launching the adapter. An inconclusive or interrupted execution stays pending, with its ID, without increasing
+the failure count. Resolve it before running another check for that finding. A preflight refusal before execution
+does not create an execution ID. Only reserve a new attempt when the build check permits it. The shared lock
+serializes the bounded check and file update. A passed reproduction does not approve a change or close a review finding.
 
 If the worktree moves, first confirm the previous process tree exited and reconcile its file effects. The operator
 updates the moved worktree's assignment for the same change, branch and approved plan and adds `finding.recovery` with
 `attempt`, `fromWorktree`, `toWorktree`, `action`, `by` and `reason`. The two worktree fields use the path digests above.
 Run `finding-attempt <change-id> <attempt-id> recover`. `rebind` authorizes the new path to complete the same attempt.
 `abandon` closes a reconciled reservation without a result or retry credit; the ID and reason are retained.
+For a pending execution, include the exact `execution` ID reported by `resume` in the grant. Use `retry` with the
+same source and destination to authorize another check in the original worktree. Confirm the previous process tree
+has exited and reconcile its effects before issuing this grant. The grant clears only that execution.
 For a pending legacy reservation without a reproduction binding, an authorized rebind records the current policy.
 The exact operation can be replayed without another write. The writer leaves operator assignments and approvals intact.

@@ -10,10 +10,10 @@ Spike: question/exit. Bounded: brief design. Approve intent → spec → plan; a
 
 For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use its paths/proof. Hold on failure. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` after build.
 
-For an assigned verification-only handoff, `evidence.status: recorded` with ready verification and empty `evidence.verification.run` means the gate already matched declared inputs. Report reused IDs and no checks run. Stop before references or further reads. Known drift, requested reruns and independent reviews follow normal routing.
+Comparing an assignment and its check receipts with current inputs is a verification-only handoff. The review gate performs that comparison. If `evidence.status` is `recorded`, verification is `ready` and `evidence.verification.run` is empty, report reused IDs and no checks run, then stop. Read no references, records or inputs again. Known drift, requested reruns and independent reviews follow normal routing.
 
 - [Resume](references/resume.md) alone for status/mode switch/interruption/unchanged continuation. After ready build read first. Edit only approved files.
-- [Change](references/change.md) for new work/docs/plans/branches/decisions/delegation/incidents/review, before assigned records.
+- [Change](references/change.md) for new work/docs/plans/branches/decisions/delegation/incidents or review beyond a completed evidence check, before assigned records.
 - [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Before commits/external writes/cleanup; reconcile uncertain effects here.
 
 On scope change/compaction/restart reopen earliest invalid stage/ref. Check target/authority/rev/hashes/dirty+ignored inputs. Verify changes/preservation. Rerun affected/required checks except status. Skip/weaken/remove only with approved equivalents.

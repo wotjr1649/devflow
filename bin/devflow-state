@@ -2596,7 +2596,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
       next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),
     ...(stage === 'review' && evidence.status === 'recorded' && evidence.verification?.status === 'ready' &&
       evidence.verification.run.length === 0 ? {
-        next: 'The gate already matched the assignment, receipt, and all declared verification inputs. For a verification-only handoff, report the reused IDs and that no checks ran, then stop without opening references or rechecking inputs. Continue normal review for any wider request, known drift, or requested rerun.',
+        next: 'The requested comparison of assignment and receipt against current declared inputs is complete. For a verification-only handoff, report the reused IDs and that no checks ran, then stop. Do not reopen references or repeat the comparison. Continue normal review for any wider request, known drift, or requested rerun.',
       } : {}),
     artifacts, intentExists: Boolean(localAt(artifacts.intent)),
     ...(draftPlanHash ? { auditBinding: documentAuditBinding(record, draftPlanHash) } : {}),

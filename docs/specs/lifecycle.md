@@ -2,7 +2,7 @@
 
 Explains the shape of the lifecycle and why it is shaped so: one router, ten stages, three paths, loops and going back.
 The rules the executor follows live in the devflow skill, which owns them: [SKILL.md](../../skills/devflow/SKILL.md)
-routes each stage to the applicable section of Change, Resume or Delivery. This spec keeps the reasons and the stage
+routes each request to the applicable procedure in Change, Resume or Delivery when needed. This spec keeps the reasons and the stage
 values the ledger and `devflow-state` check. How work runs inside a stage is explained by [orchestration](orchestration.md).
 
 ## Router
@@ -12,6 +12,8 @@ values the ledger and `devflow-state` check. How work runs inside a stage is exp
   these requests.
 - Read the applicable section in `skills/devflow/references/` when the skill routes to it. A verification-evidence-only
   handoff can finish at the assignment gate when all declared checks are reusable and the request fits that proof.
+  When authorizing the gate in project instructions, use its per-check comparison for this handoff and reserve manual
+  evidence reads for incomplete proof or a wider request.
 - A new work request goes through start even when a card shows another Issue, because start decides the path; a spike,
   or work whose problem and acceptance criteria are not confirmed, goes to discover
   ([rationale](../design/current-decisions.md#entry-points-and-stages)).

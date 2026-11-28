@@ -2412,14 +2412,18 @@ function validReceiptInputs(inputs) {
     new Set(inputs.map(input => input.path)).size === inputs.length
 }
 
+function validEvidencePaths(paths) {
+  return Array.isArray(paths) && paths.length > 0 && paths.length <= 32 &&
+    paths.every(input => typeof input === 'string' && evidencePath(input.replace(/\/$/, '')))
+}
+
 function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
   if (!Array.isArray(required) || !required.length || required.length > 16) return { status: 'invalid' }
   const ids = new Set()
   const reuse = [], run = [], fresh = new Set(), directoryScopes = new Map(), environments = {}, runReasons = {}
   for (const policy of required) {
     if (!evidenceId(policy?.id) || ids.has(policy.id) || !evidenceCommand(policy.command) ||
-        !Array.isArray(policy.paths) || !policy.paths.length || policy.paths.length > 32 ||
-        !policy.paths.every(input => typeof input === 'string' && evidencePath(input.replace(/\/$/, '')))) return { status: 'invalid' }
+        !validEvidencePaths(policy.paths)) return { status: 'invalid' }
     const names = policy.environment
     if (names !== undefined && (!Array.isArray(names) || !names.length || names.length > CHECK_ENVIRONMENT.size ||
         new Set(names).size !== names.length || !names.every(name => CHECK_ENVIRONMENT.has(name)))) return { status: 'invalid' }
@@ -2473,22 +2477,34 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
   const { fresh, directoryScopes, ...verification } = record.verification !== undefined ?
     verificationPlan(record.verification, validReceipt ? receipt : null, basis, localAt, verifies, vars) : {}
   const recorded = validReceipt && receipt.binding === binding
-  const checkInputs = (inputs, requireMode = false) => {
+  const checkInputs = inputs => {
     if (!validReceiptInputs(inputs)) return 'unknown'
-    return inputs.every(input => (!requireMode || input.mode !== undefined) &&
+    return inputs.every(input => input.mode !== undefined &&
       verifies(input.path, input.sha256, input.mode)) ? 'current' : 'stale'
   }
   const checks = []
   for (const check of validReceipt ? receipt.checks : []) {
     if (!recorded && !fresh?.has(check.id)) continue
-    let status = checkInputs(check.inputs, true)
+    let status = checkInputs(check.inputs)
     if (status === 'current' && (check.node !== process.version || check.platform !== process.platform ||
         check.arch !== process.arch || (verification.status && !fresh?.has(check.id)))) status = 'stale'
     checks.push({ id: check.id, command: check.command, status, ...(status === 'current' ? { exitCode: check.exitCode } : {}) })
   }
+  const reviewPaths = record.reviewPaths
+  const reviewBinding = validEvidencePaths(reviewPaths) && new Set(reviewPaths).size === reviewPaths.length ?
+    crypto.createHash('sha256').update(JSON.stringify(['review', binding, [...reviewPaths].sort()])).digest('hex') : null
   const review = recorded ? receipt.review : null
-  const reviewStatus = ['no-findings', 'findings'].includes(review?.verdict) ? checkInputs(review.inputs) : 'unknown'
-  // Recorded paths catch content changes. Directory scopes can also gain previously unrecorded files.
+  const matchesReviewScope = () => {
+    const { files } = verificationInputs(reviewPaths, localAt)
+    return files?.size === review.inputs.length && review.inputs.every(input => files.has(input.path))
+  }
+  let reviewStatus = 'unknown'
+  if (reviewBinding && ['no-findings', 'findings'].includes(review?.verdict) &&
+      typeof review.binding === 'string' && CHANGE_HASH.test(review.binding) && validReceiptInputs(review.inputs)) {
+    reviewStatus = review.binding === reviewBinding && matchesReviewScope() ? checkInputs(review.inputs) : 'stale'
+  }
+  // Finish hashing both scopes before the final directory checks, so review reads cannot hide test input changes.
+  if (reviewStatus === 'current' && reviewPaths.some(input => input.endsWith('/')) && !matchesReviewScope()) reviewStatus = 'stale'
   const invalidated = new Set(checks.filter(check => check.status !== 'current').map(check => check.id))
   for (const [id, scope] of directoryScopes ?? []) {
     if (invalidated.has(id)) continue
@@ -2507,7 +2523,7 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
     verification.reuse = verification.reuse.filter(id => !invalidated.has(id))
     verification.run = record.verification.map(({ id }) => id).filter(id => !verification.reuse.includes(id))
   }
-  return { ...(local.ok && (local.absent || file) ? { path: relative, binding } : {}),
+  return { ...(local.ok && (local.absent || file) ? { path: relative, binding, ...(reviewBinding ? { reviewBinding } : {}) } : {}),
     status: !validReceipt ? 'unknown' : recorded ? 'recorded' : 'stale',
     ...(verification.status ? { verification } : {}),
     ...(recorded ? { checks,
@@ -2618,7 +2634,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
       next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),
     ...(stage === 'review' && evidence.status === 'recorded' && evidence.verification?.status === 'ready' &&
       evidence.verification.run.length === 0 ? {
-        next: 'The requested comparison of assignment and receipt against current declared inputs is complete. For a verification-only handoff, report the reused IDs and that no checks ran, then stop. Do not reopen references or repeat the comparison. Continue normal review for any wider request, known drift, or requested rerun.',
+        next: 'The requested comparison of assignment and receipt against current declared inputs is complete. For a verification-only handoff, report the reused IDs and that no checks ran, then stop. Do not reopen references or repeat the comparison. Continue normal review for any wider request, known check-input drift, or requested rerun.',
       } : {}),
     artifacts, intentExists: Boolean(localAt(artifacts.intent)),
     ...(draftPlanHash ? { auditBinding: documentAuditBinding(record, draftPlanHash) } : {}),

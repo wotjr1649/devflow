@@ -158,10 +158,14 @@ test('resume classifies missing, current and stale handoff evidence without runn
     id, command: 'node --test ' + id, exitCode: 0, node: process.version,
     platform: process.platform, arch: process.arch, inputs: values,
   })
+  f.record.reviewPaths = ['src/', 'tests/']
+  f.persist()
+  const { reviewBinding } = f.check('review').evidence
+  assert.match(reviewBinding, /^[0-9a-f]{64}$/)
   const receipt = {
     id: 'example', binding: unknown.binding,
     checks: [check('code', [inputs[0]]), check('tests', [inputs[1]])],
-    review: { verdict: 'no-findings', inputs: inputs.map(({ path, sha256 }) => ({ path, sha256 })) },
+    review: { binding: reviewBinding, verdict: 'no-findings', inputs },
   }
   const file = path.join(f.root, relative)
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -201,6 +205,100 @@ test('resume classifies missing, current and stale handoff evidence without runn
   receipt.id = 'different-assignment'
   save()
   assert.deepEqual(f.check('resume').evidence, { ...contractChanged, status: 'unknown' })
+})
+
+test('review evidence covers its declared file set independently of verification reuse', t => {
+  for (const gitMode of [true, false]) {
+    const f = fixture(gitMode)
+    const source = 'src/code.js'
+    const check = 'tests/check.js'
+    const write = (file, content) => {
+      const target = path.join(f.root, file)
+      fs.mkdirSync(path.dirname(target), { recursive: true })
+      fs.writeFileSync(target, content)
+    }
+    write(source, 'source\n')
+    write(check, 'check\n')
+    f.record.verification = [{ id: 'suite', command: 'node --test tests/check.js', paths: ['tests/'] }]
+    f.persist()
+    const before = f.check('review').evidence
+    const receipt = {
+      id: f.record.id,
+      binding: before.binding,
+      verificationBasis: before.verification.basis,
+      checks: [{ id: 'suite', command: f.record.verification[0].command, exitCode: 0, node: process.version,
+        platform: process.platform, arch: process.arch, inputs: [checkInput(f.root, check)] }],
+      review: { verdict: 'no-findings', inputs: [checkInput(f.root, source), checkInput(f.root, check)] },
+    }
+    const save = () => write(before.path, JSON.stringify(receipt))
+    const decide = () => f.check('review')
+    save()
+    assert.deepEqual(decide().evidence.review, { status: 'unknown' }, 'old receipts do not prove the file set')
+    f.record.reviewPaths = ['src/', check]
+    f.persist()
+    const { reviewBinding } = decide().evidence
+    assert.match(reviewBinding, /^[0-9a-f]{64}$/)
+    assert.deepEqual(decide().evidence.review, { status: 'unknown' }, 'declaring a scope does not promote a legacy review')
+    receipt.review.binding = reviewBinding
+    save()
+    const expectReview = (status, verdict) => {
+      const result = decide()
+      assert.deepEqual(result.evidence.review, verdict ? { status, verdict } : { status }, `${gitMode}: ${status}`)
+      assert.deepEqual(result.evidence.verification.reuse, ['suite'])
+      assert.deepEqual(result.evidence.verification.run, [])
+      assert.match(result.next, /For a verification-only handoff/)
+    }
+    expectReview('current', 'no-findings')
+    write('outside/other.js', 'outside review\n')
+    expectReview('current', 'no-findings')
+    f.record.reviewPaths.reverse()
+    f.persist()
+    expectReview('current', 'no-findings')
+    write('src/added.js', 'unreviewed file\n')
+    expectReview('stale')
+    fs.unlinkSync(path.join(f.root, 'src/added.js'))
+    fs.renameSync(path.join(f.root, source), path.join(f.root, 'src/moved.js'))
+    expectReview('stale')
+    fs.unlinkSync(path.join(f.root, 'src/moved.js'))
+    expectReview('stale')
+    write(source, 'source\n')
+    expectReview('current', 'no-findings')
+    let injected = false
+    const open = fs.openSync
+    const mock = t.mock.method(fs, 'openSync', (file, flags, ...args) => {
+      if (!injected && file === path.join(f.root, source) && typeof flags === 'number') {
+        injected = true
+        write('src/during.js', 'added while hashing review inputs\n')
+      }
+      return open(file, flags, ...args)
+    })
+    try { expectReview('stale') } finally { mock.mock.restore() }
+    assert.equal(injected, true)
+    fs.unlinkSync(path.join(f.root, 'src/during.js'))
+    injected = false
+    const cross = t.mock.method(fs, 'openSync', (file, flags, ...args) => {
+      if (!injected && file === path.join(f.root, source) && typeof flags === 'number') {
+        injected = true
+        write('tests/during.js', 'added while hashing the separate review scope\n')
+      }
+      return open(file, flags, ...args)
+    })
+    let result
+    try { result = decide() } finally { cross.mock.restore() }
+    assert.equal(injected, true)
+    assert.deepEqual(result.evidence.review, { status: 'current', verdict: 'no-findings' })
+    assert.deepEqual(result.evidence.verification.reuse, [])
+    assert.deepEqual(result.evidence.verification.run, ['suite'])
+    assert.equal(result.next, undefined, 'review reads must not hide check drift')
+    fs.unlinkSync(path.join(f.root, 'tests/during.js'))
+    f.record.reviewPaths = [source, check]
+    f.persist()
+    expectReview('stale')
+    f.record.reviewPaths = ['../outside']
+    f.persist()
+    assert.equal(decide().evidence.reviewBinding, undefined)
+    expectReview('unknown')
+  }
 })
 
 test('planning holds a stale specification while design only requires approved intent', () => {

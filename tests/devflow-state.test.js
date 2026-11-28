@@ -1514,12 +1514,11 @@ test('N2 A13: a private file name cannot add a Tool line', { skip: process.platf
   assert.doesNotMatch(out, /evil/)
 })
 
-// Safety floor (#150): the router, always loaded first, keeps what a card without a Tool line allows and where the path
-// may come from. The wording is the skill's; these are the facts it must state.
-test('N2 A14: the router says what a card without a Tool line allows', () => {
+// Safety floor (#150): the router distinguishes operator-authorized checks from Issue Tool authority.
+test('N2 A14: the router requires a valid Issue Tool and separately authorizes assigned checks', () => {
   const text = fs.readFileSync(path.join(__dirname, '../skills/devflow/SKILL.md'), 'utf8')
-  assert.match(text, /last line is not a `Tool:` line/)
-  assert.match(text, /never search the repository/)
+  assert.match(text, /^For Issue I\/O, require the Tool from the user or a valid host card ending in a `Tool:` line\. Never search for tools\./m)
+  assert.match(text, /^For assignments, run `change-check <stage> \[id\]` as authorized by project instructions or the user, alone before records or diff\./m)
 })
 
 test('N2 A7b: next or blocker text after a line separator inside one state line is not taken for a state line', () => {

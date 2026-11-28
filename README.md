@@ -4,8 +4,8 @@ An Issue-driven development loop for Claude Code and Codex, shipped as one plugi
 that both hosts load.
 
 devflow keeps work state in GitHub Issues so a session can resume after compaction
-or a restart, lets one main agent decide and write code while subagents read and
-verify, and leaves checking to review and CI rather than blocking hooks.
+or a restart and lets one main agent decide and write code while subagents read and
+verify. Review and CI verify changes.
 
 **Status:** in use. devflow runs its own development on Claude Code and Codex.
 
@@ -115,17 +115,19 @@ choices alone.
 This confirms the checkout is sound and loads. It does not open a session, exercise hooks, or cover Codex and the
 release channel. Opening a session with a dedicated profile, logging in, trusting hooks and installing are owner
 decisions; the [local development runbook](docs/local-development.md) covers them, including isolated test
-profiles and what to verify for each kind of change. The resume card and session hooks run only in a project with a
-`.devflow.json`; see the [repository contract](docs/specs/repository.md).
+profiles and what to verify for each kind of change. A `.devflow.json` enables the Issue-tracked session card and
+ledger behavior; see the [repository contract](docs/specs/repository.md).
 
 ## Prerequisites and limits
 
 - Node.js 22 or 24 (the CI matrix), Git and authenticated GitHub CLI (`gh`) must be available to hooks and commands.
   Issue tracking expects a `github.com` origin and an account with write access to that repository.
 - Installing the plugin does not configure a project. Add its `.devflow.json` and project files using the
-  [repository contract](docs/specs/repository.md); without that profile the hooks do not run.
-- Hooks block nothing: they resume work and track sessions. Issue text posted without `devflow-state` skips its
-  public text filter, and test changes are left to review. Keep credential scope and host permissions appropriate.
+  [repository contract](docs/specs/repository.md) for Issue tracking. Combined brief requests and valid local
+  assignments can receive hook guidance without that file.
+- Hooks resume work, track sessions and restrict supported editing tools during an assigned document revision.
+  Host permissions govern other execution surfaces. `devflow-state` filters its own Issue writes, and review
+  checks changes to tests.
 - Delegated agents are the hosts' built-ins (`general-purpose` in Claude Code, `spawn_agent` in Codex); this plugin
   installs no agent definitions. A role's report-only or no-spawn limit is an instruction, not a tool restriction. The
   main session's check before and after each explorer and reviewer (`devflow-state delegation-check`) catches visible

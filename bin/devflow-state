@@ -698,8 +698,8 @@ const NO_ISSUE_RULE = 'Changes need an Issue, so do not implement or offer to im
 const UNAVAILABLE = '[devflow] resume card unavailable: even the minimal card exceeds the 1,000-token budget; no Issue state or ' +
   `Tool shown. ${NO_ISSUE_RULE}`
 // Evals showed lifecycle requests answered without the skill when the diff or a command was at hand (#135).
-const SKILL_HINT = 'Lifecycle requests in this repository (starting work, resuming, reviewing a tracked change, CI and ' +
-  'merge, cleanup, handoff) go through the devflow skill: invoke it before acting or answering, even with the diff or ' +
+const SKILL_HINT = 'Lifecycle requests in this repository (starting work, resuming, reviewing a tracked change, diagnosing reported CI incidents or ' +
+  'production alerts, CI and merge, cleanup, handoff) go through the devflow skill: invoke it before acting or answering, even with the diff or ' +
   'commands at hand, because it holds the safety rules; a delegated session follows its brief instead.'
 // One line per shown value, so no value can add a line a reader would take for the Tool line.
 const oneLine = s => s.replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
@@ -2297,9 +2297,102 @@ const CHANGE_STAGES = new Map([
 ])
 const CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const CHANGE_HASH = /^[0-9a-f]{64}$/
+const CHECK_ENVIRONMENT = new Set(['CI', 'LANG', 'LC_ALL', 'LC_CTYPE', 'NODE_ENV', 'NODE_OPTIONS', 'TZ'])
 const CHANGE_USAGE = 'usage: devflow-state change-check <start|design|plan|build|resume|review> [change-id]'
+const DOCUMENT_STAGES = new Map([['intent', 'start'], ['spec', 'design'], ['plan', 'plan']])
 
-function assignedEvidence(root, record, localAt, verifies) {
+function changeRecord(root) {
+  const file = path.join(root, '.work/devflow/change.json')
+  const local = strictLocalPath(file)
+  if (!local.ok || local.absent) return null
+  try {
+    if (differs(fs.realpathSync(file), file)) return null
+    const record = JSON.parse(smallFile(file, 16384))
+    if (typeof record?.root === 'string' && path.isAbsolute(record.root) && !differs(record.root, root) &&
+        typeof record.id === 'string' && record.id.length <= 80 && CHANGE_ID.test(record.id)) return record
+  } catch {}
+  return null
+}
+
+function changeRevision(root) {
+  const record = changeRecord(root)
+  const stage = DOCUMENT_STAGES.get(record?.revision)
+  return stage ? { id: record.id, stage, file: `docs/changes/${record.id}/${record.revision}.md` } : null
+}
+
+function documentAuditBinding(record, planHash) {
+  const contracts = record.contracts.map(({ path, sha256 }) => [path, sha256]).sort()
+  return crypto.createHash('sha256').update(JSON.stringify([
+    'document-audit', record.id, record.approvals.intent.sha256, record.approvals.spec.sha256, planHash, contracts,
+  ])).digest('hex')
+}
+
+function evidencePath(value) {
+  return typeof value === 'string' && value.length <= 240 && /^[\p{L}\p{N}._ /-]+$/u.test(value) &&
+    value.split('/').every(part => part && !/[. ]$/.test(part) && !/^\.git$/i.test(part))
+}
+
+function evidenceCommand(value) {
+  return typeof value === 'string' && value.trim() && value.length <= 240 && !/[\r\n\x00]/.test(value) && !leaks(value).length
+}
+
+function evidenceId(value) {
+  return typeof value === 'string' && value.length <= 48 && CHANGE_ID.test(value)
+}
+
+function verificationInputs(scope, localAt) {
+  const files = new Set()
+  let visited = 0
+  function visit(relative, directory) {
+    if (!evidencePath(relative) || ++visited > 64) throw new Error('invalid verification input')
+    const local = localAt(relative)
+    if (!local) throw new Error('missing verification input')
+    const stat = fs.statSync(local)
+    if (directory && stat.isDirectory()) {
+      for (const entry of fs.readdirSync(local, { withFileTypes: true })) visit(relative + '/' + entry.name, entry.isDirectory())
+    } else if (!directory && stat.isFile()) files.add(relative)
+    else throw new Error('invalid verification input type')
+  }
+  try {
+    for (const input of scope) visit(input.replace(/\/$/, ''), input.endsWith('/'))
+  } catch { return null }
+  return files.size && files.size <= 32 ? files : null
+}
+
+function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
+  if (!Array.isArray(required) || !required.length || required.length > 16) return { status: 'invalid' }
+  const ids = new Set()
+  const reuse = [], run = [], fresh = new Set(), environments = {}
+  for (const policy of required) {
+    if (!evidenceId(policy?.id) || ids.has(policy.id) || !evidenceCommand(policy.command) ||
+        !Array.isArray(policy.paths) || !policy.paths.length || policy.paths.length > 32 ||
+        !policy.paths.every(input => typeof input === 'string' && evidencePath(input.replace(/\/$/, '')))) return { status: 'invalid' }
+    const names = policy.environment
+    if (names !== undefined && (!Array.isArray(names) || !names.length || names.length > CHECK_ENVIRONMENT.size ||
+        new Set(names).size !== names.length || !names.every(name => CHECK_ENVIRONMENT.has(name)))) return { status: 'invalid' }
+    ids.add(policy.id)
+    const environment = names && crypto.createHash('sha256').update(JSON.stringify(
+      [...names].sort().map(name => [name, vars[name] ?? null]))).digest('hex')
+    if (environment) environments[policy.id] = environment
+    const matches = receipt?.verificationBasis === basis ? receipt.checks.filter(check => check?.id === policy.id) : []
+    const check = matches.length === 1 ? matches[0] : null
+    const files = verificationInputs(policy.paths, localAt)
+    const inputs = Array.isArray(check?.inputs) && check.inputs.length <= 32 ?
+      new Map(check.inputs.map(input => [input?.path, input?.sha256])) : null
+    const current = files && inputs?.size === files.size && check.inputs.length === inputs.size &&
+      check.command === policy.command && Number.isInteger(check.exitCode) && check.exitCode >= 0 && check.node === process.version &&
+      check.platform === process.platform && check.arch === process.arch &&
+      (environment === undefined || check.environmentSha256 === environment) &&
+      [...files].every(name => verifies(name, inputs.get(name)))
+    if (current) fresh.add(policy.id)
+    if (current && check.exitCode === 0) reuse.push(policy.id)
+    else run.push(policy.id)
+  }
+  return { status: 'ready', basis, reuse, run, fresh,
+    ...(Object.keys(environments).length ? { environments } : {}) }
+}
+
+function assignedEvidence(root, record, localAt, verifies, vars) {
   const relative = `artifacts/handoff/${record.id}.json`
   const local = strictLocalPath(path.join(root, relative))
   const file = localAt(relative)
@@ -2307,17 +2400,19 @@ function assignedEvidence(root, record, localAt, verifies) {
   const approvals = ['intent', 'spec', 'plan'].map(kind => [kind, record.approvals[kind].by, record.approvals[kind].sha256])
   const contracts = record.contracts.map(({ path, sha256 }) => JSON.stringify([path, sha256])).sort()
   const binding = crypto.createHash('sha256').update(JSON.stringify([approvals, contracts])).digest('hex')
-  const unknown = { path: relative, binding, status: 'unknown' }
   let receipt
   try { receipt = file && JSON.parse(smallFile(file, 32768)) } catch {}
-  if (receipt?.id !== record.id || typeof receipt.binding !== 'string' || !CHANGE_HASH.test(receipt.binding) ||
-      !Array.isArray(receipt.checks) || receipt.checks.length > 16) return unknown
+  const validReceipt = receipt?.id === record.id && typeof receipt.binding === 'string' &&
+    CHANGE_HASH.test(receipt.binding) && Array.isArray(receipt.checks) && receipt.checks.length <= 16
+  const basis = crypto.createHash('sha256').update(JSON.stringify(['verification', record.id, approvals])).digest('hex')
+  const { fresh, ...verification } = record.verification !== undefined ?
+    verificationPlan(record.verification, validReceipt ? receipt : null, basis, localAt, verifies, vars) : {}
+  const unknown = { path: relative, binding, status: 'unknown', ...(verification.status ? { verification } : {}) }
+  if (!validReceipt) return unknown
   if (receipt.binding !== binding) return { ...unknown, status: 'stale' }
 
   const validInputs = inputs => Array.isArray(inputs) && inputs.length > 0 && inputs.length <= 32 &&
-    inputs.every(input => typeof input?.path === 'string' &&
-      input.path.length <= 240 && /^[\p{L}\p{N}._ /-]+$/u.test(input.path) &&
-      input.path.split('/').every(part => part && !/[. ]$/.test(part) && !/^\.git$/i.test(part)) &&
+    inputs.every(input => evidencePath(input?.path) &&
       typeof input.sha256 === 'string' && CHANGE_HASH.test(input.sha256))
   const checkInputs = inputs => {
     if (!validInputs(inputs)) return 'unknown'
@@ -2326,21 +2421,32 @@ function assignedEvidence(root, record, localAt, verifies) {
   const ids = new Set()
   const checks = []
   for (const check of receipt.checks) {
-    if (typeof check?.id !== 'string' || check.id.length > 48 || !CHANGE_ID.test(check.id) || ids.has(check.id) ||
-        typeof check.command !== 'string' || !check.command.trim() || check.command.length > 240 ||
-        /[\r\n\x00]/.test(check.command) || leaks(check.command).length ||
+    if (!evidenceId(check?.id) || ids.has(check.id) || !evidenceCommand(check.command) ||
         !Number.isInteger(check.exitCode) || check.exitCode < 0 ||
         [check.node, check.platform, check.arch].some(value => typeof value !== 'string')) return unknown
     ids.add(check.id)
     let status = checkInputs(check.inputs)
     if (status === 'current' && (check.node !== process.version || check.platform !== process.platform ||
-        check.arch !== process.arch)) status = 'stale'
+        check.arch !== process.arch || (verification.status && !fresh?.has(check.id)))) status = 'stale'
     checks.push({ id: check.id, command: check.command, status, ...(status === 'current' ? { exitCode: check.exitCode } : {}) })
   }
   const review = receipt.review
   const reviewStatus = ['no-findings', 'findings'].includes(review?.verdict) ? checkInputs(review.inputs) : 'unknown'
-  return { path: relative, binding, status: 'recorded', checks,
+  return { ...unknown, status: 'recorded', checks,
     review: { status: reviewStatus, ...(reviewStatus === 'current' ? { verdict: review.verdict } : {}) } }
+}
+
+function noGitRepositoryOnDisk(root, vars = {}) {
+  if (vars.GIT_DIR || vars.GIT_WORK_TREE || vars.GIT_COMMON_DIR) return false
+  const exists = p => {
+    try { fs.lstatSync(p); return true } catch (error) { if (error.code === 'ENOENT') return false; throw error }
+  }
+  try {
+    for (let dir = root; ; dir = path.dirname(dir)) {
+      if (exists(path.join(dir, '.git')) || (exists(path.join(dir, 'HEAD')) && exists(path.join(dir, 'objects')))) return false
+      if (path.dirname(dir) === dir) return true
+    }
+  } catch { return false }
 }
 
 function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
@@ -2356,18 +2462,16 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     if (!local.ok || local.absent) return null
     try { return differs(fs.realpathSync(target), target) ? null : target } catch { return null }
   }
-  const recordPath = localAt('.work/devflow/change.json')
-  let record
-  try { record = JSON.parse(recordPath && smallFile(recordPath, 16384)) } catch {}
-  if (!record || typeof record.root !== 'string' || !path.isAbsolute(record.root) ||
-      differs(record.root, root) || typeof record.id !== 'string' || record.id.length > 80 ||
-      !CHANGE_ID.test(record.id) || (expectedId !== undefined && record.id !== expectedId)) {
+  const record = changeRecord(root)
+  if (!record || (expectedId !== undefined && record.id !== expectedId)) {
     return hold('missing or mismatched operator assignment')
   }
   const git = args => env.run('git', args, { cwd: root })
   const top = git(['rev-parse', '--show-toplevel'])
   if (record.git === null) {
-    if (top.code !== 128 || !/not a git repository/i.test(top.stderr || '')) return hold('Git-free assignment cannot be verified')
+    const gitFree = top.code === 'ENOENT' ? noGitRepositoryOnDisk(root, env.vars) :
+      top.code === 128 && /not a git repository/i.test(top.stderr || '')
+    if (!gitFree) return hold('Git-free assignment cannot be verified')
   } else {
     if (!record.git || typeof record.git.common !== 'string' || !path.isAbsolute(record.git.common) ||
         typeof record.git.branch !== 'string' || !record.git.branch || top.code !== 0 ||
@@ -2383,6 +2487,13 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     const target = path.join(root, relative)
     const local = strictLocalPath(target)
     if (!local.ok || (!local.absent && !localAt(relative))) return hold('unsafe change artifact path')
+  }
+  if (stage === 'build' && record.audit?.verdict === 'HOLD') return hold('independent document audit HOLD')
+  const revisionStage = DOCUMENT_STAGES.get(record.revision)
+  if (record.revision !== undefined && !revisionStage) return hold('invalid document revision target')
+  if (stage === 'build' && revisionStage) return hold('document revision is still open')
+  if (revisionStage && ['start', 'design', 'plan'].includes(stage) && stage !== revisionStage) {
+    return hold('document revision is assigned to another stage')
   }
   const verifies = (relative, hash) => {
     const file = localAt(relative)
@@ -2401,11 +2512,23 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     }
     if (!verifies(contract.path, contract.sha256)) return hold(`contract changed: ${contract.path}`)
   }
-  return { code: 0, out: JSON.stringify({ status: 'ready', id: record.id, stage, artifacts,
-    intentExists: Boolean(localAt(artifacts.intent)),
+  if (stage === 'build' && (record.contracts.length || record.audit !== undefined)) {
+    const audit = record.audit
+    if (audit?.verdict !== 'READY' || typeof audit.by !== 'string' || !audit.by.trim() ||
+        audit.binding !== documentAuditBinding(record, record.approvals.plan.sha256)) {
+      return hold('missing or stale independent document audit')
+    }
+  }
+  const planFile = stage === 'plan' ? localAt(artifacts.plan) : null
+  const draftPlanHash = planFile ? hashFile(planFile)?.sha256 : null
+  return { code: 0, out: JSON.stringify({ status: 'ready', id: record.id, stage,
+    ...(stage === 'build' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening any returned work record or editing.' } : {}),
+    ...(stage === 'resume' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),
+    artifacts, intentExists: Boolean(localAt(artifacts.intent)),
+    ...(draftPlanHash ? { auditBinding: documentAuditBinding(record, draftPlanHash) } : {}),
     contracts: record.contracts.map(entry => entry.path),
     ...(['build', 'resume', 'review'].includes(stage) ?
-      { evidence: assignedEvidence(root, record, localAt, verifies) } : {}) }) }
+       { evidence: assignedEvidence(root, record, localAt, verifies, env.vars || {}) } : {}) }) }
 }
 
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {
@@ -2525,7 +2648,11 @@ function command(argv, stdin, env, cwd) {
       if (!n) return { code: 2, out: 'usage: devflow-state release <issue>' }
       const ctx = repoContext(env, cwd)
       if (legacyOf(ctx, n)) return LEGACY(n)
-      const me = sessionId(env.vars)
+      const vars = env.vars || {}
+      if (vars.CODEX_THREAD_ID && (vars.CLAUDECODE || vars.CLAUDE_CODE_ENTRYPOINT || vars.CLAUDE_CODE_SESSION_ID || vars.DEVFLOW_SESSION_ID)) {
+        return { code: 1, out: 'refused: shared host identity; the owning session must release its own registration' }
+      }
+      const me = sessionId(vars)
       if (!ctx || !me) return { code: 1, out: 'refused: no devflow repository or no session id to release' }
       // A delegate shares its parent's session id, so its release would take the parent's entry out.
       if (taskWorktree(ctx)) return { code: 1, out: 'refused: a task worktree releases nothing; the main session does' }
@@ -2555,4 +2682,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, isNetwork, localPath, strictLocalPath, smallFile, hashFile, provenMain, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, isNetwork, localPath, strictLocalPath, smallFile, hashFile, changeRevision, provenMain, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

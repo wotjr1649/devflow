@@ -43,6 +43,18 @@ remain in place. A worktree uses its own operator-supplied, untracked `.work/dev
 the change `id`, canonical absolute `root`, `git` identity (`common` directory and `branch`, or `null` for Git-free work),
 `approvals` keyed by artifact kind with `by` and `sha256`, and `contracts` with relative `path` and `sha256`.
 
+For a single-file revision, the operator sets `revision` to `intent`, `spec` or `plan`. The stage check permits only
+the matching document stage and holds build until the operator clears the revision. Use the host's native edit
+tool for that file. The operator reviews the diff before clearing the assignment. Approvals and audit verdicts live
+in the assignment record, where an edited document invalidates matching evidence.
+
+For work with declared contracts, the operator records an independent pre-build document audit as
+`audit: { "by": "...", "verdict": "READY", "binding": "..." }` (or `HOLD`). The reviewer runs `change-check plan`
+after a plan exists and reports the returned `auditBinding` and verdict to the operator. The binding covers the
+three document hashes and the declared contract paths and hashes for that change. A recorded `HOLD` blocks build
+even with a matching plan approval. Missing, invalid or stale audit data also holds a build with declared contracts.
+Only an operator attaches a new verdict to the reviewed binding. Reaudit changed inputs before building.
+
 Provide the exact trusted invocation in the handoff or project instructions loaded by both hosts. If Claude Code
 does not load the shared `AGENTS.md`, import it with `@AGENTS.md` in the project's `CLAUDE.md`.
 Run approved commands separately when the host grants permission for individual commands. For status-only requests,
@@ -57,10 +69,28 @@ Projects that want the skill to load for these requests can add this scoped rule
 
 From that root, the trusted `devflow-state change-check <stage> [id]` returns ready paths or a hold. Start lists paths
 and existing intent; design verifies intent, plan verifies intent and spec, and build, resume and review verify all
-three. All stages check declared contracts. An explicit change ID must match the assignment. Git checks the checkout
+three. Ready build and status checks point to Resume before work records, edits or a status reply. All stages check declared
+contracts. An explicit change ID must match the assignment. For Git-free assignments with Git unavailable, the tool
+checks the root and its ancestors for repository markers and refuses explicit Git directory overrides. Git checks the checkout
 and branch without using its moving HEAD as the approval version. The operator establishes approval authority;
 the command only checks consistency against that supplied record. For a repeated operational event, reuse its
 assigned change ID and draft intent. A different event gets a separate assignment when follow-up is warranted.
+
+#### Change lifetime
+
+Keep the change ID while refining the same unfinished outcome. Revise the plan for an execution change, the spec
+for a behavior change, or the intent for a goal or acceptance change. Update dependent artifacts only when affected.
+Reapprove changed artifacts and renew any audit whose bound inputs changed before resuming build.
+
+Give a distinct outcome that can ship independently, or new behavior after delivery, its own ID. Link a relevant
+predecessor and its approved delivery revision or artifact hashes, and preserve the earlier decisions as history.
+Plan from the current owning contract in `docs/specs/` and update it with the implementation in the same delivery
+when behavior changes. Record approved requirements in their owning artifact and link the reviewed request as evidence.
+
+For a defect that restores the current contract, identify the violated rule and regression check. Use a new change
+when the repair needs a new decision, cross-component coordination, or separate approval. Handle a bounded repair
+without those needs as routine work. Fix meaning-preserving typos and broken links in the owning document. If a
+correction changes a delivered decision, link a separate correction to that record.
 
 #### Evidence for an assigned change
 
@@ -77,6 +107,23 @@ Build, resume and review report `evidence` separately from assignment readiness.
 `unknown`. A changed approval or input makes its evidence `stale`. A `current` check with exit code zero can be reused
 only when its declared scope, assertions, conditions and trusted producer apply. Evidence records are data. They do
 not approve a change, execute a stored command or replace the independent review and CI required for delivery.
+
+For assigned work, the operator may declare required checks in the assignment's
+`verification` array as `{ id, command, paths }`. Use exact commands and complete input scopes.
+A path ending in / includes that directory's files recursively, including newly added files.
+Include a shared contract in every check that depends on it. Record the returned
+`evidence.verification.basis` as the receipt's top-level `verificationBasis` when
+recording actual results. Build, resume and review return the same check IDs under `reuse` and `run`.
+These queries report evidence without running any checks.
+Use trusted check definitions for execution. A check can survive an authorized update
+to an unrelated contract when its inputs, command, approved change documents and execution
+conditions still match. Unapproved contracts still hold. Recollect evidence when the
+environment changes beyond the recorded Node version, platform or architecture.
+Include dependency locks and test configuration in the relevant paths. A check may set
+`environment` to selected names from `CI`, `LANG`, `LC_ALL`, `LC_CTYPE`, `NODE_ENV`,
+`NODE_OPTIONS`, and `TZ`. Copy its returned `environments[id]` digest to
+`environmentSha256` only when recording the result from the same execution environment.
+Environment values stay out of the result. An older receipt missing the declared digest requires a new run.
 
 Current design decisions live by topic in `docs/design/current-decisions.md` alone; when a choice changes, update its
 section in place. Each section holds only the current choice and reason, alternatives not taken, and conditions for

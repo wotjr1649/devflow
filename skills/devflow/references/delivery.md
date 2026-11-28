@@ -4,13 +4,15 @@ Done when destination proof or its gap is recorded.
 
 ## Readiness and publication
 
-Read-only readiness checks target, revision, authority, review and preserved behavior. Bind CI to trusted repo/workflow, run/attempt, event and checkout. Require passing declared verify and approved assertions. Missing, foreign, cancelled, skipped, stale or weakened proof holds integration.
+Read-only readiness checks target, revision, authority, review and preserved behavior. Require passing declared checks and approved assertions. When CI is required, bind proof to trusted repo/workflow, run/attempt, event and checkout. Missing, foreign, cancelled, skipped, stale or weakened proof holds integration.
 
 ## Ship
 
-For Git-free delivery, verify locally and bind approval to reviewed hashes. Match them before writes and at the destination. Verify locally for `local-merge` and `push-on-request`. `pr-ci` requires hosted head/merge proof. Require independent review per policy, including M0. Check only proven criteria. For PRs refresh base, head, rules, CI, approvals and threads. Use approved method, no bypass, expected-head guard. Use `Refs #n` without closing keywords. Close PR Issues after verified merge, passing post-merge checks and complete criteria. Full local ship closes before integration. Reopen failures. Keep partial scope open. Defer external effects unattended.
+Confirm the approved destination and reviewed version before writing, and verify both at the destination. For local artifacts, use reviewed hashes and local checks. Require independent review per policy, including M0. Check only proven criteria. Defer external effects unattended.
 
-Confirm authority and current targets. Prefer conditional external writes. Read back delivery and record partial effects. Retry only after proven exit without effect or verified same-effect idempotency. Check artifact, environment, health and rollback.
+When using Git integration, verify `local-merge` and `push-on-request` locally. For `pr-ci` refresh base, head, rules, CI, approvals and review threads. Require hosted head/merge proof and guard the expected head. Use the approved method without bypass. For Issue-tracked delivery follow project closing policy. Keep partial scope open and reopen failures.
+
+Confirm authority and current targets. Prefer conditional external writes. Read back delivery and record partial effects. Retry only after proven exit without effect or verified same-effect idempotency. For deployments, check artifact, environment, health and rollback.
 
 ## Cleanup
 

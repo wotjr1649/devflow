@@ -153,6 +153,5 @@ message.
   A lock, read or rewrite failure of an explicit release is reported as a release failure, not assumed to be a lock
   conflict.
 - Issue writes are not locked. Sessions on other machines are unknown, and another host launched inside a host (Claude
-  inside Codex) appears as the outer session. Known limit: its `release <n>` therefore removes the outer session's entry,
-  and other sessions are not warned about the outer one until it writes again. In a nested run, do not
-  run `release <n>`; the outer session releases at its own handoff, or its SessionEnd hook does when it ends.
+  inside Codex) can inherit the outer session identity. Explicit release refuses conflicting Codex and Claude markers.
+  A nested or uncertain caller leaves the registration in place. The owner releases at its own handoff or through its SessionEnd hook.

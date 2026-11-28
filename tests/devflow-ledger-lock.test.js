@@ -411,6 +411,20 @@ test('the session id is kept only as a hash, the Codex id wins, and no id means 
   assert.doesNotMatch(run(root2, {}, ['note', '1'], 'b').out, WARN, 'without an id there is nothing to compare')
 })
 
+test('a mixed host release preserves the owner registration in the main workspace', () => {
+  const root = repo({ stage: 'build' })
+  const owner = { CODEX_THREAD_ID: 'cccc-3333' }
+  run(root, owner, ['note', '1'], 'owned')
+  const before = fs.readFileSync(sessionsFile(root), 'utf8')
+  for (const marker of [{ CLAUDECODE: '1' }, { CLAUDE_CODE_ENTRYPOINT: 'cli' }, A, { DEVFLOW_SESSION_ID: 'inner' }]) {
+    const result = run(root, { ...owner, ...marker }, ['release', '1'])
+    assert.equal(result.code, 1)
+    assert.match(result.out, /owning session/)
+    assert.equal(fs.readFileSync(sessionsFile(root), 'utf8'), before)
+  }
+  assert.equal(run(root, owner, ['release', '1']).code, 0)
+})
+
 test('the resume card warns about another active session and not about its own', () => {
   const root = repo({ stage: 'build' })
   run(root, A, ['note', '1'], 'a')

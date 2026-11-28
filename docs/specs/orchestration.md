@@ -78,7 +78,7 @@ injects into subagents reach devflow's agents too: they run as `general-purpose`
 ## Models and effort
 
 The host supplies model and effort defaults for the main session and its workers. An explicit user choice can override
-those defaults when the runtime supports it. [Change](../../skills/devflow/references/change.md#role-selection) routes
+those defaults when the runtime supports it. [Change](../../skills/devflow/references/change.md#delegation) routes
 work by evidence and permissions and records only confirmed overrides.
 
 In Claude Code, the `model` (aliases only) and `effort` given at call time take precedence over the session's model and
@@ -87,10 +87,7 @@ In Codex, the model and effort given at spawn take precedence over the defaults,
 instructions may limit what can be set. Read-only roles in Codex are kept only by instruction: a custom agent's
 `sandbox_mode` cannot narrow the parent sandbox ([host-facts](../research/host-facts.md#codex)).
 
-The skill's [roles reference](../../skills/devflow/references/change.md#delegation) holds three roles: `explorer`, which only reads
-and runs commands; `reviewer`, which only reads; and `implementer`, which edits files. Every brief carries the role's
-body and at most one perspective verbatim, on both hosts, so one text serves both and the skill needs nothing outside
-its folder ([rationale](../design/current-decisions.md#execution-and-delegation)).
+The [delegation reference](../../skills/devflow/references/change.md#delegation) specifies scoped implementation and independent read-only review. A brief carries the task permissions and evidence required to decide its result. Apply a focused review perspective when risk warrants it.
 
 The plugin ships no agent definitions. Claude Code runs every role on `general-purpose` with the brief, and Codex on
 `spawn_agent`, so each host has one delegation path. Explore and Plan are not
@@ -102,12 +99,6 @@ git layout with git while no agent has run, and `after` runs no git and opens on
 beneath recorded folders, through a guard that follows no changed link and refuses network paths, because git run after
 the agent could start a program the agent planted. It is a tripwire, not isolation
 ([rationale](../design/current-decisions.md#execution-and-delegation)).
-
-### Perspectives
-
-Each role's perspectives are `###` sections of the roles reference, so no stage reads a separate perspectives file
-and both hosts apply one text. A brief carries at most one, because a reviewer given two does neither well; the main
-session reads one there when it applies it itself (a Codex design review).
 
 ### Promotion
 

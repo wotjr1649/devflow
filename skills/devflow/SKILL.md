@@ -8,13 +8,13 @@ description: "Use when handling intent/spec/plan, change audits, tracked Issues,
 
 Spike: question/exit. Bounded: brief design. Approve intent→spec→plan (all: architecture/shared contracts). Build/verify/review/ship. Analysis/review findings only.
 
-Assigned: run `change-check <stage> [id]` as authorized by project instructions or user, alone before records/diff. Pass ID; use paths/proof; hold failures. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` post-build.
+For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use paths/proof; hold failures. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` post-build.
 
 Evidence-only: recorded + ready + empty `evidence.verification.run` → report reuse/no checks. Stop. Honor source reads/drift/reruns/independent review.
 
 - [Resume](references/resume.md) alone for status/switch/interruption/unchanged work. Status: stop. Ready build: read first, approved edits only.
-- [Change](references/change.md) for work/docs/plans/branches/decisions/delegation/incidents/debugging/code review before assigned records.
-- Read [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Before commits/external writes/cleanup. Reconcile uncertain effects.
+- [Change](references/change.md) for work/docs/plans/branches/decisions/delegation/incidents/debugging/code review before records.
+- [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Before commits/external writes/cleanup. Reconcile uncertain effects.
 
 Scope change/compaction/restart: reopen first invalid stage/ref. Verify target/authority/rev/hashes/dirty+ignored inputs, preservation. Rerun affected/required checks except status. Approved equivalents for skips/weakening/removal.
 

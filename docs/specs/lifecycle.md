@@ -12,8 +12,10 @@ values the ledger and `devflow-state` check. How work runs inside a stage is exp
   these requests.
 - Read the applicable section in `skills/devflow/references/` when the skill routes to it. A verification-evidence-only
   handoff can finish at the assignment gate when all declared checks are reusable and the request fits that proof.
-  When authorizing the gate in project instructions, use its per-check comparison for this handoff and reserve manual
-  evidence reads for incomplete proof or a wider request.
+  State the completion rule in the project instructions shared by both hosts. The authorized `change-check review <id>`
+  performs the per-check comparison. For an evidence-only handoff, if `evidence.status` is `recorded`,
+  `evidence.verification.status` is `ready`, and its `run` is empty, report the reused IDs and that no checks ran, then
+  finish. Inspect the source records for incomplete proof or when expressly required. Review code independently when requested.
 - A new work request goes through start even when a card shows another Issue, because start decides the path; a spike,
   or work whose problem and acceptance criteria are not confirmed, goes to discover
   ([rationale](../design/current-decisions.md#entry-points-and-stages)).

@@ -2415,7 +2415,7 @@ function validReceiptInputs(inputs) {
 function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
   if (!Array.isArray(required) || !required.length || required.length > 16) return { status: 'invalid' }
   const ids = new Set()
-  const reuse = [], run = [], fresh = new Set(), environments = {}, runReasons = {}
+  const reuse = [], run = [], fresh = new Set(), directoryScopes = new Map(), environments = {}, runReasons = {}
   for (const policy of required) {
     if (!evidenceId(policy?.id) || ids.has(policy.id) || !evidenceCommand(policy.command) ||
         !Array.isArray(policy.paths) || !policy.paths.length || policy.paths.length > 32 ||
@@ -2441,11 +2441,14 @@ function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
         const input = inputs.get(name)
         return input?.mode !== undefined && verifies(name, input.sha256, input.mode)
       })
-    if (current) fresh.add(policy.id)
+    if (current) {
+      fresh.add(policy.id)
+      if (policy.paths.some(input => input.endsWith('/'))) directoryScopes.set(policy.id, { paths: policy.paths, files })
+    }
     if (current && check.exitCode === 0) reuse.push(policy.id)
     else run.push(policy.id)
   }
-  return { status: 'ready', basis, reuse, run, fresh,
+  return { status: 'ready', basis, reuse, run, fresh, directoryScopes,
     ...(Object.keys(runReasons).length ? { runReasons } : {}),
     ...(Object.keys(environments).length ? { environments } : {}) }
 }
@@ -2467,35 +2470,48 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
       [check.node, check.platform, check.arch].every(value => typeof value === 'string') &&
       (record.verification === undefined || validReceiptInputs(check.inputs)))
   const basis = crypto.createHash('sha256').update(JSON.stringify(['verification', record.id, approvals])).digest('hex')
-  const { fresh, ...verification } = record.verification !== undefined ?
+  const { fresh, directoryScopes, ...verification } = record.verification !== undefined ?
     verificationPlan(record.verification, validReceipt ? receipt : null, basis, localAt, verifies, vars) : {}
-  const unknown = { ...(local.ok && (local.absent || file) ? { path: relative, binding } : {}),
-    status: 'unknown', ...(verification.status ? { verification } : {}) }
-  if (!validReceipt) return unknown
-  if (receipt.binding !== binding) return { ...unknown, status: 'stale' }
-
+  const recorded = validReceipt && receipt.binding === binding
   const checkInputs = (inputs, requireMode = false) => {
     if (!validReceiptInputs(inputs)) return 'unknown'
     return inputs.every(input => (!requireMode || input.mode !== undefined) &&
       verifies(input.path, input.sha256, input.mode)) ? 'current' : 'stale'
   }
   const checks = []
-  for (const check of receipt.checks) {
+  for (const check of validReceipt ? receipt.checks : []) {
+    if (!recorded && !fresh?.has(check.id)) continue
     let status = checkInputs(check.inputs, true)
     if (status === 'current' && (check.node !== process.version || check.platform !== process.platform ||
         check.arch !== process.arch || (verification.status && !fresh?.has(check.id)))) status = 'stale'
     checks.push({ id: check.id, command: check.command, status, ...(status === 'current' ? { exitCode: check.exitCode } : {}) })
   }
-  // An input can change between building the plan and checking the recorded evidence.
+  const review = recorded ? receipt.review : null
+  const reviewStatus = ['no-findings', 'findings'].includes(review?.verdict) ? checkInputs(review.inputs) : 'unknown'
+  // Recorded paths catch content changes. Directory scopes can also gain previously unrecorded files.
   const invalidated = new Set(checks.filter(check => check.status !== 'current').map(check => check.id))
+  for (const [id, scope] of directoryScopes ?? []) {
+    if (invalidated.has(id)) continue
+    const { files, reason } = verificationInputs(scope.paths, localAt)
+    if (files?.size === scope.files.size && [...scope.files].every(name => files.has(name))) continue
+    invalidated.add(id)
+    const reasons = verification.runReasons ??= {}
+    reasons[id] = reason ?? 'verification input set changed'
+    const check = checks.find(entry => entry.id === id)
+    if (check) {
+      check.status = 'stale'
+      delete check.exitCode
+    }
+  }
   if (verification.reuse?.some(id => invalidated.has(id))) {
     verification.reuse = verification.reuse.filter(id => !invalidated.has(id))
     verification.run = record.verification.map(({ id }) => id).filter(id => !verification.reuse.includes(id))
   }
-  const review = receipt.review
-  const reviewStatus = ['no-findings', 'findings'].includes(review?.verdict) ? checkInputs(review.inputs) : 'unknown'
-  return { ...unknown, status: 'recorded', checks,
-    review: { status: reviewStatus, ...(reviewStatus === 'current' ? { verdict: review.verdict } : {}) } }
+  return { ...(local.ok && (local.absent || file) ? { path: relative, binding } : {}),
+    status: !validReceipt ? 'unknown' : recorded ? 'recorded' : 'stale',
+    ...(verification.status ? { verification } : {}),
+    ...(recorded ? { checks,
+      review: { status: reviewStatus, ...(reviewStatus === 'current' ? { verdict: review.verdict } : {}) } } : {}) }
 }
 
 function noGitRepositoryOnDisk(root, vars = {}) {

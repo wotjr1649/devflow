@@ -395,6 +395,60 @@ test('an input that changes while checking evidence moves its check back to run'
   }
 })
 
+test('a new directory input during evidence checking invalidates only its check', t => {
+  const f = fixture(false)
+  const src = 'tests/existing.test.cjs'
+  const added = path.join(f.root, 'tests/added.test.cjs')
+  const stable = 'server.cjs'
+  fs.mkdirSync(path.dirname(added))
+  for (const name of [src, stable]) fs.writeFileSync(path.join(f.root, name), 'const value = 1;\n')
+  f.record.verification = [
+    { id: 'suite', command: 'node --test tests/*.test.cjs', paths: ['tests/'] },
+    { id: 'syntax', command: 'node --check ' + stable, paths: [stable] },
+  ]
+  f.persist()
+  const before = f.check('review').evidence
+  const receipt = path.join(f.root, before.path)
+  fs.mkdirSync(path.dirname(receipt), { recursive: true })
+  fs.writeFileSync(receipt, JSON.stringify({
+    id: f.record.id, binding: before.binding, verificationBasis: before.verification.basis,
+    checks: f.record.verification.map(({ id, command }, index) => ({
+      id, command, exitCode: 0, node: process.version, platform: process.platform, arch: process.arch,
+      inputs: [checkInput(f.root, index ? stable : src)],
+    })),
+  }))
+  assert.match(f.check('review').next, /For a verification-only handoff/)
+
+  const open = fs.openSync
+  const input = path.join(f.root, src)
+  const checkDuringAddition = (stage, at) => {
+    let reads = 0
+    const mock = t.mock.method(fs, 'openSync', (file, flags, ...args) => {
+      if (file === input && typeof flags === 'number' && ++reads === at) fs.writeFileSync(added, 'new test\n')
+      return open(file, flags, ...args)
+    })
+    let result
+    try { result = f.check(stage) } finally { mock.mock.restore() }
+    assert.ok(reads >= at)
+    assert.deepEqual(result.evidence.verification.reuse, ['syntax'], stage)
+    assert.deepEqual(result.evidence.verification.run, ['suite'], stage)
+    assert.match(result.evidence.verification.runReasons.suite, /input set changed/)
+    fs.unlinkSync(added)
+    return result
+  }
+  for (const stage of ['build', 'resume', 'review']) {
+    const result = checkDuringAddition(stage, 2)
+    assert.deepEqual(result.evidence.checks.map(check => check.status), ['stale', 'current'])
+    if (stage === 'review') assert.equal(result.next, undefined, 'a late directory entry prevents early completion')
+  }
+
+  fs.appendFileSync(f.contract, 'approved unrelated contract change\n')
+  f.record.contracts[0].sha256 = hashFile(f.contract).sha256
+  f.persist()
+  assert.deepEqual(f.check('review').evidence.verification.reuse, ['suite', 'syntax'])
+  assert.equal(checkDuringAddition('review', 1).evidence.status, 'stale')
+})
+
 test('a malformed receipt cannot authorize reuse and oversized scopes explain reruns', () => {
   const f = fixture(false)
   const p = 'inputs/check.js'

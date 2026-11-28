@@ -6,7 +6,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
 const tmpdir = require('./tmpdir')
-const { spawnSync } = require('child_process')
+const { execFile, spawnSync } = require('child_process')
 const state = require('../bin/devflow-state')
 
 const GITC = ['-c', 'init.defaultBranch=main', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', '-c', 'user.name=t',
@@ -35,6 +35,84 @@ function project(mainBranch, wtBranch) {
   git(main, 'worktree', 'add', '-q', '-b', wtBranch, wt)
   return { base, main, wt }
 }
+
+test('assigned worktrees share reserved finding attempts without changing approvals or counting a replay', async () => {
+  const { main, wt, base } = project('main', 'trial/finding')
+  const third = path.join(base, 'third')
+  git(main, 'worktree', 'add', '-q', '-b', 'trial/third', third)
+  const store = path.join(main, '.work', 'devflow', 'findings', 'example.json')
+  fs.mkdirSync(path.dirname(store), { recursive: true })
+  fs.writeFileSync(store, JSON.stringify({ id: 'r-17', attempts: [] }))
+  const assignments = []
+  for (const root of [wt, third]) {
+    const directory = path.join(root, 'docs', 'changes', 'example')
+    fs.mkdirSync(directory, { recursive: true })
+    const approvals = {}
+    for (const kind of ['intent', 'spec', 'plan']) {
+      const file = path.join(directory, `${kind}.md`)
+      fs.writeFileSync(file, kind + '\n')
+      approvals[kind] = { by: 'operator', sha256: state.hashFile(file).sha256 }
+    }
+    const file = path.join(root, '.work', 'devflow', 'change.json')
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const body = JSON.stringify({ root, id: 'example', approvals, contracts: [],
+      git: { common: path.join(main, '.git'), branch: git(root, 'branch', '--show-current') },
+      finding: { id: 'r-17', shared: true, attempts: [] } })
+    fs.writeFileSync(file, body)
+    assignments.push({ file, body })
+  }
+  const e = env('trial/finding')
+  function call(root, ...args) {
+    return JSON.parse(state.main(args, () => assert.fail('No stdin'), e, root).out)
+  }
+  const write = (root, id, value) => call(root, 'finding-attempt', 'example', id, value)
+  const status = root => call(root, 'change-check', 'resume', 'example')
+  const contenders = [{ root: wt, id: 'race-one' }, { root: third, id: 'race-two' }]
+  const started = await Promise.all(contenders.map(({ root, id }) => new Promise((resolve, reject) => {
+    execFile(process.execPath, [path.join(__dirname, '../bin/devflow-state'), 'finding-attempt', 'example', id, 'start'],
+      { cwd: root, env: cleanEnv, timeout: 30000 }, (error, stdout, stderr) => {
+        if (error && error.code !== 1) return reject(error)
+        try { resolve(JSON.parse(stdout || stderr)) } catch (parseError) { reject(parseError) }
+      })
+  })))
+  assert.deepEqual(started.map(result => result.status).sort(), ['hold', 'reserved'])
+  assert.equal(JSON.parse(fs.readFileSync(store, 'utf8')).attempts.length, 1)
+  const winner = contenders[started.findIndex(result => result.status === 'reserved')]
+  assert.equal(write(winner.root, winner.id, '0').status, 'recorded')
+  assert.equal(status(wt).finding.failedAttempts, 0)
+  assert.equal(write(wt, 'one', '1').status, 'hold')
+  assert.equal(write(wt, 'one', 'start').status, 'reserved')
+  assert.equal(write(third, 'one', 'start').status, 'already-pending')
+  assert.equal(write(third, 'different', 'start').status, 'hold')
+  assert.deepEqual(status(third).finding.pending, ['one'])
+  assert.match(write(third, 'one', '1').reason, /original worktree/)
+  // Matching the branch name alone does not let a different worktree settle the reservation.
+  git(third, 'symbolic-ref', 'HEAD', 'refs/heads/trial/finding')
+  fs.writeFileSync(assignments[1].file, JSON.stringify({ ...JSON.parse(assignments[1].body),
+    git: { common: path.join(main, '.git'), branch: 'trial/finding' } }))
+  assert.match(write(third, 'one', '1').reason, /original worktree/)
+  git(third, 'symbolic-ref', 'HEAD', 'refs/heads/trial/third')
+  fs.writeFileSync(assignments[1].file, assignments[1].body)
+  assert.equal(write(wt, 'one', '1').status, 'recorded')
+  const saved = fs.readFileSync(store, 'utf8')
+  assert.equal(write(third, 'one', '1').status, 'already-recorded')
+  assert.match(write(third, 'one', '0').reason, /conflicting/)
+  assert.equal(fs.readFileSync(store, 'utf8'), saved)
+  assert.equal(status(third).finding.failedAttempts, 1)
+  assert.equal(write(third, 'two', 'start').status, 'reserved')
+  assert.equal(write(third, 'two', '1').finding.failedAttempts, 2)
+  assert.equal(status(wt).buildStatus, 'hold')
+  assert.equal(write(wt, 'three', 'start').status, 'hold')
+  for (const { file, body } of assignments) assert.equal(fs.readFileSync(file, 'utf8'), body)
+  const invalid = JSON.parse(fs.readFileSync(store, 'utf8'))
+  invalid.attempts.push(invalid.attempts[0])
+  fs.writeFileSync(store, JSON.stringify(invalid))
+  assert.match(status(wt).buildReason, /unsafe shared finding history/)
+  fs.unlinkSync(store)
+  assert.match(status(third).buildReason, /missing or unsafe shared finding history/)
+  assert.equal(write(wt, 'three', 'start').status, 'hold')
+  assert.equal(fs.existsSync(store), false)
+})
 
 const block = branch => ['## 현재 상태', '', '- 단계: build', `- 브랜치/PR: ${branch}`].join('\n')
 function env(branch) {

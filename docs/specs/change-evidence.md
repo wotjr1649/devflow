@@ -50,8 +50,8 @@ Keep the reproduction and result details in the existing private evidence. An in
 execution stays pending. Reconcile its process and file effects before recording a terminal result or removing
 a reservation for an attempt that never ran.
 
-The operator or its authorized coordinator publishes the records in attempt order with an atomic replacement
-of the assignment file. Serialize writers. Workers report their results and do not edit the operator's assignment.
+For inline history the operator or its authorized coordinator publishes the records in attempt order with an atomic
+replacement of the assignment file. Serialize writers. Workers report results and do not edit operator approvals.
 Only the first occurrence of an attempt ID establishes its order. A terminal result supersedes a reservation with
 the same ID and plan. Repeated equivalent results count once. Conflicting terminal results or plan identities hold.
 Keep the active finding marker during handoff. `attempts` is mandatory, even when empty, and holds at most 64 rows.
@@ -63,3 +63,22 @@ An approved plan change alone does not clear the count. To authorize a new appro
 history and set `reopen: { after, planSha256 }` to the last failed attempt in the closed series and the newly approved
 plan hash. The closed prefix needs two failures, completed outcomes and a plan different from the approved one.
 Tracked Issue work still carries its finding history through the existing ledger notes and checkpoints.
+
+### Shared worktree history
+
+For worktrees from one Git repository, the operator can set `finding: { id, attempts: [], shared: true }` on
+each approved assignment for the change and initialize `.work/devflow/findings/<change-id>.json` in the main
+worktree with `{ id, attempts: [] }` for a new finding. Any migration must preserve prior results and bind each
+attempt to its Git `branch` and `worktree` (SHA-256 of the canonical absolute worktree path, folded to lower case
+on Windows). The shared file is private. Its ID must match the opted-in finding, and the current worktree
+must match its own assignment and prove its relationship to the main worktree. Missing, unsafe or unreadable
+history holds rather than starting over. This option applies to Git worktrees with a proven main worktree.
+
+Eligible workers use `finding-attempt <change-id> <attempt-id> start` before edits and the same command with the
+observed reproduction exit code in place of `start` afterward. Only `reserved` starts a new edit. Reuse of an ID
+reports the existing reservation or result without permitting another edit. Completing a pending attempt requires
+its original worktree path, branch and approved plan. Replaying an already
+recorded equivalent result from a sibling worktree is a no-op. A conflicting result holds. Confirm the prior process
+tree and partial effects before resuming any pending attempt. Only reserve a new ID when the build check permits it.
+The CLI serializes writes under a shared lock and updates the evidence atomically. Recording a passed reproduction
+does not approve a change or close a review finding. The writer leaves all assignments, approvals and source intact.

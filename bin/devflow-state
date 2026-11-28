@@ -204,6 +204,7 @@ const CRITERIA_HEADING = /^## 수용 기준[ \t]*$/m
 const USAGE = `usage: devflow-state <command>
   card                        the resume card (the SessionStart hook prints it)
   change-check <stage> [id]    verify an operator's local change assignment and approved inputs
+  finding-attempt <id> <attempt> start|<exit-code>  record a shared finding attempt
   read [n]                    Issue body and latest checkpoint, writers only, as data
   state <n> < block           replace the state block; stdin starts with "## 현재 상태", at most 15 lines below it
   intent <n> [--title <t>] < intent
@@ -517,8 +518,12 @@ function dropStale(lock, judged) {
 function withLock(root, n, fn, { waitMs = LOCK_WAIT_MS } = {}) {
   if (!issueDirOk(root, n)) return { ok: false, why: 'unsafe' }
   const dir = path.join(root, '.work', 'devflow', `i${n}`)
+  return withDirectoryLock(dir, 'ledger.lock', fn, waitMs)
+}
+
+function withDirectoryLock(dir, name, fn, waitMs = LOCK_WAIT_MS) {
   fs.mkdirSync(dir, { recursive: true })
-  const lock = path.join(dir, 'ledger.lock')
+  const lock = path.join(dir, name)
   const mine = token()
   const until = Date.now() + waitMs
   for (;;) {
@@ -2299,6 +2304,7 @@ const CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const CHANGE_HASH = /^[0-9a-f]{64}$/
 const CHECK_ENVIRONMENT = new Set(['CI', 'LANG', 'LC_ALL', 'LC_CTYPE', 'NODE_ENV', 'NODE_OPTIONS', 'TZ'])
 const CHANGE_USAGE = 'usage: devflow-state change-check <start|design|plan|build|resume|review> [change-id]'
+const FINDING_USAGE = 'usage: devflow-state finding-attempt <change-id> <attempt-id> start|<exit-code>'
 const DOCUMENT_STAGES = new Map([['intent', 'start'], ['spec', 'design'], ['plan', 'plan']])
 
 function changeRecord(root) {
@@ -2406,6 +2412,72 @@ function findingProgress(finding, approvedPlan) {
   const failedAttempts = active.filter(attempt => attempt.exitCode > 0).length
   return { finding: { id: finding.id, failedAttempts, pending },
     reason: pending.length ? 'unresolved finding attempt' : failedAttempts >= 2 ? 'two failed finding attempts; replan or hold' : null }
+}
+
+function sharedFindingPath(root, record, git) {
+  const common = record.git?.common
+  if (!common || !strictLocalPath(common).ok || !evidenceId(record.finding.id) || record.git.branch.length > 240 ||
+      !Array.isArray(record.finding.attempts) || record.finding.attempts.length !== 0) return null
+  const own = git(['rev-parse', '--absolute-git-dir'])
+  if (own.code !== 0 || !path.isAbsolute(own.stdout.trim()) || !strictLocalPath(own.stdout.trim()).ok) return null
+  const ownDir = own.stdout.trim()
+  const main = differs(common, path.join(root, '.git')) || differs(ownDir, common)
+    ? provenMain(root, ownDir, common) : root
+  return main && path.join(main, '.work', 'devflow', 'findings', `${record.id}.json`)
+}
+
+function readSharedFinding(file, marker) {
+  if (!file || !strictLocalPath(file).ok) return null
+  try {
+    if (fs.lstatSync(file).nlink !== 1) return null
+    const stored = JSON.parse(smallFile(file, 16384))
+    if (stored?.id === marker.id && Array.isArray(stored.attempts) && stored.attempts.every(attempt =>
+      typeof attempt?.branch === 'string' && attempt.branch.length > 0 && attempt.branch.length <= 240 &&
+      !/[\p{Cc}]/u.test(attempt.branch) && typeof attempt.worktree === 'string' && CHANGE_HASH.test(attempt.worktree)) &&
+      new Set(stored.attempts.map(attempt => attempt.id)).size === stored.attempts.length) {
+      return { id: marker.id, attempts: stored.attempts, reopen: marker.reopen }
+    }
+  } catch {}
+  return null
+}
+
+function updateSharedFinding(file, root, record, action, hold) {
+  if (!file || !readSharedFinding(file, record.finding)) return hold('missing or unsafe shared finding history')
+  try {
+    const result = withDirectoryLock(path.dirname(file), `${record.id}.lock`, () => {
+      const history = readSharedFinding(file, record.finding)
+      if (!history) return hold('missing or unsafe shared finding history')
+      const plan = record.approvals.plan.sha256
+      const progress = findingProgress(history, plan)
+      const detail = progress.finding ? { finding: progress.finding } : {}
+      const previous = history.attempts.find(attempt => attempt.id === action.id)
+      const saved = status => ({ code: 0, out: JSON.stringify({ status, attempt: action.id, ...detail }) })
+      const worktree = crypto.createHash('sha256').update(samePathKey(root)).digest('hex')
+      if (!progress.finding) return hold(progress.reason)
+      if (previous && previous.planSha256 !== plan) return hold('finding attempt belongs to another plan', detail)
+      if (action.exitCode === null) {
+        if (previous) return saved(previous.exitCode === null ? 'already-pending' : 'already-recorded')
+        if (progress.reason) return hold(progress.reason, detail)
+        if (history.attempts.length === 64) return hold('shared finding history is full', detail)
+        history.attempts.push({ id: action.id, exitCode: null, planSha256: plan, branch: record.git.branch, worktree })
+      } else {
+        if (!previous) return hold('finding attempt has no reservation', detail)
+        if (previous.exitCode !== null) return previous.exitCode === action.exitCode
+          ? saved('already-recorded') : hold('conflicting finding attempt results', detail)
+        if (previous.branch !== record.git.branch || previous.worktree !== worktree) {
+          return hold('resolve pending attempt in its original worktree', detail)
+        }
+        previous.exitCode = action.exitCode
+      }
+      const updated = findingProgress(history, plan)
+      const value = { id: history.id, attempts: history.attempts }
+      if (Buffer.byteLength(JSON.stringify(value, null, 2) + '\n') > 16384) return hold('shared finding history is full', detail)
+      writeJson(file, value)
+      return { code: 0, out: JSON.stringify({ status: action.exitCode === null ? 'reserved' : 'recorded',
+        attempt: action.id, finding: updated.finding }) }
+    })
+    return result.ok ? result.value : hold(`shared finding history is ${result.why}`)
+  } catch { return hold('could not update shared finding history') }
 }
 
 function verificationInputs(scope, localAt) {
@@ -2574,7 +2646,7 @@ function noGitRepositoryOnDisk(root, vars = {}) {
   } catch { return false }
 }
 
-function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
+function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
   const required = CHANGE_STAGES.get(stage)
   if (!required || extra.length || (expectedId !== undefined && !CHANGE_ID.test(expectedId))) {
     return { code: 2, out: CHANGE_USAGE }
@@ -2655,8 +2727,23 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     }
   }
   if (stage === 'build' && buildReason) return hold(buildReason)
-  const { finding, reason: findingReason } = ['build', 'resume'].includes(stage)
-    ? findingProgress(record.finding, record.approvals.plan.sha256) : {}
+  let progress = {}
+  if (['build', 'resume'].includes(stage)) {
+    if (record.finding?.shared !== undefined && typeof record.finding.shared !== 'boolean') {
+      if (findingAction) return hold('invalid shared finding assignment')
+      progress = { reason: 'invalid shared finding assignment' }
+    } else if (record.finding?.shared === true) {
+      const file = sharedFindingPath(root, record, git)
+      if (findingAction) return updateSharedFinding(file, root, record, findingAction, hold)
+      const history = readSharedFinding(file, record.finding)
+      progress = history ? findingProgress(history, record.approvals.plan.sha256) :
+        { reason: 'missing or unsafe shared finding history' }
+    } else {
+      if (findingAction) return hold('shared finding recording is not assigned')
+      progress = findingProgress(record.finding, record.approvals.plan.sha256)
+    }
+  }
+  const { finding, reason: findingReason } = progress
   if (!buildReason) buildReason = findingReason
   if (stage === 'build' && buildReason) return hold(buildReason, finding ? { finding } : {})
   const planFile = stage === 'plan' ? localAt(artifacts.plan) : null
@@ -2667,7 +2754,8 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     ...(root !== location.cwd ? { assignmentRoot: path.relative(location.cwd, root) } : {}),
     ...(['start', 'design', 'plan'].includes(stage) ?
       { next: 'Load the development workflow skill if needed, then read its references/change.md before opening any returned work record. Read the reference in a separate call.' } : {}),
-    ...(stage === 'build' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening any returned work record or editing.' } : {}),
+    ...(stage === 'build' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening any returned work record or editing.' +
+      (record.finding?.shared === true ? ' Run finding-attempt <change-id> <attempt-id> start. Only reserved allows a new edit, never already-pending or already-recorded. Record the actual reproduction exit code with that command and ID in place of start.' : '') } : {}),
     ...(stage === 'resume' ? { buildStatus: buildReason ? 'hold' : 'ready', ...(buildReason ? { buildReason } : {}),
       next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),
     ...(stage === 'review' && evidence.status === 'recorded' && evidence.verification?.status === 'ready' &&
@@ -2700,6 +2788,14 @@ function command(argv, stdin, env, cwd) {
   switch (cmd) {
     case 'change-check':
       return changeCheck(env, cwd, rest)
+    case 'finding-attempt': {
+      const [change, id, outcome] = rest
+      if (rest.length !== 3 || change.length > 80 || !CHANGE_ID.test(change) || !evidenceId(id) ||
+          !(outcome === 'start' || (/^(?:0|[1-9][0-9]{0,2})$/.test(outcome) && Number(outcome) <= 255))) {
+        return { code: 2, out: FINDING_USAGE }
+      }
+      return changeCheck(env, cwd, ['build', change], { id, exitCode: outcome === 'start' ? null : Number(outcome) })
+    }
     case 'delegation-check':
       if (rest.length === 1 && rest[0] === 'before') return delegationBefore(env, cwd)
       if (rest.length === 2 && rest[0] === 'after') return delegationAfter(cwd, rest[1], (...args) => env.run(...args))

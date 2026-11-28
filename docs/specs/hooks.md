@@ -38,7 +38,7 @@ the target host's nested scenario.
 
 | Event | Action |
 |---|---|
-| SessionStart (`startup`, `resume`, `clear`, `compact`) | For configured work, injects a resume card and shares the session id. The recorded stage is data. A card failure shows a reason and grants no Tool. For local assignments, `startup` routes drafting and independent document audits to the skill. Other sources remind the session to recheck its stage and reference |
+| SessionStart (`startup`, `resume`, `clear`, `compact`) | For configured work, injects a resume card and shares the session id. The recorded stage is data. A card failure shows a reason and grants no Tool. For local assignments, `startup` routes documents, implementation, status and independent review to the skill. Other sources remind the session to recheck its stage and reference |
 | UserPromptSubmit | Routes an assigned document revision to its file and stage, a combined brief to drafting and audit, or an explicit read-only release readiness check to Delivery |
 | PreToolUse | For an operator-assigned single-document revision, blocks native writes to any other path, batch moves, and delegation or MCP calls. Claude shell tools are limited to the standalone stage check. Codex shell permissions remain the host's responsibility |
 | Stop | When its own Issue's unattended work is open, this session switched or reattributed it, and nothing is waiting, asks to continue at most 2 times per task. The count is added under the ledger lock, and it stops on an error or a lock conflict |

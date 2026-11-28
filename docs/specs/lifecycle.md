@@ -13,7 +13,8 @@ values the ledger and `devflow-state` check. How work runs inside a stage is exp
 - Read the applicable section in `skills/devflow/references/` when the skill routes to it. A verification-evidence-only
   handoff can finish at the assignment gate when all declared checks are reusable and the request fits that proof.
   State the completion rule in the project instructions shared by both hosts. The authorized `change-check review <id>`
-  performs the per-check comparison. For an evidence-only handoff, if `evidence.status` is `recorded`,
+  performs the per-check comparison. For an evidence-only handoff, honor `verificationHold` before relying on the
+  check plan. If `evidence.status` is `recorded`,
   `evidence.verification.status` is `ready`, and its `run` is empty, report the reused IDs and that no checks ran, then
   finish. Inspect the source records for incomplete proof or when expressly required. Review code independently when requested.
 - A new work request goes through start even when a card shows another Issue, because start decides the path; a spike,

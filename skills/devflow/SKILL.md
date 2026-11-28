@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: "Use when handling consequential changes, intent/spec/plan, tracked Issues, audits, handoffs, assigned status, incidents, PR, merge or deployment readiness, cleanup or permissions. Skip routine fixes and general advice."
+description: "Use when planning, reviewing or resuming product changes, tracking Issues/status, diagnosing recurring defects or incidents, or checking PR, merge or deployment readiness or cleanup. Skip routine or instruction-only work."
 ---
 
 # Devflow
@@ -10,11 +10,11 @@ Spike: question/exit. Bounded: brief design. Approve intent→spec→plan (all: 
 
 For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use paths/proof; hold failures. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` post-build.
 
-Evidence-only: recorded + ready + empty `evidence.verification.run` → report reuse/no checks. Stop. Honor source reads/drift/reruns/independent review.
+Verify only: `verificationHold` blocks. Ready: report `reuse`; run authorized `run`. Recorded + empty `run`: stop. Review/unbound drift/reruns win.
 
-- [Resume](references/resume.md) alone for status/switch/interruption/unchanged work. Status ends here. Ready build: read first, approved edits only.
-- [Change](references/change.md) for work/docs/plans/branches/decisions/delegation/incidents/code review before assigned records.
-- Read [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Before commits/external writes/cleanup. Reconcile uncertain effects.
+- [Resume](references/resume.md) alone for status/switch/interruption/unchanged work. Status: stop. Ready build: read first, approved edits only.
+- Read [Change](references/change.md) before records for docs/plans/drafts/work/branches/decisions/delegation/incidents/debugging/code review.
+- [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Before commits/external writes/cleanup. Reconcile uncertain effects.
 
 Scope change/compaction/restart: reopen first invalid stage/ref. Verify target/authority/rev/hashes/dirty+ignored inputs, preservation. Rerun affected/required checks except status. Approved equivalents for skips/weakening/removal.
 

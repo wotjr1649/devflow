@@ -1,6 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
+const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
 const tmpdir = require('./tmpdir')
@@ -49,6 +50,158 @@ function fixture(gitMode = true, folder = tmpdir('change-check-')) {
   record.audit = { by: 'reviewer', verdict: 'READY', binding: check('plan').auditBinding }
   persist()
   return { root, record, directory, contract, persist, check, env }
+}
+
+for (const withGit of [false, true]) {
+  test(`verification-only report through the CLI in ${withGit ? 'a linked Git worktree' : 'a Git-free project'}`, () => {
+    const parent = fs.realpathSync.native(tmpdir('direct-verification-'))
+    const project = path.join(parent, 'project')
+    const primary = path.join(parent, 'primary')
+    function git(cwd, ...args) {
+      const result = spawnSync('git', ['-c', 'core.hooksPath=', '-c', 'commit.gpgsign=false',
+        '-c', 'user.name=Trial', '-c', 'user.email=trial@example.invalid', ...args],
+      { cwd, encoding: 'utf8', timeout: 15000, windowsHide: true })
+      assert.equal(result.status, 0, result.stderr || result.error?.message)
+      return result.stdout.trim()
+    }
+    if (withGit) {
+      fs.mkdirSync(primary)
+      git(primary, 'init', '-q')
+      git(primary, 'commit', '-qm', 'Fixture', '--allow-empty')
+      git(primary, 'worktree', 'add', '-qb', 'trial/example', project)
+      assert.ok(fs.statSync(path.join(project, '.git')).isFile())
+    } else fs.mkdirSync(project)
+
+    const f = fixture(withGit, project)
+    if (withGit) f.record.git.common = git(f.root, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    const source = path.join(f.root, 'source.cjs')
+    const adapter = path.join(f.root, 'verify.cjs')
+    const runs = path.join(f.root, 'runs.txt')
+    const original = 'module.exports = true\n'
+    fs.writeFileSync(source, original)
+    fs.writeFileSync(adapter, "require('node:assert/strict').equal(require('./source.cjs'), true)\n" +
+      "require('node:fs').appendFileSync('runs.txt', 'ran\\n')\n")
+    const verification = { id: 'suite', command: 'node verify.cjs', paths: ['source.cjs', 'verify.cjs', 'docs/specs/shared.md'] }
+    f.record.verification = [verification]
+    f.record.reviewPaths = ['source.cjs', 'verify.cjs']
+    f.persist()
+
+    const env = withGit ? process.env : {
+      ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH')),
+      PATH: path.join(parent, 'empty-path'),
+    }
+    if (!withGit) assert.equal(spawnSync('git', ['--version'], { cwd: f.root, env }).error?.code, 'ENOENT')
+    const launch = (...args) => spawnSync(process.execPath, args,
+      { cwd: f.root, env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+    const command = path.join(__dirname, '../bin/devflow-state')
+    const review = (...extra) => {
+      const result = launch(command, 'change-check', 'review', 'example', ...extra)
+      assert.ok([0, 1].includes(result.status), result.stderr || result.error?.message)
+      return { code: result.status, ...JSON.parse(result.status === 0 ? result.stdout : result.stderr) }
+    }
+    const scoped = () => review('--verification-only')
+    const fallback = () => {
+      const result = scoped()
+      assert.deepEqual(result, review(), 'the caller receives the original review or hold result')
+      return result
+    }
+    const start = review()
+    if (start.status !== 'ready') {
+      const checkout = withGit ? { root: f.root, top: git(f.root, 'rev-parse', '--show-toplevel'),
+        branch: git(f.root, 'symbolic-ref', '--quiet', '--short', 'HEAD') } : { root: f.root }
+      assert.fail(JSON.stringify({ result: start, checkout }))
+    }
+    assert.equal(launch('verify.cjs').status, 0)
+    const receiptFile = path.join(f.root, start.evidence.path)
+    fs.mkdirSync(path.dirname(receiptFile), { recursive: true })
+    const receipt = JSON.stringify({ id: 'example', binding: start.evidence.binding,
+      verificationBasis: start.evidence.verification.basis,
+      checks: [{ id: verification.id, command: verification.command, exitCode: 0,
+        node: process.version, platform: process.platform, arch: process.arch,
+        inputs: verification.paths.map(name => checkInput(f.root, name)) }] })
+    fs.writeFileSync(receiptFile, receipt)
+    const assignment = path.join(f.root, '.work', 'devflow', 'change.json')
+    const approved = fs.readFileSync(assignment, 'utf8')
+
+    const direct = { code: 0, status: 'reported', id: 'example', stage: 'review', reused: ['suite'], executed: [] }
+    assert.deepEqual(scoped(), direct)
+    assert.equal(fs.readFileSync(runs, 'utf8'), 'ran\n')
+    assert.equal(fs.readFileSync(assignment, 'utf8'), approved)
+    assert.equal(fs.readFileSync(receiptFile, 'utf8'), receipt)
+
+    fs.appendFileSync(source, '// Changed input\n')
+    assert.deepEqual(fallback().evidence.verification.run, ['suite'])
+    fs.writeFileSync(source, original)
+    fs.unlinkSync(receiptFile)
+    const missing = fallback()
+    assert.equal(missing.evidence.status, 'unknown')
+    assert.deepEqual(missing.evidence.verification.run, ['suite'])
+    fs.writeFileSync(receiptFile, receipt)
+    fs.appendFileSync(f.contract, '\nUnapproved contract\n')
+    assert.match(fallback().reason, /contract changed/)
+    fs.writeFileSync(f.contract, 'shared requirement\n')
+    const heldReview = (reason, expected = { reuse: ['suite'], run: [] }) => {
+      const inspection = review()
+      assert.equal(inspection.status, 'ready')
+      assert.equal(inspection.verificationHold, reason)
+      assert.equal(inspection.next, undefined)
+      assert.equal(inspection.verificationAction, undefined)
+      assert.equal(inspection.evidence.review.status, 'unknown')
+      assert.deepEqual(inspection.evidence.verification.reuse, expected.reuse)
+      assert.deepEqual(inspection.evidence.verification.run, expected.run)
+    }
+    f.record.audit.verdict = 'HOLD'
+    f.persist()
+    assert.equal(scoped().reason, 'independent document audit HOLD')
+    heldReview('independent document audit HOLD')
+    fs.appendFileSync(source, '// Changed input under audit HOLD\n')
+    heldReview('independent document audit HOLD', { reuse: [], run: ['suite'] })
+    fs.writeFileSync(source, original)
+    f.record.audit.verdict = 'READY'
+    f.record.revision = 'spec'
+    f.persist()
+    assert.equal(scoped().reason, 'document revision is still open')
+    heldReview('document revision is still open')
+    delete f.record.revision
+    f.record.auditRequired = true
+    f.persist()
+    const plan = launch(command, 'change-check', 'plan', 'example')
+    assert.equal(plan.status, 0, plan.stderr)
+    const currentAudit = { ...f.record.audit, binding: JSON.parse(plan.stdout).auditBinding }
+    f.record.audit = currentAudit
+    f.persist()
+    assert.deepEqual(scoped(), direct)
+    const expectedReason = 'missing or stale independent document audit'
+    for (const audit of [undefined, { ...currentAudit, binding: '0'.repeat(64) }]) {
+      f.record.audit = audit
+      f.persist()
+      assert.deepEqual(scoped(), { code: 1, status: 'hold', stage: 'review', reason: expectedReason })
+      const build = launch(command, 'change-check', 'build', 'example')
+      assert.equal(build.status, 1)
+      assert.equal(JSON.parse(build.stderr).reason, expectedReason)
+      heldReview(expectedReason)
+    }
+    f.record.audit = currentAudit
+    f.persist()
+    assert.deepEqual(scoped(), direct)
+    assert.equal(fs.readFileSync(receiptFile, 'utf8'), receipt)
+
+    const normal = review()
+    assert.equal(normal.status, 'ready', 'a wider request uses the regular review command')
+    assert.equal(normal.verificationHold, undefined)
+    assert.equal(normal.evidence.review.status, 'unknown', 'test reuse does not settle independent review')
+    assert.ok(normal.evidence.reviewBinding)
+    assert.match(normal.next, /requested rerun/)
+    assert.deepEqual(normal.evidence.verification.reuse, ['suite'])
+    assert.equal(fs.readFileSync(runs, 'utf8'), 'ran\n', 'report and all fallbacks are read-only')
+    assert.equal(launch('verify.cjs').status, 0, 'an explicitly requested rerun can use the original command')
+    assert.equal(fs.readFileSync(runs, 'utf8'), 'ran\nran\n')
+    for (const args of [['review', '--verification-only'], ['build', 'example', '--verification-only'],
+      ['review', 'example', '--verification-only', '--verification-only']]) {
+      assert.equal(launch(command, 'change-check', ...args).status, 2)
+    }
+    if (withGit) assert.equal(git(primary, 'status', '--short'), '')
+  })
 }
 
 test('document HOLD overrides plan approval and only a current independent READY opens build', () => {
@@ -140,6 +293,63 @@ test('a local assignment returns its own paths and the required next read withou
   assert.match(f.check('resume').reason, /repository or branch changed/)
 })
 
+test('finding history counts unique failed attempts across resumes and holds pending or conflicting results', () => {
+  for (const gitMode of [true, false]) {
+    const f = fixture(gitMode)
+    const planSha256 = f.record.approvals.plan.sha256
+    const failed = { id: 'retry-1', exitCode: 1, planSha256 }
+    const pending = { id: 'timeout-2', exitCode: null, planSha256 }
+    f.record.finding = { id: 'r-17', attempts: [failed, { ...failed }] }
+    f.persist()
+    assert.deepEqual(f.check('build').finding, { id: 'r-17', failedAttempts: 1, pending: [] })
+    assert.equal(f.check('build').status, 'ready')
+    f.record.finding.attempts.push(pending)
+    f.persist()
+    assert.equal(f.check('resume').buildStatus, 'hold')
+    assert.deepEqual(f.check('resume').finding, { id: 'r-17', failedAttempts: 1, pending: ['timeout-2'] })
+    assert.match(f.check('build').reason, /unresolved finding attempt/)
+    f.record.finding.attempts.push({ ...pending, exitCode: 1 }, { ...pending })
+    f.persist()
+    assert.deepEqual(f.check('build').finding, { id: 'r-17', failedAttempts: 2, pending: [] })
+    assert.match(f.check('build').reason, /two failed finding attempts/)
+    assert.equal(f.check('resume').buildStatus, 'hold')
+    assert.equal(f.check('plan').status, 'ready')
+    f.record.finding.attempts.push({ ...pending, exitCode: 0 })
+    f.persist()
+    assert.match(f.check('build').reason, /conflicting finding attempt/)
+    delete f.record.finding.attempts
+    f.persist()
+    assert.match(f.check('build').reason, /invalid finding history/)
+  }
+})
+
+test('only an explicit finding reopen with a newly approved approach resets the active count', () => {
+  const f = fixture(false)
+  const planSha256 = f.record.approvals.plan.sha256
+  f.record.finding = { id: 'r-17', attempts: [
+    { id: 'one', exitCode: 1, planSha256 }, { id: 'two', exitCode: 1, planSha256 },
+  ] }
+  f.persist()
+  f.record.finding.reopen = { after: 'two', planSha256 }
+  f.persist()
+  assert.match(f.check('build').reason, /invalid finding reopen/)
+  const plan = path.join(f.directory, 'plan.md')
+  fs.appendFileSync(plan, 'approved new approach\n')
+  const newHash = hashFile(plan).sha256
+  f.record.approvals.plan.sha256 = newHash
+  f.record.audit.binding = f.check('plan').auditBinding
+  delete f.record.finding.reopen
+  f.persist()
+  assert.match(f.check('build').reason, /two failed finding attempts/)
+  f.record.finding.reopen = { after: 'two', planSha256: newHash }
+  f.persist()
+  assert.deepEqual(f.check('build').finding, { id: 'r-17', failedAttempts: 0, pending: [] })
+  assert.equal(f.check('build').status, 'ready')
+  f.record.finding.attempts.push({ id: 'new-1', exitCode: 1, planSha256: newHash })
+  f.persist()
+  assert.equal(f.check('build').finding.failedAttempts, 1)
+})
+
 test('resume classifies missing, current and stale handoff evidence without running the checks', () => {
   const f = fixture()
   const relative = 'artifacts/handoff/example.json'
@@ -158,10 +368,14 @@ test('resume classifies missing, current and stale handoff evidence without runn
     id, command: 'node --test ' + id, exitCode: 0, node: process.version,
     platform: process.platform, arch: process.arch, inputs: values,
   })
+  f.record.reviewPaths = ['src/', 'tests/']
+  f.persist()
+  const { reviewBinding } = f.check('review').evidence
+  assert.match(reviewBinding, /^[0-9a-f]{64}$/)
   const receipt = {
     id: 'example', binding: unknown.binding,
     checks: [check('code', [inputs[0]]), check('tests', [inputs[1]])],
-    review: { verdict: 'no-findings', inputs: inputs.map(({ path, sha256 }) => ({ path, sha256 })) },
+    review: { binding: reviewBinding, verdict: 'no-findings', inputs },
   }
   const file = path.join(f.root, relative)
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -203,6 +417,100 @@ test('resume classifies missing, current and stale handoff evidence without runn
   assert.deepEqual(f.check('resume').evidence, { ...contractChanged, status: 'unknown' })
 })
 
+test('review evidence covers its declared file set independently of verification reuse', t => {
+  for (const gitMode of [true, false]) {
+    const f = fixture(gitMode)
+    const source = 'src/code.js'
+    const check = 'tests/check.js'
+    const write = (file, content) => {
+      const target = path.join(f.root, file)
+      fs.mkdirSync(path.dirname(target), { recursive: true })
+      fs.writeFileSync(target, content)
+    }
+    write(source, 'source\n')
+    write(check, 'check\n')
+    f.record.verification = [{ id: 'suite', command: 'node --test tests/check.js', paths: ['tests/'] }]
+    f.persist()
+    const before = f.check('review').evidence
+    const receipt = {
+      id: f.record.id,
+      binding: before.binding,
+      verificationBasis: before.verification.basis,
+      checks: [{ id: 'suite', command: f.record.verification[0].command, exitCode: 0, node: process.version,
+        platform: process.platform, arch: process.arch, inputs: [checkInput(f.root, check)] }],
+      review: { verdict: 'no-findings', inputs: [checkInput(f.root, source), checkInput(f.root, check)] },
+    }
+    const save = () => write(before.path, JSON.stringify(receipt))
+    const decide = () => f.check('review')
+    save()
+    assert.deepEqual(decide().evidence.review, { status: 'unknown' }, 'old receipts do not prove the file set')
+    f.record.reviewPaths = ['src/', check]
+    f.persist()
+    const { reviewBinding } = decide().evidence
+    assert.match(reviewBinding, /^[0-9a-f]{64}$/)
+    assert.deepEqual(decide().evidence.review, { status: 'unknown' }, 'declaring a scope does not promote a legacy review')
+    receipt.review.binding = reviewBinding
+    save()
+    const expectReview = (status, verdict) => {
+      const result = decide()
+      assert.deepEqual(result.evidence.review, verdict ? { status, verdict } : { status }, `${gitMode}: ${status}`)
+      assert.deepEqual(result.evidence.verification.reuse, ['suite'])
+      assert.deepEqual(result.evidence.verification.run, [])
+      assert.match(result.next, /For a verification-only handoff/)
+    }
+    expectReview('current', 'no-findings')
+    write('outside/other.js', 'outside review\n')
+    expectReview('current', 'no-findings')
+    f.record.reviewPaths.reverse()
+    f.persist()
+    expectReview('current', 'no-findings')
+    write('src/added.js', 'unreviewed file\n')
+    expectReview('stale')
+    fs.unlinkSync(path.join(f.root, 'src/added.js'))
+    fs.renameSync(path.join(f.root, source), path.join(f.root, 'src/moved.js'))
+    expectReview('stale')
+    fs.unlinkSync(path.join(f.root, 'src/moved.js'))
+    expectReview('stale')
+    write(source, 'source\n')
+    expectReview('current', 'no-findings')
+    let injected = false
+    const open = fs.openSync
+    const mock = t.mock.method(fs, 'openSync', (file, flags, ...args) => {
+      if (!injected && file === path.join(f.root, source) && typeof flags === 'number') {
+        injected = true
+        write('src/during.js', 'added while hashing review inputs\n')
+      }
+      return open(file, flags, ...args)
+    })
+    try { expectReview('stale') } finally { mock.mock.restore() }
+    assert.equal(injected, true)
+    fs.unlinkSync(path.join(f.root, 'src/during.js'))
+    injected = false
+    const cross = t.mock.method(fs, 'openSync', (file, flags, ...args) => {
+      if (!injected && file === path.join(f.root, source) && typeof flags === 'number') {
+        injected = true
+        write('tests/during.js', 'added while hashing the separate review scope\n')
+      }
+      return open(file, flags, ...args)
+    })
+    let result
+    try { result = decide() } finally { cross.mock.restore() }
+    assert.equal(injected, true)
+    assert.deepEqual(result.evidence.review, { status: 'current', verdict: 'no-findings' })
+    assert.deepEqual(result.evidence.verification.reuse, [])
+    assert.deepEqual(result.evidence.verification.run, ['suite'])
+    assert.equal(result.next, undefined, 'review reads must not hide check drift')
+    fs.unlinkSync(path.join(f.root, 'tests/during.js'))
+    f.record.reviewPaths = [source, check]
+    f.persist()
+    expectReview('stale')
+    f.record.reviewPaths = ['../outside']
+    f.persist()
+    assert.equal(decide().evidence.reviewBinding, undefined)
+    expectReview('unknown')
+  }
+})
+
 test('planning holds a stale specification while design only requires approved intent', () => {
   const f = fixture()
   fs.appendFileSync(path.join(f.directory, 'spec.md'), 'modified\n')
@@ -230,6 +538,7 @@ test('assigned review reuses only complete matching successful checks after a co
   const decide = () => f.check('review').evidence.verification
   assert.deepEqual(before.verification.run, ['http', 'syntax'])
   assert.equal(f.check('review').next, undefined, 'missing evidence cannot finish a handoff')
+  assert.equal(f.check('review').verificationAction, undefined, 'missing evidence does not give a reuse shortcut')
   assert.deepEqual(f.check('resume').evidence.verification, before.verification)
   const proof = { id: f.record.id, binding: before.binding, verificationBasis: before.verification.basis,
     checks: f.record.verification.map((policy, index) => ({
@@ -242,10 +551,12 @@ test('assigned review reuses only complete matching successful checks after a co
   save()
   assert.deepEqual(decide().reuse, ['http', 'syntax'])
   assert.match(f.check('review').next, /For a verification-only handoff, report the reused IDs and that no checks ran/)
-  assert.match(f.check('review').next, /wider request, known drift, or requested rerun/)
+  assert.match(f.check('review').next, /wider request, known check-input drift, or requested rerun/)
   fs.writeFileSync(path.join(f.root, 'tests/new.js'), 'another test')
   assert.deepEqual(decide().run, ['http'])
   assert.equal(f.check('review').next, undefined, 'a changed test requires normal routing')
+  assert.match(f.check('review').verificationAction, /execute only authorized checks in evidence\.verification\.run/)
+  assert.match(f.check('review').verificationAction, /independent review, drift outside declared inputs/)
   fs.unlinkSync(path.join(f.root, 'tests/new.js'))
   assert.deepEqual(decide().run, [])
   proof.checks[0].command += ' --test-only'

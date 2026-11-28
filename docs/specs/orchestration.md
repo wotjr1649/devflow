@@ -58,9 +58,19 @@ runs with a default 5-minute TTL; if waiting for user answers is frequent, consi
 
 ## Fix loop
 
-Reproduce a failure before fixing it. The implementation brief caps fixes at two total per delegation. The
-main session records attempts in ledger `notes` and decides whether to change approach or report the blocker. The
-Stop hook tracks unattended continuations in `counts`. See [Build and
+Reproduce the same failure before editing. After a failed fix or a recurring material review finding, pause product
+edits and trace the cause read-only. Check the failing boundary against a working case, then test one new hypothesis
+against the evidence before choosing the next fix. Bring in fresh read-only context if the current session cannot
+distinguish the causes.
+
+The main session keeps the finding, reproduction and results, failed attempts, and current hypothesis in ledger `notes`
+or in the existing task evidence in Git-free work. Carry that evidence into re-review and handoff. Count failed fixes
+against the same finding across reopened tasks and sessions. After two failures, return to plan or design for a new
+approach or hold for a decision. Changing workers does not reset this count. The separate limit of two total fixes per
+delegation still applies. The Stop hook's `counts` tracks unattended continuations.
+
+Run the same reproduction without weakening it, plus the affected and required checks. Ask an independent reviewer to
+recheck the open finding and the fix diff for regressions. Final independent review still applies. See [Build and
 verify](../../skills/devflow/references/change.md#build-and-verify) and [Delegation](../../skills/devflow/references/change.md#delegation).
 
 ## Review

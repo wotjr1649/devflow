@@ -1,13 +1,13 @@
 ---
 name: decision-interview
-description: Use when a consequential user-owned decision blocks work or when asked to challenge a proposal. Exclude settled choices, routine clarification, review and execution.
+description: Use when interviewing, resuming from a decision record, or asked to challenge a proposal. Load before asking even one question on an open choice. Skip settled choices, routine clarification, review and execution.
 ---
 
 # Decision interview
 
-Follow live intent. Check existing work and primary sources before asking; distinguish facts, assumptions and proposals. Use permitted reads or authorized throwaway experiments. Defaults cover only low-risk, reversible choices in scope; silence gives no consent.
+Follow live intent. Check relevant records or primary sources when missing facts could change the question. Distinguish facts, assumptions and proposals. Use permitted reads or authorized throwaway experiments. Defaults cover only low-risk, reversible choices in scope; silence gives no consent.
 
-Ask one short question whose answer changes the outcome or next action. Give grounded options, recommendation, tradeoff and revisit condition. Wait for the user's answer before dependent work. Check the scope and qualifications of the reply. Reopen only affected decisions when new evidence conflicts.
+Choose the decision that changes the outcome or action. Ask one short question with one answer field (one value or choice); leave others open (e.g. duration now, scope later). For question-only requests, end the turn after that question. Skip prefaces, explanations and recommendations; add options only if requested. Otherwise offer grounded options, tradeoff, recommendation and revisit condition when useful. Wait before dependent work. Check reply scope and qualifications. Reopen only affected decisions when new evidence conflicts.
 
 If a reply is ambiguous or incomplete, clarify before treating it as acceptance. Ask in chat when a question tool is unavailable. Checkpoint open decisions before handoff or compaction. Before declaring ready, check for missing decisions, contradictions and plausible failure cases.
 

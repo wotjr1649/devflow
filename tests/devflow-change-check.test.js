@@ -144,7 +144,29 @@ for (const withGit of [false, true]) {
     f.persist()
     assert.equal(scoped().reason, 'document revision is still open')
     assert.equal(review().status, 'ready')
-    fs.writeFileSync(assignment, approved)
+    delete f.record.revision
+    f.record.auditRequired = true
+    f.persist()
+    const plan = launch(command, 'change-check', 'plan', 'example')
+    assert.equal(plan.status, 0, plan.stderr)
+    const currentAudit = { ...f.record.audit, binding: JSON.parse(plan.stdout).auditBinding }
+    f.record.audit = currentAudit
+    f.persist()
+    assert.deepEqual(scoped(), direct)
+    const expectedReason = 'missing or stale independent document audit'
+    for (const audit of [undefined, { ...currentAudit, binding: '0'.repeat(64) }]) {
+      f.record.audit = audit
+      f.persist()
+      assert.deepEqual(scoped(), { code: 1, status: 'hold', stage: 'review', reason: expectedReason })
+      const build = launch(command, 'change-check', 'build', 'example')
+      assert.equal(build.status, 1)
+      assert.equal(JSON.parse(build.stderr).reason, expectedReason)
+      assert.equal(review().status, 'ready')
+    }
+    f.record.audit = currentAudit
+    f.persist()
+    assert.deepEqual(scoped(), direct)
+    assert.equal(fs.readFileSync(receiptFile, 'utf8'), receipt)
 
     const normal = review()
     assert.equal(normal.status, 'ready', 'a wider request uses the regular review command')

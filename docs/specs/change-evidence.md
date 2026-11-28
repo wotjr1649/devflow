@@ -34,7 +34,8 @@ These queries report evidence without running any checks.
 
 For an explicit verification-only handoff, run `node bin/devflow-state change-check review <id> --verification-only`
 with the trusted tool. A current receipt covering every declared check returns `status: "reported"`, the `reused` IDs
-and an empty `executed` list. Use that result as the report. An open document revision or audit HOLD holds the direct report.
+and an empty `executed` list. Use that result as the report. An open document revision, audit HOLD, or missing or stale
+required document audit holds the direct report.
 Other nonterminal results follow the existing review or hold path.
 Use the regular review invocation for independent review, drift outside the declared scope, or an explicit rerun.
 

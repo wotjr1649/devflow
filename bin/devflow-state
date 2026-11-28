@@ -2870,7 +2870,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
     }
     if (!verifies(contract.path, contract.sha256)) return hold(`contract changed: ${contract.path}`)
   }
-  if (!buildReason && (stage === 'build' || stage === 'resume') &&
+  if (!buildReason && (stage === 'build' || stage === 'resume' || verificationOnly) &&
       (record.contracts.length || record.auditRequired || record.audit !== undefined)) {
     const audit = record.audit
     if (audit?.verdict !== 'READY' || typeof audit.by !== 'string' || !audit.by.trim() ||
@@ -2878,7 +2878,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
       buildReason = 'missing or stale independent document audit'
     }
   }
-  if (stage === 'build' && buildReason) return hold(buildReason)
+  if ((stage === 'build' || verificationOnly) && buildReason) return hold(buildReason)
   let progress = {}
   if (['build', 'resume'].includes(stage)) {
     if (record.finding?.shared !== undefined && typeof record.finding.shared !== 'boolean') {

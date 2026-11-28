@@ -58,9 +58,10 @@ runs with a default 5-minute TTL; if waiting for user answers is frequent, consi
 
 ## Fix loop
 
-Analysis is split from fixing, because a fix made before the cause is known tends to cover only the symptom. Attempts
-and promotions are counted in ledger `notes`, not in `counts`, which holds only the Stop hook's `{continue}`. The
-procedure is the [build reference](../../skills/devflow/references/change.md#build-and-verify).
+Reproduce a failure before fixing it. The implementation brief caps fixes at two total per delegation. The
+main session records attempts in ledger `notes` and decides whether to change approach or report the blocker. The
+Stop hook tracks unattended continuations in `counts`. See [Build and
+verify](../../skills/devflow/references/change.md#build-and-verify) and [Delegation](../../skills/devflow/references/change.md#delegation).
 
 ## Review
 
@@ -102,16 +103,14 @@ the agent could start a program the agent planted. It is a tripwire, not isolati
 
 ### Promotion
 
-Promotion goes one step per task, decided by the main session and recorded in one ledger line; its conditions are in the
-[build reference](../../skills/devflow/references/change.md#build-and-verify). Routes outside it (hook enforcement, declarative
-routes) are on hold; the conditions to revisit them follow [revisiting routes and
-Workflow](../design/current-decisions.md#execution-and-delegation).
+The main session can change the execution mode when the task's scope and evidence warrant it. Record the reason in
+the ledger. Model and effort still follow the host or a supported user override.
 
 ## The two hosts
 
 | Mechanism | Claude Code | Codex |
 |---|---|---|
-| Delegated agents | `general-purpose` with the brief and a set model and effort; role limits by instruction | `spawn_agent` with the brief, `fork_turns: "none"`, and the model and effort set where the host and its instructions allow, else inherited and reported; an agent type only where the spawn tool offers one ([host-facts](../research/host-facts.md#codex)). The default `"all"` passes on the parent conversation |
+| Delegated agents | `general-purpose` with the brief; role limits by instruction; use host model and effort defaults unless the user requests a supported override | `spawn_agent` with the brief and `fork_turns: "none"`; use host model and effort defaults unless the user requests a supported override. Choose an agent type only when the tool offers it ([host-facts](../research/host-facts.md#codex)). The default `"all"` passes on the parent conversation |
 | Resume card, unattended continuation, session release | [hooks](hooks.md#registered-events) | same file |
 
 Codex's SessionEnd does not run in subagents. A session that ended without the hook running expires after 30 minutes

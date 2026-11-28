@@ -49,9 +49,9 @@ unattended run, and parallel writes are used only when files do not overlap and 
 skill's Execution modes set the conditions per mode ([why](../specs/orchestration.md#execution-modes)). The host supplies
 model and effort defaults unless the user gives a supported override. A scoped brief and independent evidence carry
 across model changes. Past model comparisons are recorded in [host-facts](../research/host-facts.md).
-Role text and perspectives live in the skill's Change reference, and every brief carries the role's body and one
-perspective on both hosts, so the skill depends on no agent name or file (#157). The plugin ships no agent definitions
-(#159): Claude Code runs every role on `general-purpose`, Codex on `spawn_agent`, so each host has one delegation path.
+The Change reference defines what a task brief carries, including its permissions and evidence. Each brief can add a
+focused perspective when the work warrants it. The plugin ships no agent definitions (#159): Claude Code uses
+`general-purpose`, and Codex uses `spawn_agent`.
 The owner accepted the loss of the controls only a Claude definition gave - the reviewer's read-only tools, the
 explorer's lack of Edit and Write, the implementer's `maxTurns` and spawn ban, the definitions' `BLOCKED` floor, and a
 `devflow:<role>` name another plugin's subagent rules could exclude - because a 30-run comparison found no difference in
@@ -81,11 +81,10 @@ runtimes it starts (node, gh), which the agent's account can write, same-user ra
 mapped network drives or mounts that look local, a pull request review with no inline comment (seen only if GitHub
 updates the pull request's time, unverified), edits to existing Issues and PRs, repository settings, network
 traffic, posts in other repositories, effects of a background process or nested agent after the check, and an
-implementer's nested agents. Each delegation gets a new agent, so the
-lost turn limit only ever bounded one delegation; within one delegation the implementer makes at most two fixes after
-its first attempt and then ends with `BLOCKED`, by instruction only, which uses up the build reference's two fixes and
-leads to the promotion (#161). Out-of-scope decisions are gathered in the main session through stop and resume. The
-devflow skill sets execution modes, roles, promotion and the question procedure;
+implementer's nested agents. The brief caps all fixes after the first failed check at two per delegation and
+tells the implementer to return `BLOCKED` with the attempts (#161). The limit is an instruction in the brief.
+The main session receives `BLOCKED` or an out-of-scope decision before deciding how to resume. The devflow skill
+sets execution modes and scoped delegation;
 [orchestration](../specs/orchestration.md)
 keeps their reasons, per-host support, authority to choose models and the isolation limits of reporting roles. Workflows are run directly outside
 devflow.

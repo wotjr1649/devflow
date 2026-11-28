@@ -29,9 +29,23 @@ handoffs using their own records and checks.
 The four independent skills (`decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`)
 work in any repository, devflow or not.
 
-**Compatibility:** `/development-start`, `/pr-review-workflow` and `/workspace-cleanup` are gone. In a devflow
-repository their requests go to `devflow`; repositories without `.devflow.json` no longer get starting, PR review or
-cleanup from this plugin.
+### Moving from v0.4.0
+
+Update any saved prompts or project instructions that use the old slash commands.
+
+| Previous command | Current route |
+| --- | --- |
+| `/development-start`, `/pr-review-workflow`, `/workspace-cleanup` | In a repository with `.devflow.json`, ask in plain words to start work, check PR readiness, or clean up. |
+| `/grilling` | `decision-interview` for unresolved decisions. |
+| `/prompt-generator` | `write-prompts` to draft a prompt. Ask for `audit-prompts` when the draft needs independent review. |
+| `/writing-for-agents` | `agent-instruction-design` for persistent agent instructions. |
+
+The repository configuration enables the Issue card and ledger. Without it, use local records and checks for
+consequential changes and follow the project's own start, PR, and cleanup procedures. A project without Git has no
+PR, branch cleanup, or hosted Git CI stage.
+
+Replace references to Claude Code's former `devflow:explorer`, `devflow:reviewer`, and `devflow:implementer` roles with
+scoped `general-purpose` briefs. Review their permissions and attempt limits when migrating existing subagent rules.
 
 ## Install
 
@@ -66,7 +80,8 @@ codex plugin marketplace upgrade wotjr1649
 codex plugin add devflow@wotjr1649
 ```
 
-Start a new session after updating. A new tag or GitHub Release alone does not change the catalog; the publisher
+Start a new session after updating. In Codex, check the installed hooks in `/hooks` and review and trust any hooks that
+the host asks you to approve. A new tag or GitHub Release alone does not change the catalog; the publisher
 updates both catalog entries after the release passes validation. The plugin manifest version must also change for
 Claude Code to replace its cached copy. See [release and rollback](docs/specs/repository.md#release-and-rollback).
 If Codex registers a local checkout of the shared catalog, use the

@@ -53,18 +53,14 @@ Document format and budgets: [documents](../specs/documents.md).
 
 - **5 skills**
   - `devflow`: the one lifecycle skill. Its SKILL.md holds scope, Issue I/O, stop conditions, and routes actions to
-    Change, Resume, or Delivery in [`skills/devflow/references/`](../../skills/devflow/references/). A brief takes its
-    role text from Change. A project with `.devflow.json` uses Issue tracking; other projects can use local records for
+    Change, Resume, or Delivery in [`skills/devflow/references/`](../../skills/devflow/references/). A project with
+    `.devflow.json` uses Issue tracking; other projects can use local records for
     consequential changes and handoffs. Choice and reason: [Entry
     points and stages](current-decisions.md#entry-points-and-stages).
   - Independent skills: `decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`. The lifecycle does not invoke them, and they are used on their own in any repository. Reason: [Independent skills](current-decisions.md#independent-skills).
-  - Compatibility: the former `development-start`, `pr-review-workflow` and `workspace-cleanup` skills are gone, with
-    their `/` commands. Their requests go to `devflow` in a devflow repository, and repositories without
-    `.devflow.json` no longer get them.
-- **Roles**: the Change reference holds three roles and their perspectives; every brief
-  carries the role's body and at most one perspective, on both hosts. `explorer` (reads and runs commands): search by
-  default, summary, root cause, verification. `reviewer` (reads only): correctness by default, design, security.
-  `implementer` (edits). The plugin ships no agent definitions: Claude Code runs every role on `general-purpose`,
+  - [Moving from v0.4.0](../../README.md#moving-from-v040) maps the old commands to the current routes.
+- **Delegation**: the Change reference defines scoped briefs for research, review, and implementation. Each brief
+  carries its task permissions, files, and verification criteria. Claude Code uses `general-purpose`,
   Codex on `spawn_agent` ([why](current-decisions.md#execution-and-delegation)).
   Models and effort follow the host or an explicit user override ([why](../specs/orchestration.md#models-and-effort)).
 - **Claude Workflows**: devflow does not ship them and does not keep them as an execution mode. The user runs them
@@ -73,7 +69,8 @@ Document format and budgets: [documents](../specs/documents.md).
   document boundary, Stop for bounded unattended continuation, and SessionEnd for release. The [hook contract](../specs/hooks.md)
   describes what each event can enforce.
   Pre-integration verification follows the integration method in [repository](../specs/repository.md#integration-and-ci).
-- **Scripts**: `devflow-state` handles the ledger, Issue I/O and the resume card. The BASE..HEAD diff file passed to review (`review-package`) is made with `git diff` by the devflow review reference.
+- **Scripts**: `devflow-state` handles the ledger, Issue I/O, resume cards and assigned-change verification.
+  `devflow-stage` prepares an exact reviewed commit for a local plugin install.
 - **Templates and eval**: Issue intent, REVIEW.md, AGENTS.md, ignore and attributes blocks, trigger eval
 
 Reason for the layout and the single source: [Single source](current-decisions.md#single-source).

@@ -128,6 +128,29 @@ test('assigned worktrees share reserved finding attempts without changing approv
   changeBeforeLock(plan, 'Changed plan\n', () => write(wt, 'one', 'check'), /stale plan approval/)
   changeBeforeLock(assignments[0].file, JSON.stringify({ ...JSON.parse(assignments[0].body), audit: { verdict: 'HOLD' } }),
     () => write(wt, 'one', 'check'), /document audit HOLD/)
+  const assignment = assignments[0]
+  const held = JSON.stringify({ ...JSON.parse(assignment.body), audit: { verdict: 'HOLD' } })
+  const historyBeforeHash = fs.readFileSync(store)
+  const executionsBeforeHash = executions()
+  const openFile = fs.openSync
+  let revokedWhileHashing = false
+  const hashing = t.mock.method(fs, 'openSync', (file, ...args) => {
+    if (!revokedWhileHashing && file === path.join(wt, 'input.txt') && fs.existsSync(lock)) {
+      revokedWhileHashing = true
+      fs.writeFileSync(assignment.file, held)
+    }
+    return openFile(file, ...args)
+  })
+  try {
+    assert.match(write(wt, 'one', 'check').reason, /document audit HOLD/)
+    assert.ok(revokedWhileHashing)
+    assert.equal(executions(), executionsBeforeHash)
+    assert.deepEqual(fs.readFileSync(store), historyBeforeHash)
+    assert.equal(fs.readFileSync(assignment.file, 'utf8'), held)
+  } finally {
+    hashing.mock.restore()
+    fs.writeFileSync(assignment.file, assignment.body)
+  }
   assert.equal(write(third, 'one', 'start').status, 'already-pending')
   assert.equal(write(third, 'different', 'start').status, 'hold')
   assert.deepEqual(status(third).finding.pending, ['one'])

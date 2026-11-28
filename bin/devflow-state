@@ -2559,8 +2559,6 @@ function updateSharedFinding(file, root, record, action, hold, env, policy, loca
   try {
     const result = withDirectoryLock(path.dirname(file), `${record.id}.lock`, () => {
       const deadline = Date.now() + RUN_TIMEOUT_MS * 2
-      const approval = recheck()
-      if (approval.code !== 0) return approval
       const history = readSharedFinding(file, record.finding)
       if (!history) return hold('missing or unsafe shared finding history')
       const plan = record.approvals.plan.sha256
@@ -2569,10 +2567,14 @@ function updateSharedFinding(file, root, record, action, hold, env, policy, loca
       const detail = progress.finding ? { finding: progress.finding } : {}
       const previous = history.attempts.find(attempt => attempt.id === action.id)
       const saved = status => ({ code: 0, out: JSON.stringify({ status, attempt: action.id, ...detail }) })
-      const persist = () => {
-        if (Date.now() >= deadline) return 'shared finding update exceeded its lock budget'
+      const persist = (requireCurrentAuthority = true) => {
         const value = { id: history.id, attempts: history.attempts }
-        if (Buffer.byteLength(JSON.stringify(value, null, 2) + '\n') > 16384) return 'shared finding history is full'
+        if (Buffer.byteLength(JSON.stringify(value, null, 2) + '\n') > 16384) return hold('shared finding history is full', detail)
+        if (requireCurrentAuthority) {
+          const approval = recheck()
+          if (approval.code !== 0) return approval
+        }
+        if (Date.now() >= deadline) return hold('shared finding update exceeded its lock budget', detail)
         writeJson(file, value)
         return null
       }
@@ -2611,7 +2613,7 @@ function updateSharedFinding(file, root, record, action, hold, env, policy, loca
           if (!inputs) return hold('approved reproduction inputs are missing or changed', detail)
           previous.execution = token()
           const startError = persist()
-          if (startError) return hold(startError, detail)
+          if (startError) return startError
           const outcome = runFindingReproduction(env, root, record, policy, localAt, inputs)
           if (!outcome) return hold('approved reproduction did not establish a result; reconcile its execution before retry',
             { finding: sharedProgress(history, plan, environment).finding })
@@ -2622,8 +2624,8 @@ function updateSharedFinding(file, root, record, action, hold, env, policy, loca
         }
       }
       const updated = sharedProgress(history, plan, environment)
-      const error = persist()
-      if (error) return hold(error, detail)
+      const error = persist(action.kind !== 'check')
+      if (error) return error
       return { code: 0, out: JSON.stringify({ status, attempt: action.id, finding: updated.finding }) }
     }, LOCK_WAIT_MS, LOCK_STALE_MS + RUN_TIMEOUT_MS * 2)
     return result.ok ? result.value : hold(`shared finding history is ${result.why}`)

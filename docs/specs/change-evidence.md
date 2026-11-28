@@ -104,8 +104,9 @@ worktree path, branch, approved plan and reproduction policy bound at reservatio
 before launching the adapter. An inconclusive or interrupted execution stays pending, with its ID, without increasing
 the failure count. Resolve it before running another check for that finding. A preflight refusal before execution
 does not create an execution ID. Only reserve a new attempt when the build check permits it. The shared lock
-serializes the bounded check and file update. After obtaining it, the tool checks the current assignment, approvals,
-audit and contracts again before writing or dispatching. Reconcile an already dispatched process separately.
+serializes the bounded check and file update. Under the lock, after preparing reproduction inputs, the tool checks the
+current assignment, approvals, audit and contracts immediately before its first write. For a check, that write records
+the execution ID and authorizes dispatch. Reconcile changes published after this checkpoint separately.
 A passed reproduction does not approve a change or close a review finding.
 
 If the worktree moves, first confirm the previous process tree exited and reconcile its file effects. The operator

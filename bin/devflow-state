@@ -2918,6 +2918,10 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
       evidence.verification.run.length === 0 ? {
         next: 'The requested comparison of assignment and receipt against current declared inputs is complete. For a verification-only handoff, report the reused IDs and that no checks ran, then stop. Do not reopen references or repeat the comparison. Continue normal review for any wider request, known check-input drift, or requested rerun.',
       } : {}),
+    ...(stage === 'review' && evidence.status !== 'unknown' && evidence.verification?.status === 'ready' &&
+      evidence.verification.run.length > 0 ? {
+        verificationAction: 'For verification-only handoff, execute only authorized checks in evidence.verification.run and report results and reuse. The declared input comparison is already done. For independent review, drift outside declared inputs, or a wider request, continue normal review. Honor requested reruns.',
+      } : {}),
     artifacts, intentExists: Boolean(localAt(artifacts.intent)),
     ...(draftPlanHash ? { auditBinding: documentAuditBinding(record, draftPlanHash) } : {}),
     contracts: record.contracts.map(entry => entry.path),

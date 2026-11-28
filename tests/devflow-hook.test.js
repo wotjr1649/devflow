@@ -57,7 +57,7 @@ test('local assignments get a document or recheck cue without a Git probe or a T
     hook.handle(event('SessionStart', root, { source: 'resume' }), env))
   const startup = JSON.parse(hook.handle(event('SessionStart', root, { source: 'startup' }), env)).hookSpecificOutput
   assert.match(startup.additionalContext, /load the devflow skill before selecting a stage/)
-  assert.match(startup.additionalContext, /status, review or verification handoff, load/)
+  assert.match(startup.additionalContext, /status or independent review, load/)
   assert.match(startup.additionalContext, /For implementation, run the trusted build check before any edits/)
   assert.doesNotMatch(startup.additionalContext, /(?:^|\n)Tool:/)
   for (const source of ['resume', 'compact']) {

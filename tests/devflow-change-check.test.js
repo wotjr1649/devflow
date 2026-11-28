@@ -385,6 +385,7 @@ test('assigned review reuses only complete matching successful checks after a co
   const decide = () => f.check('review').evidence.verification
   assert.deepEqual(before.verification.run, ['http', 'syntax'])
   assert.equal(f.check('review').next, undefined, 'missing evidence cannot finish a handoff')
+  assert.equal(f.check('review').verificationAction, undefined, 'missing evidence does not give a reuse shortcut')
   assert.deepEqual(f.check('resume').evidence.verification, before.verification)
   const proof = { id: f.record.id, binding: before.binding, verificationBasis: before.verification.basis,
     checks: f.record.verification.map((policy, index) => ({
@@ -401,6 +402,8 @@ test('assigned review reuses only complete matching successful checks after a co
   fs.writeFileSync(path.join(f.root, 'tests/new.js'), 'another test')
   assert.deepEqual(decide().run, ['http'])
   assert.equal(f.check('review').next, undefined, 'a changed test requires normal routing')
+  assert.match(f.check('review').verificationAction, /execute only authorized checks in evidence\.verification\.run/)
+  assert.match(f.check('review').verificationAction, /independent review, drift outside declared inputs/)
   fs.unlinkSync(path.join(f.root, 'tests/new.js'))
   assert.deepEqual(decide().run, [])
   proof.checks[0].command += ' --test-only'

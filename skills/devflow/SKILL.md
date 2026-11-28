@@ -8,9 +8,9 @@ description: "Use when planning, reviewing or resuming product changes, tracking
 
 Spike: question/exit. Bounded: brief design. Approve intent→spec→plan (all: architecture/shared contracts). Build/verify/review/ship. Analysis/review findings only.
 
-For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use paths/proof; hold failures. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` post-build.
+Assignments: run authorized `change-check <stage> [id]` alone before records/diff. Pass ID; use paths/proof; hold failures. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` post-build.
 
-Verification-only: ready check plan → reuse its IDs, execute only authorized `run` checks, and report both. Recorded + ready + empty `run` → report reuse/no checks and stop. Honor source review, drift outside the check plan, and requested reruns.
+Verification-only: ready → report `reuse`, execute authorized `run` IDs. Recorded + ready + empty `run`: report no checks, stop. Honor source review, uncovered drift, reruns.
 
 - [Resume](references/resume.md) alone for status/switch/interruption/unchanged work. Status: stop. Ready build: read first, approved edits only.
 - Read [Change](references/change.md) before records for docs/plans/drafts/work/branches/decisions/delegation/incidents/debugging/code review.

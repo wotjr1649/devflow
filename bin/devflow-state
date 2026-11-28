@@ -2544,6 +2544,8 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
   const planFile = stage === 'plan' ? localAt(artifacts.plan) : null
   const draftPlanHash = planFile ? hashFile(planFile)?.sha256 : null
   return { code: 0, out: JSON.stringify({ status: 'ready', id: record.id, stage,
+    ...(['start', 'design', 'plan'].includes(stage) ?
+      { next: 'Load the development workflow skill if needed, then read its references/change.md before opening any returned work record. Read the reference in a separate call.' } : {}),
     ...(stage === 'build' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening any returned work record or editing.' } : {}),
     ...(stage === 'resume' ? { buildStatus: buildReason ? 'hold' : 'ready', ...(buildReason ? { buildReason } : {}),
       next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),

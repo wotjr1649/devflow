@@ -125,6 +125,8 @@ test('a local assignment returns its own paths and the required next read withou
   assert.equal(result.status, 'ready')
   assert.match(result.next, /read its Resume reference before opening any returned work record or editing/)
   assert.match(f.check('resume').next, /read its Resume reference.*Status is read-only and does not rerun tests/)
+  for (const stage of ['start', 'design', 'plan'])
+    assert.match(f.check(stage).next, /read its references\/change\.md before opening any returned work record/)
   assert.equal(result.artifacts.plan, 'docs/changes/example/plan.md')
   assert.deepEqual(result.contracts, ['docs/specs/shared.md'])
   assert.equal(f.check('build','other-change').status, 'hold')

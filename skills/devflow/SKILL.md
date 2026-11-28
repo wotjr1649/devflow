@@ -9,10 +9,10 @@ description: "Use when working on consequential changes, intent/spec/plan, track
 
 Spike feasibility; briefly design bounded work. Approve intent/spec/plan for architecture or shared contracts. Build, verify, review, ship.
 
-For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass requested ID. Use returned paths/evidence. Use `start` for intent, `design` for spec, `plan` for plans/pre-build audit, `build` for implementation, `resume` for status, `review` after build. Hold dependent work on failure.
+For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass requested ID. Use returned paths/evidence. `start` for intent, `design` for spec, `plan` for plans/pre-build audit, `build` for implementation, `resume` for status, `review` after build. Hold dependents on failure.
 
 - [Resume](references/resume.md) alone for unchanged continuation, status, interruption or mode switch and immediately after a ready build before records or edits. Edit only approved files.
-- [Change](references/change.md) before new work, documents, planning, branch setup, material decisions, delegation, incidents or independent review. For assigned documents read it immediately after a ready check. Cards do not assign work.
+- [Change](references/change.md) before new work, documents, planning, branch setup, material decisions, delegation, incidents or independent review. For assigned documents/audits, read it before returned records. Cards do not assign work.
 - [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Read before commits, external writes, cleanup or reconciling uncertain effects.
 
 After scope change, compaction or restart, reopen the earliest invalidated stage and read its reference. Verify changed and preserved behavior. Require approved equivalent coverage to weaken, skip or remove checks. Track stage/decisions/blockers in the Issue, progress/proof in the ledger.

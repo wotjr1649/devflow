@@ -55,7 +55,7 @@ Provide the exact trusted invocation in the handoff or project instructions load
 does not load the shared `AGENTS.md`, import it with `@AGENTS.md` in the project's `CLAUDE.md`.
 Run approved commands separately when the host grants permission for individual commands. For status-only requests,
 use `resume` without rerunning verification. Its `buildStatus` and optional `buildReason` report implementation
-readiness separately from the status query. Use `plan` for plan edits and pre-build audit.
+readiness separately. Follow document stage `next` to read Change before opening records. Use `plan` for pre-build audit.
 
 Projects that want the skill to load for these requests can add this scoped rule to their shared `AGENTS.md`:
 

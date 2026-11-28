@@ -10,8 +10,8 @@ values the ledger and `devflow-state` check. How work runs inside a stage is exp
 - One entry point, the `devflow` skill, takes new work, resuming, stage moves, review, PR and merge, and cleanup in a
   repository with `.devflow.json`. One description then covers the whole lifecycle, so no other skill competes for
   these requests.
-- Each stage reads the applicable section in `skills/devflow/references/`, one level below the skill and linked from
-  SKILL.md ([skill references](documents.md#skill-references)).
+- Read the applicable section in `skills/devflow/references/` when the skill routes to it. A verification-evidence-only
+  handoff can finish at the assignment gate when all declared checks are reusable and the request fits that proof.
 - A new work request goes through start even when a card shows another Issue, because start decides the path; a spike,
   or work whose problem and acceptance criteria are not confirmed, goes to discover
   ([rationale](../design/current-decisions.md#entry-points-and-stages)).

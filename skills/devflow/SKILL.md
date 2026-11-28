@@ -1,6 +1,6 @@
 ---
 name: devflow
-description: "Use when handling intent/spec/plan, change audits, tracked Issues, handoffs, assigned status, incidents, recurring defects, PR, merge or deployment readiness, cleanup or consequential changes. Skip routine or instruction-only work."
+description: "Use when planning, reviewing or resuming product changes, tracking Issues/status, diagnosing recurring defects or incidents, or checking PR, merge or deployment readiness or cleanup. Skip routine or instruction-only work."
 ---
 
 # Devflow

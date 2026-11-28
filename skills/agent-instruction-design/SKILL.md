@@ -1,6 +1,6 @@
 ---
 name: agent-instruction-design
-description: Use when designing or auditing host-loaded instructions, including AGENTS.md, CLAUDE.md, SKILL.md, agent definitions, hook messages and script preambles. Exclude task prompts, product edits and execution.
+description: Use when writing or auditing host-loaded instructions or designing tests of their behavior, including AGENTS.md, CLAUDE.md, SKILL.md, agent definitions, hook messages and script preambles. Exclude task prompts, product edits and execution.
 ---
 
 # Agent instruction design

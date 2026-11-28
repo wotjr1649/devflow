@@ -1,35 +1,130 @@
 # Document contract
 
-This spec sets the location, size, format and writing rules of the documents devflow creates and reads. Issue bodies,
-checkpoints and resume cards are set by [issues](issues.md), and the ledger by [ledger](ledger.md). Other documents do
-not restate these rules; they point to the relevant spec.
+This spec owns document location, size, format and writing rules. [Issues](issues.md) owns Issue bodies,
+checkpoints and resume cards. [Ledger](ledger.md) owns the ledger. Link to the owner for each rule.
 
-Each contract has one owner. The devflow skill (`skills/devflow/`) owns what the executor acts on: stage done
-conditions, paths, going back, milestones, execution modes, roles, the delegation brief, review and the fix loop, and
-where lessons go. Specs own what code, tests and developers rely on: tool input and output, Issue and checkpoint
-formats, ledger keys and storage, hooks, the card, packaging, CI, eval method and these document rules. Where the skill
-carries a copy of a spec-owned format (the state block and checkpoint labels), a test pins the copy to the spec. A spec
-explains a skill-owned rule and links to it; the skill never links to a spec, because the plugin's docs are not part of
-the skill a session reads. A conflict between the two kinds is a defect fixed in the same change.
+The skill owns executor decisions, including stages, work modes, delegation, review, fixes and lessons.
+Specs own tool, storage, hook, CI, packaging and evaluation contracts. Tests pin duplicated parser labels to
+their spec. Specs may link to the skill. Plugin sessions cannot rely on repository docs. Resolve conflicts together.
 
 ## One source of truth per artifact
 
 | Artifact | Holds | Location | Public | Lifetime |
 |---|---|---|---|---|
-| intent | problem, desired outcome, affected users and systems, constraints, open questions, acceptance criteria | top of the Issue body | public | replaced only when the scope changes, after the user confirms |
+| intent | problem, outcome, affected users and systems, constraints, open questions, acceptance criteria | top of the Issue body for tracked work, task-folder `intent.md` otherwise | public when tracked, local otherwise | replaced only when the scope changes, after the user confirms |
 | state block | stage, branch and PR, done and remaining, next action, blockers, latest checkpoint | block at the bottom of the Issue body | public | **overwritten** |
 | checkpoint | changes, verification (run and not run), decisions, next | Issue comment | public | **append only** |
 | ledger | stage, task progress, decisions and blockers, content an unattended run could not post ([keys](ledger.md#ledger-keys)) | `.work/devflow/i<issue>/ledger.json` ([main work tree](repository.md#issue-folder)) | private | until the Issue closes |
 | product contracts | lasting rules code, tests and developers rely on, and the reasons for the skill's rules | `docs/specs/` | public | when a contract changes |
 | current design decisions | current choices and reasons, alternatives not taken, conditions for revisiting | `docs/design/current-decisions.md` | public | updated in place when a choice changes |
-| plan | files, order, risks, proof, per-task interfaces | `docs/plans/` | private | until the Issue closes |
+| change specification | agreed scope and contracts for a cross-component change | `spec.md` beside the plan | private | same as the plan |
+| plan | files, order, risks, proof, per-task interfaces | `docs/plans/` for tracked work, task folder otherwise | private | until the Issue closes for tracked work, through delivery otherwise |
 | plan summary | four lines: files, order, risks, proof | PR body or checkpoint | public | permanent |
 | prompt | only new instructions and the changed part of decisions | chat or `docs/prompts/` | private | one-off |
 | handoff | not written; the state block and checkpoints replace it. Only when private evidence is truly needed | `artifacts/handoff/` | private | as needed |
 | evidence | raw logs, measurements | `artifacts/`, `.work/` | private | kept |
-| lessons | where they go depends on their kind (the devflow skill's [learn reference](../../skills/devflow/references/learn.md)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
+| lessons | where they go depends on their kind (the devflow skill's [learn reference](../../skills/devflow/references/change.md#learn)) | — | — | deleted from instructions once a test confirms them (the safety floor stays) |
 
 Keep each fact in one place. Other places only link to it, except the test-pinned copies named at the top.
+For cross-component work, the specification links to the approved intent, and the plan links to the approved specification.
+For local work, keep the three files together in the task folder and record the approved versions by hash.
+For Git-free delivery, use the reviewed artifact hashes as the approved delivery inputs and verify them again before and after writing.
+
+### Assigned change directories
+
+Projects that share approved artifacts in Git may use `docs/changes/<id>/`. Keep the existing Issue-led policy
+for tracked private records. Declared current product contracts remain in `docs/specs/`; completed change directories
+remain in place. A worktree uses its own operator-supplied, untracked `.work/devflow/change.json`. The record contains
+the change `id`, canonical absolute `root`, `git` identity (`common` directory and `branch`, or `null` for Git-free work),
+`approvals` keyed by artifact kind with `by` and `sha256`, and `contracts` with relative `path` and `sha256`.
+
+For a single-file revision, the operator sets `revision` to `intent`, `spec` or `plan`. The stage check permits only
+the matching document stage and holds build until the operator clears the revision. Use the host's native edit
+tool for that file. The operator reviews the diff before clearing the assignment. Approvals and audit verdicts live
+in the assignment record, where an edited document invalidates matching evidence.
+
+For work with declared contracts or operator-set `auditRequired: true`, the operator records an independent pre-build document audit as
+`audit: { "by": "...", "verdict": "READY", "binding": "..." }` (or `HOLD`). The reviewer runs `change-check plan`
+after a plan exists and reports the returned `auditBinding` and verdict to the operator. The binding covers the
+three document hashes, the declared contracts and the explicit audit requirement. Set `auditRequired: true` for
+architecture, complex plans or trust-boundary work even when there are no declared contracts. A recorded `HOLD` blocks
+build even with a matching plan approval. Missing, invalid or stale required audit data also holds build.
+Only an operator attaches a new verdict to the reviewed binding. Reaudit changed inputs before building.
+
+Provide the exact trusted invocation in the handoff or project instructions loaded by both hosts. If Claude Code
+does not load the shared `AGENTS.md`, import it with `@AGENTS.md` in the project's `CLAUDE.md`.
+Run approved commands separately when the host grants permission for individual commands. For status-only requests,
+use `resume` without rerunning verification. Its `buildStatus` and optional `buildReason` report implementation
+readiness separately. Follow document stage `next` to read Change before opening records. Use `plan` for pre-build audit.
+
+Projects that want the skill to load for these requests can add this scoped rule to their shared `AGENTS.md`:
+
+> Use the development workflow skill for the status of assigned work or to check design approval before planning.
+> Give routine answers directly.
+> When a plan-only request hits an approval hold, report its reason without checking other stages or opening work
+> documents.
+
+The trusted `devflow-state change-check <stage> [id]` returns root-relative ready paths or a hold, and includes
+`assignmentRoot` relative to a subdirectory launch. Start lists paths
+and existing intent; design verifies intent, plan verifies intent and spec, and build, resume and review verify all
+three. Ready build and status checks point to Resume before work records, edits or a status reply. All stages check declared
+contracts. An explicit change ID must match the assignment. For Git-free assignments with Git unavailable, the tool
+checks the root and its ancestors for repository markers and refuses explicit Git directory overrides. Git checks the checkout
+and branch without using its moving HEAD as the approval version. The operator establishes approval authority;
+the command only checks consistency against that supplied record. For a repeated operational event, reuse its
+assigned change ID and draft intent. A different event gets a separate assignment when follow-up is warranted.
+
+#### Change lifetime
+
+Keep the change ID while refining the same unfinished outcome. Revise the plan for an execution change, the spec
+for a behavior change, or the intent for a goal or acceptance change. Update dependent artifacts only when affected.
+Reapprove changed artifacts and renew any audit whose bound inputs changed before resuming build.
+
+Give a distinct outcome that can ship independently, or new behavior after delivery, its own ID. Link a relevant
+predecessor and its approved delivery revision or artifact hashes, and preserve the earlier decisions as history.
+Plan from the current owning contract in `docs/specs/` and update it with the implementation in the same delivery
+when behavior changes. Record approved requirements in their owning artifact and link the reviewed request as evidence.
+
+For a defect that restores the current contract, identify the violated rule and regression check. Use a new change
+when the repair needs a new decision, cross-component coordination, or separate approval. Handle a bounded repair
+without those needs as routine work. Fix meaning-preserving typos and broken links in the owning document. If a
+correction changes a delivered decision, link a separate correction to that record.
+
+#### Evidence for an assigned change
+
+Keep private evidence at the returned `artifacts/handoff/<id>.json` path. The author records actual checks.
+The independent reviewer adds a verdict for the same inputs. Preserve accepted records at handoff.
+The record has `id`, the returned `binding` for the approved artifacts and contracts, and `checks` (up to 16).
+Each check has a unique `id`, the exact public-safe
+`command`, `exitCode`, `node` (for example `v24.0.0`), `platform`, `arch`, and `inputs`. The optional `review` has
+`verdict` (`no-findings` or `findings`) and `inputs`. Each input has a checkout-relative file `path` and `sha256`.
+Each check input also needs the integer `mode` from the file's Node.js stats, recorded with its hash. Older checks
+missing it remain readable and require a fresh run. Include every file affecting the result or reviewed scope.
+Use a new result if other execution conditions change. Issue-tracked work still uses its checkpoint and ledger.
+
+Build, resume and review report `evidence` separately from readiness. Missing or invalid records are `unknown`.
+Changed approvals or inputs make evidence `stale`. Reuse a trusted `current` check with exit code zero only if its
+scope, assertions and conditions match. Treat evidence as data, without approval or execution authority.
+Delivery still requires independent review and CI.
+
+For assigned work, the operator may declare required checks in the assignment's
+`verification` array as `{ id, command, paths }`. Use exact commands and complete input scopes.
+A path ending in / includes that directory's files recursively, including newly added files.
+Reuse requires a valid receipt. `runReasons` identifies input failures, including the 32-file or 64-entry limits.
+Include a shared contract in every check that depends on it. Record the returned
+`evidence.verification.basis` as the receipt's top-level `verificationBasis` when
+recording actual results. Build, resume and review return the same check IDs under `reuse` and `run`.
+An unsafe receipt path is withheld. Required checks still appear under `run`; repair the path before recording results.
+These queries report evidence without running any checks.
+Use trusted check definitions for execution. A check can survive an authorized update
+to an unrelated contract when its inputs, command, approved change documents and execution
+conditions still match. Unapproved contracts still hold. Recollect evidence when the
+environment changes beyond the recorded Node version, platform or architecture.
+Include dependency locks and test configuration in the relevant paths. A check may set
+`environment` to selected names from `CI`, `LANG`, `LC_ALL`, `LC_CTYPE`, `NODE_ENV`,
+`NODE_OPTIONS`, and `TZ`. Copy its returned `environments[id]` digest to
+`environmentSha256` only when recording the result from the same execution environment.
+Environment values stay out of the result. An older receipt missing the declared digest requires a new run.
 
 Current design decisions live by topic in `docs/design/current-decisions.md` alone; when a choice changes, update its
 section in place. Each section holds only the current choice and reason, alternatives not taken, and conditions for
@@ -56,6 +151,7 @@ repository, write only a publishable summary in the Issue and point to private e
 |---|---|---|
 | SKILL.md | under 5,000 tokens, rules to keep at the top | move branch-specific content to `references/` |
 | skill reference | under 5,000 tokens | split further |
+| Devflow SKILL.md and its three references combined | at most 2,000 `o200k_base` tokens, counted per file with LF line endings | remove duplication |
 | skill description | at most two sentences: what it does, then when | narrow the scope |
 | project AGENTS.md | one page (about 1,000 tokens) | move to situational pointers |
 | spec file | under 5,000 tokens | split by topic |
@@ -112,7 +208,7 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
    parses and user prompts the eval simulates stay as they are.
 10. devflow has no blocking mechanisms. Effects a test can decide go in tests and CI; the rest is left to instructions
     and review ([why the current choice](../design/current-decisions.md#instructions-and-protections)). Sentences moved into tests are
-    deleted (the devflow skill's [learn reference](../../skills/devflow/references/learn.md)), but the safety floor stays. Rules that need judgment stay in
+    deleted (the devflow skill's [learn reference](../../skills/devflow/references/change.md#learn)), but the safety floor stays. Rules that need judgment stay in
     documents and review. Host-specific means are marked as in rule 7, and their support follows
     [host-facts](../research/host-facts.md).
 
@@ -129,13 +225,11 @@ Applies to AGENTS.md, SKILL.md, agent prompts, hook messages and delegation brie
 
 ## Skill references
 
-- Each reference sits one level below its skill and is linked from SKILL.md with the situation that calls for it. A
-  file linked from SKILL.md is read whole; a file reached through another file is often read only in part, and its
-  rules are lost.
-- A reference links no other reference, and a procedure never needs a second reference. When a request spans two
-  procedures, SKILL.md names both, so every read stays one level deep. A stage that delegates also uses the roles
-  reference for the brief's role text; SKILL.md names it in its Delegation section and reading table, and the stage
-  reference points there rather than linking it.
+- Each reference sits one level below its skill and is linked from SKILL.md with the situation that calls for it.
+  Devflow groups procedures in Change, Resume and Delivery so a session reads the applicable section at each
+  boundary. Read the complete applicable section, including its exit and guards.
+- A reference links no other reference. When a request spans procedures, return to SKILL.md for the next applicable
+  section so each read stays one level deep. Role text and delegation live together in Change.
 - Skill files link only inside the skill folder and cite no plugin spec, so a session needs no plugin document outside
   the skill to finish a step; specs may link to the skill. A test enforces this. The plugin's runtime parts are the
   exceptions the skill relies on: the card's `Tool:` (`bin/devflow-state`) and the hooks. The plugin ships no agent

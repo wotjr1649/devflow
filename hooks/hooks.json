@@ -12,6 +12,29 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"require(process.env.CLAUDE_PLUGIN_ROOT+'/hooks/devflow-hook.js').main()\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Edit|Write|MultiEdit|NotebookEdit|apply_patch|Bash|PowerShell|Agent|Task|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"require(process.env.CLAUDE_PLUGIN_ROOT+'/hooks/devflow-hook.js').main()\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

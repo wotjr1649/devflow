@@ -1,0 +1,115 @@
+#!/usr/bin/env node
+'use strict'
+// Stage a reviewed commit as a detached, clean worktree for local host installs.
+// Usage: node bin/devflow-stage <reviewed-full-sha> <unused-destination>   (run from the feature worktree)
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const { spawnSync } = require('child_process')
+// Windows looks for git.exe in the working folder before PATH; a checkout must not supply it.
+if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
+
+class StageError extends Error {}
+const fail = message => { throw new StageError(message) }
+
+// Checkout hooks are suppressed per invocation; repository and host settings stay intact.
+const GIT_BASE = ['--no-replace-objects', '--no-optional-locks', '-c', 'core.hooksPath=' + os.devNull]
+let gitEnv
+
+function git(cwd, args, { allowMissing = false } = {}) {
+  const r = spawnSync('git', [...GIT_BASE, ...args], { cwd, env: gitEnv, encoding: 'utf8', timeout: 120000, windowsHide: true })
+  if (r.error) fail(`git ${args[0]} could not run: ${r.error.message}`)
+  if (r.status === 1 && allowMissing) return null
+  if (r.status !== 0) fail(`git ${args.join(' ')} failed (exit ${r.status}): ${(r.stderr || '').trim()}`)
+  return r.stdout
+}
+
+const same = (a, b) => {
+  const norm = p => {
+    let n = path.resolve(p)
+    try { n = fs.realpathSync.native(n) } catch { /* absent path keeps its resolved form */ }
+    return process.platform === 'win32' ? n.toLowerCase() : n
+  }
+  return norm(a) === norm(b)
+}
+
+// Staged, unstaged and non-ignored untracked changes, submodules included.
+const requireCleanStatus = (cwd, label) => {
+  const out = git(cwd, ['status', '--porcelain', '--untracked-files=all', '--ignore-submodules=none'])
+  if (out.trim()) fail(`${label} has uncommitted changes:\n${out.trimEnd()}`)
+}
+
+const registered = (root, dest) =>
+  git(root, ['worktree', 'list', '--porcelain', '-z']).split('\0')
+    .filter(l => l.startsWith('worktree ')).some(l => same(l.slice(9), dest))
+
+const inside = (root, target) => {
+  const relative = path.relative(root, target)
+  return !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep)
+}
+
+function checkSource(root, sha) {
+  const head = git(root, ['rev-parse', '--verify', 'HEAD']).trim()
+  if (head.toLowerCase() !== sha.toLowerCase()) fail(`revision mismatch: expected ${sha}, actual HEAD ${head}`)
+  requireCleanStatus(root, 'feature worktree')
+  return head
+}
+
+function run(argv) {
+  if (argv.length !== 2 || !argv[0] || !argv[1]) fail('usage: devflow-stage <reviewed-full-sha> <unused-destination>')
+  const [sha, destArg] = argv
+  const cwd = process.cwd()
+  const gitLocals = new Set(git(cwd, ['rev-parse', '--local-env-vars']).trim().split(/\r?\n/))
+  gitEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) => !gitLocals.has(name.toUpperCase())))
+  gitEnv.GIT_NO_LAZY_FETCH = '1'
+  gitEnv.GIT_ALLOW_PROTOCOL = ''
+  const root = fs.realpathSync.native(git(cwd, ['rev-parse', '--show-toplevel']).trim())
+  const head = git(root, ['rev-parse', '--verify', 'HEAD']).trim()
+  if (!/^[0-9a-fA-F]+$/.test(sha) || sha.length !== head.length) {
+    fail(`reviewed SHA must be a full ${head.length}-character hexadecimal object ID`)
+  }
+  checkSource(root, sha)
+
+  const requested = path.resolve(cwd, destArg)
+  let parent
+  try { parent = fs.realpathSync.native(path.dirname(requested)) } catch (e) {
+    fail(`destination parent must exist: ${e.message}`)
+  }
+  const dest = path.join(parent, path.basename(requested))
+  for (const kind of ['--git-dir', '--git-common-dir']) {
+    const admin = fs.realpathSync.native(git(root, ['rev-parse', '--path-format=absolute', kind]).trim())
+    if (inside(admin, dest)) fail(`destination is inside Git metadata: ${dest}`)
+  }
+  let exists = true
+  try { fs.lstatSync(dest) } catch (e) { if (e.code === 'ENOENT') exists = false; else fail(`cannot inspect destination ${dest}: ${e.message}`) }
+  if (exists) fail(`destination already exists: ${dest}`)
+  if (registered(root, dest)) fail(`destination is a registered worktree: ${dest}`)
+  if (inside(root, dest) && git(root, ['check-ignore', '-q', '--', dest + path.sep], { allowMissing: true }) === null) {
+    fail(`destination inside the feature worktree must be Git-ignored: ${dest}`)
+  }
+
+  // Exclusive reservation: mkdir fails if another caller got there first.
+  try { fs.mkdirSync(dest) } catch (e) { fail(`cannot reserve destination ${dest}: ${e.message}`) }
+
+  try {
+    checkSource(root, sha) // concurrent change since the first check
+    git(root, ['worktree', 'add', '--detach', dest, head])
+    const top = git(dest, ['rev-parse', '--show-toplevel']).trim()
+    if (!same(top, dest)) fail(`worktree root ${top} is not the requested path ${dest}`)
+    const destHead = git(dest, ['rev-parse', '--verify', 'HEAD']).trim()
+    if (destHead.toLowerCase() !== sha.toLowerCase()) fail(`destination HEAD ${destHead} is not ${sha}`)
+    if (git(dest, ['symbolic-ref', '-q', 'HEAD'], { allowMissing: true }) !== null) fail('destination HEAD is not detached')
+    requireCleanStatus(dest, 'destination')
+    const ignored = git(dest, ['ls-files', '--others', '--ignored', '--exclude-standard']).trim()
+    if (ignored) fail(`destination has ignored files:\n${ignored}`)
+    checkSource(root, sha) // source must still match when success is reported
+  } catch (e) {
+    fail(`${e.message}\nCheck the reserved path ${dest} and git worktree list before retrying.`)
+  }
+  process.stdout.write(`staged ${sha} at ${dest}\n`)
+}
+
+try { run(process.argv.slice(2)) } catch (e) {
+  process.stderr.write(`devflow-stage: ${e instanceof StageError ? e.message : e.stack}\n`)
+  process.exit(1)
+}

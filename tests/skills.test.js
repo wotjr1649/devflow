@@ -64,14 +64,27 @@ const contentsOk = text => {
 }
 const isReferenceOrAgentsLink = t => /^(\.\/)?[\w-]+\.md(#|$)/.test(t) || /(^|\/)references\//.test(t) || /(^|\/)agents\//.test(t)
 
-test('devflow: SKILL.md links every reference, every link names a file, and only references/ sits beside SKILL.md', () => {
+test('devflow: SKILL.md links the three references, each link names a file, and only references/ sits beside SKILL.md', () => {
   const names = refNames()
-  const linked = refLinks(read(`${SKILL}/SKILL.md`))
+  assert.deepEqual(names.sort(), ['change.md', 'delivery.md', 'resume.md'])
+  const router = read(`${SKILL}/SKILL.md`)
+  const linked = refLinks(router)
   const missing = ls => ls.filter(l => !names.includes(l.replace(/^.*references\//, '')))
   for (const n of names) assert.ok(linked.includes(`references/${n}`), `SKILL.md does not link references/${n}`)
   assert.deepEqual(missing(linked), [], 'SKILL.md links a reference that does not exist')
   assert.deepEqual(fs.readdirSync(path.join(root, SKILL)).sort(), ['SKILL.md', 'references'])
   assert.deepEqual(missing(['references/gone.md']), ['references/gone.md'], 'counterexample')
+  assert.match(descriptionOf(router), /PR, merge or deployment readiness/)
+  assert.match(router, /\]\(references\/delivery\.md\)[^\n]*PR, merge or deployment readiness, read-only/,
+    'all read-only readiness checks use Delivery')
+})
+
+test('devflow retains the tracked start, acceptance evidence and publication protections', () => {
+  const change = read(`${REFS}/change.md`)
+  const delivery = read(`${REFS}/delivery.md`)
+  assert.match(change, /match Issue scope, pass baseline/)
+  assert.match(change, /Direct runs\/targeted tests prove criteria; others stay open/i)
+  assert.match(delivery, /Publish reviewed secret-free summaries only; omit raw prompts\/logs\/private paths/)
 })
 
 test('devflow: a reference links no other reference and no agents/ file', () => {
@@ -83,7 +96,7 @@ test('devflow: a reference links no other reference and no agents/ file', () => 
 
 // The skill works from its own folder (#138): every local link resolves inside skills/devflow, and no sentence cites a
 // plugin spec by file name. The user's own docs/design/current-decisions.md is a project path, not a plugin file. The
-// card's bin/devflow-state is a runtime part named in prose, not a link. Role text lives in the skill's roles reference
+// card's bin/devflow-state is a runtime part named in prose, not a link. Role text lives in the skill's Change reference
 // (#157), and the plugin ships no agent definitions (#159).
 const SPEC_NAME = /\b(lifecycle|orchestration|ledger|issues|repository|documents|eval|hooks|credentials|host-facts|sources|overview)\.md\b/
 const localTargets = text => [
@@ -107,12 +120,12 @@ test('devflow: every local link stays inside skills/devflow and no text cites a 
     assert.doesNotMatch(text, SPEC_NAME, `${rel} cites a plugin spec`)
   }
   const from = `${SKILL}/SKILL.md`
-  const bad = ['../../docs/specs/lifecycle.md', 'references\\start.md', 'references/gone.md', '%2E%2E/%2E%2E/README.md',
+  const bad = ['../../docs/specs/lifecycle.md', 'references\\change.md', 'references/gone.md', '%2E%2E/%2E%2E/README.md',
     'C:\\repo\\agents\\reviewer.md', 'C:/repo/agents/reviewer.md', 'file:///repo/agents/reviewer.md']
   assert.deepEqual(localTargets('[w](C:/x.md) [f](file:///x.md) [u](https://e.org)'), ['C:/x.md', 'file:///x.md'])
   for (const t of bad) assert.ok(escapes(from, t), `counterexample: ${t}`)
   assert.deepEqual(localTargets('[a](<../x.md>) [c](https://e.org/z.md) [d](#e)\n[b]: ../y.md'), ['../x.md', '../y.md'])
-  assert.ok(!escapes(from, 'references/start.md#checklist'), 'a reference with an anchor is inside')
+  assert.ok(!escapes(from, 'references/change.md#start'), 'a reference with an anchor is inside')
   assert.match('see lifecycle.md', SPEC_NAME, 'counterexample: prose citation')
   assert.doesNotMatch("the project's docs/design/current-decisions.md", SPEC_NAME, 'a project path is allowed')
 })
@@ -148,14 +161,14 @@ test('skill descriptions: devflow has at most two sentences and names no indepen
 // A quoted label: Korean words, optionally ending in an ASCII part after a slash (`브랜치/PR`).
 const LABEL = /[가-힣][가-힣/ ]*(?:[가-힣]|\/[A-Za-z]+):|[가-힣]:/g
 
-// The headings and labels devflow-state parses (#150): the interface the skill must keep, checked against the parsers
+// The headings and labels devflow-state parses (#150): the interface the tool and Issue spec must keep, checked against the parsers
 // themselves. Other template labels are the skill's to use or not, but any it quotes must be one issues.md defines.
-const { PARSERS } = require(path.join(root, 'bin/devflow-state'))
+const { PARSERS, main: stateMain } = require(path.join(root, 'bin/devflow-state'))
 const PARSED = [['## 현재 상태', PARSERS.STATE_HEADING, '## 현재 상태'], ['- 단계:', PARSERS.PROTECTED, '- 단계: build'],
   ['- 브랜치/PR:', PARSERS.BRANCH_LINE, '- 브랜치/PR: feat/1-x'], ['- 다음 행동:', PARSERS.PROTECTED, '- 다음 행동: x'],
   ['- 막힘:', PARSERS.PROTECTED, '- 막힘: 없음'], ['### Checkpoint', PARSERS.CHECKPOINT_HEAD, '### Checkpoint build — x']]
 
-test('issues spec: the skill carries the labels devflow-state parses and quotes only defined ones', () => {
+test('Issue spec and tool help carry parsed labels; the skill quotes only defined labels', () => {
   for (const [l, re, sample] of PARSED) assert.match(sample, re, `devflow-state no longer parses "${l}"; update PARSED`)
   assert.doesNotMatch('- 상태: x', PARSERS.PROTECTED, 'counterexample')
   const issues = read('docs/specs/issues.md')
@@ -163,8 +176,11 @@ test('issues spec: the skill carries the labels devflow-state parses and quotes 
   for (const l of template) assert.ok(issues.includes(`- ${l}:`), `issues.md lacks "- ${l}:"`)
   assert.ok(issues.includes('남음:'), 'issues.md lacks 남음:')
   const allowed = new Set([...template, '남음'])
-  const router = read(`${SKILL}/SKILL.md`)
-  for (const [l] of PARSED) assert.ok(router.includes(l), `SKILL.md lacks "${l}", which devflow-state parses`)
+  const help = stateMain([], () => '').out
+  for (const [label] of PARSED) {
+    assert.ok(issues.includes(label), `issues.md lacks "${label}", which devflow-state parses`)
+    assert.ok(help.includes(label), `tool help lacks "${label}", which devflow-state parses`)
+  }
   const quoted = skillFiles().flatMap(rel =>
     [...read(rel).matchAll(LABEL)].map(m => [rel, m[0].slice(0, -1)]))
   for (const [rel, l] of quoted) assert.ok(allowed.has(l), `${rel} quotes "${l}:" which issues.md does not define`)
@@ -200,8 +216,8 @@ test('devflow-state: every command a reference or SKILL.md names appears in the 
   assert.ok(!inUsage('never'), 'a prose word is not a command')
 })
 
-// SKILL.md owns the mode and role tables (#138); roles.md owns the roles and their defaults (#157). A Claude cell names
-// a role of roles.md, and a mode is M and a number, so a role or mode can be added without touching code.
+// The Change reference owns the mode and role tables (#138) and the roles and their defaults (#157). A Claude cell names
+// a role defined there, and a mode is M and a number.
 const tableRows = (texts, header) => {
   for (const text of texts) {
     const ls = lines(text)
@@ -212,44 +228,28 @@ const tableRows = (texts, header) => {
   }
   return []
 }
-const agentOf = cell => (cell.match(/^`([\w-]+)`/) || [])[1]
-// The roles reference (#157): `## <role>` sections, each with a Claude Code default line, a body up to its first `###`
-// and `###` perspectives. Every brief carries it; the plugin has no agent definitions (#159).
-const roleSections = text => [...text.matchAll(/^## ([a-z][\w-]*)\n([\s\S]*?)(?=^## |(?![\s\S]))/gm)]
-  .map(([, name, body]) => ({ name, body: body.split(/^### /m)[0], perspectives: body.split(/^### /m).slice(1) }))
-const ROLE_DEFAULT = /^Claude Code default: `model: ([\w.-]+)`, `effort: (\w+)`/m
-
-test('roles: each role states its Claude Code default, and every carried unit ends with a status line', () => {
-  const roles = roleSections(read(`${REFS}/roles.md`))
-  assert.ok(roles.length > 0, 'roles.md has no `## <role>` section')
-  for (const r of roles) {
-    assert.match(r.body, ROLE_DEFAULT, `${r.name}: no Claude Code default line`)
-    // A brief carries the body and one perspective; whichever it picks must say how the reply ends.
-    for (const unit of r.perspectives.length ? r.perspectives.map(p => r.body + p) : [r.body])
-      assert.match(unit, /End with/, `${r.name}: a body and perspective without a status line`)
-  }
-  const fake = roleSections('## x\nClaude Code default: `model: a`, `effort: b`\nbody\n### P\nno status\n')
-  assert.equal(fake[0].perspectives.length, 1, 'counterexample: a perspective is found')
-  assert.doesNotMatch(fake[0].body + fake[0].perspectives[0], /End with/, 'counterexample: a unit without a status line')
+test('delegation specifies scoped edits, independent review and reported outcomes', () => {
+  const change = read(`${REFS}/change.md`)
+  assert.match(change, /host defaults for model and effort unless the user/)
+  assert.doesNotMatch(change, /(?:\bmodel:\s*(?!inherit\b)[\w.-]+|\bgpt-\d|\b(?:haiku|sonnet|opus)\b)/i)
+  assert.match(change, /edit only assigned files and run stated checks/i)
+  for (const status of ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_DECISION', 'BLOCKED']) assert.ok(change.includes('`' + status + '`'))
+  assert.match(change, /independent read-only reviewers/)
+  assert.match(change, /task acceptance and preservation of existing behavior and checks separately/)
+  assert.match(change, /executed proof and limits/)
 })
 
-test('Codex subagents start without the parent conversation in both the spec and the router (#126)', () => {
+test('Codex subagents start without the parent conversation in both the spec and the delegation reference (#126)', () => {
   const row = read('docs/specs/orchestration.md').split('\n').find(line => line.startsWith('| Delegated agents |'))
   assert.match(row, /fork_turns: "none"/)
-  // Safety floor (#150): the router names the setting; how it says so is the skill's.
-  assert.match(read(`${SKILL}/SKILL.md`), /`fork_turns: "none"`/)
+  const delegation = read(`${SKILL}/references/change.md`).split('\n## Delegation\n')[1]?.split('\n## ')[0] || ''
+  assert.match(delegation, /`fork_turns: "none"`/)
 })
 
-test('router tables: each Roles row names a role of the roles reference, each execution mode is M and a number', () => {
+test('all execution modes keep their ledger identifiers', () => {
   const texts = skillFiles().map(read)
-  const names = roleSections(read(`${REFS}/roles.md`)).map(r => r.name)
-  const roles = tableRows(texts, '| Role |')
-  for (const row of roles) assert.ok(names.includes(agentOf(row[1])), `Roles row ${row[0]} names no role of roles.md`)
-  const namesRoles = texts.some(x => x.split('\n').some(l => l.startsWith('|') && names.some(a => l.includes('`' + a + '`'))))
-  assert.ok(!namesRoles || roles.length > 0, 'a table names roles but none has the "| Role |" header this check reads')
-  assert.equal(agentOf('`auditor` + `model: haiku`'), 'auditor')
-  assert.ok(!names.includes('auditor'), 'counterexample: a role that does not exist')
   const modes = tableRows(texts, '| Mode |').map(r => r[0].replace(/\*/g, '').split(' ')[0])
+  for (const mode of ['M0', 'M1', 'M2', 'M3']) assert.ok(modes.includes(mode), `missing execution mode ${mode}`)
   assert.ok(modes.every(m => /^M\d+$/.test(m)), `modes: ${modes}`)
   assert.deepEqual(tableRows(['x\n| Mode | When |\n|---|---|\n| M7 | y |\n'], '| Mode |'), [['M7', 'y']], 'a table is found by its header')
 })

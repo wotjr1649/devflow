@@ -51,21 +51,21 @@ Document format and budgets: [documents](../specs/documents.md).
 ## Components
 
 - **5 skills**
-  - `devflow`: the one lifecycle skill. Its SKILL.md holds scope, Issue I/O, the stop conditions and a situation ->
-    reference table, and links its references in [`skills/devflow/references/`](../../skills/devflow/references/):
-    discover, start, design, plan, build, verify, review, ship, cleanup, learn, sessions and roles. Each stage reference
-    finishes its procedure without reading another; a brief also takes its role text from roles. It serves only repositories with `.devflow.json`. Choice and reason: [Entry
+  - `devflow`: the one lifecycle skill. Its SKILL.md holds scope, Issue I/O, stop conditions, and routes actions to
+    Change, Resume, or Delivery in [`skills/devflow/references/`](../../skills/devflow/references/). A brief takes its
+    role text from Change. A project with `.devflow.json` uses Issue tracking; other projects can use local records for
+    consequential changes and handoffs. Choice and reason: [Entry
     points and stages](current-decisions.md#entry-points-and-stages).
   - Independent skills: `decision-interview`, `write-prompts`, `audit-prompts`, `agent-instruction-design`. The lifecycle does not invoke them, and they are used on their own in any repository. Reason: [Independent skills](current-decisions.md#independent-skills).
   - Compatibility: the former `development-start`, `pr-review-workflow` and `workspace-cleanup` skills are gone, with
     their `/` commands. Their requests go to `devflow` in a devflow repository, and repositories without
     `.devflow.json` no longer get them.
-- **Roles**: the skill's roles reference holds three roles and their perspectives; every brief
+- **Roles**: the Change reference holds three roles and their perspectives; every brief
   carries the role's body and at most one perspective, on both hosts. `explorer` (reads and runs commands): search by
   default, summary, root cause, verification. `reviewer` (reads only): correctness by default, design, security.
   `implementer` (edits). The plugin ships no agent definitions: Claude Code runs every role on `general-purpose`,
   Codex on `spawn_agent` ([why](current-decisions.md#execution-and-delegation)).
-  Models, effort, promotion: the devflow skill's Roles table ([why](../specs/orchestration.md#models-and-effort))
+  Models and effort follow the host or an explicit user override ([why](../specs/orchestration.md#models-and-effort)).
 - **Claude Workflows**: devflow does not ship them and does not keep them as an execution mode. The user runs them
   directly outside devflow ([execution modes](../specs/orchestration.md#execution-modes))
 - **Hooks**: resume card (SessionStart), continuation in unattended mode only (Stop), release when the session ends

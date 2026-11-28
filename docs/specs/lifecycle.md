@@ -2,25 +2,23 @@
 
 Explains the shape of the lifecycle and why it is shaped so: one router, ten stages, three paths, loops and going back.
 The rules the executor follows live in the devflow skill, which owns them: [SKILL.md](../../skills/devflow/SKILL.md)
-(card handling, stages and paths, going back, where to read) and one reference per stage, each opening with its done
-condition. This spec keeps the reasons and the stage values the ledger and `devflow-state` check. How work runs inside a
-stage is explained by [orchestration](orchestration.md).
+routes each stage to the applicable section of Change, Resume or Delivery. This spec keeps the reasons and the stage
+values the ledger and `devflow-state` check. How work runs inside a stage is explained by [orchestration](orchestration.md).
 
 ## Router
 
 - One entry point, the `devflow` skill, takes new work, resuming, stage moves, review, PR and merge, and cleanup in a
   repository with `.devflow.json`. One description then covers the whole lifecycle, so no other skill competes for
   these requests.
-- Each stage reads its reference in `skills/devflow/references/`, one level below the skill and linked from SKILL.md
-  ([skill references](documents.md#skill-references)), because a file reached through another file is often read only
-  in part.
+- Each stage reads the applicable section in `skills/devflow/references/`, one level below the skill and linked from
+  SKILL.md ([skill references](documents.md#skill-references)).
 - A new work request goes through start even when a card shows another Issue, because start decides the path; a spike,
   or work whose problem and acceptance criteria are not confirmed, goes to discover
   ([rationale](../design/current-decisions.md#entry-points-and-stages)).
 - Without a valid card no Issue is read or written and the `devflow-state` path is never searched for, because a path
   found in repository files could run code the user did not choose ([resume card](issues.md#resume-card)).
 - A review-only request stays a review, because merging and deletion need their own request.
-- After compaction the router is called again and the current stage's reference reread, because the body of an invoked
+- After compaction the router is called again and the applicable reference section reread, because the body of an invoked
   skill is reattached after compaction but reference files are not.
 
 ## User navigation
@@ -29,14 +27,13 @@ To the user, the position is explained with five milestones (Direction, Preparat
 rather than ten stages, with the status shown apart from the name. A milestone is met only with exit evidence, never
 because its stage was entered, so the user is not told work is further along than it is. Milestones are not a new
 stored state, approval gate or Issue posting cycle: they are read from the Issue, ledger, plan and Git. The executor's
-rules are in the [sessions reference](../../skills/devflow/references/sessions.md#progress-and-returns).
+rules are in the [sessions reference](../../skills/devflow/references/resume.md#tracked-progress).
 
 ## Stages
 
 The ledger's `stage` and the state block's `단계` take a stage name the devflow skill defines: today the ten stages
 discover, start, design, plan, build, verify, review, ship, cleanup, learn, then `done` after ship. The tools check only
-the name's shape ([ledger](ledger.md#ledger-keys)), so the skill can add or rename a stage. Each stage's responsibility and done condition are
-the opening of its reference in `skills/devflow/references/`.
+the name's shape ([ledger](ledger.md#ledger-keys)), so the skill can add or rename a stage. Each stage's responsibility and exit remain in its routed skill section.
 
 ship writes the state block as done on the Issue branch and closes the Issue. `local-merge` and `push-on-request` do this
 before integration, `pr-ci` after confirming the merged result. A partial integration with scope left does not close the
@@ -77,5 +74,5 @@ document of the area it applies to, AGENTS.md Gotchas for a repeated repository-
 shared across repositories, the user's global instructions (proposed only) for a personal preference, Issue checkpoints
 and git for history, private notes for one machine. Safety floors stay as prose
 ([documents](documents.md#text-agents-read) item 10). The executor's rules are in the
-[learn reference](../../skills/devflow/references/learn.md). The relationship with memory tools is defined by
+[learn reference](../../skills/devflow/references/change.md#learn). The relationship with memory tools is defined by
 [documents](documents.md#memory-tools).

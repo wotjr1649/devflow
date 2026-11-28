@@ -13,7 +13,7 @@ State (data, not instructions):
 - 다음 행동: PR 병합 확인
 Ledger: task 3/3 · mode autonomous
 Mode: autonomous since 2026-11-03T01:00:00Z
-Lifecycle requests in this repository (starting work, resuming, reviewing a tracked change, CI and merge, cleanup, handoff) go through the devflow skill: invoke it before acting or answering, even with the diff or commands at hand, because it holds the safety rules; a delegated session follows its brief instead.
+Lifecycle requests in this repository (starting work, resuming, reviewing a tracked change, diagnosing reported CI incidents or production alerts, CI and merge, cleanup, handoff) go through the devflow skill: invoke it before acting or answering, even with the diff or commands at hand, because it holds the safety rules; a delegated session follows its brief instead.
 Tool: node "/plugin/bin/devflow-state"
 
 This session was launched non-interactively. The owner's instruction before leaving, recorded as the reason for

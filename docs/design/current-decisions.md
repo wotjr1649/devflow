@@ -46,17 +46,10 @@ guarantees the previous session's identifier and its end.
 and verification from a separate viewpoint.
 Implementation is delegated when there is a reason to protect the main session's context, such as workload or an
 unattended run, and parallel writes are used only when files do not overlap and interfaces are fixed. The devflow
-skill's Execution modes set the conditions per mode ([why](../specs/orchestration.md#execution-modes)). Models and effort are chosen to fit the role and
-the evidence, but the user chooses the main model. Roles whose results the main session judges again, such as
-exploration and summarizing, go to the cheapest family (haiku, luna), and promotion within the same model is done
-through the call's effort. fable and astra are not used because their token cost is high. Codex mechanical
-implementation, execution verification and per-task review go to terra, which costs half of sol and is close to sol on
-coding-agent benchmarks; hard judgment and security review stay on sol.
-In side-by-side trials on past work, terra produced the same results as sol in all three roles at lower cost
-([host-facts](../research/host-facts.md)).
-With briefs missing decisions, both models silently filled unstated gaps, so that risk is prevented not by model
-promotion but by the main session settling the behavior in the brief.
-Role text and perspectives live in the skill's roles reference, and every brief carries the role's body and one
+skill's Execution modes set the conditions per mode ([why](../specs/orchestration.md#execution-modes)). The host supplies
+model and effort defaults unless the user gives a supported override. A scoped brief and independent evidence carry
+across model changes. Past model comparisons are recorded in [host-facts](../research/host-facts.md).
+Role text and perspectives live in the skill's Change reference, and every brief carries the role's body and one
 perspective on both hosts, so the skill depends on no agent name or file (#157). The plugin ships no agent definitions
 (#159): Claude Code runs every role on `general-purpose`, Codex on `spawn_agent`, so each host has one delegation path.
 The owner accepted the loss of the controls only a Claude definition gave - the reviewer's read-only tools, the
@@ -106,21 +99,17 @@ Keeping the definitions as shells keeps those limits but a second delegation pat
 report and redo route, for controls the comparison did not show to matter. Passing the subagent a path
 to its role text instead of the text would shrink briefs but put the role text below the brief, beside tool output.
 
-**Revisit when.** Revisit routes beyond the table and promotion (hook enforcement, declarative routes) when promotion
-recurs in real cycles or the same role's lack of quality is confirmed by review evidence two or more times, or when in
-Codex the table's model is not applied and results differ. If terra mechanical implementation is repeatedly promoted to
-sol in the ledger, or the final review catches defects missed by terra per-task review two or more times, that role goes
-back to sol. Revisit whether to add Workflows to the execution modes when they are used repeatedly within devflow cycles
+**Revisit when.** Revisit routing when independent evidence confirms recurring gaps in a role or when the host cannot
+honour an explicit override. Revisit whether to add Workflows to the execution modes when they are used repeatedly within devflow cycles
 and their results need to be recorded in the ledger. Revisit agent definitions when an after-check finds a delegated
 agent's change or outside effect, when an unattended implementer runs away within one task, or when a call or spawn can
 set tool limits.
 
 ## Entry points and stages
 
-**Choice and reason.** One lifecycle skill, `devflow`, is the only entry point. It takes new work, continuation, stage
-transitions, review, PR and merge, cleanup and handoff in repositories with `.devflow.json`, and its SKILL.md links
-each of the eleven stage references in `skills/devflow/references/` directly. Repositories without `.devflow.json`
-get no lifecycle skill at all; that compatibility loss is accepted.
+**Choice and reason.** One lifecycle skill, `devflow`, is the entry point for tracked work in repositories with
+`.devflow.json`. It also supports consequential changes and handoffs with local records in other repositories.
+SKILL.md links Change, Resume, and Delivery directly. Ordinary standalone edits follow the project's normal workflow.
 One description decides invocation, so no two lifecycle descriptions compete for the same request. Each reference is
 one level from SKILL.md and finishes its procedure without reading another, so no step depends on a second hop. After
 compaction a host reattaches only the start of an invoked skill body, so the router puts scope, Issue I/O and the stop
@@ -146,7 +135,7 @@ independent skills shipped with the plugin
 (list in [overview](overview.md#components)). Lifecycle references and specs do not invoke or point to these skills and state
 the needed actions directly, and the skill bodies do not mention devflow either. This keeps them usable as they are in
 repositories without `.devflow.json`, and changing one side does not change the other side's contract. Devflow-specific
-handoff rules are owned by [sessions](../../skills/devflow/references/sessions.md).
+handoff rules are owned by [sessions](../../skills/devflow/references/resume.md#handoff).
 Being in the same list, they can be invoked during the lifecycle through description matching, and this is not a
 contract. As an exception, a resume-prompt request in a devflow repository lets the router and the prompt-writing skill
 be invoked together. They complement each other: the writing skill writes the text, and the router adds the handoff

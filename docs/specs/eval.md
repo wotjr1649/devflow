@@ -20,8 +20,9 @@ plugin.
 - Worth running when: the invocation fields in `skills/*/SKILL.md` frontmatter (`name`, `description`, `when_to_use`,
   `paths`, `disable-model-invocation`, `user-invocable`) changed, a skill was added, removed or renamed, or
   `evals/trigger/` changed.
-- Results do not change when: only skill bodies, references, hooks, agents or AGENTS.md changed. The host decides
-  automatic invocation from the skill list alone ([host-facts](../research/host-facts.md)).
+- Keep plugin discovery and project behavior separate. The tool's isolated plugin arm does not load project
+  instructions. For a routing change in `AGENTS.md`, its imports, or hooks that supply context, also compare fresh
+  native sessions with the actual project configuration. Record selection, reference reads and the outcome separately.
 - The Skill grader does not count toward the score in a 2-arm run, so run with `--ablation none`. The verdict, excluding
   runs that errored, is a trigger rate of 80% or more and a false-positive rate of 10% or less.
 

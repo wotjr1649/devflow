@@ -17,7 +17,7 @@ GitHub Issues track work.
 | changing layout, installation or hooks | `docs/specs/repository.md`, `docs/specs/hooks.md` |
 | preparing or testing a development plugin | `docs/local-development.md` |
 | clarifying intent or changing stage transitions | `skills/devflow/SKILL.md`, then `docs/specs/lifecycle.md` for why |
-| changing execution modes, delegation or models | `skills/devflow/SKILL.md` and its build reference, then `docs/specs/orchestration.md` for why |
+| changing execution modes, delegation or models | `skills/devflow/references/change.md`, then `docs/specs/orchestration.md` for why |
 | changing the trigger eval | `docs/specs/eval.md` |
 | revisiting a design choice | `docs/design/current-decisions.md` |
 | relying on host behavior | `docs/research/host-facts.md`; if local behavior differs, `docs/research/sources.md` |
@@ -38,8 +38,21 @@ node --test --test-timeout=120000 tests/*.test.js
 
 Fix failing tests without weakening valid ones; change a test only when the requirement or its expectation changed.
 For setup and integration gates, follow `docs/specs/repository.md`; for branch and worktree cleanup,
-`skills/devflow/references/cleanup.md`.
+`skills/devflow/references/delivery.md#cleanup`.
 Hook setup requires explicit instruction.
+
+## Assigned handoffs
+
+For operator-assigned changes, run `node bin/devflow-state change-check build` before opening work documents or the
+diff for implementation. Use `plan` for planning and independent pre-build document audit, `review` for review
+after implementation, and `resume` for status. Run the command alone and pass a requested change ID.
+Status does not rerun tests. Report any `buildReason` from a successful status check.
+At handoff, record actual checks and review in the [assigned evidence record](docs/specs/documents.md#evidence-for-an-assigned-change).
+For an assigned change, load the development workflow skill before implementation, independent review, status
+checks or design approval checks for planning.
+Give routine answers directly.
+When a plan-only request hits an approval hold, report its reason without checking other stages or opening work
+documents.
 
 ## Language
 
@@ -72,6 +85,5 @@ criteria from confirmed requirements.
 
 ## Gotchas
 
-- Project instructions live only here. A project or parent `CLAUDE.md`, `.claude/CLAUDE.md` or
-  `CLAUDE.local.md` suppresses AGENTS.md in Claude Code; global `~/.claude/CLAUDE.md` is exempt.
-  Codex still reads AGENTS.md.
+- Project instructions live here. `CLAUDE.md` imports this file so fresh Claude Code sessions receive the same rules.
+  Codex reads this file directly.

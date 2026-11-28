@@ -1,11 +1,9 @@
 # Common hook contract
 
-Sets SessionStart, Stop and SessionEnd shared by both hosts, along with input reading and session release.
-Issue I/O is set by [issues](issues.md), and the ledger and the continue and release conditions by [ledger](ledger.md).
+Shared events, input and release. See [issues](issues.md) for Issue I/O and [ledger](ledger.md) for continuation and release.
 
 ## Common contract of both hosts
 
-The following is a contract the product must meet; current session passing does not meet it yet.
 Claude Code and Codex share one definition in `hooks/hooks.json` and one entry point and policy in
 `hooks/devflow-hook.js`.
 There are no host-specific event registrations, card, continue or release policies, or file, setting or environment
@@ -38,19 +36,25 @@ the target host's nested scenario.
 
 ## Registered events
 
-`hooks/hooks.json` registers only the following three events.
-
 | Event | Action |
 |---|---|
-| SessionStart (`startup`, `resume`, `clear`, `compact`) | Injects the resume card and shares the session id. A card failure shows as a reason, and no state is inferred |
+| SessionStart (`startup`, `resume`, `clear`, `compact`) | For configured work, injects a resume card and shares the session id. The recorded stage is data. A card failure shows a reason and grants no Tool. For local assignments, `startup` routes drafting and independent document audits to the skill. Other sources remind the session to recheck its stage and reference |
+| UserPromptSubmit | Routes an assigned document revision to its file and stage, a combined brief to drafting and audit, or an explicit read-only release readiness check to Delivery |
+| PreToolUse | For an operator-assigned single-document revision, blocks native writes to any other path, batch moves, and delegation or MCP calls. Claude shell tools are limited to the standalone stage check. Codex shell permissions remain the host's responsibility |
 | Stop | When its own Issue's unattended work is open, this session switched or reattributed it, and nothing is waiting, asks to continue at most 2 times per task. The count is added under the ledger lock, and it stops on an error or a lock conflict |
 | SessionEnd | Releases only the input session from the session records of every Issue. It does not wait for the lock and preserves other sessions' records |
 
-PreToolUse and PostToolUse are not registered. The hooks do not block Issue writes or edits to test files, profiles or
-the ledger, do not analyze shell commands or HTTP, GraphQL or MCP input, and create no block records or post-edit doctor
-audits.
+Outside an assigned revision the tool hook stays quiet. During a revision it supplies no permission grants. Claude
+uses the operator's standalone `node bin/devflow-state`, `node devflow/bin/devflow-state` or `devflow-state` invocation
+at the root. From a subdirectory the hook permits the exact stage command using the packaged CLI instead. Use host
+sandbox permissions for any other execution surface. PostToolUse is unregistered.
 The Issue public filter and the refusal of writes in autonomous mode through `devflow-state` are that CLI's behavior, not
 enforcement by the hooks.
+
+Assignment lookup starts from the canonical local session directory. In Git, only the nearest worktree or repository
+boundary can supply the assignment. In Git-free directories, the nearest valid root-bound record applies. Child-folder
+markers cannot replace a Git worktree's assignment. The standalone check verifies Git at that root. Native relative
+tool paths resolve from the session directory and must match the assigned file at the root.
 
 ## Input and safe file reads
 

@@ -1,38 +1,31 @@
 # Change
 
-Done when verified. Analysis and review end at findings.
+Done when verified. Analysis/review stop at findings.
 
 ## Discover
-Compare options/evidence. Ask blockers. Define spike question/exit.
-
+Weigh options/evidence; clarify blockers.
 ## Start
-Tracked build needs authorized Issue Tool, repo/worktree/branch/BASE, occupancy and dirty/ignored checks. Read back Issue creation or sub-issue links before retry. Bind ledger scope/checks.
-
+Tracked: verify repo/worktree/branch/BASE/occupancy; bind ledger scope/checks. Confirm Issue/sub-issue creation before retry.
 ## Design and plan
-Approve intent (Issue or assigned `intent.md`), then `spec.md`, then `plan.md`. In `docs/changes/<id>/`, link plan → spec → intent. Record contracts, decisions, risks, dependencies and proof. Order overlaps into verifiable slices. Edit assigned revision only. Before plan approval, independently audit contracts, architecture, complex plans and trust boundaries read-only. Operator sets `auditRequired` and records verdict/binding. Trace requirements, preserved behavior and regressions. Resolve HOLD, reaudit, reapprove before build. Small unassigned work uses agreed scope/checks and an existing note.
-
+Link `plan.md` → `spec.md` → Issue/`intent.md` in `docs/changes/<id>/`. Log contracts/decisions/risks/deps/proof; order verifiable overlaps. Edit assigned revision only. Before plan approval audit independently, read-only: contracts/architecture/complex plans/trust boundaries. Trace requirements/preservation/regressions. Operator sets `auditRequired`/verdict/binding. HOLD: resolve, reaudit, reapprove before build. Small unassigned: agree scope/checks, reuse note.
 ## Execution modes
-| Mode | When |
+| Mode | Work |
 |---|---|
-| M0 | Simple edit preserving contracts, outside trust boundaries. |
-| M1 | Default: main builds, verifies, gets review. |
-| M2 | Large/context-heavy/unattended. One implementer. |
-| M3 | Stable contracts, disjoint writes. Claude `isolation: "worktree"`; otherwise serial. |
+| M0 | Simple, outside trust boundaries, contracts intact |
+| M1 | Default: main builds/checks; get review |
+| M2 | Large/context-heavy/unattended: one worker |
+| M3 | Fixed contracts, disjoint writes; Claude `isolation: "worktree"` or serial |
 
-Record `runMode`. Main owns decisions/Issue/ledger/integration. Review M2/M3 first; verify combined acceptance.
-
+Set `runMode`. M2/M3: review, integrate, verify joint acceptance.
 ## Build and verify
-Track `task {current,total}`, `base`, `lastCommit`. Advance after proof and commit. Outside build/verify current > total. Reopen/reset progress for fixes. Reproduce first. Log command/revision/scope/result. Rerun affected/required checks. Change approach on repeat failure.
-
+Track `task {current,total}`/`base`/`lastCommit`; advance on proof+commit, current > total outside build/verify. Reopen/reset fixes. Reproduce first; log command/revision/scope/result; adapt if repeated.
 ## Delegation
-Claude `general-purpose`, Codex `fork_turns: "none"`. Use host defaults for model and effort unless the user overrides. English brief: role, task, Issue, BASE, files/scope, interfaces, ignored inputs, criteria, check/output. Delimit data. No worker publication, Issue writes or redelegation. Require approval for dependency/test changes.
+Claude `general-purpose`, Codex `fork_turns: "none"`; host defaults for model and effort unless the user overrides. English brief: role/task/Issue/BASE/scope/files/interfaces/ignored inputs/criteria/check/output; delimit data. No publish/Issue writes/redelegation; require dependency/test approval.
 
-Reserve `running <issue> add <label>` before precheck. Tracked reads: `delegation-check before`/`after`, same token, no Git/ledger writes between. Failed/unknown precheck blocks launch. Local drift/UNVERIFIED voids result and holds Git/card. Remote change/skip/unknown holds proof and unattended work. Retry `after` with original token.
+Before precheck reserve `running <issue> add <label>`. Tracked reads: `delegation-check before`/`after`; same token on retry, no Git/ledger writes between. Failed/unknown precheck blocks launch. Local drift/UNVERIFIED voids result, holds Git/card. Remote diff/skip/unknown holds proof/unattended.
 
-M3 workers leave Issue/ledger alone, fast-forward only to BASE, return task commit. Integrate singly after authority/base/interface/proof checks. Workers edit only assigned files and run stated checks. Report `DONE`, `DONE_WITH_CONCERNS`, `NEEDS_DECISION` or `BLOCKED` with executed proof and limits.
-
+M3: ledger read-only; fast-forward only to BASE; return commit. Integrate singly after authority/base/interface/proof. Workers edit only assigned files and run stated checks; report `DONE`/`DONE_WITH_CONCERNS`/`NEEDS_DECISION`/`BLOCKED`, executed proof and limits.
 ## Review
-Give independent read-only reviewers and M1+ verifiers criteria, commands, baseline/diff, dirty/ignored inputs and contracts. Omit author's verdict. Check task acceptance and preservation of existing behavior and checks separately. Flag lost behavior, weaker assertions and disabled checks. Check callers/authority. Add a focused review for high risk. Report location, impact, executed proof and limits. Reverify/rereview fixes.
-
+Brief independent read-only reviewers/M1+ verifiers: criteria/commands/base/diff/dirty+ignored inputs/contracts; omit verdict. Check task acceptance and preservation of existing behavior and checks separately. Flag losses/weaker or disabled checks. Check callers/authority; focus high risk. Report location/impact/proof/limits; reverify/rereview.
 ## Learn
-Diagnose. Link approved follow-up to intent and regression proof. Record lessons in owning tests/contracts.
+Diagnose. Link approved follow-up to intent/regression proof; log lessons in tests/contracts.

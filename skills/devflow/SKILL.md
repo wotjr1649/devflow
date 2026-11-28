@@ -1,20 +1,21 @@
 ---
 name: devflow
-description: "Use when working on consequential changes, intent/spec/plan, tracked Issues, audits, handoffs, assigned status, incidents, PR, merge or deployment readiness, cleanup or permissions. Skip routine fixes and general advice."
+description: "Use when handling consequential changes, intent/spec/plan, tracked Issues, audits, handoffs, assigned status, incidents, PR, merge or deployment readiness, cleanup or permissions. Skip routine fixes and general advice."
 ---
 
 # Devflow
 
 ## Stages and paths
+Spike: question/exit. Bounded: brief design. Approve intent → spec → plan; all three for architecture/shared contracts. Build, verify, review, ship.
 
-Spike feasibility; briefly design bounded work. Approve intent/spec/plan for architecture or shared contracts. Build, verify, review, ship.
+For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use returned paths/proof. Hold on failure. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` after build.
 
-For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass requested ID. Use returned paths/evidence. `start` for intent, `design` for spec, `plan` for plans/pre-build audit, `build` for implementation, `resume` for status, `review` after build. Hold dependents on failure.
+- [Resume](references/resume.md) alone for status/mode switch/interruption/unchanged continuation. After ready build read before records/edits; edit only approved files.
+- [Change](references/change.md) for new work/docs/plans/branches/decisions/delegation/incidents/review, before assigned records.
+- [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Before commits/external writes/cleanup; reconcile uncertain effects here.
 
-- [Resume](references/resume.md) alone for unchanged continuation, status, interruption or mode switch and immediately after a ready build before records or edits. Edit only approved files.
-- [Change](references/change.md) before new work, documents, planning, branch setup, material decisions, delegation, incidents or independent review. For assigned documents/audits, read it before returned records. Cards do not assign work.
-- [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Read before commits, external writes, cleanup or reconciling uncertain effects.
+On scope change/compaction/restart, reopen earliest invalid stage/ref. Check target/authority/revision/hashes/dirty+ignored inputs. Verify changes/preservation. Rerun affected/required checks except status. Skip/weaken/remove only with approved equivalent checks.
 
-After scope change, compaction or restart, reopen the earliest invalidated stage and read its reference. Verify changed and preserved behavior. Require approved equivalent coverage to weaken, skip or remove checks. Track stage/decisions/blockers in the Issue, progress/proof in the ledger.
+Main owns decisions/integration/Issue/ledger. Issue: intent/stage/decisions/blockers; ledger: tasks/blockers/private proof; plan: scope/Git. Unattended: defer external effects; log Issue/push/integration deferrals.
 
-For Issue I/O, require the Tool from the user or a valid host card ending in a `Tool:` line. Never search for tools. Reconcile truncation. Hold tracked builds without a valid card, target or base. Use approved local records.
+For Issue I/O, require the Tool from the user or a valid host card ending in a `Tool:` line. Never search for tools. Reconcile truncation. Tracked build needs valid card/target/base; cards do not assign. Use approved local records.

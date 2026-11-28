@@ -1,6 +1,6 @@
 ---
 name: decision-interview
-description: Use when interviewing the user, asking the next question on an unresolved decision, resuming from a decision record, or asked to challenge a proposal. Skip settled choices, routine clarification, review and execution.
+description: Use when interviewing, resuming from a decision record, or asked to challenge a proposal. Load before asking even one question on an open choice. Skip settled choices, routine clarification, review and execution.
 ---
 
 # Decision interview

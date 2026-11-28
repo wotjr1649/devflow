@@ -2486,6 +2486,12 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
         check.arch !== process.arch || (verification.status && !fresh?.has(check.id)))) status = 'stale'
     checks.push({ id: check.id, command: check.command, status, ...(status === 'current' ? { exitCode: check.exitCode } : {}) })
   }
+  // An input can change between building the plan and checking the recorded evidence.
+  const invalidated = new Set(checks.filter(check => check.status !== 'current').map(check => check.id))
+  if (verification.reuse?.some(id => invalidated.has(id))) {
+    verification.reuse = verification.reuse.filter(id => !invalidated.has(id))
+    verification.run = record.verification.map(({ id }) => id).filter(id => !verification.reuse.includes(id))
+  }
   const review = receipt.review
   const reviewStatus = ['no-findings', 'findings'].includes(review?.verdict) ? checkInputs(review.inputs) : 'unknown'
   return { ...unknown, status: 'recorded', checks,

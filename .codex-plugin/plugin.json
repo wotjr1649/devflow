@@ -17,6 +17,18 @@
     "longDescription": "devflow supports consequential changes and handoffs through Change, Resume, and Delivery. In repositories with a .devflow.json, it resumes Issue-tracked work, delegates reads and checks to fresh-context agents, and follows the lifecycle from discovery to branch cleanup. Lifecycle hooks inject the resume card, continue autonomous work within task limits, and release sessions when they end. Four independent skills ship alongside: decision-interview, write-prompts, audit-prompts and agent-instruction-design.",
     "developerName": "wotjr1649",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Read", "Write"]
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/wotjr1649/devflow",
+    "privacyPolicyURL": "https://github.com/wotjr1649/devflow/blob/2b05b840c57d1caba94d4b30d36b3b8416552b0c/docs/policies.md#privacy-and-data-handling",
+    "termsOfServiceURL": "https://github.com/wotjr1649/devflow/blob/2b05b840c57d1caba94d4b30d36b3b8416552b0c/docs/policies.md#terms-of-use",
+    "defaultPrompt": [
+      "Check the status and next action for an assigned change.",
+      "Review PR readiness without making changes.",
+      "Check which recorded verification results can be reused."
+    ]
   }
 }

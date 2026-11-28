@@ -229,6 +229,7 @@ test('assigned review reuses only complete matching successful checks after a co
   const before = f.check('review').evidence
   const decide = () => f.check('review').evidence.verification
   assert.deepEqual(before.verification.run, ['http', 'syntax'])
+  assert.equal(f.check('review').next, undefined, 'missing evidence cannot finish a handoff')
   assert.deepEqual(f.check('resume').evidence.verification, before.verification)
   const proof = { id: f.record.id, binding: before.binding, verificationBasis: before.verification.basis,
     checks: f.record.verification.map((policy, index) => ({
@@ -240,8 +241,11 @@ test('assigned review reuses only complete matching successful checks after a co
   const save = () => fs.writeFileSync(target, JSON.stringify(proof))
   save()
   assert.deepEqual(decide().reuse, ['http', 'syntax'])
+  assert.match(f.check('review').next, /For a verification-only handoff, report the reused IDs and that no checks ran/)
+  assert.match(f.check('review').next, /wider request, known drift, or requested rerun/)
   fs.writeFileSync(path.join(f.root, 'tests/new.js'), 'another test')
   assert.deepEqual(decide().run, ['http'])
+  assert.equal(f.check('review').next, undefined, 'a changed test requires normal routing')
   fs.unlinkSync(path.join(f.root, 'tests/new.js'))
   assert.deepEqual(decide().run, [])
   proof.checks[0].command += ' --test-only'
@@ -261,6 +265,7 @@ test('assigned review reuses only complete matching successful checks after a co
   f.record.contracts[0].sha256 = hashFile(f.contract).sha256
   f.persist()
   assert.equal(f.check('review').evidence.status, 'stale')
+  assert.equal(f.check('review').next, undefined, 'a stale contract binding requires normal routing')
   assert.deepEqual(decide().run, ['http'])
   assert.deepEqual(decide().reuse, ['syntax'])
   f.record.approvals.intent.by = 'next approver'
@@ -346,6 +351,48 @@ test('verification rechecks the affected inputs, execution options and environme
   f.record.verification[0].environment = ['GITHUB_TOKEN']
   f.persist()
   assert.deepEqual(decide(), { status: 'invalid' })
+})
+
+test('an input that changes while checking evidence moves its check back to run', t => {
+  const f = fixture(false)
+  const names = ['changed.js', 'unchanged.js']
+  const original = 'const value = 1;\n'
+  for (const name of names) fs.writeFileSync(path.join(f.root, name), original)
+  f.record.verification = names.map(name => ({
+    id: path.basename(name, '.js'), command: 'node --check ' + name, paths: [name],
+  }))
+  f.persist()
+  const before = f.check('review').evidence
+  const receipt = path.join(f.root, before.path)
+  fs.mkdirSync(path.dirname(receipt), { recursive: true })
+  fs.writeFileSync(receipt, JSON.stringify({
+    id: f.record.id, binding: before.binding, verificationBasis: before.verification.basis,
+    checks: f.record.verification.map(({ id, command, paths }) => ({
+      id, command, exitCode: 0, node: process.version, platform: process.platform, arch: process.arch,
+      inputs: paths.map(name => checkInput(f.root, name)),
+    })),
+  }))
+  assert.match(f.check('review').next, /For a verification-only handoff/)
+
+  const changed = path.join(f.root, names[0])
+  const open = fs.openSync
+  for (const stage of ['build', 'resume', 'review']) {
+    fs.writeFileSync(changed, original)
+    let reads = 0
+    const mock = t.mock.method(fs, 'openSync', (file, flags, ...args) => {
+      if (file === changed && typeof flags === 'number' && ++reads === 2) {
+        fs.writeFileSync(changed, 'const value = 2;\n')
+      }
+      return open(file, flags, ...args)
+    })
+    let result
+    try { result = f.check(stage) } finally { mock.mock.restore() }
+    assert.equal(reads, 2, stage)
+    assert.equal(result.evidence.checks[0].status, 'stale', stage)
+    assert.deepEqual(result.evidence.verification.reuse, ['unchanged'], stage)
+    assert.deepEqual(result.evidence.verification.run, ['changed'], stage)
+    if (stage === 'review') assert.equal(result.next, undefined, 'a stale check cannot finish a handoff')
+  }
 })
 
 test('a malformed receipt cannot authorize reuse and oversized scopes explain reruns', () => {

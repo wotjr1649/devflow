@@ -15,8 +15,9 @@ model judgment.
 2. **Decisions and writes in one place, judgment support in many.** The main session writes, and subagents handle
    context protection and verification from a fresh viewpoint. Delegation widens only with evidence. Reason: [Execution
    and delegation](current-decisions.md#execution-and-delegation)
-3. **Work through instructions and review, with no blocking mechanisms.** Skills guide, hooks handle only resume and
-   sessions, review looks at defects and test changes, and CI blocks last with tests. Reason: [Instructions and
+3. **Guide work and enforce scoped boundaries.** Skills guide the workflow. Hooks route requests, manage sessions and restrict
+   tool calls during an assigned document revision. Host permissions govern the remaining execution surfaces. Independent review
+   checks behavior and test preservation, and CI enforces the final verification gate. Reason: [Instructions and
    protections](current-decisions.md#instructions-and-protections)
 4. **Short instructions.** A router skill and references, size budgets. The trigger eval is run optionally when
    invocation fields change ([eval](../specs/eval.md)).
@@ -31,7 +32,7 @@ model judgment.
 | Project AGENTS.md | Facts, commands, document map, boundaries | Loaded directly if there is no CLAUDE.md | Loaded | Guidance |
 | Skills | Procedures | Plugin `skills/` | Same folder | Guidance |
 | Agents | Isolated work | `general-purpose` with the brief | `spawn_agent` with the brief | Role limits are instructions; the main session's before-and-after check around each explorer and reviewer catches visible effects and is not isolation |
-| Hooks | Resume and sessions | `hooks/hooks.json` | `hooks/hooks.json` | Do not block. Only the resume card, unattended continuation and session release |
+| Hooks | Session state, request routing and assigned revisions | `hooks/hooks.json` | `hooks/hooks.json` | `PreToolUse` restricts tools during assigned document revisions. The host controls other execution |
 | Scripts | Ledger, Issue I/O, resume card | `bin/devflow-state` | Skills run it by path | Public text filter. Does not block posting that bypasses it |
 | git hooks, CI | Final gate | Common | Common | Deterministic |
 | eval | Regressions in skill invocation and stage behavior (optional) | `claude plugin eval`, skill-creator | No runner | Measurement |
@@ -68,8 +69,9 @@ Document format and budgets: [documents](../specs/documents.md).
   Models and effort follow the host or an explicit user override ([why](../specs/orchestration.md#models-and-effort)).
 - **Claude Workflows**: devflow does not ship them and does not keep them as an execution mode. The user runs them
   directly outside devflow ([execution modes](../specs/orchestration.md#execution-modes))
-- **Hooks**: resume card (SessionStart), continuation in unattended mode only (Stop), release when the session ends
-  (SessionEnd; if it does not run, expiry after 30 minutes).
+- **Hooks**: SessionStart for resume or assignment context, UserPromptSubmit for routing, PreToolUse for the assigned
+  document boundary, Stop for bounded unattended continuation, and SessionEnd for release. The [hook contract](../specs/hooks.md)
+  describes what each event can enforce.
   Pre-integration verification follows the integration method in [repository](../specs/repository.md#integration-and-ci).
 - **Scripts**: `devflow-state` handles the ledger, Issue I/O and the resume card. The BASE..HEAD diff file passed to review (`review-package`) is made with `git diff` by the devflow review reference.
 - **Templates and eval**: Issue intent, REVIEW.md, AGENTS.md, ignore and attributes blocks, trigger eval

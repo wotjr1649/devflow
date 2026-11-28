@@ -7,6 +7,7 @@ const fs = require('fs')
 const path = require('path')
 const tmpdir = require('./tmpdir')
 const { execFile, spawnSync } = require('child_process')
+const crypto = require('node:crypto')
 const state = require('../bin/devflow-state')
 
 const GITC = ['-c', 'init.defaultBranch=main', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', '-c', 'user.name=t',
@@ -44,6 +45,13 @@ test('assigned worktrees share reserved finding attempts without changing approv
   fs.mkdirSync(path.dirname(store), { recursive: true })
   fs.writeFileSync(store, JSON.stringify({ id: 'r-17', attempts: [] }))
   const assignments = []
+  const repro = ["const fs = require('node:fs')", "const assert = require('node:assert/strict')",
+    "if (process.env.FIXTURE_PRIVATE || process.env.NODE_OPTIONS) process.exit(3)",
+    "const input = fs.readFileSync('input.txt', 'utf8')",
+    "if (input === 'setup-error') fs.readFileSync('missing-fixture.cjs')",
+    "let outcome = 'passed'", "try { assert.equal(input, 'pass') } catch { outcome = 'reproduced' }",
+    "console.log(JSON.stringify({ finding: 'r-17', outcome }))",
+    "process.exitCode = outcome === 'reproduced' ? 1 : 0", ''].join('\n')
   for (const root of [wt, third]) {
     const directory = path.join(root, 'docs', 'changes', 'example')
     fs.mkdirSync(directory, { recursive: true })
@@ -55,13 +63,18 @@ test('assigned worktrees share reserved finding attempts without changing approv
     }
     const file = path.join(root, '.work', 'devflow', 'change.json')
     fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(path.join(root, 'repro.cjs'), repro)
+    fs.writeFileSync(path.join(root, 'input.txt'), 'pass')
     const body = JSON.stringify({ root, id: 'example', approvals, contracts: [],
       git: { common: path.join(main, '.git'), branch: git(root, 'branch', '--show-current') },
-      finding: { id: 'r-17', shared: true, attempts: [] } })
+      verification: [{ id: 'repro', command: 'node repro.cjs', paths: ['repro.cjs', 'input.txt'] }],
+      finding: { id: 'r-17', shared: true, attempts: [],
+        reproduction: { check: 'repro', sha256: state.hashFile(path.join(root, 'repro.cjs')).sha256 } } })
     fs.writeFileSync(file, body)
     assignments.push({ file, body })
   }
   const e = env('trial/finding')
+  e.vars = { FIXTURE_PRIVATE: 'synthetic', NODE_OPTIONS: '--invalid-test-option' }
   function call(root, ...args) {
     return JSON.parse(state.main(args, () => assert.fail('No stdin'), e, root).out)
   }
@@ -78,39 +91,86 @@ test('assigned worktrees share reserved finding attempts without changing approv
   assert.deepEqual(started.map(result => result.status).sort(), ['hold', 'reserved'])
   assert.equal(JSON.parse(fs.readFileSync(store, 'utf8')).attempts.length, 1)
   const winner = contenders[started.findIndex(result => result.status === 'reserved')]
-  assert.equal(write(winner.root, winner.id, '0').status, 'recorded')
+  assert.equal(write(winner.root, winner.id, 'check').status, 'recorded')
   assert.equal(status(wt).finding.failedAttempts, 0)
-  assert.equal(write(wt, 'one', '1').status, 'hold')
+  assert.equal(run(e, wt, ['finding-attempt', 'example', 'one', '1']).code, 2)
+  assert.equal(write(wt, 'one', 'check').status, 'hold')
   assert.equal(write(wt, 'one', 'start').status, 'reserved')
   assert.equal(write(third, 'one', 'start').status, 'already-pending')
   assert.equal(write(third, 'different', 'start').status, 'hold')
   assert.deepEqual(status(third).finding.pending, ['one'])
-  assert.match(write(third, 'one', '1').reason, /original worktree/)
+  assert.match(write(third, 'one', 'check').reason, /original worktree/)
   // Matching the branch name alone does not let a different worktree settle the reservation.
   git(third, 'symbolic-ref', 'HEAD', 'refs/heads/trial/finding')
   fs.writeFileSync(assignments[1].file, JSON.stringify({ ...JSON.parse(assignments[1].body),
     git: { common: path.join(main, '.git'), branch: 'trial/finding' } }))
-  assert.match(write(third, 'one', '1').reason, /original worktree/)
+  assert.match(write(third, 'one', 'check').reason, /original worktree/)
   git(third, 'symbolic-ref', 'HEAD', 'refs/heads/trial/third')
   fs.writeFileSync(assignments[1].file, assignments[1].body)
-  assert.equal(write(wt, 'one', '1').status, 'recorded')
+  const pending = fs.readFileSync(store, 'utf8')
+  const alternate = JSON.parse(assignments[0].body)
+  alternate.verification[0].environment = ['LANG']
+  fs.writeFileSync(assignments[0].file, JSON.stringify(alternate))
+  assert.match(write(wt, 'one', 'check').reason, /reproduction policy changed/)
+  fs.writeFileSync(assignments[0].file, assignments[0].body)
+  fs.writeFileSync(path.join(wt, 'input.txt'), 'setup-error')
+  assert.match(write(wt, 'one', 'check').reason, /did not establish/)
+  assert.equal(status(third).finding.failedAttempts, 0)
+  assert.equal(fs.readFileSync(store, 'utf8'), pending)
+
+  const moved = path.join(base, 'moved')
+  git(main, 'worktree', 'move', wt, moved)
+  const movedRecord = JSON.parse(assignments[0].body)
+  movedRecord.root = moved
+  const movedFile = path.join(moved, '.work', 'devflow', 'change.json')
+  fs.writeFileSync(movedFile, JSON.stringify(movedRecord))
+  assert.match(write(moved, 'one', 'check').reason, /original worktree/)
+  assert.match(write(moved, 'one', 'recover').reason, /operator finding recovery/)
+  const fingerprint = root => crypto.createHash('sha256').update(process.platform === 'win32' ? root.toLowerCase() : root).digest('hex')
+  movedRecord.finding.recovery = { attempt: 'one', fromWorktree: fingerprint(wt), toWorktree: fingerprint(third),
+    action: 'rebind', by: 'operator', reason: 'previous process and partial changes checked' }
+  fs.writeFileSync(movedFile, JSON.stringify(movedRecord))
+  assert.match(write(moved, 'one', 'recover').reason, /operator finding recovery/)
+  movedRecord.finding.recovery.toWorktree = fingerprint(moved)
+  const approvedMoved = JSON.stringify(movedRecord)
+  fs.writeFileSync(movedFile, approvedMoved)
+  assert.equal(write(moved, 'one', 'recover').status, 'recovered')
+  assert.equal(write(moved, 'one', 'recover').status, 'already-recovered')
+  fs.writeFileSync(path.join(moved, 'input.txt'), 'fail')
+  assert.equal(write(moved, 'one', 'check').status, 'recorded')
   const saved = fs.readFileSync(store, 'utf8')
-  assert.equal(write(third, 'one', '1').status, 'already-recorded')
-  assert.match(write(third, 'one', '0').reason, /conflicting/)
+  assert.equal(write(third, 'one', 'check').status, 'already-recorded')
+  assert.equal(run(e, third, ['finding-attempt', 'example', 'one', '0']).code, 2)
   assert.equal(fs.readFileSync(store, 'utf8'), saved)
   assert.equal(status(third).finding.failedAttempts, 1)
+  assert.equal(write(third, 'cancelled', 'start').status, 'reserved')
+  const abandon = JSON.parse(assignments[1].body)
+  abandon.finding.recovery = { attempt: 'cancelled', fromWorktree: fingerprint(third), toWorktree: fingerprint(third),
+    action: 'abandon', by: 'operator', reason: 'no check ran and partial effects reconciled' }
+  fs.writeFileSync(assignments[1].file, JSON.stringify(abandon))
+  assert.equal(write(third, 'cancelled', 'recover').status, 'abandoned')
+  assert.equal(write(third, 'cancelled', 'start').status, 'already-abandoned')
+  assert.deepEqual(status(moved).finding, { id: 'r-17', failedAttempts: 1, pending: [] })
+  fs.writeFileSync(assignments[1].file, assignments[1].body)
   assert.equal(write(third, 'two', 'start').status, 'reserved')
-  assert.equal(write(third, 'two', '1').finding.failedAttempts, 2)
-  assert.equal(status(wt).buildStatus, 'hold')
-  assert.equal(write(wt, 'three', 'start').status, 'hold')
-  for (const { file, body } of assignments) assert.equal(fs.readFileSync(file, 'utf8'), body)
-  const invalid = JSON.parse(fs.readFileSync(store, 'utf8'))
+  fs.writeFileSync(path.join(third, 'input.txt'), 'fail')
+  assert.equal(write(third, 'two', 'check').finding.failedAttempts, 2)
+  assert.equal(status(moved).buildStatus, 'hold')
+  assert.equal(write(moved, 'three', 'start').status, 'hold')
+  assert.equal(fs.readFileSync(movedFile, 'utf8'), approvedMoved)
+  assert.equal(fs.readFileSync(assignments[1].file, 'utf8'), assignments[1].body)
+  const valid = fs.readFileSync(store, 'utf8')
+  const legacy = JSON.parse(valid)
+  delete legacy.attempts[0].proof
+  fs.writeFileSync(store, JSON.stringify(legacy))
+  assert.match(status(moved).buildReason, /unverified/)
+  const invalid = JSON.parse(valid)
   invalid.attempts.push(invalid.attempts[0])
   fs.writeFileSync(store, JSON.stringify(invalid))
-  assert.match(status(wt).buildReason, /unsafe shared finding history/)
+  assert.match(status(moved).buildReason, /unsafe shared finding history/)
   fs.unlinkSync(store)
-  assert.match(status(third).buildReason, /missing or unsafe shared finding history/)
-  assert.equal(write(wt, 'three', 'start').status, 'hold')
+  assert.match(status(third).buildReason, /unsafe shared finding history/)
+  assert.equal(write(moved, 'three', 'start').status, 'hold')
   assert.equal(fs.existsSync(store), false)
 })
 
@@ -128,6 +188,10 @@ function env(branch) {
       if (cmd === 'git') {
         const r = spawnSync('git', args, { cwd: opts.cwd, encoding: 'utf8', env: cleanEnv, timeout: 10000 })
         return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' }
+      }
+      if (cmd === process.execPath) {
+        const r = spawnSync(cmd, args, { cwd: opts.cwd, env: opts.env, encoding: 'utf8', timeout: 10000 })
+        return { code: r.status ?? r.error?.code, stdout: r.stdout || '', stderr: r.stderr || '' }
       }
       if (cmd === 'gh' && args[0] === 'api') return ok(JSON.stringify({ data: { repository: { issue } } }))
       if (cmd === 'gh') return ok('https://github.com/o/r/issues/14#issuecomment-9\n')

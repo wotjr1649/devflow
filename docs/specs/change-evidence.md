@@ -74,11 +74,27 @@ on Windows). The shared file is private. Its ID must match the opted-in finding,
 must match its own assignment and prove its relationship to the main worktree. Missing, unsafe or unreadable
 history holds rather than starting over. This option applies to Git worktrees with a proven main worktree.
 
-Eligible workers use `finding-attempt <change-id> <attempt-id> start` before edits and the same command with the
-observed reproduction exit code in place of `start` afterward. Only `reserved` starts a new edit. Reuse of an ID
-reports the existing reservation or result without permitting another edit. Completing a pending attempt requires
-its original worktree path, branch and approved plan. Replaying an already
-recorded equivalent result from a sibling worktree is a no-op. A conflicting result holds. Confirm the prior process
-tree and partial effects before resuming any pending attempt. Only reserve a new ID when the build check permits it.
-The CLI serializes writes under a shared lock and updates the evidence atomically. Recording a passed reproduction
-does not approve a change or close a review finding. The writer leaves all assignments, approvals and source intact.
+Set `finding.reproduction` to `{ check, sha256 }` using an existing `verification` ID and the approved adapter file
+hash. The verification command is `node <repo-relative-js-file>` and its inputs include the adapter, reproduction
+assertions and affected code. The adapter runs the intended assertion and emits only one JSON object with `finding`
+and `outcome`. Use `reproduced` and exit 1 for the specific defect, or `passed` and exit 0 for its successful check.
+Setup errors, missing assertions, unrelated failures and interruption do not produce either outcome. The CLI invokes
+the approved Node file directly with the system execution environment and explicitly declared verification variables,
+excluding Node preload variables and unrelated credentials. The runner uses the command timeout. The declared input
+hashes and file set must match before and after the check. Logs stay private; only the check ID and input digest are
+kept with the result in the shared file. A legacy shared exit code without evidence holds for operator review.
+
+Workers use `finding-attempt <change-id> <attempt-id> start` before edits and `check` afterward. Only `reserved` starts
+a new edit. Reusing a terminal ID does not rerun the check. Completing a pending attempt requires its assigned
+worktree path, branch, approved plan and reproduction policy bound at reservation. If a run is inconclusive it stays
+pending without increasing the failure
+count. Only reserve a new ID when the build check permits it. The shared lock serializes the bounded check and file
+update. A passed reproduction does not approve a change or close a review finding.
+
+If the worktree moves, first confirm the previous process tree exited and reconcile its file effects. The operator
+updates the moved worktree's assignment for the same change, branch and approved plan and adds `finding.recovery` with
+`attempt`, `fromWorktree`, `toWorktree`, `action`, `by` and `reason`. The two worktree fields use the path digests above.
+Run `finding-attempt <change-id> <attempt-id> recover`. `rebind` authorizes the new path to complete the same attempt.
+`abandon` closes a reconciled reservation without a result or retry credit; the ID and reason are retained.
+For a pending legacy reservation without a reproduction binding, an authorized rebind records the current policy.
+The exact operation can be replayed without another write. The writer leaves operator assignments and approvals intact.

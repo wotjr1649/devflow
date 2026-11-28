@@ -52,6 +52,8 @@ test('document HOLD overrides plan approval and only a current independent READY
   f.persist()
   assert.match(f.check('build').reason, /document audit HOLD/)
   assert.equal(f.check('resume').status, 'ready', 'status is still read-only and available')
+  assert.equal(f.check('resume').buildStatus, 'hold')
+  assert.equal(f.check('resume').buildReason, f.check('build').reason)
   assert.equal(f.check('plan').auditBinding, f.record.audit.binding)
   delete f.record.audit
   f.persist()
@@ -89,11 +91,32 @@ test('a single document revision gates the other document stages and build', () 
   assert.match(f.check('plan').reason, /another stage/)
   assert.match(f.check('start').reason, /another stage/)
   assert.match(f.check('build').reason, /revision is still open/)
+  assert.equal(f.check('resume').buildReason, f.check('build').reason)
   f.record.contracts = []
   delete f.record.audit
   delete f.record.revision
   f.persist()
   assert.equal(f.check('build').status, 'ready', 'simple non-contract assignment can use the existing approvals')
+})
+
+test('an explicit audit requirement applies without contracts and is bound to the reviewed plan', () => {
+  const f = fixture(false)
+  f.record.contracts = []
+  f.persist()
+  const old = f.check('plan').auditBinding
+  f.record.auditRequired = true
+  f.record.audit.binding = old
+  f.persist()
+  assert.equal(f.check('resume').buildReason, f.check('build').reason)
+  assert.match(f.check('build').reason, /missing or stale independent document audit/)
+  f.record.audit.binding = f.check('plan').auditBinding
+  assert.notEqual(f.record.audit.binding, old)
+  f.persist()
+  assert.equal(f.check('build').status, 'ready')
+  assert.equal(f.check('resume').buildStatus, 'ready')
+  f.record.auditRequired = 'true'
+  f.persist()
+  assert.match(f.check('build').reason, /invalid audit requirement/)
 })
 
 test('a local assignment returns its own paths and the required next read without tying approval to HEAD', () => {
@@ -294,6 +317,35 @@ test('verification rechecks the affected inputs, execution options and environme
   f.record.verification[0].environment = ['GITHUB_TOKEN']
   f.persist()
   assert.deepEqual(decide(), { status: 'invalid' })
+})
+
+test('a malformed receipt cannot authorize reuse and oversized scopes explain reruns', () => {
+  const f = fixture(false)
+  const p = 'inputs/check.js'
+  fs.mkdirSync(path.join(f.root, 'inputs'))
+  fs.writeFileSync(path.join(f.root, p), 'check')
+  const command = 'node --check inputs/check.js'
+  f.record.verification = [{ id: 'syntax', command, paths: ['inputs/'] }]
+  f.persist()
+  const before = f.check('resume').evidence
+  const filename = path.join(f.root, before.path)
+  fs.mkdirSync(path.dirname(filename), { recursive: true })
+  const check = { id: 'syntax', command, exitCode: 0, node: process.version, platform: process.platform, arch: process.arch,
+    inputs: [{ path: p, sha256: hashFile(path.join(f.root, p)).sha256 }] }
+  const save = checks => fs.writeFileSync(filename, JSON.stringify({ id: f.record.id, binding: before.binding,
+    verificationBasis: before.verification.basis, checks }))
+  save([check])
+  assert.deepEqual(f.check('resume').evidence.verification.reuse, ['syntax'])
+  save([check, { id: 'incomplete' }])
+  const invalid = f.check('resume').evidence
+  assert.equal(invalid.status, 'unknown')
+  assert.deepEqual(invalid.verification.reuse, [])
+  assert.deepEqual(invalid.verification.run, ['syntax'])
+  save([check])
+  for (let i = 0; i < 32; i++) fs.writeFileSync(path.join(f.root, 'inputs', `${i}.js`), '')
+  const oversized = f.check('resume').evidence.verification
+  assert.deepEqual(oversized.run, ['syntax'])
+  assert.match(oversized.runReasons.syntax, /32 files/)
 })
 
 test('Git-free work confirms its hashes and declared shared contracts', () => {

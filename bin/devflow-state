@@ -2324,6 +2324,7 @@ function documentAuditBinding(record, planHash) {
   const contracts = record.contracts.map(({ path, sha256 }) => [path, sha256]).sort()
   return crypto.createHash('sha256').update(JSON.stringify([
     'document-audit', record.id, record.approvals.intent.sha256, record.approvals.spec.sha256, planHash, contracts,
+    ...(record.auditRequired ? ['audit-required'] : []),
   ])).digest('hex')
 }
 
@@ -2344,25 +2345,43 @@ function verificationInputs(scope, localAt) {
   const files = new Set()
   let visited = 0
   function visit(relative, directory) {
-    if (!evidencePath(relative) || ++visited > 64) throw new Error('invalid verification input')
+    if (++visited > 64) return 'scope exceeds 64 entries'
+    if (!evidencePath(relative)) return 'invalid verification input'
     const local = localAt(relative)
-    if (!local) throw new Error('missing verification input')
+    if (!local) return 'missing or unsafe verification input'
     const stat = fs.statSync(local)
     if (directory && stat.isDirectory()) {
-      for (const entry of fs.readdirSync(local, { withFileTypes: true })) visit(relative + '/' + entry.name, entry.isDirectory())
-    } else if (!directory && stat.isFile()) files.add(relative)
-    else throw new Error('invalid verification input type')
+      const entries = fs.opendirSync(local)
+      try {
+        for (let entry; (entry = entries.readSync());) {
+          const reason = visit(relative + '/' + entry.name, entry.isDirectory())
+          if (reason) return reason
+        }
+      } finally { entries.closeSync() }
+    } else if (!directory && stat.isFile()) {
+      files.add(relative)
+      if (files.size > 32) return 'scope exceeds 32 files'
+    } else return 'invalid verification input type'
   }
   try {
-    for (const input of scope) visit(input.replace(/\/$/, ''), input.endsWith('/'))
-  } catch { return null }
-  return files.size && files.size <= 32 ? files : null
+    for (const input of scope) {
+      const reason = visit(input.replace(/\/$/, ''), input.endsWith('/'))
+      if (reason) return { reason }
+    }
+  } catch { return { reason: 'verification inputs could not be enumerated' } }
+  return files.size ? { files } : { reason: 'scope has no files' }
+}
+
+function validReceiptInputs(inputs) {
+  return Array.isArray(inputs) && inputs.length > 0 && inputs.length <= 32 &&
+    inputs.every(input => evidencePath(input?.path) && typeof input.sha256 === 'string' && CHANGE_HASH.test(input.sha256)) &&
+    new Set(inputs.map(input => input.path)).size === inputs.length
 }
 
 function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
   if (!Array.isArray(required) || !required.length || required.length > 16) return { status: 'invalid' }
   const ids = new Set()
-  const reuse = [], run = [], fresh = new Set(), environments = {}
+  const reuse = [], run = [], fresh = new Set(), environments = {}, runReasons = {}
   for (const policy of required) {
     if (!evidenceId(policy?.id) || ids.has(policy.id) || !evidenceCommand(policy.command) ||
         !Array.isArray(policy.paths) || !policy.paths.length || policy.paths.length > 32 ||
@@ -2376,7 +2395,8 @@ function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
     if (environment) environments[policy.id] = environment
     const matches = receipt?.verificationBasis === basis ? receipt.checks.filter(check => check?.id === policy.id) : []
     const check = matches.length === 1 ? matches[0] : null
-    const files = verificationInputs(policy.paths, localAt)
+    const { files, reason } = verificationInputs(policy.paths, localAt)
+    if (reason) runReasons[policy.id] = reason
     const inputs = Array.isArray(check?.inputs) && check.inputs.length <= 32 ?
       new Map(check.inputs.map(input => [input?.path, input?.sha256])) : null
     const current = files && inputs?.size === files.size && check.inputs.length === inputs.size &&
@@ -2389,6 +2409,7 @@ function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
     else run.push(policy.id)
   }
   return { status: 'ready', basis, reuse, run, fresh,
+    ...(Object.keys(runReasons).length ? { runReasons } : {}),
     ...(Object.keys(environments).length ? { environments } : {}) }
 }
 
@@ -2403,7 +2424,12 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
   let receipt
   try { receipt = file && JSON.parse(smallFile(file, 32768)) } catch {}
   const validReceipt = receipt?.id === record.id && typeof receipt.binding === 'string' &&
-    CHANGE_HASH.test(receipt.binding) && Array.isArray(receipt.checks) && receipt.checks.length <= 16
+    CHANGE_HASH.test(receipt.binding) && Array.isArray(receipt.checks) && receipt.checks.length <= 16 &&
+    new Set(receipt.checks.map(check => check?.id)).size === receipt.checks.length &&
+    receipt.checks.every(check => evidenceId(check?.id) && evidenceCommand(check.command) &&
+      Number.isInteger(check.exitCode) && check.exitCode >= 0 &&
+      [check.node, check.platform, check.arch].every(value => typeof value === 'string') &&
+      (record.verification === undefined || validReceiptInputs(check.inputs)))
   const basis = crypto.createHash('sha256').update(JSON.stringify(['verification', record.id, approvals])).digest('hex')
   const { fresh, ...verification } = record.verification !== undefined ?
     verificationPlan(record.verification, validReceipt ? receipt : null, basis, localAt, verifies, vars) : {}
@@ -2411,20 +2437,12 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
   if (!validReceipt) return unknown
   if (receipt.binding !== binding) return { ...unknown, status: 'stale' }
 
-  const validInputs = inputs => Array.isArray(inputs) && inputs.length > 0 && inputs.length <= 32 &&
-    inputs.every(input => evidencePath(input?.path) &&
-      typeof input.sha256 === 'string' && CHANGE_HASH.test(input.sha256))
   const checkInputs = inputs => {
-    if (!validInputs(inputs)) return 'unknown'
+    if (!validReceiptInputs(inputs)) return 'unknown'
     return inputs.every(input => verifies(input.path, input.sha256)) ? 'current' : 'stale'
   }
-  const ids = new Set()
   const checks = []
   for (const check of receipt.checks) {
-    if (!evidenceId(check?.id) || ids.has(check.id) || !evidenceCommand(check.command) ||
-        !Number.isInteger(check.exitCode) || check.exitCode < 0 ||
-        [check.node, check.platform, check.arch].some(value => typeof value !== 'string')) return unknown
-    ids.add(check.id)
     let status = checkInputs(check.inputs)
     if (status === 'current' && (check.node !== process.version || check.platform !== process.platform ||
         check.arch !== process.arch || (verification.status && !fresh?.has(check.id)))) status = 'stale'
@@ -2488,10 +2506,12 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     const local = strictLocalPath(target)
     if (!local.ok || (!local.absent && !localAt(relative))) return hold('unsafe change artifact path')
   }
-  if (stage === 'build' && record.audit?.verdict === 'HOLD') return hold('independent document audit HOLD')
   const revisionStage = DOCUMENT_STAGES.get(record.revision)
+  let buildReason = record.audit?.verdict === 'HOLD' ? 'independent document audit HOLD' :
+    revisionStage ? 'document revision is still open' : null
+  if (stage === 'build' && buildReason) return hold(buildReason)
   if (record.revision !== undefined && !revisionStage) return hold('invalid document revision target')
-  if (stage === 'build' && revisionStage) return hold('document revision is still open')
+  if (record.auditRequired !== undefined && typeof record.auditRequired !== 'boolean') return hold('invalid audit requirement')
   if (revisionStage && ['start', 'design', 'plan'].includes(stage) && stage !== revisionStage) {
     return hold('document revision is assigned to another stage')
   }
@@ -2512,18 +2532,21 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     }
     if (!verifies(contract.path, contract.sha256)) return hold(`contract changed: ${contract.path}`)
   }
-  if (stage === 'build' && (record.contracts.length || record.audit !== undefined)) {
+  if (!buildReason && (stage === 'build' || stage === 'resume') &&
+      (record.contracts.length || record.auditRequired || record.audit !== undefined)) {
     const audit = record.audit
     if (audit?.verdict !== 'READY' || typeof audit.by !== 'string' || !audit.by.trim() ||
         audit.binding !== documentAuditBinding(record, record.approvals.plan.sha256)) {
-      return hold('missing or stale independent document audit')
+      buildReason = 'missing or stale independent document audit'
     }
   }
+  if (stage === 'build' && buildReason) return hold(buildReason)
   const planFile = stage === 'plan' ? localAt(artifacts.plan) : null
   const draftPlanHash = planFile ? hashFile(planFile)?.sha256 : null
   return { code: 0, out: JSON.stringify({ status: 'ready', id: record.id, stage,
     ...(stage === 'build' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening any returned work record or editing.' } : {}),
-    ...(stage === 'resume' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),
+    ...(stage === 'resume' ? { buildStatus: buildReason ? 'hold' : 'ready', ...(buildReason ? { buildReason } : {}),
+      next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),
     artifacts, intentExists: Boolean(localAt(artifacts.intent)),
     ...(draftPlanHash ? { auditBinding: documentAuditBinding(record, draftPlanHash) } : {}),
     contracts: record.contracts.map(entry => entry.path),

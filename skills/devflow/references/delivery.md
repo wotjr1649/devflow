@@ -1,19 +1,16 @@
 # Delivery
 
-Done when destination proof or its gap is recorded.
+Done when destination proof or gap is recorded.
 
-## Readiness and publication
-
-Read-only readiness checks target, revision, authority, review and preserved behavior. Require passing declared checks and approved assertions. When CI is required, bind proof to trusted repo/workflow, run/attempt, event and checkout. Missing, foreign, cancelled, skipped, stale or weakened proof holds integration.
+## Readiness
+Read-only: verify target, revision, authority, review, preserved assertions and passing declared checks. Bind CI to trusted repo/workflow, run/attempt, event, checkout. Missing/foreign/cancelled/skipped/stale/weakened proof holds integration.
 
 ## Ship
+Confirm authority and reviewed target/version before writes and read back after. Use reviewed artifact hashes/checks. Review M0 independently. Mark proven criteria only. Defer external effects unattended.
 
-Confirm the approved destination and reviewed version before writing, and verify both at the destination. For local artifacts, use reviewed hashes and local checks. Require independent review per policy, including M0. Check only proven criteria. Defer external effects unattended.
+Verify `local-merge`/`push-on-request` locally. For `pr-ci` refresh base/head/rules/CI/approvals/threads, require hosted head/merge proof, guard head. Use approved method; no bypass. Follow Issue policy. Keep partial scope open; reopen failures.
 
-When using Git integration, verify `local-merge` and `push-on-request` locally. For `pr-ci` refresh base, head, rules, CI, approvals and review threads. Require hosted head/merge proof and guard the expected head. Use the approved method without bypass. For Issue-tracked delivery follow project closing policy. Keep partial scope open and reopen failures.
-
-Confirm authority and current targets. Prefer conditional external writes. Read back delivery and record partial effects. Retry only after proven exit without effect or verified same-effect idempotency. For deployments, check artifact, environment, health and rollback.
+Prefer conditional writes. Log partial effects. Retry after proven exit without effect or verified same-effect idempotency. Check deploy artifact/environment/health/rollback.
 
 ## Cleanup
-
-Prove integration, identity, tip, owner, use, locks, submodules and staged/unstaged/untracked/ignored data. Keep protected, primary, active or uncertain targets. Preserve unique history/data and verify recovery. Readiness inventories only. If authorized, recheck, remove worktree normally, branch `-d`, then remote only at the same nonempty reviewed SHA. Avoid force, reset, clean and prune. Read back.
+Prove integration, identity/tip/owner/use/locks/submodules, staged/unstaged/untracked/ignored data. Keep protected/primary/active/uncertain targets. Preserve unique history/data and verify recovery. Readiness only lists. Recheck authorized removal: normal worktree removal, branch `-d`, remote only at reviewed nonempty SHA. No force/reset/clean/prune. Read back.

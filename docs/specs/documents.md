@@ -1,16 +1,11 @@
 # Document contract
 
-This spec sets the location, size, format and writing rules of the documents devflow creates and reads. Issue bodies,
-checkpoints and resume cards are set by [issues](issues.md), and the ledger by [ledger](ledger.md). Other documents do
-not restate these rules; they point to the relevant spec.
+This spec owns document location, size, format and writing rules. [Issues](issues.md) owns Issue bodies,
+checkpoints and resume cards. [Ledger](ledger.md) owns the ledger. Link to the owner for each rule.
 
-Each contract has one owner. The devflow skill (`skills/devflow/`) owns what the executor acts on: stage done
-conditions, paths, going back, milestones, execution modes, roles, the delegation brief, review and the fix loop, and
-where lessons go. Specs own what code, tests and developers rely on: tool input and output, Issue and checkpoint
-formats, ledger keys and storage, hooks, the card, packaging, CI, eval method and these document rules. Where the skill
-carries a copy of a spec-owned format (the state block and checkpoint labels), a test pins the copy to the spec. A spec
-explains a skill-owned rule and links to it; the skill never links to a spec, because the plugin's docs are not part of
-the skill a session reads. A conflict between the two kinds is a defect fixed in the same change.
+The skill owns executor decisions, including stages, work modes, delegation, review, fixes and lessons.
+Specs own tool, storage, hook, CI, packaging and evaluation contracts. Tests pin duplicated parser labels to
+their spec. Specs may link to the skill. Plugin sessions cannot rely on repository docs. Resolve conflicts together.
 
 ## One source of truth per artifact
 
@@ -48,17 +43,19 @@ the matching document stage and holds build until the operator clears the revisi
 tool for that file. The operator reviews the diff before clearing the assignment. Approvals and audit verdicts live
 in the assignment record, where an edited document invalidates matching evidence.
 
-For work with declared contracts, the operator records an independent pre-build document audit as
+For work with declared contracts or operator-set `auditRequired: true`, the operator records an independent pre-build document audit as
 `audit: { "by": "...", "verdict": "READY", "binding": "..." }` (or `HOLD`). The reviewer runs `change-check plan`
 after a plan exists and reports the returned `auditBinding` and verdict to the operator. The binding covers the
-three document hashes and the declared contract paths and hashes for that change. A recorded `HOLD` blocks build
-even with a matching plan approval. Missing, invalid or stale audit data also holds a build with declared contracts.
+three document hashes, the declared contracts and the explicit audit requirement. Set `auditRequired: true` for
+architecture, complex plans or trust-boundary work even when there are no declared contracts. A recorded `HOLD` blocks
+build even with a matching plan approval. Missing, invalid or stale required audit data also holds build.
 Only an operator attaches a new verdict to the reviewed binding. Reaudit changed inputs before building.
 
 Provide the exact trusted invocation in the handoff or project instructions loaded by both hosts. If Claude Code
 does not load the shared `AGENTS.md`, import it with `@AGENTS.md` in the project's `CLAUDE.md`.
 Run approved commands separately when the host grants permission for individual commands. For status-only requests,
-use `resume` without rerunning verification. Use `plan` before writing or updating a plan.
+use `resume` without rerunning verification. Its `buildStatus` and optional `buildReason` report implementation
+readiness separately from the status query. Use `plan` for plan edits and pre-build audit.
 
 Projects that want the skill to load for these requests can add this scoped rule to their shared `AGENTS.md`:
 
@@ -111,6 +108,7 @@ not approve a change, execute a stored command or replace the independent review
 For assigned work, the operator may declare required checks in the assignment's
 `verification` array as `{ id, command, paths }`. Use exact commands and complete input scopes.
 A path ending in / includes that directory's files recursively, including newly added files.
+Reuse requires a valid receipt. `runReasons` identifies input failures, including the 32-file or 64-entry limits.
 Include a shared contract in every check that depends on it. Record the returned
 `evidence.verification.basis` as the receipt's top-level `verificationBasis` when
 recording actual results. Build, resume and review return the same check IDs under `reuse` and `run`.

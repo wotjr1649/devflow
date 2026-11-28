@@ -44,8 +44,9 @@ Hook setup requires explicit instruction.
 ## Assigned handoffs
 
 For operator-assigned changes, run `node bin/devflow-state change-check build` before opening work documents or the
-diff for implementation. Replace `build` with `review` for independent review, `resume` for status or `plan` before
-writing a plan. Run the command alone and pass a requested change ID. Status does not rerun tests.
+diff for implementation. Use `plan` for planning and independent pre-build document audit, `review` for review
+after implementation, and `resume` for status. Run the command alone and pass a requested change ID.
+Status does not rerun tests. Report any `buildReason` from a successful status check.
 At handoff, record actual checks and review in the [assigned evidence record](docs/specs/documents.md#evidence-for-an-assigned-change).
 For an assigned change, load the development workflow skill before implementation, independent review, status
 checks or design approval checks for planning.

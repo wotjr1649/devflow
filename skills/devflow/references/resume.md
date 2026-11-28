@@ -1,23 +1,15 @@
 # Resume
 
-Done when target, authority, evidence and the next action agree.
+Done when target, authority, proof and next action agree.
 
 ## Reconcile
-
-Verify current workspace, revision or local hashes and dirty/ignored inputs. Hold conflicts, stale proof and missing inputs. Reuse trusted runs when allowed and command, assertions, inputs and conditions match. Rerun affected or required proof. Report denied checks and retry only when capabilities change.
-
-### Tracked progress
-
-Issue owns intent/stage, ledger tasks and blockers, plan scope and Git applicability. Unknown stays unknown. Hold competing state/key writes until handoff. Append `note` and reread. Keep private evidence local. Task moves and post-ship cleanup/learning are ledger-only.
+Verify workspace/hashes/revision/dirty/ignored inputs. Report `buildReason`. Hold dependents on conflicts, stale proof or missing inputs. Reuse trusted proof on matching command/assertions/inputs/conditions. Rerun affected/required checks. Report denials; retry after capability changes. Issue owns intent/stage, ledger tasks/blockers, plan scope/Git. Mark unknowns. Hold competing state writes until handoff. Append `note` and reread. Keep proof private. Task moves/post-ship: ledger only.
 
 ## Recovery and parallel work
-
-Timeout alone proves no exit or authority to terminate. Confirm process/children exited and reconcile writes, commits, checks and worktrees before retry. Preserve uncertain or rejected effects and reservations. Continue independent work. Apply owned results once against current base/plan. Changed interfaces invalidate affected proof. Run `running <issue> done <label>` only after recovery.
+Timeout alone proves no exit, grants no kill. Verify process tree exit and reconcile writes/commits/checks/worktrees before retry. Keep uncertain/rejected effects and reservations. Continue independent work. Apply owned results once against current base/plan. Interface changes void affected proof. Then `running <issue> done <label>`.
 
 ## Handoff
-
-Finish checks, commits, records and workers. Preserve unresolved reservations. Hand off target, proof, unresolved effects and next action. For tracked work, only the confirmed owner runs `release <issue>` last. A child or uncertain owner leaves the registration in place.
+Finish checks/commits/records/workers. Pass target/proof/open effects/next action. Keep reservations. Confirmed owner runs `release <issue>` last.
 
 ## Unattended work
-
-Use `mode <issue> autonomous < reason` on explicit unattended intent and `mode <issue> interactive < reason` on return. Use reason as stdin. Proceed only as owner with an open task and no decisions, blockers or workers. Defer Issue writes, pushes and integration in notes. Approve new intent before updating criteria.
+Explicit intent only: `mode <issue> autonomous`, return to `interactive`; reason on stdin. Need owner/open task, no blockers/decisions/workers. Log deferred Issue writes/pushes/integration. Approve new intent before criteria edits.

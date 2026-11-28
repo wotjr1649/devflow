@@ -58,9 +58,10 @@ runs with a default 5-minute TTL; if waiting for user answers is frequent, consi
 
 ## Fix loop
 
-Analysis is split from fixing, because a fix made before the cause is known tends to cover only the symptom. Attempts
-and promotions are counted in ledger `notes`, not in `counts`, which holds only the Stop hook's `{continue}`. The
-procedure is the [build reference](../../skills/devflow/references/change.md#build-and-verify).
+Reproduce a failure before fixing it. The implementation brief caps repeated fixes for the same failing check. The
+main session records attempts in ledger `notes` and decides whether to change approach or report the blocker. The
+Stop hook tracks unattended continuations in `counts`. See [Build and
+verify](../../skills/devflow/references/change.md#build-and-verify) and [Delegation](../../skills/devflow/references/change.md#delegation).
 
 ## Review
 
@@ -102,10 +103,8 @@ the agent could start a program the agent planted. It is a tripwire, not isolati
 
 ### Promotion
 
-Promotion goes one step per task, decided by the main session and recorded in one ledger line; its conditions are in the
-[build reference](../../skills/devflow/references/change.md#build-and-verify). Routes outside it (hook enforcement, declarative
-routes) are on hold; the conditions to revisit them follow [revisiting routes and
-Workflow](../design/current-decisions.md#execution-and-delegation).
+The main session can change the execution mode when the task's scope and evidence warrant it. Record the reason in
+the ledger. Model and effort still follow the host or a supported user override.
 
 ## The two hosts
 

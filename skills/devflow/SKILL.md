@@ -6,17 +6,17 @@ description: "Use when handling consequential changes, intent/spec/plan, tracked
 # Devflow
 ## Stages and paths
 
-Spike: question/exit. Bounded: brief design. Approve intent → spec → plan (all: architecture/shared contracts). Build/verify/review/ship. Analysis/review: findings only.
+Spike: question/exit. Bounded: brief design. Approve intent→spec→plan (all: architecture/shared contracts). Build/verify/review/ship. Analysis/review findings only.
 
 For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use paths/proof; hold failures. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` post-build.
 
-Evidence-only: recorded + ready + empty `evidence.verification.run` → report reused IDs/no checks. Stop. Honor source reads, drift, reruns and independent review.
+Evidence-only: recorded + ready + empty `evidence.verification.run` → report reuse/no checks. Stop. Honor source reads/drift/reruns/independent review.
 
-- [Resume](references/resume.md) alone for status/mode switch/interruption/unchanged work. Ready build: read first, approved edits only.
-- [Change](references/change.md) for work/docs/plans/branches/decisions/delegation/incidents/review, before assigned records.
+- [Resume](references/resume.md) alone for status/switch/interruption/unchanged work. Status ends here. Ready build: read first, approved edits only.
+- [Change](references/change.md) for work/docs/plans/branches/decisions/delegation/incidents/code review before assigned records.
 - Read [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Before commits/external writes/cleanup. Reconcile uncertain effects.
 
-Scope change/compaction/restart: reopen first invalid stage/ref. Check target/authority/rev/hashes/dirty+ignored inputs and preservation. Rerun affected/required checks except status. Skips/weakening/removal need approved equivalents.
+Scope change/compaction/restart: reopen first invalid stage/ref. Verify target/authority/rev/hashes/dirty+ignored inputs, preservation. Rerun affected/required checks except status. Approved equivalents for skips/weakening/removal.
 
 Main owns decisions/integration/Issue/ledger. Unattended: defer external effects. Log Issue/push/integration.
 

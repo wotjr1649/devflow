@@ -10,7 +10,7 @@ Spike: question/exit. Bounded: brief design. Approve intent→spec→plan (all: 
 
 For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use paths/proof; hold failures. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` post-build.
 
-Evidence-only: recorded + ready + empty `evidence.verification.run` → report reuse/no checks. Stop. Honor source reads/drift/reruns/independent review.
+Verification-only: ready check plan → reuse its IDs, execute only authorized `run` checks, and report both. Recorded + ready + empty `run` → report reuse/no checks and stop. Honor source review, drift outside the check plan, and requested reruns.
 
 - [Resume](references/resume.md) alone for status/switch/interruption/unchanged work. Status: stop. Ready build: read first, approved edits only.
 - Read [Change](references/change.md) before records for docs/plans/drafts/work/branches/decisions/delegation/incidents/debugging/code review.

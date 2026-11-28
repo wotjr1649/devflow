@@ -10,4 +10,4 @@ Verify versions/hashes/checks; M0 independent review. Mark proven criteria only.
 
 Conditional writes preferred; read back/log. Retry: exit proof + (no effect or verified idempotency). Deploy: artifact/env/health/rollback.
 ## Cleanup
-Prove integration/identity/tip/owner/use/locks/submodules/tracked+untracked+ignored data. Keep protected/primary/active/uncertain targets and unique data/history; prove recovery. Readiness: list only. Recheck approved removal: normal worktree, branch `-d`, reviewed remote SHA only. No force/reset/clean/prune. Read back.
+Prove integration/identity/tip/owner/use/locks/submodules/index/worktree/untracked/ignored data. Keep protected/primary/active/uncertain targets + unique data/history; prove recovery. Readiness: list only. Recheck approved cleanup: normal worktree, branch `-d`, only reviewed remote SHA. No force/reset/clean/prune. Read back.

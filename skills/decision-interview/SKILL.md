@@ -7,7 +7,7 @@ description: Use when a consequential user-owned decision blocks work, when resu
 
 Follow live intent. Check relevant records or primary sources when missing facts could change the question. Distinguish facts, assumptions and proposals. Use permitted reads or authorized throwaway experiments. Defaults cover only low-risk, reversible choices in scope; silence gives no consent.
 
-Choose one decision that changes the outcome or next action. Ask one short question once. If asked for one question only, return it alone with any requested choices. Otherwise add grounded options, tradeoff, recommendation and revisit condition when useful. Wait before dependent work. Check the reply's scope and qualifications. Reopen only affected decisions when new evidence conflicts.
+Choose one decision that changes the outcome or next action. Ask one short question about that decision once. Treat independently answerable parts as separate decisions; ask only the next blocker. If asked for one question only, return it alone with any requested choices. Otherwise add grounded options, tradeoff, recommendation and revisit condition when useful. Wait before dependent work. Check the reply's scope and qualifications. Reopen only affected decisions when new evidence conflicts.
 
 If a reply is ambiguous or incomplete, clarify before treating it as acceptance. Ask in chat when a question tool is unavailable. Checkpoint open decisions before handoff or compaction. Before declaring ready, check for missing decisions, contradictions and plausible failure cases.
 

@@ -1,6 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
+const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
 const tmpdir = require('./tmpdir')
@@ -49,6 +50,117 @@ function fixture(gitMode = true, folder = tmpdir('change-check-')) {
   record.audit = { by: 'reviewer', verdict: 'READY', binding: check('plan').auditBinding }
   persist()
   return { root, record, directory, contract, persist, check, env }
+}
+
+for (const withGit of [false, true]) {
+  test(`verification-only report through the CLI in ${withGit ? 'a linked Git worktree' : 'a Git-free project'}`, () => {
+    const parent = tmpdir('direct-verification-')
+    const project = path.join(parent, 'project')
+    const primary = path.join(parent, 'primary')
+    function git(cwd, ...args) {
+      const result = spawnSync('git', ['-c', 'core.hooksPath=', '-c', 'commit.gpgsign=false',
+        '-c', 'user.name=Trial', '-c', 'user.email=trial@example.invalid', ...args],
+      { cwd, encoding: 'utf8', timeout: 15000, windowsHide: true })
+      assert.equal(result.status, 0, result.stderr || result.error?.message)
+      return result.stdout.trim()
+    }
+    if (withGit) {
+      fs.mkdirSync(primary)
+      git(primary, 'init', '-q')
+      git(primary, 'commit', '-qm', 'Fixture', '--allow-empty')
+      git(primary, 'worktree', 'add', '-qb', 'trial/example', project)
+      assert.ok(fs.statSync(path.join(project, '.git')).isFile())
+    } else fs.mkdirSync(project)
+
+    const f = fixture(withGit, project)
+    if (withGit) f.record.git.common = git(f.root, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    const source = path.join(f.root, 'source.cjs')
+    const adapter = path.join(f.root, 'verify.cjs')
+    const runs = path.join(f.root, 'runs.txt')
+    const original = 'module.exports = true\n'
+    fs.writeFileSync(source, original)
+    fs.writeFileSync(adapter, "require('node:assert/strict').equal(require('./source.cjs'), true)\n" +
+      "require('node:fs').appendFileSync('runs.txt', 'ran\\n')\n")
+    const verification = { id: 'suite', command: 'node verify.cjs', paths: ['source.cjs', 'verify.cjs', 'docs/specs/shared.md'] }
+    f.record.verification = [verification]
+    f.record.reviewPaths = ['source.cjs', 'verify.cjs']
+    f.persist()
+
+    const env = withGit ? process.env : {
+      ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH')),
+      PATH: path.join(parent, 'empty-path'),
+    }
+    if (!withGit) assert.equal(spawnSync('git', ['--version'], { cwd: f.root, env }).error?.code, 'ENOENT')
+    const launch = (...args) => spawnSync(process.execPath, args,
+      { cwd: f.root, env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+    const command = path.join(__dirname, '../bin/devflow-state')
+    const review = (...extra) => {
+      const result = launch(command, 'change-check', 'review', 'example', ...extra)
+      assert.ok([0, 1].includes(result.status), result.stderr || result.error?.message)
+      return { code: result.status, ...JSON.parse(result.status === 0 ? result.stdout : result.stderr) }
+    }
+    const scoped = () => review('--verification-only')
+    const fallback = () => {
+      const result = scoped()
+      assert.deepEqual(result, review(), 'the caller receives the original review or hold result')
+      return result
+    }
+    const start = review()
+    assert.equal(launch('verify.cjs').status, 0)
+    const receiptFile = path.join(f.root, start.evidence.path)
+    fs.mkdirSync(path.dirname(receiptFile), { recursive: true })
+    const receipt = JSON.stringify({ id: 'example', binding: start.evidence.binding,
+      verificationBasis: start.evidence.verification.basis,
+      checks: [{ id: verification.id, command: verification.command, exitCode: 0,
+        node: process.version, platform: process.platform, arch: process.arch,
+        inputs: verification.paths.map(name => checkInput(f.root, name)) }] })
+    fs.writeFileSync(receiptFile, receipt)
+    const assignment = path.join(f.root, '.work', 'devflow', 'change.json')
+    const approved = fs.readFileSync(assignment, 'utf8')
+
+    const direct = { code: 0, status: 'reported', id: 'example', stage: 'review', reused: ['suite'], executed: [] }
+    assert.deepEqual(scoped(), direct)
+    assert.equal(fs.readFileSync(runs, 'utf8'), 'ran\n')
+    assert.equal(fs.readFileSync(assignment, 'utf8'), approved)
+    assert.equal(fs.readFileSync(receiptFile, 'utf8'), receipt)
+
+    fs.appendFileSync(source, '// Changed input\n')
+    assert.deepEqual(fallback().evidence.verification.run, ['suite'])
+    fs.writeFileSync(source, original)
+    fs.unlinkSync(receiptFile)
+    const missing = fallback()
+    assert.equal(missing.evidence.status, 'unknown')
+    assert.deepEqual(missing.evidence.verification.run, ['suite'])
+    fs.writeFileSync(receiptFile, receipt)
+    fs.appendFileSync(f.contract, '\nUnapproved contract\n')
+    assert.match(fallback().reason, /contract changed/)
+    fs.writeFileSync(f.contract, 'shared requirement\n')
+    f.record.audit.verdict = 'HOLD'
+    f.persist()
+    assert.equal(scoped().reason, 'independent document audit HOLD')
+    assert.equal(review().status, 'ready', 'legacy review stays available under a document audit hold')
+    f.record.audit.verdict = 'READY'
+    f.record.revision = 'spec'
+    f.persist()
+    assert.equal(scoped().reason, 'document revision is still open')
+    assert.equal(review().status, 'ready')
+    fs.writeFileSync(assignment, approved)
+
+    const normal = review()
+    assert.equal(normal.status, 'ready', 'a wider request uses the regular review command')
+    assert.equal(normal.evidence.review.status, 'unknown', 'test reuse does not settle independent review')
+    assert.ok(normal.evidence.reviewBinding)
+    assert.match(normal.next, /requested rerun/)
+    assert.deepEqual(normal.evidence.verification.reuse, ['suite'])
+    assert.equal(fs.readFileSync(runs, 'utf8'), 'ran\n', 'report and all fallbacks are read-only')
+    assert.equal(launch('verify.cjs').status, 0, 'an explicitly requested rerun can use the original command')
+    assert.equal(fs.readFileSync(runs, 'utf8'), 'ran\nran\n')
+    for (const args of [['review', '--verification-only'], ['build', 'example', '--verification-only'],
+      ['review', 'example', '--verification-only', '--verification-only']]) {
+      assert.equal(launch(command, 'change-check', ...args).status, 2)
+    }
+    if (withGit) assert.equal(git(primary, 'status', '--short'), '')
+  })
 }
 
 test('document HOLD overrides plan approval and only a current independent READY opens build', () => {

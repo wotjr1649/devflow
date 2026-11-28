@@ -204,6 +204,7 @@ const CRITERIA_HEADING = /^## 수용 기준[ \t]*$/m
 const USAGE = `usage: devflow-state <command>
   card                        the resume card (the SessionStart hook prints it)
   change-check <stage> [id]    verify an operator's local change assignment and approved inputs
+  change-check review <id> --verification-only    report fully reusable check evidence directly
   finding-attempt <id> <attempt> start|check|recover  manage a shared finding attempt
   read [n]                    Issue body and latest checkpoint, writers only, as data
   state <n> < block           replace the state block; stdin starts with "## 현재 상태", at most 15 lines below it
@@ -2798,7 +2799,8 @@ function noGitRepositoryOnDisk(root, vars = {}) {
 
 function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
   const required = CHANGE_STAGES.get(stage)
-  if (!required || extra.length || (expectedId !== undefined && !CHANGE_ID.test(expectedId))) {
+  const verificationOnly = stage === 'review' && extra.length === 1 && extra[0] === '--verification-only'
+  if (!required || (extra.length && !verificationOnly) || (expectedId !== undefined && !CHANGE_ID.test(expectedId))) {
     return { code: 2, out: CHANGE_USAGE }
   }
   const hold = (reason, detail = {}) => ({ code: 1, out: JSON.stringify({ status: 'hold', stage, reason, ...detail }) })
@@ -2843,7 +2845,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
   const revisionStage = DOCUMENT_STAGES.get(record.revision)
   let buildReason = record.audit?.verdict === 'HOLD' ? 'independent document audit HOLD' :
     revisionStage ? 'document revision is still open' : null
-  if (stage === 'build' && buildReason) return hold(buildReason)
+  if ((stage === 'build' || verificationOnly) && buildReason) return hold(buildReason)
   if (record.revision !== undefined && !revisionStage) return hold('invalid document revision target')
   if (record.auditRequired !== undefined && typeof record.auditRequired !== 'boolean') return hold('invalid audit requirement')
   if (revisionStage && ['start', 'design', 'plan'].includes(stage) && stage !== revisionStage) {
@@ -2906,6 +2908,12 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
   const draftPlanHash = planFile ? hashFile(planFile)?.sha256 : null
   const evidence = ['build', 'resume', 'review'].includes(stage)
     ? assignedEvidence(root, record, localAt, verifies, env.vars || {}) : null
+  const allChecksReused = stage === 'review' && evidence.status === 'recorded' &&
+    evidence.verification?.status === 'ready' && evidence.verification.run.length === 0
+  if (verificationOnly && allChecksReused) {
+    return { code: 0, out: JSON.stringify({ status: 'reported', id: record.id, stage,
+      reused: evidence.verification.reuse, executed: [] }) }
+  }
   return { code: 0, out: JSON.stringify({ status: 'ready', id: record.id, stage,
     ...(root !== location.cwd ? { assignmentRoot: path.relative(location.cwd, root) } : {}),
     ...(['start', 'design', 'plan'].includes(stage) ?
@@ -2914,8 +2922,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
       (record.finding?.shared === true ? ' Run finding-attempt <change-id> <attempt-id> start. Only reserved allows a new edit. Then use check with that command and ID to run and record the approved reproduction.' : '') } : {}),
     ...(stage === 'resume' ? { buildStatus: buildReason ? 'hold' : 'ready', ...(buildReason ? { buildReason } : {}),
       next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),
-    ...(stage === 'review' && evidence.status === 'recorded' && evidence.verification?.status === 'ready' &&
-      evidence.verification.run.length === 0 ? {
+    ...(allChecksReused ? {
         next: 'The requested comparison of assignment and receipt against current declared inputs is complete. For a verification-only handoff, report the reused IDs and that no checks ran, then stop. Do not reopen references or repeat the comparison. Continue normal review for any wider request, known check-input drift, or requested rerun.',
       } : {}),
     ...(stage === 'review' && evidence.status !== 'unknown' && evidence.verification?.status === 'ready' &&

@@ -31,6 +31,13 @@ Include a shared contract in every check that depends on it. Record the returned
 recording actual results. Build, resume and review return the same check IDs under `reuse` and `run`.
 An unsafe receipt path is withheld. Required checks still appear under `run`; repair the path before recording results.
 These queries report evidence without running any checks.
+
+For an explicit verification-only handoff, run `node bin/devflow-state change-check review <id> --verification-only`
+with the trusted tool. A current receipt covering every declared check returns `status: "reported"`, the `reused` IDs
+and an empty `executed` list. Use that result as the report. An open document revision or audit HOLD holds the direct report.
+Other nonterminal results follow the existing review or hold path.
+Use the regular review invocation for independent review, drift outside the declared scope, or an explicit rerun.
+
 Use trusted check definitions for execution. A check can survive an authorized update
 to an unrelated contract when its inputs, command, approved change documents and execution
 conditions still match. Unapproved contracts still hold. Recollect evidence when the

@@ -2314,8 +2314,41 @@ function changeRecord(root) {
   return null
 }
 
-function changeRevision(root) {
-  const record = changeRecord(root)
+function gitBoundary(dir) {
+  const exists = name => {
+    try { fs.lstatSync(path.join(dir, name)); return true } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+      return false
+    }
+  }
+  return exists('.git') || (exists('HEAD') && exists('objects'))
+}
+
+function assignmentLocation(cwd) {
+  const local = strictLocalPath(cwd)
+  if (!local.ok || local.absent) return null
+  try {
+    const here = fs.realpathSync(cwd)
+    if (!fs.lstatSync(here).isDirectory()) return null
+    let closest = null
+    for (let root = here; ; root = path.dirname(root)) {
+      // A repository or linked worktree cannot inherit another worktree's assignment.
+      if (gitBoundary(root)) {
+        const record = changeRecord(root)
+        return record ? { root, cwd: here, record } : null
+      }
+      if (!closest) {
+        const record = changeRecord(root)
+        if (record) closest = { root, cwd: here, record }
+      }
+      if (path.dirname(root) === root) return closest
+    }
+  } catch {
+    return null
+  }
+}
+
+function changeRevision(root, record = changeRecord(root)) {
   const stage = DOCUMENT_STAGES.get(record?.revision)
   return stage ? { id: record.id, stage, file: `docs/changes/${record.id}/${record.revision}.md` } : null
 }
@@ -2374,7 +2407,8 @@ function verificationInputs(scope, localAt) {
 
 function validReceiptInputs(inputs) {
   return Array.isArray(inputs) && inputs.length > 0 && inputs.length <= 32 &&
-    inputs.every(input => evidencePath(input?.path) && typeof input.sha256 === 'string' && CHANGE_HASH.test(input.sha256)) &&
+    inputs.every(input => evidencePath(input?.path) && typeof input.sha256 === 'string' && CHANGE_HASH.test(input.sha256) &&
+      (input.mode === undefined || (Number.isInteger(input.mode) && input.mode >= 0o100000 && input.mode <= 0o107777))) &&
     new Set(inputs.map(input => input.path)).size === inputs.length
 }
 
@@ -2398,12 +2432,15 @@ function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
     const { files, reason } = verificationInputs(policy.paths, localAt)
     if (reason) runReasons[policy.id] = reason
     const inputs = Array.isArray(check?.inputs) && check.inputs.length <= 32 ?
-      new Map(check.inputs.map(input => [input?.path, input?.sha256])) : null
+      new Map(check.inputs.map(input => [input.path, input])) : null
     const current = files && inputs?.size === files.size && check.inputs.length === inputs.size &&
       check.command === policy.command && Number.isInteger(check.exitCode) && check.exitCode >= 0 && check.node === process.version &&
       check.platform === process.platform && check.arch === process.arch &&
       (environment === undefined || check.environmentSha256 === environment) &&
-      [...files].every(name => verifies(name, inputs.get(name)))
+      [...files].every(name => {
+        const input = inputs.get(name)
+        return input?.mode !== undefined && verifies(name, input.sha256, input.mode)
+      })
     if (current) fresh.add(policy.id)
     if (current && check.exitCode === 0) reuse.push(policy.id)
     else run.push(policy.id)
@@ -2416,8 +2453,7 @@ function verificationPlan(required, receipt, basis, localAt, verifies, vars) {
 function assignedEvidence(root, record, localAt, verifies, vars) {
   const relative = `artifacts/handoff/${record.id}.json`
   const local = strictLocalPath(path.join(root, relative))
-  const file = localAt(relative)
-  if (!local.ok || (!local.absent && !file)) return { status: 'unknown' }
+  const file = local.ok && !local.absent ? localAt(relative) : null
   const approvals = ['intent', 'spec', 'plan'].map(kind => [kind, record.approvals[kind].by, record.approvals[kind].sha256])
   const contracts = record.contracts.map(({ path, sha256 }) => JSON.stringify([path, sha256])).sort()
   const binding = crypto.createHash('sha256').update(JSON.stringify([approvals, contracts])).digest('hex')
@@ -2433,17 +2469,19 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
   const basis = crypto.createHash('sha256').update(JSON.stringify(['verification', record.id, approvals])).digest('hex')
   const { fresh, ...verification } = record.verification !== undefined ?
     verificationPlan(record.verification, validReceipt ? receipt : null, basis, localAt, verifies, vars) : {}
-  const unknown = { path: relative, binding, status: 'unknown', ...(verification.status ? { verification } : {}) }
+  const unknown = { ...(local.ok && (local.absent || file) ? { path: relative, binding } : {}),
+    status: 'unknown', ...(verification.status ? { verification } : {}) }
   if (!validReceipt) return unknown
   if (receipt.binding !== binding) return { ...unknown, status: 'stale' }
 
-  const checkInputs = inputs => {
+  const checkInputs = (inputs, requireMode = false) => {
     if (!validReceiptInputs(inputs)) return 'unknown'
-    return inputs.every(input => verifies(input.path, input.sha256)) ? 'current' : 'stale'
+    return inputs.every(input => (!requireMode || input.mode !== undefined) &&
+      verifies(input.path, input.sha256, input.mode)) ? 'current' : 'stale'
   }
   const checks = []
   for (const check of receipt.checks) {
-    let status = checkInputs(check.inputs)
+    let status = checkInputs(check.inputs, true)
     if (status === 'current' && (check.node !== process.version || check.platform !== process.platform ||
         check.arch !== process.arch || (verification.status && !fresh?.has(check.id)))) status = 'stale'
     checks.push({ id: check.id, command: check.command, status, ...(status === 'current' ? { exitCode: check.exitCode } : {}) })
@@ -2456,12 +2494,9 @@ function assignedEvidence(root, record, localAt, verifies, vars) {
 
 function noGitRepositoryOnDisk(root, vars = {}) {
   if (vars.GIT_DIR || vars.GIT_WORK_TREE || vars.GIT_COMMON_DIR) return false
-  const exists = p => {
-    try { fs.lstatSync(p); return true } catch (error) { if (error.code === 'ENOENT') return false; throw error }
-  }
   try {
     for (let dir = root; ; dir = path.dirname(dir)) {
-      if (exists(path.join(dir, '.git')) || (exists(path.join(dir, 'HEAD')) && exists(path.join(dir, 'objects')))) return false
+      if (gitBoundary(dir)) return false
       if (path.dirname(dir) === dir) return true
     }
   } catch { return false }
@@ -2473,16 +2508,21 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     return { code: 2, out: CHANGE_USAGE }
   }
   const hold = reason => ({ code: 1, out: JSON.stringify({ status: 'hold', stage, reason }) })
-  const root = path.resolve(cwd)
+  const location = assignmentLocation(cwd)
+  if (!location) {
+    const local = changeRecord(path.resolve(cwd))
+    if (local?.git === null && (expectedId === undefined || local.id === expectedId)) {
+      return hold('Git-free assignment cannot be verified')
+    }
+    return hold('missing or mismatched operator assignment')
+  }
+  const { root, record } = location
+  if (expectedId !== undefined && record.id !== expectedId) return hold('missing or mismatched operator assignment')
   function localAt(relative) {
     const target = path.join(root, relative)
     const local = strictLocalPath(target)
     if (!local.ok || local.absent) return null
     try { return differs(fs.realpathSync(target), target) ? null : target } catch { return null }
-  }
-  const record = changeRecord(root)
-  if (!record || (expectedId !== undefined && record.id !== expectedId)) {
-    return hold('missing or mismatched operator assignment')
   }
   const git = args => env.run('git', args, { cwd: root })
   const top = git(['rev-parse', '--show-toplevel'])
@@ -2515,9 +2555,11 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
   if (revisionStage && ['start', 'design', 'plan'].includes(stage) && stage !== revisionStage) {
     return hold('document revision is assigned to another stage')
   }
-  const verifies = (relative, hash) => {
+  const verifies = (relative, hash, mode) => {
+    if (typeof hash !== 'string' || !CHANGE_HASH.test(hash)) return false
     const file = localAt(relative)
-    return typeof hash === 'string' && CHANGE_HASH.test(hash) && file && hashFile(file)?.sha256 === hash
+    const current = file && hashFile(file)
+    return current?.sha256 === hash && (mode === undefined || current.mode === mode)
   }
   for (const kind of required) {
     const approval = record.approvals?.[kind]
@@ -2544,6 +2586,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
   const planFile = stage === 'plan' ? localAt(artifacts.plan) : null
   const draftPlanHash = planFile ? hashFile(planFile)?.sha256 : null
   return { code: 0, out: JSON.stringify({ status: 'ready', id: record.id, stage,
+    ...(root !== location.cwd ? { assignmentRoot: path.relative(location.cwd, root) } : {}),
     ...(['start', 'design', 'plan'].includes(stage) ?
       { next: 'Load the development workflow skill if needed, then read its references/change.md before opening any returned work record. Read the reference in a separate call.' } : {}),
     ...(stage === 'build' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening any returned work record or editing.' } : {}),
@@ -2707,4 +2750,4 @@ if (require.main === module) {
   process.exitCode = r.code
 }
 
-module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, isNetwork, localPath, strictLocalPath, smallFile, hashFile, changeRevision, provenMain, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }
+module.exports = { PARSERS: { STATE_HEADING, BRANCH_LINE, CHECKPOINT_HEAD, PROTECTED }, isNetwork, localPath, strictLocalPath, smallFile, hashFile, assignmentLocation, changeRevision, provenMain, running, mainTree, bindingOf, hashId, legacyOf, INVISIBLE, WRITE_OPS, withLock, updateLedger, dropStale, note, main, sessionId, releaseSessions, readSessions, carryChecks, replaceIntent, realEnv, repoContext, readLedger, writeLedger, card, cardFailure, terminalFailure, NO_ISSUE_RULE, UNAVAILABLE, SKILL_HINT, read, write, leaks, stripComments, stateBlock, replaceState, checkCriteria, isCheckpoint, estTokens }

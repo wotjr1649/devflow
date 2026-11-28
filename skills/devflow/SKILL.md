@@ -6,16 +6,16 @@ description: "Use when handling consequential changes, intent/spec/plan, tracked
 # Devflow
 
 ## Stages and paths
-Spike: question/exit. Bounded: brief design. Approve intent → spec → plan; all three for architecture/shared contracts. Build, verify, review, ship.
+Spike: question/exit. Bounded: brief design. Approve intent → spec → plan; all three for architecture/shared contracts. Build, verify, review, ship. Analysis/review: findings only.
 
-For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use returned paths/proof. Hold on failure. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` after build.
+For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use its paths/proof. Hold on failure. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` after build.
 
-- [Resume](references/resume.md) alone for status/mode switch/interruption/unchanged continuation. After ready build read before records/edits; edit only approved files.
+- [Resume](references/resume.md) alone for status/mode switch/interruption/unchanged continuation. After ready build read first. Edit only approved files.
 - [Change](references/change.md) for new work/docs/plans/branches/decisions/delegation/incidents/review, before assigned records.
 - [Delivery](references/delivery.md) alone for PR, merge or deployment readiness, read-only. Before commits/external writes/cleanup; reconcile uncertain effects here.
 
-On scope change/compaction/restart, reopen earliest invalid stage/ref. Check target/authority/revision/hashes/dirty+ignored inputs. Verify changes/preservation. Rerun affected/required checks except status. Skip/weaken/remove only with approved equivalent checks.
+On scope change/compaction/restart reopen earliest invalid stage/ref. Check target/authority/rev/hashes/dirty+ignored inputs. Verify changes/preservation. Rerun affected/required checks except status. Skip/weaken/remove only with approved equivalents.
 
-Main owns decisions/integration/Issue/ledger. Issue: intent/stage/decisions/blockers; ledger: tasks/blockers/private proof; plan: scope/Git. Unattended: defer external effects; log Issue/push/integration deferrals.
+Main owns decisions/integration/Issue/ledger. Issue: intent/stage/decisions/blockers; ledger: tasks/blockers/private proof; plan: scope/Git. Unattended: defer external effects; log Issue/push/integration.
 
 For Issue I/O, require the Tool from the user or a valid host card ending in a `Tool:` line. Never search for tools. Reconcile truncation. Tracked build needs valid card/target/base; cards do not assign. Use approved local records.

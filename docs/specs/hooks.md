@@ -45,10 +45,16 @@ the target host's nested scenario.
 | SessionEnd | Releases only the input session from the session records of every Issue. It does not wait for the lock and preserves other sessions' records |
 
 Outside an assigned revision the tool hook stays quiet. During a revision it supplies no permission grants. Claude
-uses the standalone `node bin/devflow-state`, `node devflow/bin/devflow-state` or `devflow-state` invocation
-provided by the operator. Use host sandbox permissions for any other execution surface. PostToolUse is unregistered.
+uses the operator's standalone `node bin/devflow-state`, `node devflow/bin/devflow-state` or `devflow-state` invocation
+at the root. From a subdirectory the hook permits the exact stage command using the packaged CLI instead. Use host
+sandbox permissions for any other execution surface. PostToolUse is unregistered.
 The Issue public filter and the refusal of writes in autonomous mode through `devflow-state` are that CLI's behavior, not
 enforcement by the hooks.
+
+Assignment lookup starts from the canonical local session directory. In Git, only the nearest worktree or repository
+boundary can supply the assignment. In Git-free directories, the nearest valid root-bound record applies. Child-folder
+markers cannot replace a Git worktree's assignment. The standalone check verifies Git at that root. Native relative
+tool paths resolve from the session directory and must match the assigned file at the root.
 
 ## Input and safe file reads
 

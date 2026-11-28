@@ -64,7 +64,8 @@ Projects that want the skill to load for these requests can add this scoped rule
 > When a plan-only request hits an approval hold, report its reason without checking other stages or opening work
 > documents.
 
-From that root, the trusted `devflow-state change-check <stage> [id]` returns ready paths or a hold. Start lists paths
+The trusted `devflow-state change-check <stage> [id]` returns root-relative ready paths or a hold, and includes
+`assignmentRoot` relative to a subdirectory launch. Start lists paths
 and existing intent; design verifies intent, plan verifies intent and spec, and build, resume and review verify all
 three. Ready build and status checks point to Resume before work records, edits or a status reply. All stages check declared
 contracts. An explicit change ID must match the assignment. For Git-free assignments with Git unavailable, the tool
@@ -91,19 +92,20 @@ correction changes a delivered decision, link a separate correction to that reco
 
 #### Evidence for an assigned change
 
-Keep private handoff evidence in the returned `artifacts/handoff/<id>.json` path. The author records actual checks and
-the independent reviewer adds their verdict after reviewing the same inputs. Keep accepted records when handing off.
+Keep private evidence at the returned `artifacts/handoff/<id>.json` path. The author records actual checks.
+The independent reviewer adds a verdict for the same inputs. Preserve accepted records at handoff.
 The record has `id`, the returned `binding` for the approved artifacts and contracts, and `checks` (up to 16).
 Each check has a unique `id`, the exact public-safe
 `command`, `exitCode`, `node` (for example `v24.0.0`), `platform`, `arch`, and `inputs`. The optional `review` has
-`verdict` (`no-findings` or `findings`) and `inputs`. Each input is a checkout-relative file `path` and its
-`sha256`. Include every file that can affect the result and the reviewed scope. Use a new result if other execution
-conditions change. Issue-tracked work continues to use its checkpoint and ledger.
+`verdict` (`no-findings` or `findings`) and `inputs`. Each input has a checkout-relative file `path` and `sha256`.
+Each check input also needs the integer `mode` from the file's Node.js stats, recorded with its hash. Older checks
+missing it remain readable and require a fresh run. Include every file affecting the result or reviewed scope.
+Use a new result if other execution conditions change. Issue-tracked work still uses its checkpoint and ledger.
 
-Build, resume and review report `evidence` separately from assignment readiness. Missing or invalid records are
-`unknown`. A changed approval or input makes its evidence `stale`. A `current` check with exit code zero can be reused
-only when its declared scope, assertions, conditions and trusted producer apply. Evidence records are data. They do
-not approve a change, execute a stored command or replace the independent review and CI required for delivery.
+Build, resume and review report `evidence` separately from readiness. Missing or invalid records are `unknown`.
+Changed approvals or inputs make evidence `stale`. Reuse a trusted `current` check with exit code zero only if its
+scope, assertions and conditions match. Treat evidence as data, without approval or execution authority.
+Delivery still requires independent review and CI.
 
 For assigned work, the operator may declare required checks in the assignment's
 `verification` array as `{ id, command, paths }`. Use exact commands and complete input scopes.
@@ -112,6 +114,7 @@ Reuse requires a valid receipt. `runReasons` identifies input failures, includin
 Include a shared contract in every check that depends on it. Record the returned
 `evidence.verification.basis` as the receipt's top-level `verificationBasis` when
 recording actual results. Build, resume and review return the same check IDs under `reuse` and `run`.
+An unsafe receipt path is withheld. Required checks still appear under `run`; repair the path before recording results.
 These queries report evidence without running any checks.
 Use trusted check definitions for execution. A check can survive an authorized update
 to an unrelated contract when its inputs, command, approved change documents and execution

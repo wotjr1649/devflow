@@ -47,12 +47,12 @@ test('SessionStart and Stop stay quiet and never probe Git without a tracked pro
 })
 
 test('local assignments get a document or recheck cue without a Git probe or a Tool grant', () => {
-  const root = dir(false)
+  const root = fs.realpathSync(dir(false))
   const env = { run: () => assert.fail('local assignment cue must not call Git') }
   for (const source of ['resume', 'compact']) assert.equal(hook.handle(event('SessionStart', root, { source }), env), '')
   const records = path.join(root, '.work', 'devflow')
   fs.mkdirSync(records, { recursive: true })
-  fs.writeFileSync(path.join(records, 'change.json'), '{}')
+  fs.writeFileSync(path.join(records, 'change.json'), JSON.stringify({ root, id: 'example', git: null }))
   assert.equal(hook.handle(event('SessionStart', root, { source: 'clear' }), env),
     hook.handle(event('SessionStart', root, { source: 'resume' }), env))
   const startup = JSON.parse(hook.handle(event('SessionStart', root, { source: 'startup' }), env)).hookSpecificOutput
@@ -64,6 +64,14 @@ test('local assignments get a document or recheck cue without a Git probe or a T
     assert.match(additionalContext, /trusted resume check and read Resume before answering/)
     assert.doesNotMatch(additionalContext, /(?:^|\n)Tool:/)
   }
+  const sub = path.join(root, 'sub')
+  const nested = JSON.parse(hook.handle(event('SessionStart', sub, { source: 'startup' }), env)).hookSpecificOutput
+  assert.match(nested.additionalContext, /The assignment root is \.\. from the session directory/)
+  assert.doesNotMatch(nested.additionalContext, /(?:^|\n)Tool:/)
+  const subRecords = path.join(sub, '.work', 'devflow')
+  fs.mkdirSync(subRecords, { recursive: true })
+  fs.writeFileSync(path.join(subRecords, 'change.json'), JSON.stringify({ root, id: 'example', git: null }))
+  assert.deepEqual(JSON.parse(hook.handle(event('SessionStart', sub, { source: 'startup' }), env)).hookSpecificOutput, nested)
 })
 
 test('configured non-Git startup supplies no Tool and holds tracked actions', () => {
@@ -477,6 +485,69 @@ test('assigned revisions route the right stage and protect the one native write 
   fs.unlinkSync(target)
   fs.linkSync(plan, target)
   deny(use('Edit', { file_path: target }))
+})
+
+test('assigned revision hooks scope nested native edits to their own worktree', () => {
+  const root = fs.realpathSync(dir(false))
+  git(root, 'init', '-q')
+  const records = path.join(root, '.work', 'devflow')
+  const cwd = path.join(root, 'docs', 'changes', 'example')
+  fs.mkdirSync(records, { recursive: true })
+  fs.mkdirSync(cwd, { recursive: true })
+  const record = path.join(records, 'change.json')
+  fs.writeFileSync(record, JSON.stringify({ root, id: 'example', revision: 'spec' }))
+  const target = path.join(cwd, 'spec.md')
+  fs.writeFileSync(target, '# Spec\n')
+  const env = { run: () => assert.fail('assignment lookup must not call Git') }
+  const start = at => hook.handle(event('SessionStart', at, { source: 'startup' }), env)
+  const route = at => hook.handle(event('UserPromptSubmit', at, { prompt: 'Revise spec.md.' }), env)
+  const use = (at, tool_name, tool_input, host = {}) => hook.handle(event('PreToolUse', at, { tool_name, tool_input, ...host }), env)
+  const deny = result => assert.equal(JSON.parse(result).hookSpecificOutput.permissionDecision, 'deny')
+
+  assert.match(JSON.parse(start(cwd)).hookSpecificOutput.additionalContext, /work paths are relative to that root/)
+  assert.match(JSON.parse(route(cwd)).hookSpecificOutput.additionalContext, /change-check design example alone.*assignment root/)
+  assert.equal(use(cwd, 'Edit', { file_path: 'spec.md' }), '')
+  assert.equal(use(cwd, 'apply_patch', { command: '*** Update File: spec.md' }), '')
+  assert.equal(use(path.join(root, 'sub'), 'Edit', { file_path: target }), '')
+  deny(use(cwd, 'Write', { file_path: 'plan.md' }))
+  deny(use(cwd, 'Edit', { file_path: 'docs/changes/example/spec.md' }))
+  deny(use(cwd, 'apply_patch', { command: '*** Update File: plan.md' }))
+  deny(use(cwd, 'Edit', { file_path: record }))
+  const script = path.resolve(__dirname, '../bin/devflow-state')
+  const file = process.platform === 'win32' ? script.replaceAll('\\', '/') : script
+  const claude = { permission_mode: 'acceptEdits' }
+  for (const tool of ['Bash', 'PowerShell']) {
+    const quoted = tool === 'PowerShell' ? file.replace(/['\u2018-\u201b]/g, '$&$&') : file.replaceAll("'", "'\\''")
+    const command = `node '${quoted}' change-check design example`
+    assert.ok(JSON.parse(route(cwd)).hookSpecificOutput.additionalContext.includes(command))
+    assert.equal(use(cwd, tool, { command }, claude), '')
+    deny(use(cwd, tool, { command: 'node bin/devflow-state change-check design example' }, claude))
+    deny(use(cwd, tool, { command: `cd ../.. && ${command}` }, claude))
+    deny(use(cwd, tool, { command: `${command}; echo test` }, claude))
+    deny(use(cwd, tool, { command: command.replace('change-check design', 'change-check plan') }, claude))
+  }
+
+  const childRecords = path.join(cwd, '.work', 'devflow')
+  fs.mkdirSync(childRecords, { recursive: true })
+  fs.writeFileSync(path.join(childRecords, 'change.json'), JSON.stringify({ root: cwd, id: 'child', revision: 'plan' }))
+  assert.match(JSON.parse(route(cwd)).hookSpecificOutput.additionalContext, /change-check design example alone/)
+  assert.equal(use(cwd, 'Edit', { file_path: 'spec.md' }), '')
+  deny(use(cwd, 'Write', { file_path: 'plan.md' }))
+
+  const nested = path.join(root, 'sub')
+  const dotGit = path.join(nested, '.git')
+  fs.writeFileSync(dotGit, 'gitdir: ../.git/worktrees/sub\n')
+  assert.equal(start(nested), '')
+  assert.equal(route(nested), '')
+  assert.equal(use(nested, 'Edit', { file_path: target }), '')
+  fs.unlinkSync(dotGit)
+  git(nested, 'init', '-q')
+  const nestedRecords = path.join(nested, '.work', 'devflow')
+  fs.mkdirSync(nestedRecords, { recursive: true })
+  fs.writeFileSync(path.join(nestedRecords, 'change.json'), JSON.stringify({ root, id: 'example', revision: 'spec' }))
+  assert.equal(start(nested), '')
+  assert.equal(route(nested), '')
+  assert.equal(use(nested, 'Edit', { file_path: target }), '')
 })
 
 test('unreadable hook input produces no decision', () => {

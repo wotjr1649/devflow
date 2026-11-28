@@ -79,6 +79,14 @@ test('devflow: SKILL.md links the three references, each link names a file, and 
     'all read-only readiness checks use Delivery')
 })
 
+test('devflow retains the tracked start, acceptance evidence and publication protections', () => {
+  const change = read(`${REFS}/change.md`)
+  const delivery = read(`${REFS}/delivery.md`)
+  assert.match(change, /match Issue scope, pass baseline/)
+  assert.match(change, /Direct runs\/targeted tests prove criteria; others stay open/i)
+  assert.match(delivery, /Publish reviewed secret-free summaries only; omit raw prompts\/logs\/private paths/)
+})
+
 test('devflow: a reference links no other reference and no agents/ file', () => {
   for (const n of refNames())
     assert.deepEqual(linkTargets(read(`${REFS}/${n}`)).filter(isReferenceOrAgentsLink), [], `${n} links a reference or agents/`)

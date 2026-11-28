@@ -150,35 +150,52 @@ function readinessRoute(prompt) {
     additionalContext: 'Load the devflow skill and read its Delivery reference for this read-only readiness check.' } })
 }
 
+function nestedCheck(scope, tool) {
+  let file = path.resolve(__dirname, '../bin/devflow-state')
+  if (/[\r\n\x00]/.test(file)) return null
+  if (process.platform === 'win32') file = file.replaceAll('\\', '/')
+  const quoted = tool === 'PowerShell' ? file.replace(/['\u2018-\u201b]/g, '$&$&') : file.replaceAll("'", "'\\''")
+  return `node '${quoted}' change-check ${scope.stage} ${scope.id}`
+}
+
+function assignmentRootHint({ root, cwd }, scope) {
+  if (root === cwd) return ''
+  const base = ` The assignment root is ${path.relative(cwd, root)} from the session directory; work paths are relative to that root. Use absolute tool paths for files outside the session directory.`
+  if (!scope) return base
+  const bash = nestedCheck(scope, 'Bash')
+  const powershell = nestedCheck(scope, 'PowerShell')
+  if (!bash) return base + ' Start at the assignment root to run the standalone check.'
+  return base + (bash === powershell ? ` Run this standalone check from the session directory: ${bash}` :
+    ` Run the standalone check from this directory, using Bash: ${bash} or PowerShell: ${powershell}`)
+}
+
 function assignedChangeContext(cwd, source) {
   if (!['startup', 'resume', 'clear', 'compact'].includes(source)) return ''
-  const record = path.resolve(cwd, '.work/devflow/change.json')
-  const local = state.strictLocalPath(record)
-  if (!local.ok || local.absent) return ''
-  try { if (!fs.lstatSync(record).isFile()) return '' } catch { return '' }
+  const location = state.assignmentLocation(cwd)
+  if (!location) return ''
   const additionalContext = source === 'startup'
     ? 'For assigned documents or implementation, load the devflow skill before selecting a stage. For drafting, revising or auditing documents, run its trusted stage check and read Change before opening records. For implementation, run the trusted build check before any edits.'
     : 'For a request about the local assignment, verify its current stage and reread the routed reference. For status, run the trusted resume check and read Resume before answering. Earlier results are history.'
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart',
-    additionalContext } })
+    additionalContext: additionalContext + assignmentRootHint(location) } })
 }
 
-function revisionRoute(input, scope) {
+function revisionRoute(input, location, scope) {
   const task = typeof input.prompt === 'string' ? input.prompt.replace(/```[\s\S]*?(?:```|$)/g, '') : ''
   if (!scope || !/\b(?:edit|revise|fix|update|correct|rewrite)\b|수정|개정|고쳐|다듬|정리/i.test(task) ||
       !/\b(?:intent|spec|plan)\.md\b|의도서|사양서|계획서|초안|문서/i.test(task)) return ''
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit',
-    additionalContext: `For this assigned document revision, load the devflow skill first. Run the trusted change-check ${scope.stage} ${scope.id} alone, then read Change. Only edit ${scope.file}. Report any needed changes to other files without editing them.` } })
+    additionalContext: `For this assigned document revision, load the devflow skill first. Run the trusted change-check ${scope.stage} ${scope.id} alone, then read Change. Only edit ${scope.file}. Report any needed changes to other files without editing them.` + assignmentRootHint(location, scope) } })
 }
 
-function revisionWrite(input, cwd, scope) {
+function revisionWrite(input, location, scope) {
   if (!scope) return ''
   const name = input.tool_name
   const request = input.tool_input
-  const target = path.resolve(cwd, scope.file)
+  const target = path.resolve(location.root, scope.file)
   const sameFile = file => {
     if (typeof file !== 'string' || isNetwork(file) || /(?:^|[\\/])\.\.(?:[\\/]|$)/.test(file)) return false
-    if (path.relative(target, path.resolve(cwd, file))) return false
+    if (path.relative(target, path.resolve(location.cwd, file))) return false
     try {
       const local = state.strictLocalPath(target)
       const stat = fs.lstatSync(target)
@@ -199,8 +216,9 @@ function revisionWrite(input, cwd, scope) {
   } else if (['Bash', 'PowerShell'].includes(name) && typeof input.permission_mode === 'string' && !input.turn_id) {
     // Claude has dedicated file readers. Keep shell access to the assignment check during a revision.
     const check = `change-check ${scope.stage} ${scope.id}`
-    allowed = ['node bin/devflow-state', 'node devflow/bin/devflow-state', 'devflow-state']
-      .some(tool => request?.command === `${tool} ${check}`)
+    const nested = location.root !== location.cwd && nestedCheck(scope, name)
+    allowed = location.root === location.cwd ? ['node bin/devflow-state', 'node devflow/bin/devflow-state', 'devflow-state']
+      .some(tool => request?.command === `${tool} ${check}`) : Boolean(nested && request?.command === nested)
   } else return ''
   return allowed ? '' : JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
     permissionDecisionReason: `Assigned document revision permits edits only to ${scope.file}. Use the trusted stage check and native file readers. Report other changes without writing them.` } })
@@ -215,10 +233,14 @@ function handle(raw, env = state.realEnv) {
   }
   if (!input) return ''
   const cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : process.cwd()
-  if (input.hook_event_name === 'UserPromptSubmit') {
-    return revisionRoute(input, state.changeRevision(path.resolve(cwd))) || briefRoute(input.prompt) || readinessRoute(input.prompt)
+  if (input.hook_event_name === 'UserPromptSubmit' || input.hook_event_name === 'PreToolUse') {
+    const location = state.assignmentLocation(cwd)
+    const scope = location && state.changeRevision(location.root, location.record)
+    if (input.hook_event_name === 'UserPromptSubmit') {
+      return revisionRoute(input, location, scope) || briefRoute(input.prompt) || readinessRoute(input.prompt)
+    }
+    return revisionWrite(input, location, scope)
   }
-  if (input.hook_event_name === 'PreToolUse') return revisionWrite(input, cwd, state.changeRevision(path.resolve(cwd)))
   if (!['SessionStart', 'Stop', 'SessionEnd'].includes(input.hook_event_name)) return ''
   const configured = input.hook_event_name === 'SessionEnd' ? null : devflowRoot(cwd, true)
   if (!configured && input.hook_event_name !== 'SessionEnd') {

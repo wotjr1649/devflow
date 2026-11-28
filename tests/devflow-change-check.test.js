@@ -6,6 +6,11 @@ const path = require('node:path')
 const tmpdir = require('./tmpdir')
 const { main, hashFile } = require('../bin/devflow-state')
 
+function checkInput(root, name) {
+  const { sha256, mode } = hashFile(path.join(root, name))
+  return { path: name, sha256, mode }
+}
+
 function fixture(gitMode = true, folder = tmpdir('change-check-')) {
   const root = fs.realpathSync(folder)
   const branch = 'trial/example'
@@ -147,7 +152,7 @@ test('resume classifies missing, current and stale handoff evidence without runn
     const target = path.join(f.root, name)
     fs.mkdirSync(path.dirname(target), { recursive: true })
     fs.writeFileSync(target, name + '\n')
-    return { path: name, sha256: hashFile(target).sha256 }
+    return checkInput(f.root, name)
   })
   const check = (id, values) => ({
     id, command: 'node --test ' + id, exitCode: 0, node: process.version,
@@ -156,7 +161,7 @@ test('resume classifies missing, current and stale handoff evidence without runn
   const receipt = {
     id: 'example', binding: unknown.binding,
     checks: [check('code', [inputs[0]]), check('tests', [inputs[1]])],
-    review: { verdict: 'no-findings', inputs },
+    review: { verdict: 'no-findings', inputs: inputs.map(({ path, sha256 }) => ({ path, sha256 })) },
   }
   const file = path.join(f.root, relative)
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -228,7 +233,7 @@ test('assigned review reuses only complete matching successful checks after a co
   const proof = { id: f.record.id, binding: before.binding, verificationBasis: before.verification.basis,
     checks: f.record.verification.map((policy, index) => ({
       id: policy.id, command: policy.command, exitCode: 0, node: process.version, platform: process.platform, arch: process.arch,
-      inputs: (index ? [src] : [src, spec, suite]).map(name => ({ path: name, sha256: hashFile(path.join(f.root, name)).sha256 })),
+      inputs: (index ? [src] : [src, spec, suite]).map(name => checkInput(f.root, name)),
     })) }
   const target = path.join(f.root, before.path)
   fs.mkdirSync(path.dirname(target), { recursive: true })
@@ -280,7 +285,7 @@ test('verification rechecks the affected inputs, execution options and environme
   const receipt = { id: f.record.id, binding: state.binding, verificationBasis: state.verification.basis,
     checks: f.record.verification.map(policy => ({
       id: policy.id, command: policy.command, exitCode: 0, node: process.version, platform: process.platform, arch: process.arch,
-      inputs: policy.paths.map(name => ({ path: name, sha256: hashFile(path.join(f.root, name)).sha256 })),
+      inputs: policy.paths.map(name => checkInput(f.root, name)),
     })) }
   const target = path.join(f.root, state.path)
   fs.mkdirSync(path.dirname(target), { recursive: true })
@@ -288,6 +293,28 @@ test('verification rechecks the affected inputs, execution options and environme
   save()
   assert.deepEqual(decide().run, ['http'], 'legacy receipt without a required environment digest must rerun')
   receipt.checks[0].environmentSha256 = state.verification.environments.http
+  save()
+  assert.deepEqual(decide().reuse, ['http', 'lint'])
+  const input = receipt.checks[0].inputs[0]
+  const targetInput = path.join(f.root, input.path)
+  try {
+    fs.chmodSync(targetInput, input.mode & ~0o222)
+    const changed = checkInput(f.root, input.path)
+    assert.equal(changed.sha256, input.sha256)
+    assert.notEqual(changed.mode, input.mode)
+    assert.deepEqual(decide().run, ['http'])
+    assert.deepEqual(decide().reuse, ['lint'])
+    assert.equal(f.check('resume').evidence.checks[0].status, 'stale')
+  } finally {
+    fs.chmodSync(targetInput, input.mode)
+  }
+  const oldMode = input.mode
+  delete input.mode
+  save()
+  assert.deepEqual(decide().run, ['http'], 'legacy input without a mode cannot authorize reuse')
+  assert.deepEqual(decide().reuse, ['lint'])
+  assert.equal(f.check('resume').evidence.checks[0].status, 'stale')
+  input.mode = oldMode
   save()
   assert.deepEqual(decide().reuse, ['http', 'lint'])
   for (const name of names.slice(0, 2)) {
@@ -333,7 +360,7 @@ test('a malformed receipt cannot authorize reuse and oversized scopes explain re
   const filename = path.join(f.root, before.path)
   fs.mkdirSync(path.dirname(filename), { recursive: true })
   const check = { id: 'syntax', command, exitCode: 0, node: process.version, platform: process.platform, arch: process.arch,
-    inputs: [{ path: p, sha256: hashFile(path.join(f.root, p)).sha256 }] }
+    inputs: [checkInput(f.root, p)] }
   const save = checks => fs.writeFileSync(filename, JSON.stringify({ id: f.record.id, binding: before.binding,
     verificationBasis: before.verification.basis, checks }))
   save([check])
@@ -343,11 +370,35 @@ test('a malformed receipt cannot authorize reuse and oversized scopes explain re
   assert.equal(invalid.status, 'unknown')
   assert.deepEqual(invalid.verification.reuse, [])
   assert.deepEqual(invalid.verification.run, ['syntax'])
+  save([{ ...check, inputs: [{ ...check.inputs[0], mode: 0o040755 }] }])
+  assert.equal(f.check('resume').evidence.status, 'unknown', 'a directory mode is invalid for a file receipt')
+  assert.deepEqual(f.check('resume').evidence.verification.run, ['syntax'])
   save([check])
   for (let i = 0; i < 32; i++) fs.writeFileSync(path.join(f.root, 'inputs', `${i}.js`), '')
   const oversized = f.check('resume').evidence.verification
   assert.deepEqual(oversized.run, ['syntax'])
   assert.match(oversized.runReasons.syntax, /32 files/)
+})
+
+test('a linked receipt is refused without losing the required rerun plan', () => {
+  const f = fixture(false)
+  const name = 'app.js'
+  fs.writeFileSync(path.join(f.root, name), 'module.exports = 1\n')
+  const command = 'node --check app.js'
+  f.record.verification = [{ id: 'syntax', command, paths: [name] }]
+  f.persist()
+  const before = f.check('resume').evidence
+  assert.deepEqual(before.verification.run, ['syntax'])
+  const backing = tmpdir('linked-receipts-')
+  fs.writeFileSync(path.join(backing, 'example.json'), JSON.stringify({ id: f.record.id, binding: before.binding,
+    verificationBasis: before.verification.basis, checks: [{ id: 'syntax', command, exitCode: 0,
+      node: process.version, platform: process.platform, arch: process.arch, inputs: [checkInput(f.root, name)] }] }))
+  const directory = path.dirname(path.join(f.root, before.path))
+  fs.mkdirSync(path.dirname(directory), { recursive: true })
+  fs.symlinkSync(backing, directory, process.platform === 'win32' ? 'junction' : 'dir')
+  for (const stage of ['build', 'resume', 'review']) {
+    assert.deepEqual(f.check(stage).evidence, { status: 'unknown', verification: before.verification }, stage)
+  }
 })
 
 test('Git-free work confirms its hashes and declared shared contracts', () => {
@@ -376,6 +427,28 @@ test('Git-free assignments work without Git but hold for repository markers and 
   delete f.env.vars.GIT_DIR
   fs.appendFileSync(path.join(f.directory, 'spec.md'), 'modified\n')
   assert.match(f.check('build').reason, /stale spec approval/)
+})
+
+test('nested stage checks keep the verified root and stop at a nested Git boundary', () => {
+  for (const gitMode of [false, true]) {
+    const f = fixture(gitMode)
+    if (gitMode) fs.mkdirSync(path.join(f.root, '.git'))
+    const env = { ...f.env, run(command, args, options) {
+      assert.equal(options.cwd, f.root, 'Git identity is checked at the assignment root')
+      return f.env.run(command, args)
+    } }
+    const check = directory => {
+      const result = main(['change-check', 'design', 'example'], () => assert.fail('No stdin'), env, directory)
+      return { code: result.code, ...JSON.parse(result.out) }
+    }
+    const ready = check(f.directory)
+    assert.equal(ready.status, 'ready')
+    assert.equal(ready.assignmentRoot, path.relative(f.directory, f.root))
+    assert.equal(path.resolve(f.directory, ready.assignmentRoot, ready.artifacts.spec), path.join(f.directory, 'spec.md'))
+    assert.equal(check(f.root).assignmentRoot, undefined)
+    fs.mkdirSync(path.join(f.directory, '.git'))
+    assert.match(check(f.directory).reason, /missing or mismatched operator assignment/)
+  }
 })
 
 test('start distinguishes a missing intent from the same event on retry', () => {

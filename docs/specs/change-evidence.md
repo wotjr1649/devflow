@@ -77,8 +77,9 @@ history holds rather than starting over. This option applies to Git worktrees wi
 Set `finding.reproduction` to `{ check, sha256 }` using an existing `verification` ID and the approved adapter file
 hash. The verification command is `node <repo-relative-js-file>` and its inputs include the adapter, reproduction
 assertions and affected code. The adapter runs the intended assertion and emits only one JSON object with `finding`
-and `outcome`. Use `reproduced` and exit 1 for the specific defect, or `passed` and exit 0 for its successful check.
-Setup errors, missing assertions, unrelated failures and interruption do not produce either outcome. The CLI invokes
+and `outcome`. Use `reproduced` for the specific defect or `passed` for its successful check. The adapter must exit
+cleanly with code 0 for either structured outcome. The stored exit code is a normalized verdict (1 or 0). Setup
+errors, missing assertions, unrelated failures and interruption leave the attempt pending. The CLI invokes
 the approved Node file directly with the system execution environment and explicitly declared verification variables,
 excluding Node preload variables and unrelated credentials. The runner uses the command timeout. The declared input
 hashes and file set must match before and after the check. Logs stay private; only the check ID and input digest are

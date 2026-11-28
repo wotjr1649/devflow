@@ -267,7 +267,8 @@ const realEnv = {
     const r = spawnSync(cmd, args, {
       cwd: opts.cwd, input: opts.input, env: opts.env, encoding: 'utf8', timeout: opts.timeout || RUN_TIMEOUT_MS, windowsHide: true,
     })
-    return { code: r.status ?? (r.error ? r.error.code : 1), stdout: r.stdout || '', stderr: r.stderr || '' }
+    const code = r.status ?? (r.error ? r.error.code : opts.requireExit ? (r.signal || 'NO_EXIT') : 1)
+    return { code, stdout: r.stdout || '', stderr: r.stderr || '' }
   },
 }
 
@@ -2508,14 +2509,14 @@ function runFindingReproduction(env, root, record, policy, localAt) {
   if (!before) return null
   const vars = Object.fromEntries(Object.entries(env.vars || {}).filter(([name]) =>
     /^(?:PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TMP|TEMP|TMPDIR)$/i.test(name) || policy.environment.includes(name)))
-  const run = env.run(process.execPath, [path.join(root, policy.relative)], { cwd: root, env: vars })
-  if (![0, 1].includes(run.code) || run.stdout.length > 4096 || !run.stdout.trim()) return null
+  const run = env.run(process.execPath, [path.join(root, policy.relative)], { cwd: root, env: vars, requireExit: true })
+  if (run.code !== 0 || run.stdout.length > 4096 || !run.stdout.trim()) return null
   let result
   try { result = JSON.parse(run.stdout) } catch { return null }
   if (result?.finding !== record.finding.id || Object.keys(result).length !== 2 ||
-      result.outcome !== (run.code === 1 ? 'reproduced' : 'passed') ||
+      !['reproduced', 'passed'].includes(result.outcome) ||
       before !== reproductionInputs(policy, localAt)) return null
-  return { exitCode: run.code, proof: { check: policy.id, inputsSha256: before } }
+  return { exitCode: result.outcome === 'reproduced' ? 1 : 0, proof: { check: policy.id, inputsSha256: before } }
 }
 
 function applyFindingRecovery(record, previous, worktree, id) {

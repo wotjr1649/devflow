@@ -49,9 +49,9 @@ test('assigned worktrees share reserved finding attempts without changing approv
     "if (process.env.FIXTURE_PRIVATE || process.env.NODE_OPTIONS) process.exit(3)",
     "const input = fs.readFileSync('input.txt', 'utf8')",
     "if (input === 'setup-error') fs.readFileSync('missing-fixture.cjs')",
+    "if (input === 'interrupted') { fs.writeSync(1, JSON.stringify({ finding: 'r-17', outcome: 'reproduced' })); process.kill(process.pid, 'SIGTERM') }",
     "let outcome = 'passed'", "try { assert.equal(input, 'pass') } catch { outcome = 'reproduced' }",
-    "console.log(JSON.stringify({ finding: 'r-17', outcome }))",
-    "process.exitCode = outcome === 'reproduced' ? 1 : 0", ''].join('\n')
+    "console.log(JSON.stringify({ finding: 'r-17', outcome }))", ''].join('\n')
   for (const root of [wt, third]) {
     const directory = path.join(root, 'docs', 'changes', 'example')
     fs.mkdirSync(directory, { recursive: true })
@@ -116,6 +116,12 @@ test('assigned worktrees share reserved finding attempts without changing approv
   fs.writeFileSync(path.join(wt, 'input.txt'), 'setup-error')
   assert.match(write(wt, 'one', 'check').reason, /did not establish/)
   assert.equal(status(third).finding.failedAttempts, 0)
+  assert.equal(fs.readFileSync(store, 'utf8'), pending)
+  fs.writeFileSync(path.join(wt, 'input.txt'), 'interrupted')
+  const interrupted = spawnSync(process.execPath, [path.join(__dirname, '../bin/devflow-state'),
+    'finding-attempt', 'example', 'one', 'check'], { cwd: wt, env: cleanEnv, encoding: 'utf8', timeout: 10000 })
+  assert.equal(interrupted.status, 1)
+  assert.match(JSON.parse(interrupted.stderr).reason, /did not establish/)
   assert.equal(fs.readFileSync(store, 'utf8'), pending)
 
   const moved = path.join(base, 'moved')

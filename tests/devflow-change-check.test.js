@@ -54,7 +54,7 @@ function fixture(gitMode = true, folder = tmpdir('change-check-')) {
 
 for (const withGit of [false, true]) {
   test(`verification-only report through the CLI in ${withGit ? 'a linked Git worktree' : 'a Git-free project'}`, () => {
-    const parent = tmpdir('direct-verification-')
+    const parent = fs.realpathSync.native(tmpdir('direct-verification-'))
     const project = path.join(parent, 'project')
     const primary = path.join(parent, 'primary')
     function git(cwd, ...args) {
@@ -106,6 +106,11 @@ for (const withGit of [false, true]) {
       return result
     }
     const start = review()
+    if (start.status !== 'ready') {
+      const checkout = withGit ? { root: f.root, top: git(f.root, 'rev-parse', '--show-toplevel'),
+        branch: git(f.root, 'symbolic-ref', '--quiet', '--short', 'HEAD') } : { root: f.root }
+      assert.fail(JSON.stringify({ result: start, checkout }))
+    }
     assert.equal(launch('verify.cjs').status, 0)
     const receiptFile = path.join(f.root, start.evidence.path)
     fs.mkdirSync(path.dirname(receiptFile), { recursive: true })

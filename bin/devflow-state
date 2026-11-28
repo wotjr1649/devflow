@@ -6,6 +6,7 @@ const fs = require('fs')
 const path = require('path')
 const os = require('os')
 const { spawnSync } = require('child_process')
+const { isDeepStrictEqual } = require('util')
 const crypto = require('crypto')
 // Windows looks for git.exe and gh.exe in the working folder before PATH; a cloned repository must not supply them.
 if (process.platform === 'win32') process.env.NoDefaultCurrentDirectoryInExePath = '1'
@@ -2553,11 +2554,13 @@ function applyFindingRecovery(record, previous, worktree, id) {
   return grant.action === 'abandon' ? 'abandoned' : 'recovered'
 }
 
-function updateSharedFinding(file, root, record, action, hold, env, policy, localAt) {
+function updateSharedFinding(file, root, record, action, hold, env, policy, localAt, recheck) {
   if (!file || !readSharedFinding(file, record.finding)) return hold('missing or unsafe shared finding history')
   try {
     const result = withDirectoryLock(path.dirname(file), `${record.id}.lock`, () => {
       const deadline = Date.now() + RUN_TIMEOUT_MS * 2
+      const approval = recheck()
+      if (approval.code !== 0) return approval
       const history = readSharedFinding(file, record.finding)
       if (!history) return hold('missing or unsafe shared finding history')
       const plan = record.approvals.plan.sha256
@@ -2797,7 +2800,7 @@ function noGitRepositoryOnDisk(root, vars = {}) {
   } catch { return false }
 }
 
-function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
+function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction, lockedFinding) {
   const required = CHANGE_STAGES.get(stage)
   const verificationOnly = stage === 'review' && extra.length === 1 && extra[0] === '--verification-only'
   if (!required || (extra.length && !verificationOnly) || (expectedId !== undefined && !CHANGE_ID.test(expectedId))) {
@@ -2870,7 +2873,7 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
     }
     if (!verifies(contract.path, contract.sha256)) return hold(`contract changed: ${contract.path}`)
   }
-  if (!buildReason && (stage === 'build' || stage === 'resume' || verificationOnly) &&
+  if (!buildReason && (stage === 'build' || stage === 'resume' || stage === 'review') &&
       (record.contracts.length || record.auditRequired || record.audit !== undefined)) {
     const audit = record.audit
     if (audit?.verdict !== 'READY' || typeof audit.by !== 'string' || !audit.by.trim() ||
@@ -2891,7 +2894,18 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
         if (findingAction) return hold('missing or invalid approved finding reproduction')
         progress = { reason: 'missing or invalid approved finding reproduction' }
       } else {
-        if (findingAction) return updateSharedFinding(file, root, record, findingAction, hold, env, policy, localAt)
+        if (findingAction) {
+          if (lockedFinding) {
+            if (!file || differs(file, lockedFinding.file) || !isDeepStrictEqual(record, lockedFinding.record) ||
+                !isDeepStrictEqual(record, changeRecord(root))) {
+              return hold('operator assignment changed while waiting for the shared finding lock')
+            }
+            return { code: 0 }
+          }
+          // Repeat assignment validation under the lock before starting an effect.
+          return updateSharedFinding(file, root, record, findingAction, hold, env, policy, localAt,
+            () => changeCheck(env, cwd, [stage, expectedId], findingAction, { file, record }))
+        }
         const history = readSharedFinding(file, record.finding)
         progress = history ? sharedProgress(history, record.approvals.plan.sha256, environmentDigest(policy.environment, env.vars)) :
           { reason: 'missing, unverified or unsafe shared finding history' }
@@ -2908,8 +2922,8 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
   const draftPlanHash = planFile ? hashFile(planFile)?.sha256 : null
   const evidence = ['build', 'resume', 'review'].includes(stage)
     ? assignedEvidence(root, record, localAt, verifies, env.vars || {}) : null
-  const allChecksReused = stage === 'review' && evidence.status === 'recorded' &&
-    evidence.verification?.status === 'ready' && evidence.verification.run.length === 0
+  const verificationReady = stage === 'review' && !buildReason && evidence.verification?.status === 'ready'
+  const allChecksReused = verificationReady && evidence.status === 'recorded' && evidence.verification.run.length === 0
   if (verificationOnly && allChecksReused) {
     return { code: 0, out: JSON.stringify({ status: 'reported', id: record.id, stage,
       reused: evidence.verification.reuse, executed: [] }) }
@@ -2925,7 +2939,8 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra], findingAction) {
     ...(allChecksReused ? {
         next: 'The requested comparison of assignment and receipt against current declared inputs is complete. For a verification-only handoff, report the reused IDs and that no checks ran, then stop. Do not reopen references or repeat the comparison. Continue normal review for any wider request, known check-input drift, or requested rerun.',
       } : {}),
-    ...(stage === 'review' && evidence.status !== 'unknown' && evidence.verification?.status === 'ready' &&
+    ...(stage === 'review' && buildReason ? { verificationHold: buildReason } : {}),
+    ...(verificationReady && evidence.status !== 'unknown' &&
       evidence.verification.run.length > 0 ? {
         verificationAction: 'For verification-only handoff, execute only authorized checks in evidence.verification.run and report results and reuse. The declared input comparison is already done. For independent review, drift outside declared inputs, or a wider request, continue normal review. Honor requested reruns.',
       } : {}),

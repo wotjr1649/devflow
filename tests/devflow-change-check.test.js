@@ -140,15 +140,28 @@ for (const withGit of [false, true]) {
     fs.appendFileSync(f.contract, '\nUnapproved contract\n')
     assert.match(fallback().reason, /contract changed/)
     fs.writeFileSync(f.contract, 'shared requirement\n')
+    const heldReview = (reason, expected = { reuse: ['suite'], run: [] }) => {
+      const inspection = review()
+      assert.equal(inspection.status, 'ready')
+      assert.equal(inspection.verificationHold, reason)
+      assert.equal(inspection.next, undefined)
+      assert.equal(inspection.verificationAction, undefined)
+      assert.equal(inspection.evidence.review.status, 'unknown')
+      assert.deepEqual(inspection.evidence.verification.reuse, expected.reuse)
+      assert.deepEqual(inspection.evidence.verification.run, expected.run)
+    }
     f.record.audit.verdict = 'HOLD'
     f.persist()
     assert.equal(scoped().reason, 'independent document audit HOLD')
-    assert.equal(review().status, 'ready', 'legacy review stays available under a document audit hold')
+    heldReview('independent document audit HOLD')
+    fs.appendFileSync(source, '// Changed input under audit HOLD\n')
+    heldReview('independent document audit HOLD', { reuse: [], run: ['suite'] })
+    fs.writeFileSync(source, original)
     f.record.audit.verdict = 'READY'
     f.record.revision = 'spec'
     f.persist()
     assert.equal(scoped().reason, 'document revision is still open')
-    assert.equal(review().status, 'ready')
+    heldReview('document revision is still open')
     delete f.record.revision
     f.record.auditRequired = true
     f.persist()
@@ -166,7 +179,7 @@ for (const withGit of [false, true]) {
       const build = launch(command, 'change-check', 'build', 'example')
       assert.equal(build.status, 1)
       assert.equal(JSON.parse(build.stderr).reason, expectedReason)
-      assert.equal(review().status, 'ready')
+      heldReview(expectedReason)
     }
     f.record.audit = currentAudit
     f.persist()
@@ -175,6 +188,7 @@ for (const withGit of [false, true]) {
 
     const normal = review()
     assert.equal(normal.status, 'ready', 'a wider request uses the regular review command')
+    assert.equal(normal.verificationHold, undefined)
     assert.equal(normal.evidence.review.status, 'unknown', 'test reuse does not settle independent review')
     assert.ok(normal.evidence.reviewBinding)
     assert.match(normal.next, /requested rerun/)

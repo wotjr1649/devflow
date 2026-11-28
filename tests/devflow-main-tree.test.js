@@ -37,7 +37,7 @@ function project(mainBranch, wtBranch) {
   return { base, main, wt }
 }
 
-test('assigned worktrees share reserved finding attempts without changing approvals or counting a replay', async () => {
+test('assigned worktrees share reserved finding attempts without changing approvals or counting a replay', async t => {
   const { main, wt, base } = project('main', 'trial/finding')
   const third = path.join(base, 'third')
   git(main, 'worktree', 'add', '-q', '-b', 'trial/third', third)
@@ -80,6 +80,32 @@ test('assigned worktrees share reserved finding attempts without changing approv
   }
   const write = (root, id, value) => call(root, 'finding-attempt', 'example', id, value)
   const status = root => call(root, 'change-check', 'resume', 'example')
+  const executions = () => e.calls.filter(({ cmd }) => cmd === process.execPath).length
+  const lock = path.join(path.dirname(store), 'example.lock')
+  function changeBeforeLock(file, contents, invoke, reason) {
+    const original = fs.readFileSync(file)
+    const history = fs.readFileSync(store)
+    const before = executions()
+    const writeFile = fs.writeFileSync
+    let changed = false
+    const intercepted = t.mock.method(fs, 'writeFileSync', (name, data, options) => {
+      if (!changed && name === lock && options?.flag === 'wx') {
+        changed = true
+        writeFile(file, contents)
+      }
+      return writeFile(name, data, options)
+    })
+    try {
+      assert.match(invoke().reason, reason)
+      assert.ok(changed, 'the operator change precedes lock acquisition')
+      assert.equal(executions(), before)
+      assert.deepEqual(fs.readFileSync(store), history)
+      assert.equal(fs.readFileSync(file, 'utf8'), contents)
+    } finally {
+      intercepted.mock.restore()
+      writeFile(file, original)
+    }
+  }
   const contenders = [{ root: wt, id: 'race-one' }, { root: third, id: 'race-two' }]
   const started = await Promise.all(contenders.map(({ root, id }) => new Promise((resolve, reject) => {
     execFile(process.execPath, [path.join(__dirname, '../bin/devflow-state'), 'finding-attempt', 'example', id, 'start'],
@@ -93,9 +119,15 @@ test('assigned worktrees share reserved finding attempts without changing approv
   const winner = contenders[started.findIndex(result => result.status === 'reserved')]
   assert.equal(write(winner.root, winner.id, 'check').status, 'recorded')
   assert.equal(status(wt).finding.failedAttempts, 0)
+  changeBeforeLock(assignments[0].file, JSON.stringify({ ...JSON.parse(assignments[0].body), audit: { verdict: 'HOLD' } }),
+    () => write(wt, 'revoked', 'start'), /document audit HOLD/)
   assert.equal(run(e, wt, ['finding-attempt', 'example', 'one', '1']).code, 2)
   assert.equal(write(wt, 'one', 'check').status, 'hold')
   assert.equal(write(wt, 'one', 'start').status, 'reserved')
+  const plan = path.join(wt, 'docs', 'changes', 'example', 'plan.md')
+  changeBeforeLock(plan, 'Changed plan\n', () => write(wt, 'one', 'check'), /stale plan approval/)
+  changeBeforeLock(assignments[0].file, JSON.stringify({ ...JSON.parse(assignments[0].body), audit: { verdict: 'HOLD' } }),
+    () => write(wt, 'one', 'check'), /document audit HOLD/)
   assert.equal(write(third, 'one', 'start').status, 'already-pending')
   assert.equal(write(third, 'different', 'start').status, 'hold')
   assert.deepEqual(status(third).finding.pending, ['one'])
@@ -113,7 +145,6 @@ test('assigned worktrees share reserved finding attempts without changing approv
   fs.writeFileSync(assignments[0].file, JSON.stringify(alternate))
   assert.match(write(wt, 'one', 'check').reason, /reproduction policy changed/)
   fs.writeFileSync(assignments[0].file, assignments[0].body)
-  const executions = () => e.calls.filter(({ cmd }) => cmd === process.execPath).length
   const beforeMismatch = executions()
   e.vars.NODE_ENV = 'changed'
   assert.match(write(wt, 'one', 'check').reason, /reproduction environment changed/)
@@ -138,6 +169,8 @@ test('assigned worktrees share reserved finding attempts without changing approv
   assert.match(write(wt, 'one', 'recover').reason, /operator finding recovery/)
   retry.finding.recovery.execution = unresolved
   fs.writeFileSync(assignments[0].file, JSON.stringify(retry))
+  changeBeforeLock(assignments[0].file, assignments[0].body, () => write(wt, 'one', 'recover'),
+    /operator assignment changed while waiting/)
   assert.equal(write(wt, 'one', 'recover').status, 'recovered')
   fs.writeFileSync(path.join(wt, 'input.txt'), 'interrupted')
   const interrupted = spawnSync(process.execPath, [path.join(__dirname, '../bin/devflow-state'),

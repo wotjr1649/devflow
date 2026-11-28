@@ -36,6 +36,7 @@ For an explicit verification-only handoff, run `node bin/devflow-state change-ch
 with the trusted tool. A current receipt covering every declared check returns `status: "reported"`, the `reused` IDs
 and an empty `executed` list. Use that result as the report. An open document revision, audit HOLD, or missing or stale
 required document audit holds the direct report.
+Ordinary review exposes the same reason in `verificationHold` and preserves the evidence for inspection.
 Other nonterminal results follow the existing review or hold path.
 Use the regular review invocation for independent review, drift outside the declared scope, or an explicit rerun.
 
@@ -103,7 +104,9 @@ worktree path, branch, approved plan and reproduction policy bound at reservatio
 before launching the adapter. An inconclusive or interrupted execution stays pending, with its ID, without increasing
 the failure count. Resolve it before running another check for that finding. A preflight refusal before execution
 does not create an execution ID. Only reserve a new attempt when the build check permits it. The shared lock
-serializes the bounded check and file update. A passed reproduction does not approve a change or close a review finding.
+serializes the bounded check and file update. After obtaining it, the tool checks the current assignment, approvals,
+audit and contracts again before writing or dispatching. Reconcile an already dispatched process separately.
+A passed reproduction does not approve a change or close a review finding.
 
 If the worktree moves, first confirm the previous process tree exited and reconcile its file effects. The operator
 updates the moved worktree's assignment for the same change, branch and approved plan and adds `finding.recovery` with

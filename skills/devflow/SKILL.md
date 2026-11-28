@@ -10,7 +10,7 @@ Spike: question/exit. Bounded: brief design. Approve intent → spec → plan; a
 
 For assignments, run `change-check <stage> [id]` as authorized by project instructions or the user, alone before records or diff. Pass ID; use its paths/proof. Hold on failure. `start` intent, `design` spec, `plan` plan/pre-build audit, `build` code, `resume` status, `review` after build.
 
-For an assigned review limited to checking verification evidence, use the gate result directly. If `evidence.status` is `recorded`, `evidence.verification.status` is `ready` and `run` is empty, report the reused IDs and stop without reading references, records or inputs again. Known scope or environment changes, requested reruns and independent reviews follow normal routing.
+For an assigned verification-only handoff, `evidence.status: recorded` with ready verification and empty `evidence.verification.run` means the gate already matched declared inputs. Report reused IDs and no checks run. Stop before references or further reads. Known drift, requested reruns and independent reviews follow normal routing.
 
 - [Resume](references/resume.md) alone for status/mode switch/interruption/unchanged continuation. After ready build read first. Edit only approved files.
 - [Change](references/change.md) for new work/docs/plans/branches/decisions/delegation/incidents/review, before assigned records.

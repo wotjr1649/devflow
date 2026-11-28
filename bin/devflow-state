@@ -2585,6 +2585,8 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
   if (stage === 'build' && buildReason) return hold(buildReason)
   const planFile = stage === 'plan' ? localAt(artifacts.plan) : null
   const draftPlanHash = planFile ? hashFile(planFile)?.sha256 : null
+  const evidence = ['build', 'resume', 'review'].includes(stage)
+    ? assignedEvidence(root, record, localAt, verifies, env.vars || {}) : null
   return { code: 0, out: JSON.stringify({ status: 'ready', id: record.id, stage,
     ...(root !== location.cwd ? { assignmentRoot: path.relative(location.cwd, root) } : {}),
     ...(['start', 'design', 'plan'].includes(stage) ?
@@ -2592,11 +2594,14 @@ function changeCheck(env, cwd, [stage, expectedId, ...extra]) {
     ...(stage === 'build' ? { next: 'Load the development workflow skill if needed, then read its Resume reference before opening any returned work record or editing.' } : {}),
     ...(stage === 'resume' ? { buildStatus: buildReason ? 'hold' : 'ready', ...(buildReason ? { buildReason } : {}),
       next: 'Load the development workflow skill if needed, then read its Resume reference before opening returned records or reporting status. Status is read-only and does not rerun tests.' } : {}),
+    ...(stage === 'review' && evidence.status === 'recorded' && evidence.verification?.status === 'ready' &&
+      evidence.verification.run.length === 0 ? {
+        next: 'The gate already matched the assignment, receipt, and all declared verification inputs. For a verification-only handoff, report the reused IDs and that no checks ran, then stop without opening references or rechecking inputs. Continue normal review for any wider request, known drift, or requested rerun.',
+      } : {}),
     artifacts, intentExists: Boolean(localAt(artifacts.intent)),
     ...(draftPlanHash ? { auditBinding: documentAuditBinding(record, draftPlanHash) } : {}),
     contracts: record.contracts.map(entry => entry.path),
-    ...(['build', 'resume', 'review'].includes(stage) ?
-       { evidence: assignedEvidence(root, record, localAt, verifies, env.vars || {}) } : {}) }) }
+    ...(evidence ? { evidence } : {}) }) }
 }
 
 function main(argv, stdin, env = realEnv, cwd = process.cwd()) {

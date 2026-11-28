@@ -229,6 +229,7 @@ test('assigned review reuses only complete matching successful checks after a co
   const before = f.check('review').evidence
   const decide = () => f.check('review').evidence.verification
   assert.deepEqual(before.verification.run, ['http', 'syntax'])
+  assert.equal(f.check('review').next, undefined, 'missing evidence cannot finish a handoff')
   assert.deepEqual(f.check('resume').evidence.verification, before.verification)
   const proof = { id: f.record.id, binding: before.binding, verificationBasis: before.verification.basis,
     checks: f.record.verification.map((policy, index) => ({
@@ -240,8 +241,11 @@ test('assigned review reuses only complete matching successful checks after a co
   const save = () => fs.writeFileSync(target, JSON.stringify(proof))
   save()
   assert.deepEqual(decide().reuse, ['http', 'syntax'])
+  assert.match(f.check('review').next, /For a verification-only handoff, report the reused IDs and that no checks ran/)
+  assert.match(f.check('review').next, /wider request, known drift, or requested rerun/)
   fs.writeFileSync(path.join(f.root, 'tests/new.js'), 'another test')
   assert.deepEqual(decide().run, ['http'])
+  assert.equal(f.check('review').next, undefined, 'a changed test requires normal routing')
   fs.unlinkSync(path.join(f.root, 'tests/new.js'))
   assert.deepEqual(decide().run, [])
   proof.checks[0].command += ' --test-only'
@@ -261,6 +265,7 @@ test('assigned review reuses only complete matching successful checks after a co
   f.record.contracts[0].sha256 = hashFile(f.contract).sha256
   f.persist()
   assert.equal(f.check('review').evidence.status, 'stale')
+  assert.equal(f.check('review').next, undefined, 'a stale contract binding requires normal routing')
   assert.deepEqual(decide().run, ['http'])
   assert.deepEqual(decide().reuse, ['syntax'])
   f.record.approvals.intent.by = 'next approver'
